@@ -85,7 +85,10 @@ export async function POST(req: NextRequest) {
     const env = getEnv();
     const expectedSecret = String(env.MANDALO_WEBHOOK_SECRET ?? "").trim();
     if (expectedSecret) {
-      const incomingSecret = String(req.headers.get("x-mandalo-webhook-secret") ?? "").trim();
+      const requestUrl = new URL(req.url);
+      const incomingSecret = String(
+        req.headers.get("x-mandalo-webhook-secret") ?? requestUrl.searchParams.get("secret") ?? "",
+      ).trim();
       if (incomingSecret !== expectedSecret) {
         console.warn("[Webhook] Secreto inválido; request rechazado.");
         return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 200 });
