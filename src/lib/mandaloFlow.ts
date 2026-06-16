@@ -1170,6 +1170,14 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
     userMessage: mensaje,
   });
 
+  console.log("[DEBUG] IA Stage:", respuesta.order_state?.stage);
+  console.log("[DEBUG] IA Dispatch:", JSON.stringify(respuesta.dispatch));
+  if (respuesta.dispatch?.business_message) {
+    console.log("[DEBUG] ÉXITO: Dispatch detectado y entrando a rama de confirmación");
+  } else {
+    console.log("[DEBUG] FALLA: IA no generó dispatch.business_message");
+  }
+
   // 3) Prioridad al Dispatch:
   // Si la IA manda dispatch.business_message, procesamos el flujo de cotización SIN depender
   // de que el texto del cliente o customer_reply contenga "COTIZAR.".
