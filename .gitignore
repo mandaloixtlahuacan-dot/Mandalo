@@ -1,7 +1,6 @@
-<<<<<<< HEAD
-.env
+# Vercel
 .vercel
-=======
+
 # Logs
 logs
 *.log
@@ -145,4 +144,3 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
->>>>>>> 5ad63a96823a41940a1d0fb448d46032bea84e2e

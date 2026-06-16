@@ -10,6 +10,7 @@ import {
   crearOrden,
   extraerOrdenId,
   extraerPrecio,
+  getActiveOrderByCustomerPhone,
   getOrderById,
   transitionOrderState,
 } from "@/lib/ordenes";
@@ -44,6 +45,7 @@ type PedidoRow = {
 type HistorialMessage = { texto: string; estado: "cliente" | "bot"; created_at: string };
 type LlmMessage = { role: "system" | "user" | "assistant"; content: string };
 type ResolvedNegocio = { id?: unknown; nombre?: unknown; whatsapp: string; categoria?: unknown };
+type DispatchBusiness = { id?: unknown; nombre?: string; whatsapp: string };
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -189,19 +191,14 @@ function extractDireccionFromDetalle(detalle: string): string | null {
 }
 
 async function fetchDireccionGuardadaDesdePedidos(telefono: string) {
-  const supabase = getSupabaseAdmin();
-  // Regla: consultar "pedidos" por telefono_cliente y tomar SOLO el detalle_pedido más reciente.
-  const { data, error } = await supabase
-    .from("pedidos")
-    .select("detalle_pedido, created_at")
-    .eq("telefono_cliente", telefono)
-    .order("created_at", { ascending: false })
-    .limit(1);
-  if (error) throw error;
+  const active = await getActiveOrderByCustomerPhone(telefono).catch(() => null);
+  const activeDir = extractDireccionFromDetalle(String(active?.record?.detalle_pedido ?? ""));
+  if (activeDir) return activeDir;
 
-  const row = (data ?? [])[0] as PedidoRow | undefined;
-  const dir = extractDireccionFromDetalle(String(row?.detalle_pedido ?? ""));
-  if (dir) return dir;
+  const recovered = await recoverLatestOrderStateWithItems(telefono);
+  const recoveredDir = extractDireccionFromDetalle(JSON.stringify(recovered ?? {}));
+  if (recoveredDir) return recoveredDir;
+
   return null;
 }
 
@@ -523,6 +520,107 @@ async function resolveNegocioFromDb(params: { id?: unknown; nombre?: unknown; wh
   return null;
 }
 
+async function resolveBusinessForDispatch(state: JsonObject): Promise<DispatchBusiness | null> {
+  const businessId = state.business_id ?? state.businessId ?? null;
+  const businessPhone = state.business_phone ?? state.businessPhone ?? null;
+  const businessName = state.business_name ?? state.businessName ?? null;
+
+  const primary = await resolveNegocioFromDb({
+    id: businessId,
+    whatsapp: businessPhone,
+    nombre: businessName,
+  }).catch((e: unknown) => {
+    console.error("[mandalo] resolveBusinessForDispatch: resolveNegocioFromDb falló", {
+      business_id: businessId,
+      business_phone: businessPhone,
+      business_name: businessName,
+      message: getErrorMessage(e),
+    });
+    return null;
+  });
+
+  if (primary?.whatsapp) {
+    return {
+      id: primary.id ?? businessId ?? null,
+      nombre: String(primary.nombre ?? businessName ?? "").trim() || undefined,
+      whatsapp: ensureMxWhatsappIntl(String(primary.whatsapp)),
+    };
+  }
+
+  const strictName = String(businessName ?? "").trim();
+  if (strictName) {
+    const fallback = await resolveBusinessWhatsappStrictByName(strictName).catch((e: unknown) => {
+      console.error("[mandalo] resolveBusinessForDispatch: fallback por nombre falló", {
+        business_id: businessId,
+        business_phone: businessPhone,
+        business_name: strictName,
+        message: getErrorMessage(e),
+      });
+      return null;
+    });
+    if (fallback?.whatsapp) {
+      return {
+        id: businessId ?? null,
+        nombre: String(fallback.nombre ?? strictName).trim() || undefined,
+        whatsapp: ensureMxWhatsappIntl(String(fallback.whatsapp)),
+      };
+    }
+  }
+
+  console.error("[mandalo] resolveBusinessForDispatch: negocio no encontrado", {
+    business_id: businessId,
+    business_phone: businessPhone,
+    business_name: businessName,
+  });
+  return null;
+}
+
+function logBusinessDispatch(params: {
+  orderId: number;
+  businessId?: unknown;
+  businessName?: unknown;
+  businessPhone?: unknown;
+  to: string;
+  body: string;
+}) {
+  console.log("[dispatch][business]", {
+    orderId: params.orderId,
+    business_id: params.businessId ?? null,
+    business_name: String(params.businessName ?? "").trim() || null,
+    business_phone: String(params.businessPhone ?? "").trim() || null,
+    to: params.to,
+    bodyPreview: String(params.body ?? "").slice(0, 300),
+  });
+}
+
+function logCourierDispatch(params: {
+  orderId: number;
+  courierName?: unknown;
+  courierPhone?: unknown;
+  customerPhone?: unknown;
+  mapsLink?: unknown;
+  body: string;
+}) {
+  console.log("[dispatch][courier]", {
+    orderId: params.orderId,
+    courier_name: String(params.courierName ?? "").trim() || null,
+    courier_phone: String(params.courierPhone ?? "").trim() || null,
+    customer_phone: String(params.customerPhone ?? "").trim() || null,
+    mapsLink: String(params.mapsLink ?? "").trim() || null,
+    bodyPreview: String(params.body ?? "").slice(0, 300),
+  });
+}
+
+async function getCurrentOrderStateForAgent(telefono: string): Promise<JsonObject> {
+  const active = await getActiveOrderByCustomerPhone(telefono).catch(() => null);
+  if (active?.snapshot && Object.keys(active.snapshot).length > 0) return active.snapshot as JsonObject;
+
+  const recovered = await recoverLatestOrderStateWithItems(telefono);
+  if (recovered && Object.keys(recovered).length > 0) return recovered;
+
+  return {};
+}
+
 async function handleClienteMessage(telefono: string, mensaje: string, ubicacion?: unknown) {
   const supabase = getSupabaseAdmin();
 
@@ -554,7 +652,7 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
   if (esperando?.id) {
     const ordenId = Number((esperando as PedidoRow).id);
     const state = safeParseDetalleJson((esperando as PedidoRow)?.detalle_pedido) ?? {};
-    const tiendaNombre = String(state?.business_name ?? "").trim();
+    const tiendaNombre = String(state?.business_name ?? state?.businessName ?? "").trim();
 
     // Si NO confirma, solo re-mostramos el resumen y pedimos SÍ (sin enviar a tienda).
     if (!isYesConfirmation(mensaje)) {
@@ -584,9 +682,22 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
       return { ok: true, role: "cliente", stage: "esperando_confirmacion", ordenId };
     }
 
-    const negocio = await resolveBusinessWhatsappStrictByName(tiendaNombre);
+    const negocioResolved = await resolveBusinessForDispatch(state);
+    const negocioFallback = !negocioResolved && tiendaNombre
+      ? await resolveBusinessWhatsappStrictByName(tiendaNombre)
+      : null;
+    const negocio: DispatchBusiness | null = negocioResolved
+      ? negocioResolved
+      : negocioFallback?.whatsapp
+        ? { id: state.business_id ?? state.businessId ?? null, nombre: negocioFallback.nombre, whatsapp: negocioFallback.whatsapp }
+        : null;
     if (!negocio?.whatsapp) {
-      console.error("[ERROR CRÍTICO] No se encontró el WhatsApp de la tienda en Supabase.", { tiendaNombre });
+      console.error("[ERROR CRÍTICO] No se encontró el WhatsApp de la tienda en Supabase.", {
+        orderId: ordenId,
+        business_id: state.business_id ?? state.businessId ?? null,
+        business_phone: state.business_phone ?? state.businessPhone ?? null,
+        business_name: tiendaNombre,
+      });
       return { ok: false, role: "cliente", error: "TIENDA_SIN_WHATSAPP" };
     }
 
@@ -595,6 +706,14 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
     const pedidoDetalle = formatPedidoForBusiness(state);
     const extraNotes = String(state?.pending_business_message ?? "").trim();
     const items = Array.isArray(state?.items) ? state.items : [];
+    const negocioId =
+      typeof negocio.id === "number" || typeof negocio.id === "string"
+        ? negocio.id
+        : typeof state.business_id === "number" || typeof state.business_id === "string"
+          ? state.business_id
+          : typeof state.businessId === "number" || typeof state.businessId === "string"
+            ? state.businessId
+            : null;
     const mapsLink = addressText
       ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addressText)}`
       : null;
@@ -608,13 +727,15 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
           ...(persisted.snapshot ?? {}),
           ...(addressText ? { address_text: addressText } : {}),
           ...(items.length ? { items } : {}),
-          business_name: tiendaNombre,
+          business_id: negocioId,
+          business_name: String(negocio.nombre ?? tiendaNombre).trim(),
           business_phone: negocio.whatsapp,
           stage: "awaiting_quote",
         },
         contextOverrides: {
           customerPhone: telefono,
-          businessName: tiendaNombre,
+          businessId: negocioId,
+          businessName: String(negocio.nombre ?? tiendaNombre).trim(),
           businessPhone: negocio.whatsapp,
           addressText,
           items,
@@ -647,12 +768,18 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
       `Responde así: ORDEN #${ordenId} PRECIO 150`;
     const formatoParaTienda = extraNotes ? `${encabezado}\n\nNotas:\n${extraNotes}` : encabezado;
 
-    console.log("[DEBUG] Enviando pedido a tienda:", negocio.whatsapp);
-    console.log("--- INTENTANDO ENVIAR A ULTRA MSG ---");
+    logBusinessDispatch({
+      orderId: ordenId,
+      businessId: negocio.id ?? state.business_id ?? state.businessId ?? null,
+      businessName: negocio.nombre ?? tiendaNombre,
+      businessPhone: negocio.whatsapp,
+      to: negocio.whatsapp,
+      body: formatoParaTienda,
+    });
     await waapiSendText({ to: negocio.whatsapp, body: normalizeWhatsAppText(formatoParaTienda) });
 
     const msgCliente =
-      `✅ Perfecto. Ya envié tu pedido a *${tiendaNombre}*.\n` +
+      `✅ Perfecto. Ya envié tu pedido a *${String(negocio.nombre ?? tiendaNombre).trim()}*.\n` +
       "En cuanto me confirmen el precio final, te paso el total. 💰";
     console.log("--- INTENTANDO ENVIAR A ULTRA MSG ---");
     await waapiSendText({ to: telefono, body: normalizeWhatsAppText(msgCliente) });
@@ -717,6 +844,7 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
     await guardarMensajeChat({ telefono, texto: String(mensaje ?? ""), estado: "cliente" }).catch(() => {});
 
     const historial = await fetchHistorialReciente(telefono, 12).catch(() => []);
+    const currentOrderState = await getCurrentOrderStateForAgent(telefono);
     const respuesta = await getLLMResponse({
       historialReciente: (historial ?? [])
         .slice()
@@ -727,7 +855,7 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
         }))
         .filter((m) => m.content.trim()),
       supabaseJson: { maps_url: ubicacion ?? null },
-      currentOrderState: {},
+      currentOrderState,
       userMessage: mensaje,
     });
 
@@ -877,14 +1005,18 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
     const repartidor = await findActiveCourier();
     if (!repartidor) {
       // Aviso a tienda si no hay repartidores
-      const tiendaNombre = String(state?.business_name ?? "").trim();
-      if (tiendaNombre) {
-        const negocio = await resolveBusinessWhatsappStrictByName(tiendaNombre);
-        if (negocio?.whatsapp) {
-          const aviso = "Pedido enviado, pero no hay repartidores activos disponibles.";
-          console.log("--- INTENTANDO ENVIAR A WAAPI ---");
-          await waapiSendText({ to: negocio.whatsapp, body: normalizeWhatsAppText(aviso) });
-        }
+      const negocio = await resolveBusinessForDispatch(state);
+      if (negocio?.whatsapp) {
+        const aviso = "Pedido enviado, pero no hay repartidores activos disponibles.";
+        logBusinessDispatch({
+          orderId: ordenId,
+          businessId: negocio.id ?? state.business_id ?? state.businessId ?? null,
+          businessName: negocio.nombre ?? state.business_name ?? state.businessName ?? null,
+          businessPhone: negocio.whatsapp,
+          to: negocio.whatsapp,
+          body: aviso,
+        });
+        await waapiSendText({ to: negocio.whatsapp, body: normalizeWhatsAppText(aviso) });
       }
       const msg =
         "⚠️ Por ahora no tengo repartidores activos disponibles.\n" +
@@ -949,7 +1081,14 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
       "¿Aceptas el servicio? Responde SÍ para confirmar.\n" +
       `Para actualizar, responde: ORDEN #${ordenId} YA RECOGÍ / YA LLEGUÉ / ENTREGADO.`;
 
-    console.log("--- INTENTANDO ENVIAR A ULTRA MSG ---");
+    logCourierDispatch({
+      orderId: ordenId,
+      courierName: repartidorNombre,
+      courierPhone: repartidorWhatsapp,
+      customerPhone: telefono,
+      mapsLink,
+      body: msgRepartidor,
+    });
     await waapiSendText({ to: repartidorWhatsapp, body: normalizeWhatsAppText(msgRepartidor) });
 
     const msgCliente =
@@ -1008,6 +1147,7 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
   }
 
   // 2. Llamar a la IA
+  const currentOrderState = await getCurrentOrderStateForAgent(telefono);
   const respuesta = await getLLMResponse({
     historialReciente: (historial ?? [])
       .slice()
@@ -1026,7 +1166,7 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
           }
         : {}),
     },
-    currentOrderState: {},
+    currentOrderState,
     userMessage: mensaje,
   });
 
@@ -1036,7 +1176,7 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
   const dispatch = respuesta.dispatch ?? null;
   if (dispatch?.business_message) {
     // Resolver negocio SIEMPRE desde DB (fuente de verdad).
-    const baseState: JsonObject = { ...(respuesta.order_state ?? {}) };
+    const baseState: JsonObject = { ...currentOrderState, ...(respuesta.order_state ?? {}) };
     const negocioDb = await resolveNegocioFromDb({
       id: baseState.business_id,
       nombre: baseState.business_name,
@@ -1288,14 +1428,18 @@ async function handleRepartidorMessage(telefono: string, mensaje: string, repart
       await guardarMensajeChat({ telefono: telefonoCliente, texto: msgCliente, estado: "bot" }).catch(() => {});
     }
 
-    const tiendaNombre = String(state?.business_name ?? "").trim();
-    if (tiendaNombre) {
-      const negocio = await resolveBusinessWhatsappStrictByName(tiendaNombre);
-      if (negocio?.whatsapp) {
-        const msgTienda = `El pedido ha sido tomado por el repartidor ${repartidorNombre}`;
-        console.log("--- INTENTANDO ENVIAR A WAAPI ---");
-        await waapiSendText({ to: negocio.whatsapp, body: normalizeWhatsAppText(msgTienda) });
-      }
+    const negocio = await resolveBusinessForDispatch(state);
+    if (negocio?.whatsapp) {
+      const msgTienda = `El pedido ha sido tomado por el repartidor ${repartidorNombre}`;
+      logBusinessDispatch({
+        orderId: pedidoId,
+        businessId: negocio.id ?? state.business_id ?? state.businessId ?? null,
+        businessName: negocio.nombre ?? state.business_name ?? state.businessName ?? null,
+        businessPhone: negocio.whatsapp,
+        to: negocio.whatsapp,
+        body: msgTienda,
+      });
+      await waapiSendText({ to: negocio.whatsapp, body: normalizeWhatsAppText(msgTienda) });
     }
 
     return { ok: true, role: "repartidor", accion: "aceptado", ordenId: pedidoId, repartidorNombre };

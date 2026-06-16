@@ -53,6 +53,7 @@ export async function waapiSendTextRequest({ to, body }: WaapiSendTextArgs): Pro
   }
 
   console.log("[DEBUG] Respuesta Waapi:", {
+    to: waapiTo,
     ok: res.ok,
     status: res.status,
     statusText: res.statusText,
@@ -76,7 +77,7 @@ export async function waapiSendText({ to, body }: WaapiSendTextArgs) {
       status: result.status,
       statusText: result.statusText,
       to,
-      responseText: String(result.rawText ?? "").slice(0, 2000),
+      rawResponsePreview: String(result.rawText ?? "").slice(0, 2000),
     });
     throw new Error(`Waapi error ${result.status}: ${String(result.rawText ?? "")}`);
   }
@@ -87,4 +88,3 @@ export function normalizeWhatsAppText(text: string) {
   // Normalizamos saltos/espacios antes de enviar al proveedor de WhatsApp.
   return text.replace(/[\r\n]+/g, " ").replace(/\s+/g, " ").trim();
 }
-

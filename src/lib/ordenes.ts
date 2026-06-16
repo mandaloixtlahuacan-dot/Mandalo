@@ -464,16 +464,23 @@ export async function asignarRepartidor(ordenId: number) {
 }
 
 export function extraerOrdenId(texto: string): number | null {
-  const m = texto.match(/orden\s*#\s*(\d+)/i) || texto.match(/#(\d+)/);
+  const normalized = String(texto ?? "");
+  const m =
+    normalized.match(/\borden\s*#\s*(\d+)/i) ||
+    normalized.match(/\borden\s+(\d+)/i) ||
+    normalized.match(/#\s*(\d+)/) ||
+    normalized.match(/\b(\d+)\s*(?:precio|total)\b/i);
   return m ? Number(m[1]) : null;
 }
 
 export function extraerPrecio(texto: string): number | null {
   // IMPORTANTE:
   // En mensajes como: "ORDEN #162 PRECIO 87" no queremos capturar 162.
-  // Extraemos estrictamente el número DESPUÉS de la palabra "PRECIO".
+  // Extraemos estrictamente el número DESPUÉS de la palabra "PRECIO" o "TOTAL".
   const normalized = String(texto ?? "").replace(/,/g, ".");
-  const m = normalized.match(/\bprecio\b[^0-9]*([0-9]+(\.[0-9]+)?)/i);
+  const m =
+    normalized.match(/\bprecio\b[^0-9]*([0-9]+(\.[0-9]+)?)/i) ||
+    normalized.match(/\btotal\b[^0-9]*([0-9]+(\.[0-9]+)?)/i);
   return m ? Number(m[1]) : null;
 }
 

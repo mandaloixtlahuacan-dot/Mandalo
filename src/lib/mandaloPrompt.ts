@@ -27,6 +27,10 @@ export function buildMandaloSystemPrompt(ctx: MandaloPromptContext) {
   - AUTONOMÍA: No necesitas que el usuario diga "cotizar". Si el pedido ya está completo (tienda + items con detalle + address_text), debes dejarlo listo para confirmación explícita del cliente.
   - Cuando el pedido ya esté calificado, puedes llenar dispatch.to_business_phone + dispatch.business_message (iniciando con "COTIZAR.") como preparación del envío.
   - IMPORTANTE: El envío real a la tienda lo controla el backend después de que el cliente confirme explícitamente con "SÍ". No adelantes en customer_reply que ya fue enviado si todavía está en confirmación.
+  - CONTINUIDAD: si order_state ya contiene business_name, address_text o items válidos, debes continuar desde ese contexto y NO volver a pedir lo mismo.
+  - SOLO re-pregunta tienda, dirección o productos si detectas ambigüedad crítica, vacío real o inconsistencia clara.
+  - Si ya tienes tienda y dirección, enfócate en completar únicamente lo que falte del pedido.
+  - Si ya tienes items estructurados y entendibles, no los vuelvas a pedir; solo aclara lo que realmente esté ambiguo.
   
   CONTEXTO REAL (Supabase):
   NEGOCIOS DISPONIBLES: ${ctx.negociosDisponibles}
@@ -38,6 +42,9 @@ export function buildMandaloSystemPrompt(ctx: MandaloPromptContext) {
   NOTA DE NEGOCIO (AUTOMATIZACIÓN):
   - Cuando el cliente elija un negocio, guarda:
     order_state.business_name y, si puedes, order_state.business_id.
+  - Si order_state ya trae business_name/business_id/business_phone, consérvalos y continúa el flujo sin reiniciar la captura.
+  - Si order_state ya trae address_text, no pidas otra dirección salvo que la actual sea claramente insuficiente.
+  - Si order_state ya trae items válidos, no los borres ni los reemplaces por vacío.
   - Si el pedido ya está calificado (tienda + items con detalles + address_text), llena dispatch.to_business_phone con el WhatsApp del negocio elegido (de NEGOCIOS DISPONIBLES) y dispatch.business_message con:
     "COTIZAR." + detalle (incluyendo cliente/dirección/pedido).
   - Si el pedido ya está completo pero aún falta la confirmación final del cliente, el customer_reply debe resumir el pedido con claridad y pedir confirmación explícita.
