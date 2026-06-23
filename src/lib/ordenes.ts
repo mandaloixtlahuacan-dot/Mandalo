@@ -267,10 +267,16 @@ export async function getActiveOrderByCustomerPhone(
   telefonoCliente: string,
 ): Promise<OrderSnapshotResult | null> {
   const supabase = getSupabaseAdmin();
+  const sid = String(telefonoCliente ?? "").trim();
+  const norm = sid.replace(/\D/g, "");
+  const last10 = norm.length > 10 ? norm.slice(-10) : norm;
+  const variants = Array.from(
+    new Set([norm, last10, `52${last10}`, `521${last10}`].map((x) => String(x ?? "").trim()).filter(Boolean)),
+  );
   const { data, error } = await supabase
     .from("pedidos")
     .select("id, estado, detalle_pedido, total, telefono_cliente, created_at")
-    .eq("telefono_cliente", telefonoCliente)
+    .in("telefono_cliente", variants)
     // Conservador: ignoramos estados de chat si existieran
     .not("estado", "in", "(cliente,bot,tienda,repartidor,sistema)")
     .order("created_at", { ascending: false })

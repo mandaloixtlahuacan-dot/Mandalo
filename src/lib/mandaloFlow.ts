@@ -4,6 +4,7 @@ import { buildMandaloSystemPrompt } from "@/lib/mandaloPrompt";
 import { normalizeWhatsAppText, waapiSendText } from "@/lib/waapi";
 import { detectActorByPhone } from "@/lib/roles";
 import { normalizePhone } from "@/lib/roles";
+import { getEnv } from "@/lib/env";
 import {
   actualizarOrden,
   calculateFinalPrice,
@@ -63,6 +64,23 @@ function phonesMatch(a: unknown, b: unknown): boolean {
   if (!left || !right) return false;
   if (left === right) return true;
   return left.slice(-10) === right.slice(-10);
+}
+
+function getPhoneVariants(rawPhone: string): string[] {
+  const sid = normalizePhone(String(rawPhone ?? ""));
+  const last10 = sid.length > 10 ? sid.slice(-10) : sid;
+  return Array.from(
+    new Set([sid, last10, `52${last10}`, `521${last10}`].map((x) => String(x ?? "").trim()).filter(Boolean)),
+  );
+}
+
+function isAdminSender(phone: string): boolean {
+  const env = getEnv();
+  const admin = normalizePhone(String(env.MANDALO_ADMIN_PHONE ?? ""));
+  if (!admin) return false;
+  const sender = normalizePhone(String(phone ?? ""));
+  if (!sender) return false;
+  return sender === admin || sender.slice(-10) === admin.slice(-10);
 }
 
 function hasSelectedBusiness(order: JsonObject): boolean {
@@ -811,12 +829,13 @@ async function findActiveOrderForAssignedPhone(params: {
 
 async function handleClienteMessage(telefono: string, mensaje: string, ubicacion?: unknown) {
   const supabase = getSupabaseAdmin();
+  const phoneVariants = getPhoneVariants(telefono);
 
   // Debug del flujo: siempre logueamos el mensaje + estado actual en DB (si existe).
   const { data: lastRow, error: lastErr } = await supabase
     .from("pedidos")
     .select("id, estado")
-    .eq("telefono_cliente", telefono)
+    .in("telefono_cliente", phoneVariants)
     // Evitar tomar filas de "chat" como si fueran estado de orden
     .not("estado", "in", "(cliente,bot,tienda,repartidor,sistema)")
     .order("created_at", { ascending: false })
@@ -831,7 +850,7 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
   const { data: esperando, error: esperandoErr } = await supabase
     .from("pedidos")
     .select("id, estado, detalle_pedido, created_at")
-    .eq("telefono_cliente", telefono)
+    .in("telefono_cliente", phoneVariants)
     .in("estado", ["esperando_confirmacion", "awaiting_confirmation"])
     .order("created_at", { ascending: false })
     .limit(1)
@@ -1071,13 +1090,23 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
   // Si hay un pedido pendiente y el usuario no está respondiendo a un paso esperado, preguntamos continuar/nuevo.
   // NOTA: si el usuario acaba de reiniciar (flag en sesión), no preguntamos por el anterior.
   const flag = getSessionFlag(telefono);
+  // Database-first: si no hay pedido activo real en DB, limpiamos cualquier flag/caché local.
+  const { data: activeCheck } = await supabase
+    .from("pedidos")
+    .select("id")
+    .in("telefono_cliente", phoneVariants)
+    .not("estado", "in", "(cliente,bot,tienda,repartidor,sistema,cancelado,completado,entregado)")
+    .limit(1);
+  if (!activeCheck?.length && flag) {
+    sessionFlags.delete(normalizePhone(telefono));
+  }
   if (flag?.pedido_en_proceso) {
     // saltamos la pregunta "continuar o nuevo" por un periodo corto
   } else {
   const { data: pending, error: pendingErr } = await supabase
     .from("pedidos")
     .select("id, estado")
-    .eq("telefono_cliente", telefono)
+    .in("telefono_cliente", phoneVariants)
     .not("estado", "in", "(cliente,bot,tienda,repartidor,sistema,cancelado,completado)")
     .order("created_at", { ascending: false })
     .limit(1)
@@ -1173,7 +1202,7 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
   const { data: awaitingTotal, error: awaitingTotalErr } = await supabase
     .from("pedidos")
     .select("id, estado, detalle_pedido, total")
-    .eq("telefono_cliente", telefono)
+    .in("telefono_cliente", phoneVariants)
     .eq("estado", "awaiting_confirm")
     .order("created_at", { ascending: false })
     .limit(1)
@@ -1346,7 +1375,7 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
   const { data: awaiting, error: awaitingErr } = await supabase
     .from("pedidos")
     .select("id, estado")
-    .eq("telefono_cliente", telefono)
+    .in("telefono_cliente", phoneVariants)
     .eq("estado", "awaiting_quote")
     .order("created_at", { ascending: false })
     .limit(1)
@@ -1825,12 +1854,26 @@ async function handleRepartidorMessage(telefono: string, mensaje: string, repart
 }
 
 export async function processMandaloWebhook(incoming: IncomingWhatsAppMessage) {
+  // Backdoor admin: RESET_BOT <NUMERO_TELEFONO>
+  const bodyTextRaw = String(incoming.body ?? "");
+  if (isAdminSender(incoming.from)) {
+    const m = bodyTextRaw.match(/^\s*RESET_BOT\s+([0-9+\-\s]{8,})\s*$/i);
+    if (m?.[1]) {
+      const target = normalizePhone(m[1]);
+      await limpiarSesion(target);
+      const msg = `✅ RESET aplicado. Número desbloqueado: ${target}`;
+      await waapiSendText({ to: normalizePhone(incoming.from), body: normalizeWhatsAppText(msg) });
+      await guardarMensajeChat({ telefono: normalizePhone(incoming.from), texto: msg, estado: "bot" }).catch(() => {});
+      return { ok: true, role: "admin", accion: "reset_bot", target };
+    }
+  }
+
   // Lógica de detección de actor y ruteo principal
   const actor = await detectActorByPhone(incoming.from);
 
   // Fallback controlado: si llega ORDEN + PRECIO, lo tratamos como respuesta de tienda
   // solo si el remitente corresponde a un negocio registrado.
-  const bodyText = String(incoming.body ?? "");
+  const bodyText = bodyTextRaw;
   const explicitOrderId = extraerOrdenId(bodyText);
   const looksLikeTiendaPrecio = /\borden\b/i.test(bodyText) && /\bprecio\b/i.test(bodyText);
   if (actor.role === "tienda") {
