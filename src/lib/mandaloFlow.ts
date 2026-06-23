@@ -747,6 +747,37 @@ async function resolvePedidoV2IdByLegacyId(legacyOrderId: number): Promise<numbe
   return data?.id != null ? Number(data.id) : null;
 }
 
+async function enqueueClientOperationalNotification(params: {
+  legacyOrderId: number;
+  telefonoDestino: string;
+  body: string;
+  reason: string;
+}): Promise<boolean> {
+  const pedidoV2Id = await resolvePedidoV2IdByLegacyId(params.legacyOrderId);
+  if (!pedidoV2Id) {
+    console.error("[mandalo] no se pudo resolver pedido_v2 para notificación operativa al cliente", {
+      legacyOrderId: params.legacyOrderId,
+      reason: params.reason,
+    });
+    return false;
+  }
+
+  await outboxRepository.enqueueOutboundMessage({
+    pedidoId: pedidoV2Id,
+    tipoMensaje: "notificacion_cliente",
+    destinatarioTipo: "cliente",
+    destinatarioId: null,
+    telefonoDestino: params.telefonoDestino,
+    payload: {
+      body: params.body,
+      legacyOrderId: params.legacyOrderId,
+      reason: params.reason,
+    },
+    idempotencyKey: `legacy-order:${params.legacyOrderId}:cliente:${params.reason}:v1`,
+  });
+  return true;
+}
+
 async function resolveBusinessForDispatch(state: JsonObject): Promise<DispatchBusiness | null> {
   const businessId = state.business_id ?? state.businessId ?? null;
   const businessPhone = state.business_phone ?? state.businessPhone ?? null;
@@ -1121,11 +1152,13 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
     const msgCliente =
       `📩 Tu pedido quedó registrado para envío a *${String(negocio.nombre ?? tiendaNombre).trim()}*.\n\n` +
       "Te avisaré en cuanto la tienda confirme el precio.";
-    console.log("--- INTENTANDO ENVIAR A ULTRA MSG ---");
-    await waapiSendText({ to: telefono, body: normalizeWhatsAppText(msgCliente) });
-    await guardarMensajeChat({ telefono, texto: msgCliente, estado: "bot", legacyPedidoId: ordenId }).catch(
-      () => {},
-    );
+    await enqueueClientOperationalNotification({
+      legacyOrderId: ordenId,
+      telefonoDestino: telefono,
+      body: msgCliente,
+      reason: "pedido_registrado_para_tienda",
+    });
+    await guardarMensajeChat({ telefono, texto: msgCliente, estado: "bot", legacyPedidoId: ordenId }).catch(() => {});
 
     return { ok: true, role: "cliente", stage: "awaiting_quote", ordenId };
   }
@@ -1536,8 +1569,12 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
       `Llegará aproximadamente a las ${etaText}.\n\n` +
       `Estamos coordinando tu entrega con *${repartidorNombre}*.\n` +
       "Te avisaré en cuanto confirme. 📦";
-    console.log("--- INTENTANDO ENVIAR A ULTRA MSG ---");
-    await waapiSendText({ to: telefono, body: normalizeWhatsAppText(msgCliente) });
+    await enqueueClientOperationalNotification({
+      legacyOrderId: ordenId,
+      telefonoDestino: telefono,
+      body: msgCliente,
+      reason: "pedido_en_cola_repartidor",
+    });
     await guardarMensajeChat({ telefono, texto: msgCliente, estado: "bot" }).catch(() => {});
 
     return { ok: true, role: "cliente", stage: "awaiting_confirm", ordenId };
@@ -1702,7 +1739,12 @@ async function handleTiendaMessage(telefono: string, mensaje: string) {
       `Envío: $${MANDALO_DELIVERY_FEE}\n` +
       `Total a pagar: $${total}\n\n` +
       `¿Confirmas tu pedido? (Responde SÍ)`;
-    await waapiSendText({ to: telefonoCliente, body: normalizeWhatsAppText(msg) });
+    await enqueueClientOperationalNotification({
+      legacyOrderId: ordenId,
+      telefonoDestino: telefonoCliente,
+      body: msg,
+      reason: "cotizacion_recibida_tienda",
+    });
     await guardarMensajeChat({ telefono: telefonoCliente, texto: msg, estado: "bot", legacyPedidoId: ordenId }).catch(
       () => {},
     );
@@ -1783,8 +1825,12 @@ async function handleRepartidorMessage(telefono: string, mensaje: string, repart
       const msgCliente =
         `✅ ¡Excelente! *${parseResult.courierName}* aceptó tu pedido.\n` +
         "En cuanto lo recoja, te aviso. 📦";
-      console.log("--- INTENTANDO ENVIAR A ULTRA MSG ---");
-      await waapiSendText({ to: telefonoCliente, body: normalizeWhatsAppText(msgCliente) });
+      await enqueueClientOperationalNotification({
+        legacyOrderId: parseResult.legacyOrderId ?? parseResult.pedidoId,
+        telefonoDestino: telefonoCliente,
+        body: msgCliente,
+        reason: "repartidor_confirmado",
+      });
       await guardarMensajeChat({ telefono: telefonoCliente, texto: msgCliente, estado: "bot" }).catch(() => {});
     }
 
@@ -1827,8 +1873,12 @@ async function handleRepartidorMessage(telefono: string, mensaje: string, repart
   if (parseResult.action === "picked_up") {
     if (telefonoCliente) {
       const msgCliente = `📦 ¡${parseResult.courierName} ya tiene tu pedido y está en camino!`;
-      console.log("--- INTENTANDO ENVIAR A ULTRA MSG ---");
-      await waapiSendText({ to: telefonoCliente, body: normalizeWhatsAppText(msgCliente) });
+      await enqueueClientOperationalNotification({
+        legacyOrderId: parseResult.legacyOrderId ?? parseResult.pedidoId,
+        telefonoDestino: telefonoCliente,
+        body: msgCliente,
+        reason: "pedido_recogido",
+      });
       await guardarMensajeChat({ telefono: telefonoCliente, texto: msgCliente, estado: "bot" }).catch(() => {});
     }
 
@@ -1844,8 +1894,12 @@ async function handleRepartidorMessage(telefono: string, mensaje: string, repart
 
   if (telefonoCliente) {
     const msgCliente = "✅ Pedido entregado. ¡Gracias por usar Mándalo! 🙌";
-    console.log("--- INTENTANDO ENVIAR A ULTRA MSG ---");
-    await waapiSendText({ to: telefonoCliente, body: normalizeWhatsAppText(msgCliente) });
+    await enqueueClientOperationalNotification({
+      legacyOrderId: parseResult.legacyOrderId ?? parseResult.pedidoId,
+      telefonoDestino: telefonoCliente,
+      body: msgCliente,
+      reason: "pedido_entregado",
+    });
     await guardarMensajeChat({ telefono: telefonoCliente, texto: msgCliente, estado: "bot" }).catch(() => {});
   }
 

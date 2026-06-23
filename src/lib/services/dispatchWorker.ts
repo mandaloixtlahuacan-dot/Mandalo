@@ -3,7 +3,8 @@ import type { ProviderSendResult } from "@/lib/services/providerGateway";
 export type OutboxMessageType =
   | "cotizacion_tienda"
   | "dispatch_repartidor"
-  | "alerta_admin";
+  | "alerta_admin"
+  | "notificacion_cliente";
 
 export type OutboxStatus =
   | "pendiente"
@@ -16,7 +17,7 @@ export type OutboxStatus =
 export type EnqueueOutboundMessageInput = {
   pedidoId: number;
   tipoMensaje: OutboxMessageType;
-  destinatarioTipo: "negocio" | "repartidor" | "admin";
+  destinatarioTipo: "negocio" | "repartidor" | "admin" | "cliente";
   destinatarioId?: number | null;
   telefonoDestino: string;
   payload: Record<string, unknown>;
@@ -27,7 +28,7 @@ export type ReservedOutboxMessage = {
   id: number;
   pedidoId: number | null;
   tipoMensaje: OutboxMessageType;
-  destinatarioTipo: "negocio" | "repartidor" | "admin";
+  destinatarioTipo: "negocio" | "repartidor" | "admin" | "cliente";
   destinatarioId: number | null;
   telefonoDestino: string;
   payload: Record<string, unknown>;
