@@ -87,6 +87,11 @@ export function normalizeStoredOrderState(raw: string | null | undefined): Order
   return normalizeLegacyState(String(raw ?? ""));
 }
 
+function isChatEstado(raw: string | null | undefined): boolean {
+  const v = String(raw ?? "").trim().toLowerCase();
+  return v === "cliente" || v === "bot" || v === "tienda" || v === "repartidor" || v === "sistema";
+}
+
 export function serializeOrderStateForPersistence(state: OrderState): string {
   const map: Record<OrderState, string> = {
     capturando_pedido: "collecting",
@@ -194,26 +199,54 @@ export async function getOrderById(orderId: number): Promise<OrderSnapshotResult
   if (error) throw error;
   if (!data) throw new Error(`Orden no encontrada: ${orderId}`);
 
-  const record: StoredOrderRecord = {
-    id: Number((data as { id: unknown }).id),
-    estado: (data as { estado?: unknown }).estado == null ? null : String((data as { estado?: unknown }).estado),
+  const toStoredRecord = (row: unknown): StoredOrderRecord => ({
+    id: Number((row as { id: unknown }).id),
+    estado: (row as { estado?: unknown }).estado == null ? null : String((row as { estado?: unknown }).estado),
     detalle_pedido:
-      (data as { detalle_pedido?: unknown }).detalle_pedido == null
+      (row as { detalle_pedido?: unknown }).detalle_pedido == null
         ? null
-        : String((data as { detalle_pedido?: unknown }).detalle_pedido),
+        : String((row as { detalle_pedido?: unknown }).detalle_pedido),
     total:
-      typeof (data as { total?: unknown }).total === "number"
-        ? (data as { total?: number }).total ?? null
-        : (data as { total?: number | null }).total ?? null,
+      typeof (row as { total?: unknown }).total === "number"
+        ? (row as { total?: number }).total ?? null
+        : (row as { total?: number | null }).total ?? null,
     telefono_cliente:
-      (data as { telefono_cliente?: unknown }).telefono_cliente == null
+      (row as { telefono_cliente?: unknown }).telefono_cliente == null
         ? null
-        : String((data as { telefono_cliente?: unknown }).telefono_cliente),
+        : String((row as { telefono_cliente?: unknown }).telefono_cliente),
     created_at:
-      (data as { created_at?: unknown }).created_at == null
+      (row as { created_at?: unknown }).created_at == null
         ? null
-        : String((data as { created_at?: unknown }).created_at),
-  };
+        : String((row as { created_at?: unknown }).created_at),
+  });
+
+  let record: StoredOrderRecord = toStoredRecord(data);
+
+  // Blindaje: la tabla legacy `public.pedidos` mezcla órdenes y mensajes (cliente/bot/tienda/repartidor).
+  // Si nos piden un id que en realidad apunta a una fila de chat, buscamos la última orden real del mismo teléfono.
+  if (isChatEstado(record.estado)) {
+    const tel = String(record.telefono_cliente ?? "").trim();
+    console.warn("[ordenes] getOrderById: id apunta a fila de chat; buscando orden real por teléfono", {
+      orderId,
+      estado: record.estado,
+      telefono_cliente: tel || null,
+    });
+
+    if (tel) {
+      const { data: fallback, error: fbErr } = await supabase
+        .from("pedidos")
+        .select("id, estado, detalle_pedido, total, telefono_cliente, created_at")
+        .eq("telefono_cliente", tel)
+        .not("estado", "in", "(cliente,bot,tienda,repartidor,sistema)")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (fbErr) throw fbErr;
+      if (fallback) {
+        record = toStoredRecord(fallback);
+      }
+    }
+  }
 
   const legacyStateRaw = record.estado;
   const state = normalizeStoredOrderState(legacyStateRaw);

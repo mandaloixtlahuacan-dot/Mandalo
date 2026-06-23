@@ -696,18 +696,34 @@ async function findActiveOrderForAssignedPhone(params: {
   const senderPhone = normalizePhone(String(params.senderPhone ?? ""));
   if (!senderPhone) return null;
 
-  const matchesRole = (state: JsonObject) => {
+  const getAssignedPhoneForRole = (state: JsonObject) => {
     if (params.role === "tienda") {
-      return phonesMatch(senderPhone, state.business_phone ?? state.businessPhone);
+      return normalizePhone(String(state.business_phone ?? state.businessPhone ?? ""));
     }
-    return phonesMatch(senderPhone, state.courier_phone ?? state.courierPhone ?? state.repartidor_whatsapp);
+    return normalizePhone(String(state.courier_phone ?? state.courierPhone ?? state.repartidor_whatsapp ?? ""));
+  };
+
+  const matchesRole = (state: JsonObject, context: { orderId: number | null; source: string }) => {
+    const assignedPhone = getAssignedPhoneForRole(state);
+    const match = phonesMatch(senderPhone, assignedPhone);
+    console.log("[DEBUG][role-match]", {
+      role: params.role,
+      source: context.source,
+      orderId: context.orderId,
+      senderPhone,
+      assignedPhone,
+      match,
+    });
+    return match;
   };
 
   if (params.preferredOrderId && Number.isFinite(params.preferredOrderId) && params.preferredOrderId > 0) {
     try {
       const order = await getOrderById(params.preferredOrderId);
       const state = (order.snapshot ?? {}) as JsonObject;
-      if (matchesRole(state)) return { orderId: params.preferredOrderId, state };
+      if (matchesRole(state, { orderId: params.preferredOrderId, source: "preferredOrderId" })) {
+        return { orderId: params.preferredOrderId, state };
+      }
       return null;
     } catch (e: unknown) {
       console.error("[mandalo] findActiveOrderForAssignedPhone: preferredOrderId falló", {
@@ -740,7 +756,7 @@ async function findActiveOrderForAssignedPhone(params: {
     const record = row as PedidoRow;
     const orderId = Number(record.id);
     const state = safeParseDetalleJson(record.detalle_pedido) ?? {};
-    if (Number.isFinite(orderId) && matchesRole(state)) {
+    if (Number.isFinite(orderId) && matchesRole(state, { orderId, source: "activeOrdersScan" })) {
       return { orderId, state };
     }
   }
