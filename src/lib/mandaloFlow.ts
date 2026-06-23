@@ -90,19 +90,57 @@ function hasSelectedBusiness(order: JsonObject): boolean {
 
 function hasUsableAddress(order: JsonObject): boolean {
   const address = String(order.address_text ?? order.addressText ?? "").trim();
-  return address.length >= 8;
+  const normalized = address.toLowerCase();
+  const hasNumber = /\d/.test(address);
+  const hasColonia = /(col\.?|colonia|fracc|fraccionamiento|barrio|centro|cp|c\.p\.)/.test(normalized);
+  const hasReference = /(entre|frente|cerca|esquina|referencia|a un lado)/.test(normalized);
+  const hasComma = address.includes(",");
+  // Regla operativa: requerimos dirección suficientemente descriptiva (calle + número + colonia/referencia).
+  // Ejemplo que debe bloquear: "Abasolo Pino #1" (sin colonia/referencia y demasiado corta).
+  if (address.length < 15) return false;
+  if (!hasNumber) return false;
+  if (!(hasColonia || hasReference || hasComma)) return false;
+  return true;
+}
+
+function isGenericProductName(name: string): boolean {
+  const n = name.toLowerCase().trim();
+  if (!n) return true;
+  const generic = new Set([
+    "salchichas",
+    "papas",
+    "takis",
+    "mayonesa",
+    "coca",
+    "refresco",
+    "hielos",
+    "pan",
+    "leche",
+    "jamon",
+    "jamón",
+    "queso",
+    "cigarros",
+    "cerveza",
+    "agua",
+  ]);
+  return generic.has(n);
 }
 
 function hasUsableItems(order: JsonObject): boolean {
   const items = Array.isArray(order.items) ? order.items : [];
   if (items.length === 0) return false;
 
-  return items.some((item) => {
+  // Regla operativa: si hay productos genéricos sin marca/presentación, NO avanzamos.
+  return items.every((item) => {
     const row = asJsonObject(item);
     const name = String(row.name ?? "").trim();
     const qty = String(row.qty ?? "").trim();
     const details = String(row.details ?? "").trim();
-    return name.length > 0 && (qty.length > 0 || details.length > 0 || items.length === 1);
+    if (!name) return false;
+    const generic = isGenericProductName(name);
+    const hasSpec = qty.length > 0 || details.length > 0;
+    if (generic && !hasSpec) return false;
+    return hasSpec || items.length === 1;
   });
 }
 
@@ -127,16 +165,26 @@ function buildMissingCriticalFieldsMessage(order: JsonObject): string {
   const first = missing[0];
 
   if (first === "business") {
-    return "Antes de seguir, necesito que me digas de qué negocio quieres pedir. 🛒";
+    return "🛒 Para continuar, dime de qué negocio quieres pedir (nombre exacto).";
   }
   if (first === "address") {
-    return "Antes de seguir, necesito tu dirección completa para poder coordinar el pedido. 📍";
+    return (
+      "🏠 Para continuar, necesito tu dirección completa.\n\n" +
+      "Incluye calle y número + colonia o una referencia (ej. “Col. Centro, entre X y Y, frente a…”)."
+    );
   }
   if (first === "items") {
-    return "Antes de seguir, necesito que me confirmes bien los productos que quieres pedir. 🛒";
+    return (
+      "🛒 Antes de avanzar, necesito que especifiques marca o presentación de tus productos.\n\n" +
+      "Ejemplos:\n" +
+      "- Takis Fuego 56g\n" +
+      "- Papas Sabritas 45g\n" +
+      "- Salchicha FUD 500g\n\n" +
+      "Dime cuál prefieres (o dime la tuya)."
+    );
   }
 
-  return "Todavía me falta información crítica para continuar con tu pedido. 🙏";
+  return "🧾 Todavía me falta información crítica para continuar con tu pedido.";
 }
 
 function isConfirmedCustomerState(rawEstado: unknown): boolean {
@@ -957,6 +1005,41 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
       ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addressText)}`
       : null;
 
+    const encabezado =
+      `COTIZAR. ORDEN #${ordenId}\n` +
+      `${customerName ? `Cliente: ${customerName}\n` : ""}` +
+      `${addressText ? `Dirección: ${addressText}\n` : ""}` +
+      `Pedido:\n${pedidoDetalle}\n\n` +
+      `Responde así: ORDEN #${ordenId} PRECIO 150`;
+    const formatoParaTienda = extraNotes ? `${encabezado}\n\nNotas:\n${extraNotes}` : encabezado;
+
+    logBusinessDispatch({
+      orderId: ordenId,
+      businessId: negocio.id ?? state.business_id ?? state.businessId ?? null,
+      businessName: negocio.nombre ?? tiendaNombre,
+      businessPhone: negocio.whatsapp,
+      to: negocio.whatsapp,
+      body: formatoParaTienda,
+    });
+
+    // Envío a tienda (sincrónico). No afirmamos éxito al cliente hasta confirmar OK del proveedor.
+    try {
+      await waapiSendText({ to: negocio.whatsapp, body: normalizeWhatsAppText(formatoParaTienda) });
+    } catch (e: unknown) {
+      console.error("[mandalo] fallo enviando a tienda (waapi)", {
+        orderId: ordenId,
+        businessPhone: negocio.whatsapp,
+        message: getErrorMessage(e),
+      });
+      const msgFalla =
+        "⚠️ Hubo un problema al enviar tu pedido a la tienda.\n\n" +
+        "Inténtalo de nuevo respondiendo *SÍ*. Si vuelve a fallar, avísame.";
+      await waapiSendText({ to: telefono, body: normalizeWhatsAppText(msgFalla) });
+      await guardarMensajeChat({ telefono, texto: msgFalla, estado: "bot", legacyPedidoId: ordenId }).catch(() => {});
+      return { ok: true, role: "cliente", stage: "esperando_confirmacion", ordenId };
+    }
+
+    // Solo después de éxito real del envío a tienda, avanzamos el estado en DB.
     try {
       const persisted = await getOrderById(ordenId);
       await transitionOrderState({
@@ -983,43 +1066,16 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
       });
       console.log("Cambio de estado:", "awaiting_quote");
     } catch (e: unknown) {
-      console.error("[mandalo] transición fallida esperando_confirmacion -> pendiente_cotizacion_tienda", {
+      console.error("[mandalo] transición fallida tras envío exitoso a tienda", {
         orderId: ordenId,
-        message: e instanceof Error ? e.message : String(e),
+        message: getErrorMessage(e),
       });
-      const msgCorreccion =
-        !addressText
-          ? "⚠️ No puedo mandar tu pedido todavía porque me falta tu dirección completa. Escríbemela por favor. 📍"
-          : !negocio.whatsapp
-            ? "⚠️ No puedo mandar tu pedido todavía porque no pude identificar correctamente la tienda. Dime de qué negocio te lo pido. 🛒"
-            : "⚠️ No puedo mandar tu pedido todavía porque no pude recuperar bien tus productos. ¿Me ayudas a confirmarlos? 🛒";
-      console.log("--- INTENTANDO ENVIAR A ULTRA MSG ---");
-      await waapiSendText({ to: telefono, body: normalizeWhatsAppText(msgCorreccion) });
-      await guardarMensajeChat({ telefono, texto: msgCorreccion, estado: "bot" }).catch(() => {});
-      return { ok: true, role: "cliente", stage: "esperando_confirmacion", ordenId };
+      // Seguimos respondiendo al cliente: la tienda ya recibió, pero el estado interno no se pudo actualizar.
     }
 
-    const encabezado =
-      `COTIZAR. ORDEN #${ordenId}\n` +
-      `${customerName ? `Cliente: ${customerName}\n` : ""}` +
-      `${addressText ? `Dirección: ${addressText}\n` : ""}` +
-      `Pedido:\n${pedidoDetalle}\n\n` +
-      `Responde así: ORDEN #${ordenId} PRECIO 150`;
-    const formatoParaTienda = extraNotes ? `${encabezado}\n\nNotas:\n${extraNotes}` : encabezado;
-
-    logBusinessDispatch({
-      orderId: ordenId,
-      businessId: negocio.id ?? state.business_id ?? state.businessId ?? null,
-      businessName: negocio.nombre ?? tiendaNombre,
-      businessPhone: negocio.whatsapp,
-      to: negocio.whatsapp,
-      body: formatoParaTienda,
-    });
-    await waapiSendText({ to: negocio.whatsapp, body: normalizeWhatsAppText(formatoParaTienda) });
-
     const msgCliente =
-      `✅ Perfecto. Ya envié tu pedido a *${String(negocio.nombre ?? tiendaNombre).trim()}*.\n` +
-      "En cuanto me confirmen el precio final, te paso el total. 💰";
+      `📩 Ya envié tu pedido a *${String(negocio.nombre ?? tiendaNombre).trim()}*.\n\n` +
+      "Te aviso en cuanto me confirmen el precio para darte el total.";
     console.log("--- INTENTANDO ENVIAR A ULTRA MSG ---");
     await waapiSendText({ to: telefono, body: normalizeWhatsAppText(msgCliente) });
     await guardarMensajeChat({ telefono, texto: msgCliente, estado: "bot", legacyPedidoId: ordenId }).catch(
@@ -1163,8 +1219,8 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
     // Si el pedido ya fue notificado al repartidor, bloqueamos reenvíos.
     if (estadoPendiente === "en_proceso") {
       const msg =
-        "📦 Tu pedido ya está en proceso con el repartidor.\n" +
-        "En cuanto tenga una actualización, te aviso. ✅";
+        "📦 Tu pedido ya está en proceso.\n\n" +
+        "En cuanto tenga una actualización, te aviso.";
       console.log("--- INTENTANDO ENVIAR A ULTRA MSG ---");
       await waapiSendText({ to: telefono, body: normalizeWhatsAppText(msg) });
       await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
@@ -1598,27 +1654,6 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
             `${pedidoDetalle ? `\nPedido:\n${pedidoDetalle}` : ""}`;
           const formatoParaTienda = extraNotes ? `${encabezado}\n\nNotas:\n${extraNotes}` : encabezado;
 
-          await transitionOrderState({
-            orderId: ordenId,
-            to: "pendiente_cotizacion_tienda",
-            snapshotPatch: {
-              stage: "awaiting_quote",
-              business_id: negocioId,
-              business_name: String(orderState.business_name ?? "").trim() || null,
-              business_phone: tiendaWhatsApp,
-              ...(addressText ? { address_text: addressText } : {}),
-              ...(items.length ? { items } : {}),
-            },
-            contextOverrides: {
-              customerPhone: telefono,
-              businessId: negocioId,
-              businessName: String(orderState.business_name ?? "").trim() || null,
-              businessPhone: tiendaWhatsApp,
-              addressText,
-              items,
-            },
-          });
-
           logBusinessDispatch({
             orderId: ordenId,
             businessId: negocioId,
@@ -1627,12 +1662,58 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
             to: tiendaWhatsApp,
             body: formatoParaTienda,
           });
-          await waapiSendText({ to: tiendaWhatsApp, body: normalizeWhatsAppText(formatoParaTienda) });
+
+          // Envío a tienda (sincrónico). No afirmamos éxito al cliente hasta confirmar OK del proveedor.
+          try {
+            await waapiSendText({ to: tiendaWhatsApp, body: normalizeWhatsAppText(formatoParaTienda) });
+          } catch (e: unknown) {
+            console.error("[mandalo] fallo enviando a tienda (waapi) [fallback determinista]", {
+              orderId: ordenId,
+              businessPhone: tiendaWhatsApp,
+              message: getErrorMessage(e),
+            });
+            const msgFalla =
+              "⚠️ Hubo un problema al enviar tu pedido a la tienda.\n\n" +
+              "Inténtalo de nuevo respondiendo *SÍ*. Si vuelve a fallar, avísame.";
+            await waapiSendText({ to: telefono, body: normalizeWhatsAppText(msgFalla) });
+            await guardarMensajeChat({ telefono, texto: msgFalla, estado: "bot", legacyPedidoId: ordenId }).catch(
+              () => {},
+            );
+            return { ok: true, role: "cliente", stage: "esperando_confirmacion", ordenId };
+          }
+
+          // Solo después de éxito real del envío a tienda, avanzamos el estado en DB.
+          try {
+            await transitionOrderState({
+              orderId: ordenId,
+              to: "pendiente_cotizacion_tienda",
+              snapshotPatch: {
+                stage: "awaiting_quote",
+                business_id: negocioId,
+                business_name: String(orderState.business_name ?? "").trim() || null,
+                business_phone: tiendaWhatsApp,
+                ...(addressText ? { address_text: addressText } : {}),
+                ...(items.length ? { items } : {}),
+              },
+              contextOverrides: {
+                customerPhone: telefono,
+                businessId: negocioId,
+                businessName: String(orderState.business_name ?? "").trim() || null,
+                businessPhone: tiendaWhatsApp,
+                addressText,
+                items,
+              },
+            });
+          } catch (e: unknown) {
+            console.error("[mandalo] transición fallida tras envío exitoso a tienda [fallback determinista]", {
+              orderId: ordenId,
+              message: getErrorMessage(e),
+            });
+          }
 
           const msgCliente =
-            `✅ Pedido confirmado.\n\n` +
-            `📩 Ya envié tu pedido a *${tiendaNombre}*.\n` +
-            "Te aviso en cuanto me confirmen el total. 💰";
+            `📩 Ya envié tu pedido a *${tiendaNombre}*.\n\n` +
+            "Te aviso en cuanto me confirmen el precio para darte el total.";
           await waapiSendText({ to: telefono, body: normalizeWhatsAppText(msgCliente) });
           await guardarMensajeChat({ telefono, texto: msgCliente, estado: "bot", legacyPedidoId: ordenId }).catch(
             () => {},
