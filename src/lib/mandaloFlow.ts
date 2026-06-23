@@ -1548,6 +1548,111 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
     return { ok: true, role: "cliente", stage: "esperando_confirmacion", ordenId };
   }
 
+  // 3.5) Fallback determinista (sin depender de dispatch del LLM):
+  // Si el pedido ya está completo pero la IA no generó dispatch, NO cerramos con "gracias".
+  // Creamos orden + pedimos confirmación, o si el cliente ya dijo SÍ, despachamos a tienda.
+  {
+    const safeOrderState = ensureSafeLlmOrderState(respuesta.order_state, "collecting");
+    const baseState: JsonObject = { ...currentOrderState, ...safeOrderState };
+    if (isOrderReadyForConfirmation(baseState)) {
+      const negocioDb = await resolveNegocioFromDb({
+        id: baseState.business_id,
+        nombre: baseState.business_name,
+        whatsapp: baseState.business_phone,
+      }).catch(() => null);
+
+      if (negocioDb?.whatsapp) {
+        const tiendaNombre = String(negocioDb?.nombre ?? "la tienda").trim();
+        const tiendaWhatsApp = ensureMxWhatsappIntl(String(negocioDb?.whatsapp ?? "").trim());
+        const addressText = String(baseState?.address_text ?? "").trim() || String(direccionGuardada ?? "").trim() || "";
+        const orderState: JsonObject = {
+          ...baseState,
+          stage: "awaiting_confirmation",
+          business_name: tiendaNombre,
+          business_id: negocioDb?.id ?? baseState?.business_id,
+          business_phone: tiendaWhatsApp,
+          pending_business_message: String(baseState?.pending_business_message ?? "").trim(),
+          ...(addressText ? { address_text: addressText } : {}),
+        };
+
+        const ordenId = await crearOrden({
+          telefonoCliente: telefono,
+          resumenPedido: JSON.stringify(orderState),
+          estado: "esperando_confirmacion",
+        });
+
+        // Si el cliente ya confirmó con SÍ, despachamos inmediatamente a tienda en esta misma ejecución.
+        if (isYesConfirmation(mensaje)) {
+          const customerName = String(orderState?.customer_name ?? "").trim();
+          const items = Array.isArray(orderState?.items) ? orderState.items : [];
+          const pedidoDetalle = formatPedidoForBusiness(orderState);
+          const extraNotes = String(orderState?.pending_business_message ?? "").trim();
+          const negocioId =
+            typeof orderState.business_id === "number" || typeof orderState.business_id === "string"
+              ? orderState.business_id
+              : null;
+          const encabezado =
+            `COTIZAR. ORDEN #${ordenId}\n` +
+            `${customerName ? `Cliente: ${customerName}\n` : ""}` +
+            `${addressText ? `Dirección: ${addressText}\n` : ""}` +
+            `${pedidoDetalle ? `\nPedido:\n${pedidoDetalle}` : ""}`;
+          const formatoParaTienda = extraNotes ? `${encabezado}\n\nNotas:\n${extraNotes}` : encabezado;
+
+          await transitionOrderState({
+            orderId: ordenId,
+            to: "pendiente_cotizacion_tienda",
+            snapshotPatch: {
+              stage: "awaiting_quote",
+              business_id: negocioId,
+              business_name: String(orderState.business_name ?? "").trim() || null,
+              business_phone: tiendaWhatsApp,
+              ...(addressText ? { address_text: addressText } : {}),
+              ...(items.length ? { items } : {}),
+            },
+            contextOverrides: {
+              customerPhone: telefono,
+              businessId: negocioId,
+              businessName: String(orderState.business_name ?? "").trim() || null,
+              businessPhone: tiendaWhatsApp,
+              addressText,
+              items,
+            },
+          });
+
+          logBusinessDispatch({
+            orderId: ordenId,
+            businessId: negocioId,
+            businessName: String(orderState.business_name ?? "").trim() || null,
+            businessPhone: tiendaWhatsApp,
+            to: tiendaWhatsApp,
+            body: formatoParaTienda,
+          });
+          await waapiSendText({ to: tiendaWhatsApp, body: normalizeWhatsAppText(formatoParaTienda) });
+
+          const msgCliente =
+            `✅ Pedido confirmado.\n\n` +
+            `📩 Ya envié tu pedido a *${tiendaNombre}*.\n` +
+            "Te aviso en cuanto me confirmen el total. 💰";
+          await waapiSendText({ to: telefono, body: normalizeWhatsAppText(msgCliente) });
+          await guardarMensajeChat({ telefono, texto: msgCliente, estado: "bot", legacyPedidoId: ordenId }).catch(
+            () => {},
+          );
+          return { ok: true, role: "cliente", stage: "awaiting_quote", ordenId };
+        }
+
+        const resumen = formatResumenParaCliente(orderState);
+        const resumenParaCliente =
+          `✅ Ya tengo tu pedido:\n${resumen}\n\n` +
+          "¿Es correcto tu pedido? Responde *SÍ* para confirmar. ✅";
+        await waapiSendText({ to: telefono, body: normalizeWhatsAppText(resumenParaCliente) });
+        await guardarMensajeChat({ telefono, texto: resumenParaCliente, estado: "bot", legacyPedidoId: ordenId }).catch(
+          () => {},
+        );
+        return { ok: true, role: "cliente", stage: "esperando_confirmacion", ordenId };
+      }
+    }
+  }
+
   // 4) Respuesta normal al cliente (sin “COTIZAR.” + sin JSON/código)
   const customerReplyClean = sanitizeCustomerReply(
     String(respuesta.customer_reply ?? "").replace(/COTIZAR\./g, ""),
