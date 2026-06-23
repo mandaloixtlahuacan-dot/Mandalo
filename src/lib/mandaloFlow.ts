@@ -46,6 +46,7 @@ type HistorialMessage = { texto: string; estado: "cliente" | "bot"; created_at: 
 type LlmMessage = { role: "system" | "user" | "assistant"; content: string };
 type ResolvedNegocio = { id?: unknown; nombre?: unknown; whatsapp: string; categoria?: unknown };
 type DispatchBusiness = { id?: unknown; nombre?: string; whatsapp: string };
+type MissingCriticalField = "business" | "address" | "items";
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -53,6 +54,62 @@ function getErrorMessage(error: unknown): string {
 
 function asJsonObject(value: unknown): JsonObject {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as JsonObject) : {};
+}
+
+function hasSelectedBusiness(order: JsonObject): boolean {
+  return [order.business_id, order.businessId, order.business_phone, order.businessPhone, order.business_name, order.businessName]
+    .some((value) => String(value ?? "").trim() !== "");
+}
+
+function hasUsableAddress(order: JsonObject): boolean {
+  const address = String(order.address_text ?? order.addressText ?? "").trim();
+  return address.length >= 8;
+}
+
+function hasUsableItems(order: JsonObject): boolean {
+  const items = Array.isArray(order.items) ? order.items : [];
+  if (items.length === 0) return false;
+
+  return items.some((item) => {
+    const row = asJsonObject(item);
+    const name = String(row.name ?? "").trim();
+    const qty = String(row.qty ?? "").trim();
+    const details = String(row.details ?? "").trim();
+    return name.length > 0 && (qty.length > 0 || details.length > 0 || items.length === 1);
+  });
+}
+
+export function getMissingCriticalFields(order: JsonObject): MissingCriticalField[] {
+  const missing: MissingCriticalField[] = [];
+  if (!hasSelectedBusiness(order)) missing.push("business");
+  if (!hasUsableAddress(order)) missing.push("address");
+  if (!hasUsableItems(order)) missing.push("items");
+  return missing;
+}
+
+export function isOrderReadyForConfirmation(order: JsonObject): boolean {
+  return getMissingCriticalFields(order).length === 0;
+}
+
+export function isOrderReadyForBusinessDispatch(order: JsonObject): boolean {
+  return isOrderReadyForConfirmation(order);
+}
+
+function buildMissingCriticalFieldsMessage(order: JsonObject): string {
+  const missing = getMissingCriticalFields(order);
+  const first = missing[0];
+
+  if (first === "business") {
+    return "Antes de seguir, necesito que me digas de qué negocio quieres pedir. 🛒";
+  }
+  if (first === "address") {
+    return "Antes de seguir, necesito tu dirección completa para poder coordinar el pedido. 📍";
+  }
+  if (first === "items") {
+    return "Antes de seguir, necesito que me confirmes bien los productos que quieres pedir. 🛒";
+  }
+
+  return "Todavía me falta información crítica para continuar con tu pedido. 🙏";
 }
 
 // Archivo sobrescrito desde cero (Bloques 1 + 2).
@@ -671,6 +728,19 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
     }
 
     // Confirmó: ahora sí enviamos a la tienda
+    if (!isOrderReadyForBusinessDispatch(state)) {
+      const msgCliente = buildMissingCriticalFieldsMessage(state);
+      console.log("[mandalo] dispatch bloqueado por capa determinista", {
+        orderId: ordenId,
+        missing: getMissingCriticalFields(state),
+      });
+      await waapiSendText({ to: telefono, body: normalizeWhatsAppText(msgCliente) });
+      await guardarMensajeChat({ telefono, texto: msgCliente, estado: "bot", legacyPedidoId: ordenId }).catch(
+        () => {},
+      );
+      return { ok: true, role: "cliente", stage: "esperando_confirmacion", ordenId, missing: getMissingCriticalFields(state) };
+    }
+
     if (!tiendaNombre) {
       const msgCliente =
         "⚠️ No pude identificar la tienda para tu pedido.\n" +
@@ -1184,8 +1254,18 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
   // de que el texto del cliente o customer_reply contenga "COTIZAR.".
   const dispatch = respuesta.dispatch ?? null;
   if (dispatch?.business_message) {
-    // Resolver negocio SIEMPRE desde DB (fuente de verdad).
     const baseState: JsonObject = { ...currentOrderState, ...(respuesta.order_state ?? {}) };
+    if (!isOrderReadyForConfirmation(baseState)) {
+      const msg = buildMissingCriticalFieldsMessage(baseState);
+      console.log("[mandalo] confirmación bloqueada por capa determinista", {
+        missing: getMissingCriticalFields(baseState),
+      });
+      await waapiSendText({ to: telefono, body: normalizeWhatsAppText(msg) });
+      await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+      return { ok: true, role: "cliente", stage: "collecting", missing: getMissingCriticalFields(baseState) };
+    }
+
+    // Resolver negocio SIEMPRE desde DB (fuente de verdad).
     const negocioDb = await resolveNegocioFromDb({
       id: baseState.business_id,
       nombre: baseState.business_name,
