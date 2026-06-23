@@ -47,6 +47,7 @@ type LlmMessage = { role: "system" | "user" | "assistant"; content: string };
 type ResolvedNegocio = { id?: unknown; nombre?: unknown; whatsapp: string; categoria?: unknown };
 type DispatchBusiness = { id?: unknown; nombre?: string; whatsapp: string };
 type MissingCriticalField = "business" | "address" | "items";
+type ActiveAssignedOrder = { orderId: number; state: JsonObject };
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -54,6 +55,14 @@ function getErrorMessage(error: unknown): string {
 
 function asJsonObject(value: unknown): JsonObject {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as JsonObject) : {};
+}
+
+function phonesMatch(a: unknown, b: unknown): boolean {
+  const left = normalizePhone(String(a ?? ""));
+  const right = normalizePhone(String(b ?? ""));
+  if (!left || !right) return false;
+  if (left === right) return true;
+  return left.slice(-10) === right.slice(-10);
 }
 
 function hasSelectedBusiness(order: JsonObject): boolean {
@@ -677,6 +686,66 @@ async function getCurrentOrderStateForAgent(telefono: string): Promise<JsonObjec
   if (recovered && Object.keys(recovered).length > 0) return recovered;
 
   return {};
+}
+
+async function findActiveOrderForAssignedPhone(params: {
+  role: "tienda" | "repartidor";
+  senderPhone: string;
+  preferredOrderId?: number | null;
+}): Promise<ActiveAssignedOrder | null> {
+  const senderPhone = normalizePhone(String(params.senderPhone ?? ""));
+  if (!senderPhone) return null;
+
+  const matchesRole = (state: JsonObject) => {
+    if (params.role === "tienda") {
+      return phonesMatch(senderPhone, state.business_phone ?? state.businessPhone);
+    }
+    return phonesMatch(senderPhone, state.courier_phone ?? state.courierPhone ?? state.repartidor_whatsapp);
+  };
+
+  if (params.preferredOrderId && Number.isFinite(params.preferredOrderId) && params.preferredOrderId > 0) {
+    try {
+      const order = await getOrderById(params.preferredOrderId);
+      const state = (order.snapshot ?? {}) as JsonObject;
+      if (matchesRole(state)) return { orderId: params.preferredOrderId, state };
+      return null;
+    } catch (e: unknown) {
+      console.error("[mandalo] findActiveOrderForAssignedPhone: preferredOrderId falló", {
+        role: params.role,
+        senderPhone,
+        preferredOrderId: params.preferredOrderId,
+        message: getErrorMessage(e),
+      });
+    }
+  }
+
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("pedidos")
+    .select("id, estado, detalle_pedido, created_at")
+    .not("estado", "in", "(cliente,bot,tienda,repartidor,sistema,cancelado,completado,entregado)")
+    .order("created_at", { ascending: false })
+    .limit(50);
+
+  if (error) {
+    console.error("[mandalo] findActiveOrderForAssignedPhone error:", {
+      role: params.role,
+      senderPhone,
+      message: error.message,
+    });
+    return null;
+  }
+
+  for (const row of data ?? []) {
+    const record = row as PedidoRow;
+    const orderId = Number(record.id);
+    const state = safeParseDetalleJson(record.detalle_pedido) ?? {};
+    if (Number.isFinite(orderId) && matchesRole(state)) {
+      return { orderId, state };
+    }
+  }
+
+  return null;
 }
 
 async function handleClienteMessage(telefono: string, mensaje: string, ubicacion?: unknown) {
@@ -1661,22 +1730,74 @@ export async function processMandaloWebhook(incoming: IncomingWhatsAppMessage) {
   // Fallback controlado: si llega ORDEN + PRECIO, lo tratamos como respuesta de tienda
   // solo si el remitente corresponde a un negocio registrado.
   const bodyText = String(incoming.body ?? "");
+  const explicitOrderId = extraerOrdenId(bodyText);
   const looksLikeTiendaPrecio = /\borden\b/i.test(bodyText) && /\bprecio\b/i.test(bodyText);
-  if (actor.role === "tienda") return await handleTiendaMessage(actor.telefono, incoming.body);
+  if (actor.role === "tienda") {
+    const activeBusinessOrder = await findActiveOrderForAssignedPhone({
+      role: "tienda",
+      senderPhone: actor.telefono,
+      preferredOrderId: explicitOrderId,
+    });
+    if (!activeBusinessOrder) {
+      console.warn("[mandalo] excepción: mensaje de tienda no corresponde a orden activa", {
+        from: actor.telefono,
+        explicitOrderId,
+      });
+      return { ok: true, role: "tienda", accion: "orden_activa_no_corresponde", orderId: explicitOrderId ?? null };
+    }
+    return await handleTiendaMessage(actor.telefono, incoming.body);
+  }
   if (looksLikeTiendaPrecio) {
     const okNegocio = await isNegocioSenderPhone(incoming.from);
-    if (okNegocio) return await handleTiendaMessage(normalizePhone(String(incoming.from)), bodyText);
+    if (okNegocio) {
+      const activeBusinessOrder = await findActiveOrderForAssignedPhone({
+        role: "tienda",
+        senderPhone: normalizePhone(String(incoming.from)),
+        preferredOrderId: explicitOrderId,
+      });
+      if (activeBusinessOrder) return await handleTiendaMessage(normalizePhone(String(incoming.from)), bodyText);
+      console.warn("[mandalo] excepción: fallback ORDEN+PRECIO sin orden activa válida para tienda", {
+        from: incoming.from,
+        explicitOrderId,
+      });
+      return { ok: true, role: "tienda", accion: "orden_activa_no_corresponde", orderId: explicitOrderId ?? null };
+    }
     console.error("[mandalo] ORDEN+PRECIO recibido desde número no validado como negocio; ignorando fallback", {
       from: incoming.from,
     });
   }
-  if (actor.role === "repartidor")
+  if (actor.role === "repartidor") {
+    const activeCourierOrder = await findActiveOrderForAssignedPhone({
+      role: "repartidor",
+      senderPhone: actor.telefono,
+      preferredOrderId: explicitOrderId,
+    });
+    if (!activeCourierOrder) {
+      console.warn("[mandalo] excepción: mensaje de repartidor no corresponde a orden activa", {
+        from: actor.telefono,
+        explicitOrderId,
+      });
+      return { ok: true, role: "repartidor", accion: "orden_activa_no_corresponde", orderId: explicitOrderId ?? null };
+    }
     return await handleRepartidorMessage(actor.telefono, incoming.body, actor.repartidorId);
+  }
 
   // Fallback: si detectActorByPhone no reconoce al repartidor (porque no está en su tabla),
   // intentamos matchear con la tabla canónica "repartidores".
   const courier = await findCourierByPhone(incoming.from);
   if (courier) {
+    const activeCourierOrder = await findActiveOrderForAssignedPhone({
+      role: "repartidor",
+      senderPhone: normalizePhone(String(incoming.from)),
+      preferredOrderId: explicitOrderId,
+    });
+    if (!activeCourierOrder) {
+      console.warn("[mandalo] excepción: fallback repartidor sin orden activa válida", {
+        from: incoming.from,
+        explicitOrderId,
+      });
+      return { ok: true, role: "repartidor", accion: "orden_activa_no_corresponde", orderId: explicitOrderId ?? null };
+    }
     return await handleRepartidorMessage(normalizePhone(String(incoming.from)), incoming.body, 0);
   }
 
