@@ -110,6 +110,15 @@ export function serializeOrderStateForPersistence(state: OrderState): string {
   return map[state];
 }
 
+const MANDALO_SERVICE_FEE = 20;
+const MANDALO_DELIVERY_FEE = 35;
+
+export function calculateFinalPrice(storePrice: number): number {
+  const base = Number(storePrice);
+  if (!Number.isFinite(base) || base < 0) return MANDALO_SERVICE_FEE + MANDALO_DELIVERY_FEE;
+  return base + MANDALO_SERVICE_FEE + MANDALO_DELIVERY_FEE;
+}
+
 export type OrdenEstado =
   | "cotizando"
   | "esperando_confirmacion"

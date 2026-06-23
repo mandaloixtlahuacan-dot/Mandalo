@@ -1,4 +1,3 @@
-import { getEnv } from "@/lib/env";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getOpenAI, getOpenAIModel } from "@/lib/openaiClient";
 import { buildMandaloSystemPrompt } from "@/lib/mandaloPrompt";
@@ -7,6 +6,7 @@ import { detectActorByPhone } from "@/lib/roles";
 import { normalizePhone } from "@/lib/roles";
 import {
   actualizarOrden,
+  calculateFinalPrice,
   crearOrden,
   extraerOrdenId,
   extraerPrecio,
@@ -119,6 +119,51 @@ function buildMissingCriticalFieldsMessage(order: JsonObject): string {
   }
 
   return "Todavía me falta información crítica para continuar con tu pedido. 🙏";
+}
+
+function isConfirmedCustomerState(rawEstado: unknown): boolean {
+  const v = String(rawEstado ?? "").trim().toLowerCase();
+  return (
+    v === "confirmado" ||
+    v === "en_proceso" ||
+    v === "repartidor_asignado" ||
+    v === "asignado" ||
+    v === "en_camino" ||
+    v === "llegado" ||
+    v === "completado" ||
+    v === "entregado"
+  );
+}
+
+function isRedundantConfirmationMessage(text: string): boolean {
+  const normalized = normalizeText(text);
+  return isYesConfirmation(text) || normalized.includes("confirmar") || normalized.includes("confirmado");
+}
+
+function isOrderTrackingQuestion(text: string): boolean {
+  const normalized = normalizeText(text);
+  return (
+    normalized.includes("donde esta mi pedido") ||
+    normalized.includes("dónde está mi pedido") ||
+    normalized.includes("donde viene") ||
+    normalized.includes("como va mi pedido") ||
+    normalized.includes("cómo va mi pedido") ||
+    normalized.includes("repartidor") ||
+    normalized.includes("ya salio") ||
+    normalized.includes("ya salió")
+  );
+}
+
+const MANDALO_SERVICE_FEE = 20;
+const MANDALO_DELIVERY_FEE = 35;
+
+function formatEstimatedArrival(minutesToAdd = 20): string {
+  const eta = new Date(Date.now() + minutesToAdd * 60 * 1000);
+  return eta.toLocaleTimeString("es-MX", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
 }
 
 // Archivo sobrescrito desde cero (Bloques 1 + 2).
@@ -1044,6 +1089,29 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
     const estadoPendiente = String(pendingRow.estado ?? "");
     console.log("[DEBUG] Estado actual del pedido:", Number(pendingRow.id), "Status:", estadoPendiente);
 
+    if (isRedundantConfirmationMessage(mensaje) && isConfirmedCustomerState(estadoPendiente)) {
+      const msg = "Tu pedido ya está confirmado, estamos trabajando en él. ✅";
+      await waapiSendText({ to: telefono, body: normalizeWhatsAppText(msg) });
+      await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+      return { ok: true, role: "cliente", accion: "confirmacion_ignorada", ordenId: Number(pendingRow.id) };
+    }
+
+    if (isOrderTrackingQuestion(mensaje)) {
+      if (estadoPendiente === "en_proceso") {
+        const msg = "Tu pedido está siendo preparado en la tienda, el repartidor está por asignarse. 🛍️";
+        await waapiSendText({ to: telefono, body: normalizeWhatsAppText(msg) });
+        await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+        return { ok: true, role: "cliente", accion: "seguimiento_preparacion", ordenId: Number(pendingRow.id) };
+      }
+
+      if (estadoPendiente === "repartidor_asignado" || estadoPendiente === "asignado" || estadoPendiente === "en_camino") {
+        const msg = "Tu pedido ya va con el repartidor. En cuanto haya una actualización, te aviso. 🛵";
+        await waapiSendText({ to: telefono, body: normalizeWhatsAppText(msg) });
+        await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+        return { ok: true, role: "cliente", accion: "seguimiento_repartidor", ordenId: Number(pendingRow.id) };
+      }
+    }
+
     // Si el pedido ya fue notificado al repartidor, bloqueamos reenvíos.
     if (estadoPendiente === "en_proceso") {
       const msg =
@@ -1247,8 +1315,11 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
     });
     await waapiSendText({ to: repartidorWhatsapp, body: normalizeWhatsAppText(msgRepartidor) });
 
+    const etaText = formatEstimatedArrival(20);
     const msgCliente =
-      `✅ Listo. Ya le pasé tu pedido a *${repartidorNombre}*.\n` +
+      `✅ Tu pedido ha sido confirmado.\n` +
+      `Llegará aproximadamente a las ${etaText}.\n\n` +
+      `Ya le pasé tu pedido a *${repartidorNombre}*.\n` +
       "En cuanto lo acepte, te aviso. 📦";
     console.log("--- INTENTANDO ENVIAR A ULTRA MSG ---");
     await waapiSendText({ to: telefono, body: normalizeWhatsAppText(msgCliente) });
@@ -1435,9 +1506,8 @@ async function handleTiendaMessage(telefono: string, mensaje: string) {
     return { ok: true, role: "tienda" };
   }
 
-  const env = getEnv();
-  const envioYServicio = Number(env.MANDALO_ENVIO_FIJO) + Number(env.MANDALO_COMISION_FIJA);
-  const total = Number(precio) + envioYServicio;
+  const subtotal = Number(precio);
+  const total = calculateFinalPrice(subtotal);
 
   const supabase = getSupabaseAdmin();
   const { data: ord, error } = await supabase
@@ -1477,9 +1547,10 @@ async function handleTiendaMessage(telefono: string, mensaje: string) {
     const tiendaNombre = String(state?.business_name ?? "la tienda");
     const msg =
       `Ya me contestó *${tiendaNombre}* ✅\n\n` +
-      `💰 Tienda: $${precio}\n` +
-      `🛵 Envío y Servicio: $${envioYServicio}\n\n` +
-      `✨ *TOTAL: $${total}*\n\n` +
+      `Subtotal: $${subtotal}\n` +
+      `Servicio Mándalo: $${MANDALO_SERVICE_FEE}\n` +
+      `Envío: $${MANDALO_DELIVERY_FEE}\n` +
+      `Total a pagar: $${total}\n\n` +
       `¿Confirmas tu pedido? (Responde SÍ)`;
     await waapiSendText({ to: telefonoCliente, body: normalizeWhatsAppText(msg) });
     await guardarMensajeChat({ telefono: telefonoCliente, texto: msg, estado: "bot", legacyPedidoId: ordenId }).catch(
