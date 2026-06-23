@@ -143,6 +143,7 @@ export async function getLLMResponse(params: {
       const parsed = mandaloAgentResponseSchema.safeParse(parsedJson);
       if (parsed.success) return parsed.data;
       console.error("Error de validación en IA:", parsed.error);
+      console.error("Error de validación en IA (flatten):", parsed.error.flatten());
     } catch (e) {
       console.error("Error al parsear IA (tolerado):", e);
     }

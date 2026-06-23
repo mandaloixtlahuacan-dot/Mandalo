@@ -1,37 +1,23 @@
 import { z } from "zod";
 
 export const mandaloAgentResponseSchema = z.object({
-  customer_reply: z.string().min(1),
+  customer_reply: z.string().optional().nullable().default("¡Entendido! Dame un momento."),
   order_state: z
     .object({
-      stage: z
-        .enum([
-          "lead",
-          "collecting",
-          "ready_to_quote",
-          "awaiting_quote_confirm",
-          "awaiting_confirmation",
-          "awaiting_quote",
-          "cotizando",
-          "awaiting_confirm",
-          "confirmado",
-          "cancelado",
-          "delivering",
-        ])
-        .default("collecting"),
+      stage: z.string().default("collecting"),
       customer_name: z.string().optional().nullable(),
       category: z.string().optional().nullable(),
       items: z
         .array(
           z.object({
             name: z.string(),
-            qty: z.string().optional().nullable(),
+            qty: z.union([z.string(), z.number()]).optional().nullable(),
             details: z.string().optional().nullable(),
           }),
         )
         .default([]),
       address_text: z.string().optional().nullable(),
-      total: z.number().optional().nullable(),
+      total: z.union([z.number(), z.string()]).optional().nullable(),
     })
     .passthrough()
     .default({ stage: "collecting", items: [] }),
