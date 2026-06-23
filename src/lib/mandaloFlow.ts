@@ -184,6 +184,20 @@ function formatEstimatedArrival(minutesToAdd = 20): string {
   });
 }
 
+function ensureSafeLlmOrderState(
+  value: unknown,
+  fallbackStage = "collecting",
+): MandaloAgentResponse["order_state"] {
+  const base = asJsonObject(value);
+  const stage = String(base.stage ?? "").trim() || fallbackStage;
+  const items = Array.isArray(base.items) ? base.items : [];
+  return {
+    ...(base as Record<string, unknown>),
+    stage,
+    items: items as MandaloAgentResponse["order_state"]["items"],
+  };
+}
+
 // Archivo sobrescrito desde cero (Bloques 1 + 2).
 // Nota: parseIncomingWhatsAppMessage se re-exporta desde "@/lib/messages" para compatibilidad con /api/webhook.
 
@@ -270,7 +284,12 @@ export async function getLLMResponse(params: {
     try {
       const parsedJson = JSON.parse(candidate);
       const parsed = mandaloAgentResponseSchema.safeParse(parsedJson);
-      if (parsed.success) return parsed.data;
+      if (parsed.success) {
+        return {
+          ...parsed.data,
+          order_state: ensureSafeLlmOrderState(parsed.data.order_state, "collecting"),
+        };
+      }
       console.error("Error de validación en IA:", parsed.error);
       console.error("Error de validación en IA (flatten):", parsed.error.flatten());
     } catch (e) {
@@ -1453,7 +1472,8 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
   // de que el texto del cliente o customer_reply contenga "COTIZAR.".
   const dispatch = respuesta.dispatch ?? null;
   if (dispatch?.business_message) {
-    const baseState: JsonObject = { ...currentOrderState, ...(respuesta.order_state ?? {}) };
+    const safeOrderState = ensureSafeLlmOrderState(respuesta.order_state, "esperando_confirmacion");
+    const baseState: JsonObject = { ...currentOrderState, ...safeOrderState };
     if (!isOrderReadyForConfirmation(baseState)) {
       const msg = buildMissingCriticalFieldsMessage(baseState);
       console.log("[mandalo] confirmación bloqueada por capa determinista", {
