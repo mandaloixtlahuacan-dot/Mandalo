@@ -5,6 +5,11 @@ import { normalizeWhatsAppText, waapiSendText } from "@/lib/waapi";
 import { detectActorByPhone } from "@/lib/roles";
 import { normalizePhone } from "@/lib/roles";
 import { getEnv } from "@/lib/env";
+import { createCaptureEngine } from "@/lib/services/captureEngine";
+import * as pedidoRepositoryV2 from "@/lib/repositories/pedidoRepositoryV2";
+import * as validationEngine from "@/lib/services/validationEngine";
+import * as outboxRepository from "@/lib/repositories/outboxRepository";
+import { createCourierCommandParser } from "@/lib/services/courierCommandParser";
 import {
   actualizarOrden,
   calculateFinalPrice,
@@ -255,6 +260,12 @@ const sessionFlags = new Map<string, { pedido_en_proceso: boolean; at: number }>
 const SESSION_FLAG_TTL_MS = 10 * 60 * 1000; // 10 min
 export { parseIncomingWhatsAppMessage };
 export type { IncomingWhatsAppMessage };
+
+const captureEngine = createCaptureEngine({
+  pedidoRepository: pedidoRepositoryV2,
+  validationEngine,
+});
+const courierCommandParser = createCourierCommandParser();
 
 // Cache best-effort para validar remitentes de tienda (evita bypass por fallback de ORDEN+PRECIO)
 const negocioPhoneCache = new Map<string, { isNegocio: boolean; at: number }>();
@@ -717,6 +728,25 @@ async function resolveNegocioFromDb(params: { id?: unknown; nombre?: unknown; wh
   return null;
 }
 
+async function resolvePedidoV2IdByLegacyId(legacyOrderId: number): Promise<number | null> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("pedidos_v2")
+    .select("id")
+    .eq("legacy_pedido_id", legacyOrderId)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[mandalo] resolvePedidoV2IdByLegacyId falló", {
+      legacyOrderId,
+      message: getErrorMessage(error),
+    });
+    return null;
+  }
+
+  return data?.id != null ? Number(data.id) : null;
+}
+
 async function resolveBusinessForDispatch(state: JsonObject): Promise<DispatchBusiness | null> {
   const businessId = state.business_id ?? state.businessId ?? null;
   const businessPhone = state.business_phone ?? state.businessPhone ?? null;
@@ -1022,25 +1052,35 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
       body: formatoParaTienda,
     });
 
-    // Envío a tienda (sincrónico). No afirmamos éxito al cliente hasta confirmar OK del proveedor.
-    try {
-      await waapiSendText({ to: negocio.whatsapp, body: normalizeWhatsAppText(formatoParaTienda) });
-    } catch (e: unknown) {
-      console.error("[mandalo] fallo enviando a tienda (waapi)", {
+    const pedidoV2Id = await resolvePedidoV2IdByLegacyId(ordenId);
+    if (!pedidoV2Id) {
+      console.error("[mandalo] no se pudo resolver pedido_v2 para encolar dispatch a tienda", {
         orderId: ordenId,
-        businessPhone: negocio.whatsapp,
-        message: getErrorMessage(e),
       });
       const msgFalla =
-        "⚠️ Hubo un problema al enviar tu pedido a la tienda.\n\n" +
+        "⚠️ Hubo un problema al registrar tu pedido para enviarlo a la tienda.\n\n" +
         "Inténtalo de nuevo respondiendo *SÍ*. Si vuelve a fallar, avísame.";
       await waapiSendText({ to: telefono, body: normalizeWhatsAppText(msgFalla) });
       await guardarMensajeChat({ telefono, texto: msgFalla, estado: "bot", legacyPedidoId: ordenId }).catch(() => {});
       return { ok: true, role: "cliente", stage: "esperando_confirmacion", ordenId };
     }
 
-    // Solo después de éxito real del envío a tienda, avanzamos el estado en DB.
     try {
+      await outboxRepository.enqueueOutboundMessage({
+        pedidoId: pedidoV2Id,
+        tipoMensaje: "cotizacion_tienda",
+        destinatarioTipo: "negocio",
+        destinatarioId: negocioId == null ? null : Number(negocioId),
+        telefonoDestino: negocio.whatsapp,
+        payload: {
+          body: formatoParaTienda,
+          legacyOrderId: ordenId,
+          businessName: String(negocio.nombre ?? tiendaNombre).trim(),
+          businessPhone: negocio.whatsapp,
+        },
+        idempotencyKey: `legacy-order:${ordenId}:cotizacion_tienda:v1`,
+      });
+
       const persisted = await getOrderById(ordenId);
       await transitionOrderState({
         orderId: ordenId,
@@ -1066,16 +1106,21 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
       });
       console.log("Cambio de estado:", "awaiting_quote");
     } catch (e: unknown) {
-      console.error("[mandalo] transición fallida tras envío exitoso a tienda", {
+      console.error("[mandalo] no se pudo encolar o transicionar dispatch a tienda", {
         orderId: ordenId,
         message: getErrorMessage(e),
       });
-      // Seguimos respondiendo al cliente: la tienda ya recibió, pero el estado interno no se pudo actualizar.
+      const msgFalla =
+        "⚠️ Hubo un problema al registrar tu pedido para enviarlo a la tienda.\n\n" +
+        "Inténtalo de nuevo respondiendo *SÍ*. Si vuelve a fallar, avísame.";
+      await waapiSendText({ to: telefono, body: normalizeWhatsAppText(msgFalla) });
+      await guardarMensajeChat({ telefono, texto: msgFalla, estado: "bot", legacyPedidoId: ordenId }).catch(() => {});
+      return { ok: true, role: "cliente", stage: "esperando_confirmacion", ordenId };
     }
 
     const msgCliente =
-      `📩 Ya envié tu pedido a *${String(negocio.nombre ?? tiendaNombre).trim()}*.\n\n` +
-      "Te aviso en cuanto me confirmen el precio para darte el total.";
+      `📩 Tu pedido quedó registrado para envío a *${String(negocio.nombre ?? tiendaNombre).trim()}*.\n\n` +
+      "Te avisaré en cuanto la tienda confirme el precio.";
     console.log("--- INTENTANDO ENVIAR A ULTRA MSG ---");
     await waapiSendText({ to: telefono, body: normalizeWhatsAppText(msgCliente) });
     await guardarMensajeChat({ telefono, texto: msgCliente, estado: "bot", legacyPedidoId: ordenId }).catch(
@@ -1358,7 +1403,29 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
           to: negocio.whatsapp,
           body: aviso,
         });
-        await waapiSendText({ to: negocio.whatsapp, body: normalizeWhatsAppText(aviso) });
+        const pedidoV2Id = await resolvePedidoV2IdByLegacyId(ordenId);
+        if (pedidoV2Id) {
+          await outboxRepository.enqueueOutboundMessage({
+            pedidoId: pedidoV2Id,
+            tipoMensaje: "cotizacion_tienda",
+            destinatarioTipo: "negocio",
+            destinatarioId:
+              typeof (negocio.id ?? state.business_id ?? state.businessId) === "number"
+                ? Number(negocio.id ?? state.business_id ?? state.businessId)
+                : null,
+            telefonoDestino: negocio.whatsapp,
+            payload: {
+              body: aviso,
+              legacyOrderId: ordenId,
+              reason: "no_courier_available",
+            },
+            idempotencyKey: `legacy-order:${ordenId}:store_notice_no_courier:v1`,
+          });
+        } else {
+          console.error("[mandalo] no se pudo resolver pedido_v2 para aviso a tienda sin repartidores", {
+            orderId: ordenId,
+          });
+        }
       }
       const msg =
         "⚠️ Por ahora no tengo repartidores activos disponibles.\n" +
@@ -1372,44 +1439,6 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
     const repartidorNombre = String(repartidor?.nombre ?? "").trim() || "Repartidor";
     const repartidorWhatsapp = ensureMxWhatsappIntl(String(repartidor?.whatsapp ?? ""));
     console.log("[DEBUG] Notificando a repartidor:", repartidorNombre, "Número:", repartidorWhatsapp);
-
-    try {
-      await transitionOrderState({
-        orderId: ordenId,
-        to: "pendiente_aceptacion_repartidor",
-        snapshotPatch: {
-          ...state,
-          total: total ?? null,
-          repartidor_nombre: repartidorNombre,
-          courier_phone: repartidorWhatsapp,
-        },
-        contextOverrides: {
-          customerPhone: telefono,
-          addressText,
-          mapsLink,
-          items: productosArr,
-          total: total ?? null,
-          courierAvailable: true,
-          courierPhone: repartidorWhatsapp,
-        },
-      });
-      console.log("Cambio de estado:", "en_proceso");
-    } catch (e: unknown) {
-      console.error("[mandalo] transición fallida pendiente_aprobacion_total -> pendiente_aceptacion_repartidor", {
-        orderId: ordenId,
-        message: e instanceof Error ? e.message : String(e),
-      });
-      const msgSeguro =
-        !addressText
-          ? "No puedo mandar tu pedido aún porque falta tu dirección completa. 📍"
-          : !productosArr.length
-            ? "No puedo mandar tu pedido aún porque no puedo recuperar productos. 🛒"
-            : "No puedo mandar tu pedido aún porque no tengo repartidores activos disponibles. 🛵";
-      console.log("--- INTENTANDO ENVIAR A ULTRA MSG ---");
-      await waapiSendText({ to: telefono, body: normalizeWhatsAppText(msgSeguro) });
-      await guardarMensajeChat({ telefono, texto: msgSeguro, estado: "bot" }).catch(() => {});
-      return { ok: true, role: "cliente", stage: "awaiting_confirm", ordenId };
-    }
 
     const negocioNombre = String(state?.business_name ?? "").trim() || "la tienda";
     const msgRepartidor =
@@ -1431,14 +1460,82 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
       mapsLink,
       body: msgRepartidor,
     });
-    await waapiSendText({ to: repartidorWhatsapp, body: normalizeWhatsAppText(msgRepartidor) });
+
+    const pedidoV2Id = await resolvePedidoV2IdByLegacyId(ordenId);
+    if (!pedidoV2Id) {
+      console.error("[mandalo] no se pudo resolver pedido_v2 para encolar dispatch a repartidor", {
+        orderId: ordenId,
+      });
+      const msgSeguro =
+        "No pude registrar tu pedido para enviarlo al repartidor.\n\n" +
+        "Inténtalo de nuevo en un momento.";
+      console.log("--- INTENTANDO ENVIAR A ULTRA MSG ---");
+      await waapiSendText({ to: telefono, body: normalizeWhatsAppText(msgSeguro) });
+      await guardarMensajeChat({ telefono, texto: msgSeguro, estado: "bot" }).catch(() => {});
+      return { ok: true, role: "cliente", stage: "awaiting_confirm", ordenId };
+    }
+
+    try {
+      await outboxRepository.enqueueOutboundMessage({
+        pedidoId: pedidoV2Id,
+        tipoMensaje: "dispatch_repartidor",
+        destinatarioTipo: "repartidor",
+        destinatarioId: typeof repartidor?.id === "number" ? repartidor.id : null,
+        telefonoDestino: repartidorWhatsapp,
+        payload: {
+          body: msgRepartidor,
+          legacyOrderId: ordenId,
+          courierName: repartidorNombre,
+          courierPhone: repartidorWhatsapp,
+          customerPhone: telefono,
+          total: total ?? null,
+        },
+        idempotencyKey: `legacy-order:${ordenId}:dispatch_repartidor:v1`,
+      });
+
+      await transitionOrderState({
+        orderId: ordenId,
+        to: "pendiente_aceptacion_repartidor",
+        snapshotPatch: {
+          ...state,
+          total: total ?? null,
+          repartidor_nombre: repartidorNombre,
+          courier_phone: repartidorWhatsapp,
+        },
+        contextOverrides: {
+          customerPhone: telefono,
+          addressText,
+          mapsLink,
+          items: productosArr,
+          total: total ?? null,
+          courierAvailable: true,
+          courierPhone: repartidorWhatsapp,
+        },
+      });
+      console.log("Cambio de estado:", "en_proceso");
+    } catch (e: unknown) {
+      console.error("[mandalo] no se pudo encolar o transicionar dispatch a repartidor", {
+        orderId: ordenId,
+        message: e instanceof Error ? e.message : String(e),
+      });
+      const msgSeguro =
+        !addressText
+          ? "No puedo mandar tu pedido aún porque falta tu dirección completa. 📍"
+          : !productosArr.length
+            ? "No puedo mandar tu pedido aún porque no puedo recuperar productos. 🛒"
+            : "No pude registrar tu pedido para enviarlo al repartidor. Inténtalo de nuevo en un momento. 🛵";
+      console.log("--- INTENTANDO ENVIAR A ULTRA MSG ---");
+      await waapiSendText({ to: telefono, body: normalizeWhatsAppText(msgSeguro) });
+      await guardarMensajeChat({ telefono, texto: msgSeguro, estado: "bot" }).catch(() => {});
+      return { ok: true, role: "cliente", stage: "awaiting_confirm", ordenId };
+    }
 
     const etaText = formatEstimatedArrival(20);
     const msgCliente =
       `✅ Tu pedido ha sido confirmado.\n` +
       `Llegará aproximadamente a las ${etaText}.\n\n` +
-      `Ya le pasé tu pedido a *${repartidorNombre}*.\n` +
-      "En cuanto lo acepte, te aviso. 📦";
+      `Estamos coordinando tu entrega con *${repartidorNombre}*.\n` +
+      "Te avisaré en cuanto confirme. 📦";
     console.log("--- INTENTANDO ENVIAR A ULTRA MSG ---");
     await waapiSendText({ to: telefono, body: normalizeWhatsAppText(msgCliente) });
     await guardarMensajeChat({ telefono, texto: msgCliente, estado: "bot" }).catch(() => {});
@@ -1515,235 +1612,39 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
     userMessage: mensaje,
   });
 
-  console.log("[DEBUG] IA Stage:", respuesta.order_state?.stage);
-  console.log("[DEBUG] IA Dispatch:", JSON.stringify(respuesta.dispatch));
-  if (respuesta.dispatch?.business_message) {
-    console.log("[DEBUG] ÉXITO: Dispatch detectado y entrando a rama de confirmación");
-  } else {
-    console.log("[DEBUG] FALLA: IA no generó dispatch.business_message");
-  }
+  const captureResult = await captureEngine.processCustomerCapture({
+    customerPhone: telefono,
+    customerName: String(currentOrderState?.customer_name ?? "").trim() || null,
+    userMessage: mensaje,
+    currentSnapshot: null,
+    llmOrderState: (respuesta.order_state ?? null) as Record<string, unknown> | null,
+  });
 
-  // 3) Prioridad al Dispatch:
-  // Si la IA manda dispatch.business_message, procesamos el flujo de cotización SIN depender
-  // de que el texto del cliente o customer_reply contenga "COTIZAR.".
-  const dispatch = respuesta.dispatch ?? null;
-  if (dispatch?.business_message) {
-    const safeOrderState = ensureSafeLlmOrderState(respuesta.order_state, "esperando_confirmacion");
-    const baseState: JsonObject = { ...currentOrderState, ...safeOrderState };
-    if (!isOrderReadyForConfirmation(baseState)) {
-      const msg = buildMissingCriticalFieldsMessage(baseState);
-      console.log("[mandalo] confirmación bloqueada por capa determinista", {
-        missing: getMissingCriticalFields(baseState),
-      });
-      await waapiSendText({ to: telefono, body: normalizeWhatsAppText(msg) });
-      await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
-      return { ok: true, role: "cliente", stage: "collecting", missing: getMissingCriticalFields(baseState) };
-    }
+  console.log("[captureEngine] pedido:", {
+    pedidoId: captureResult.pedidoId,
+    nextState: captureResult.nextState,
+    readyForConfirmation: captureResult.readyForConfirmation,
+    itemCount: captureResult.items.length,
+    missingFields: captureResult.validation.missingFields,
+  });
 
-    // Resolver negocio SIEMPRE desde DB (fuente de verdad).
-    const negocioDb = await resolveNegocioFromDb({
-      id: baseState.business_id,
-      nombre: baseState.business_name,
-      whatsapp: dispatch?.to_business_phone,
-    }).catch((e: unknown) => {
-      console.error("[mandalo] resolveNegocioFromDb falló:", getErrorMessage(e));
-      return null;
-    });
-
-    if (!negocioDb?.whatsapp) {
-      console.error("[DEBUG] No se pudo resolver negocioDb.whatsapp", {
-        business_id: baseState?.business_id,
-        business_name: baseState?.business_name,
-        dispatch_to_business_phone: dispatch?.to_business_phone,
-      });
-      // No tenemos a dónde enviarlo: pedir selección de tienda al cliente (según regla de oro).
-      const msg =
-        "¿De cuál negocio te lo pido? 🛒\n" +
-        "Dime el nombre exacto de la tienda para mandarle tu pedido.";
-      console.log("--- INTENTANDO ENVIAR A ULTRA MSG ---");
-      await waapiSendText({ to: telefono, body: normalizeWhatsAppText(msg) });
-      await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
-      return { ok: true, role: "cliente", stage: "collecting" };
-    }
-
-    const tiendaNombre = String(negocioDb?.nombre ?? "la tienda").trim();
-    const tiendaWhatsApp = ensureMxWhatsappIntl(String(negocioDb?.whatsapp ?? "").trim());
-
-    // FRENO DE SEGURIDAD:
-    // Guardamos el pedido y pedimos confirmación al cliente. NO enviamos a la tienda hasta recibir "SÍ".
-    const addressText =
-      String(baseState?.address_text ?? "").trim() ||
-      String(direccionGuardada ?? "").trim() ||
-      "";
-
-    const orderState: JsonObject = {
-      ...baseState,
-      stage: "awaiting_confirmation",
-      business_name: tiendaNombre,
-      business_id: negocioDb?.id ?? baseState?.business_id,
-      business_phone: tiendaWhatsApp,
-      // Guardamos el mensaje tal cual (sin limpieza) para no perder intención/información.
-      pending_business_message: String(dispatch.business_message ?? "").trim(),
-      ...(addressText ? { address_text: addressText } : {}),
-    };
-    const ordenId = await crearOrden({
-      telefonoCliente: telefono,
-      resumenPedido: JSON.stringify(orderState),
-      estado: "esperando_confirmacion",
-    });
-    console.log("Cambio de estado:", "esperando_confirmacion");
-
-    const resumen = formatResumenParaCliente(orderState);
-    const resumenParaCliente =
-      `✅ Ya tengo tu pedido:\n${resumen}\n\n` +
-      "¿Es correcto tu pedido? Responde *SÍ* para confirmar. ✅";
-    console.log("--- INTENTANDO ENVIAR A ULTRA MSG ---");
-    await waapiSendText({ to: telefono, body: normalizeWhatsAppText(resumenParaCliente) });
-    await guardarMensajeChat({ telefono, texto: resumenParaCliente, estado: "bot" }).catch(() => {});
-
-    return { ok: true, role: "cliente", stage: "esperando_confirmacion", ordenId };
-  }
-
-  // 3.5) Fallback determinista (sin depender de dispatch del LLM):
-  // Si el pedido ya está completo pero la IA no generó dispatch, NO cerramos con "gracias".
-  // Creamos orden + pedimos confirmación, o si el cliente ya dijo SÍ, despachamos a tienda.
-  {
-    const safeOrderState = ensureSafeLlmOrderState(respuesta.order_state, "collecting");
-    const baseState: JsonObject = { ...currentOrderState, ...safeOrderState };
-    if (isOrderReadyForConfirmation(baseState)) {
-      const negocioDb = await resolveNegocioFromDb({
-        id: baseState.business_id,
-        nombre: baseState.business_name,
-        whatsapp: baseState.business_phone,
-      }).catch(() => null);
-
-      if (negocioDb?.whatsapp) {
-        const tiendaNombre = String(negocioDb?.nombre ?? "la tienda").trim();
-        const tiendaWhatsApp = ensureMxWhatsappIntl(String(negocioDb?.whatsapp ?? "").trim());
-        const addressText = String(baseState?.address_text ?? "").trim() || String(direccionGuardada ?? "").trim() || "";
-        const orderState: JsonObject = {
-          ...baseState,
-          stage: "awaiting_confirmation",
-          business_name: tiendaNombre,
-          business_id: negocioDb?.id ?? baseState?.business_id,
-          business_phone: tiendaWhatsApp,
-          pending_business_message: String(baseState?.pending_business_message ?? "").trim(),
-          ...(addressText ? { address_text: addressText } : {}),
-        };
-
-        const ordenId = await crearOrden({
-          telefonoCliente: telefono,
-          resumenPedido: JSON.stringify(orderState),
-          estado: "esperando_confirmacion",
-        });
-
-        // Si el cliente ya confirmó con SÍ, despachamos inmediatamente a tienda en esta misma ejecución.
-        if (isYesConfirmation(mensaje)) {
-          const customerName = String(orderState?.customer_name ?? "").trim();
-          const items = Array.isArray(orderState?.items) ? orderState.items : [];
-          const pedidoDetalle = formatPedidoForBusiness(orderState);
-          const extraNotes = String(orderState?.pending_business_message ?? "").trim();
-          const negocioId =
-            typeof orderState.business_id === "number" || typeof orderState.business_id === "string"
-              ? orderState.business_id
-              : null;
-          const encabezado =
-            `COTIZAR. ORDEN #${ordenId}\n` +
-            `${customerName ? `Cliente: ${customerName}\n` : ""}` +
-            `${addressText ? `Dirección: ${addressText}\n` : ""}` +
-            `${pedidoDetalle ? `\nPedido:\n${pedidoDetalle}` : ""}`;
-          const formatoParaTienda = extraNotes ? `${encabezado}\n\nNotas:\n${extraNotes}` : encabezado;
-
-          logBusinessDispatch({
-            orderId: ordenId,
-            businessId: negocioId,
-            businessName: String(orderState.business_name ?? "").trim() || null,
-            businessPhone: tiendaWhatsApp,
-            to: tiendaWhatsApp,
-            body: formatoParaTienda,
-          });
-
-          // Envío a tienda (sincrónico). No afirmamos éxito al cliente hasta confirmar OK del proveedor.
-          try {
-            await waapiSendText({ to: tiendaWhatsApp, body: normalizeWhatsAppText(formatoParaTienda) });
-          } catch (e: unknown) {
-            console.error("[mandalo] fallo enviando a tienda (waapi) [fallback determinista]", {
-              orderId: ordenId,
-              businessPhone: tiendaWhatsApp,
-              message: getErrorMessage(e),
-            });
-            const msgFalla =
-              "⚠️ Hubo un problema al enviar tu pedido a la tienda.\n\n" +
-              "Inténtalo de nuevo respondiendo *SÍ*. Si vuelve a fallar, avísame.";
-            await waapiSendText({ to: telefono, body: normalizeWhatsAppText(msgFalla) });
-            await guardarMensajeChat({ telefono, texto: msgFalla, estado: "bot", legacyPedidoId: ordenId }).catch(
-              () => {},
-            );
-            return { ok: true, role: "cliente", stage: "esperando_confirmacion", ordenId };
-          }
-
-          // Solo después de éxito real del envío a tienda, avanzamos el estado en DB.
-          try {
-            await transitionOrderState({
-              orderId: ordenId,
-              to: "pendiente_cotizacion_tienda",
-              snapshotPatch: {
-                stage: "awaiting_quote",
-                business_id: negocioId,
-                business_name: String(orderState.business_name ?? "").trim() || null,
-                business_phone: tiendaWhatsApp,
-                ...(addressText ? { address_text: addressText } : {}),
-                ...(items.length ? { items } : {}),
-              },
-              contextOverrides: {
-                customerPhone: telefono,
-                businessId: negocioId,
-                businessName: String(orderState.business_name ?? "").trim() || null,
-                businessPhone: tiendaWhatsApp,
-                addressText,
-                items,
-              },
-            });
-          } catch (e: unknown) {
-            console.error("[mandalo] transición fallida tras envío exitoso a tienda [fallback determinista]", {
-              orderId: ordenId,
-              message: getErrorMessage(e),
-            });
-          }
-
-          const msgCliente =
-            `📩 Ya envié tu pedido a *${tiendaNombre}*.\n\n` +
-            "Te aviso en cuanto me confirmen el precio para darte el total.";
-          await waapiSendText({ to: telefono, body: normalizeWhatsAppText(msgCliente) });
-          await guardarMensajeChat({ telefono, texto: msgCliente, estado: "bot", legacyPedidoId: ordenId }).catch(
-            () => {},
-          );
-          return { ok: true, role: "cliente", stage: "awaiting_quote", ordenId };
-        }
-
-        const resumen = formatResumenParaCliente(orderState);
-        const resumenParaCliente =
-          `✅ Ya tengo tu pedido:\n${resumen}\n\n` +
-          "¿Es correcto tu pedido? Responde *SÍ* para confirmar. ✅";
-        await waapiSendText({ to: telefono, body: normalizeWhatsAppText(resumenParaCliente) });
-        await guardarMensajeChat({ telefono, texto: resumenParaCliente, estado: "bot", legacyPedidoId: ordenId }).catch(
-          () => {},
-        );
-        return { ok: true, role: "cliente", stage: "esperando_confirmacion", ordenId };
-      }
-    }
-  }
-
-  // 4) Respuesta normal al cliente (sin “COTIZAR.” + sin JSON/código)
-  const customerReplyClean = sanitizeCustomerReply(
-    String(respuesta.customer_reply ?? "").replace(/COTIZAR\./g, ""),
-  );
   console.log("--- INTENTANDO ENVIAR A ULTRA MSG ---");
-  await waapiSendText({ to: telefono, body: normalizeWhatsAppText(customerReplyClean) });
-  await guardarMensajeChat({ telefono, texto: customerReplyClean, estado: "bot" }).catch((e: unknown) => {
+  await waapiSendText({
+    to: telefono,
+    body: normalizeWhatsAppText(captureResult.customerMessage),
+  });
+
+  await guardarMensajeChat({ telefono, texto: captureResult.customerMessage, estado: "bot" }).catch((e: unknown) => {
     console.error("[mandalo] guardarMensajeChat(bot) falló", { message: getErrorMessage(e) });
   });
-  return { ok: true, role: "cliente", respuesta: customerReplyClean };
+
+  return {
+    ok: true,
+    role: "cliente",
+    pedidoId: captureResult.pedidoId,
+    stage: captureResult.nextState,
+    readyForConfirmation: captureResult.readyForConfirmation,
+  };
 }
 
 async function handleTiendaMessage(telefono: string, mensaje: string) {
@@ -1828,12 +1729,10 @@ async function handleRepartidorMessage(telefono: string, mensaje: string, repart
   }
 
   const text = String(mensaje ?? "");
-  const t = text.toLowerCase();
 
   // Ideal: ORDEN #id viene en el mensaje
   const ordenId = extraerOrdenId(text) ?? null;
   let pedidoId = ordenId ? Number(ordenId) : null;
-  const hasExplicitOrderId = pedidoId != null;
 
   // Fallback legacy: si no vino ORDEN, intentamos resolver una orden reciente.
   // OJO: para mutaciones de estado ya no se usará si no hay referencia inequívoca.
@@ -1863,200 +1762,101 @@ async function handleRepartidorMessage(telefono: string, mensaje: string, repart
 
   const ordRow = ord as PedidoRow | null;
   const telefonoCliente = String(ordRow?.telefono_cliente ?? "").trim();
-  const state: JsonObject = safeParseDetalleJson(ordRow?.detalle_pedido) ?? {};
+  const parseResult = await courierCommandParser.handleIncomingCommand({
+    senderPhone: telefono,
+    text,
+  });
 
-  const courier = await findCourierByPhone(telefono);
-  const repartidorNombre = String(courier?.nombre ?? "").trim() || "Repartidor";
-
-  if ((isYesConfirmation(text) || t.includes("ya recog") || t.includes("ya lleg") || t.includes("entregado")) && !hasExplicitOrderId) {
-    const msg = "⚠️ Para actualizar el pedido, por favor responde con el formato: ORDEN #id + tu mensaje.";
+  if (!parseResult.ok) {
     console.log("--- INTENTANDO ENVIAR A ULTRA MSG ---");
-    await waapiSendText({ to: telefono, body: normalizeWhatsAppText(msg) });
-    return { ok: true, role: "repartidor", accion: "order_id_requerido" };
+    await waapiSendText({ to: telefono, body: normalizeWhatsAppText(parseResult.courierMessage) });
+    return {
+      ok: true,
+      role: "repartidor",
+      accion: parseResult.action,
+      ordenId: parseResult.pedidoId ?? pedidoId,
+    };
   }
 
-  if ((isYesConfirmation(text) || t.includes("ya recog") || t.includes("ya lleg") || t.includes("entregado")) && !courier) {
-    const msg = "⚠️ No pude validar tu número como repartidor activo. Usa tu número registrado o contacta al administrador.";
-    console.log("--- INTENTANDO ENVIAR A ULTRA MSG ---");
-    await waapiSendText({ to: telefono, body: normalizeWhatsAppText(msg) });
-    return { ok: true, role: "repartidor", accion: "repartidor_no_validado" };
-  }
-
-  // Paso 0: Aceptación del servicio (SÍ)
-  if (isYesConfirmation(text)) {
-    state.repartidor_nombre = repartidorNombre;
-    state.repartidor_whatsapp = ensureMxWhatsappIntl(String(courier?.whatsapp ?? telefono));
-    try {
-      await transitionOrderState({
-        orderId: pedidoId,
-        to: "repartidor_confirmado",
-        snapshotPatch: {
-          ...state,
-          repartidor_nombre: repartidorNombre,
-          courier_phone: String(state.repartidor_whatsapp ?? ""),
-        },
-        contextOverrides: {
-          courierPhone: telefono,
-          courier: { name: repartidorNombre, phone: String(state.repartidor_whatsapp ?? "") },
-        },
-      });
-      console.log("Cambio de estado:", "repartidor_asignado");
-    } catch (e: unknown) {
-      console.error("[mandalo] transición fallida pendiente_aceptacion_repartidor -> repartidor_confirmado", {
-        orderId: pedidoId,
-        message: e instanceof Error ? e.message : String(e),
-      });
-      const ordenRef = ordenId ? `ORDEN #${ordenId}` : "ORDEN #id";
-      const msgRepartidor = `⚠️ No pude confirmar tu aceptación. Por favor responde ${ordenRef} SÍ.`;
-      console.log("--- INTENTANDO ENVIAR A ULTRA MSG ---");
-      await waapiSendText({ to: telefono, body: normalizeWhatsAppText(msgRepartidor) });
-      return { ok: true, role: "repartidor", accion: "aceptacion_no_confirmada", ordenId: pedidoId };
-    }
-
+  if (parseResult.action === "confirmed") {
     if (telefonoCliente) {
       const msgCliente =
-        `✅ ¡Excelente! *${repartidorNombre}* aceptó tu pedido.\n` +
+        `✅ ¡Excelente! *${parseResult.courierName}* aceptó tu pedido.\n` +
         "En cuanto lo recoja, te aviso. 📦";
       console.log("--- INTENTANDO ENVIAR A ULTRA MSG ---");
       await waapiSendText({ to: telefonoCliente, body: normalizeWhatsAppText(msgCliente) });
       await guardarMensajeChat({ telefono: telefonoCliente, texto: msgCliente, estado: "bot" }).catch(() => {});
     }
 
-    const negocio = await resolveBusinessForDispatch(state);
-    if (negocio?.whatsapp) {
-      const msgTienda = `El pedido ha sido tomado por el repartidor ${repartidorNombre}`;
+    if (parseResult.businessPhone) {
+      const msgTienda = `El pedido ha sido tomado por el repartidor ${parseResult.courierName}`;
       logBusinessDispatch({
-        orderId: pedidoId,
-        businessId: negocio.id ?? state.business_id ?? state.businessId ?? null,
-        businessName: negocio.nombre ?? state.business_name ?? state.businessName ?? null,
-        businessPhone: negocio.whatsapp,
-        to: negocio.whatsapp,
+        orderId: parseResult.legacyOrderId ?? parseResult.pedidoId,
+        businessId: parseResult.businessId,
+        businessName: parseResult.businessName,
+        businessPhone: parseResult.businessPhone,
+        to: parseResult.businessPhone,
         body: msgTienda,
       });
-      await waapiSendText({ to: negocio.whatsapp, body: normalizeWhatsAppText(msgTienda) });
+      await outboxRepository.enqueueOutboundMessage({
+        pedidoId: parseResult.pedidoId,
+        tipoMensaje: "cotizacion_tienda",
+        destinatarioTipo: "negocio",
+        destinatarioId: parseResult.businessId,
+        telefonoDestino: parseResult.businessPhone,
+        payload: {
+          body: msgTienda,
+          legacyOrderId: parseResult.legacyOrderId,
+          reason: "courier_accepted",
+        },
+        idempotencyKey: `pedido:${parseResult.pedidoId}:store_notice_courier_accepted:v1`,
+      });
     }
 
-    return { ok: true, role: "repartidor", accion: "aceptado", ordenId: pedidoId, repartidorNombre };
+    const ack = `✅ Aceptación registrada para el pedido ${parseResult.legacyOrderId ?? parseResult.pedidoId}.`;
+    await waapiSendText({ to: telefono, body: normalizeWhatsAppText(ack) });
+    return {
+      ok: true,
+      role: "repartidor",
+      accion: "aceptado",
+      ordenId: parseResult.legacyOrderId ?? parseResult.pedidoId,
+      repartidorNombre: parseResult.courierName,
+    };
   }
 
-  // Paso 1: Recogida
-  if (t.includes("ya recog")) {
-    try {
-      await transitionOrderState({
-        orderId: pedidoId,
-        to: "pedido_recogido",
-        snapshotPatch: {
-          ...state,
-          repartidor_nombre: repartidorNombre,
-          courier_phone: String(state.repartidor_whatsapp ?? ensureMxWhatsappIntl(String(courier?.whatsapp ?? telefono))),
-        },
-        contextOverrides: {
-          courierPhone: telefono,
-          courier: {
-            name: repartidorNombre,
-            phone: String(state.repartidor_whatsapp ?? ensureMxWhatsappIntl(String(courier?.whatsapp ?? telefono))),
-          },
-        },
-      });
-      console.log("Cambio de estado:", "en_camino");
-    } catch (e: unknown) {
-      console.error("[mandalo] transición fallida repartidor_confirmado -> pedido_recogido", {
-        orderId: pedidoId,
-        message: e instanceof Error ? e.message : String(e),
-      });
-      const msg = `⚠️ No pude marcar la recogida del pedido ORDEN #${pedidoId}. Reintenta con: ORDEN #${pedidoId} YA RECOGÍ.`;
-      console.log("--- INTENTANDO ENVIAR A ULTRA MSG ---");
-      await waapiSendText({ to: telefono, body: normalizeWhatsAppText(msg) });
-      return { ok: true, role: "repartidor", accion: "recogida_no_confirmada", ordenId: pedidoId };
-    }
+  if (parseResult.action === "picked_up") {
     if (telefonoCliente) {
-      const msgCliente = `📦 ¡${repartidorNombre} ya tiene tu pedido y está en camino!`;
+      const msgCliente = `📦 ¡${parseResult.courierName} ya tiene tu pedido y está en camino!`;
       console.log("--- INTENTANDO ENVIAR A ULTRA MSG ---");
       await waapiSendText({ to: telefonoCliente, body: normalizeWhatsAppText(msgCliente) });
       await guardarMensajeChat({ telefono: telefonoCliente, texto: msgCliente, estado: "bot" }).catch(() => {});
     }
-    return { ok: true, role: "repartidor", accion: "en_camino", ordenId: pedidoId };
+
+    const ack = `✅ Recogida registrada para el pedido ${parseResult.legacyOrderId ?? parseResult.pedidoId}.`;
+    await waapiSendText({ to: telefono, body: normalizeWhatsAppText(ack) });
+    return {
+      ok: true,
+      role: "repartidor",
+      accion: "en_camino",
+      ordenId: parseResult.legacyOrderId ?? parseResult.pedidoId,
+    };
   }
 
-  // Paso 2: Llegada
-  if (t.includes("ya lleg")) {
-    try {
-      await transitionOrderState({
-        orderId: pedidoId,
-        to: "repartidor_en_destino",
-        snapshotPatch: {
-          ...state,
-          repartidor_nombre: repartidorNombre,
-          courier_phone: String(state.repartidor_whatsapp ?? ensureMxWhatsappIntl(String(courier?.whatsapp ?? telefono))),
-        },
-        contextOverrides: {
-          courierPhone: telefono,
-          courier: {
-            name: repartidorNombre,
-            phone: String(state.repartidor_whatsapp ?? ensureMxWhatsappIntl(String(courier?.whatsapp ?? telefono))),
-          },
-        },
-      });
-      console.log("Cambio de estado:", "llegado");
-    } catch (e: unknown) {
-      console.error("[mandalo] transición fallida pedido_recogido -> repartidor_en_destino", {
-        orderId: pedidoId,
-        message: e instanceof Error ? e.message : String(e),
-      });
-      const msg = `⚠️ No pude marcar la llegada del pedido ORDEN #${pedidoId}. Reintenta con: ORDEN #${pedidoId} YA LLEGUÉ.`;
-      console.log("--- INTENTANDO ENVIAR A ULTRA MSG ---");
-      await waapiSendText({ to: telefono, body: normalizeWhatsAppText(msg) });
-      return { ok: true, role: "repartidor", accion: "llegada_no_confirmada", ordenId: pedidoId };
-    }
-    if (telefonoCliente) {
-      const msgCliente = `🔔 ¡${repartidorNombre} está afuera de tu domicilio!`;
-      console.log("--- INTENTANDO ENVIAR A ULTRA MSG ---");
-      await waapiSendText({ to: telefonoCliente, body: normalizeWhatsAppText(msgCliente) });
-      await guardarMensajeChat({ telefono: telefonoCliente, texto: msgCliente, estado: "bot" }).catch(() => {});
-    }
-    return { ok: true, role: "repartidor", accion: "llegado", ordenId: pedidoId };
+  if (telefonoCliente) {
+    const msgCliente = "✅ Pedido entregado. ¡Gracias por usar Mándalo! 🙌";
+    console.log("--- INTENTANDO ENVIAR A ULTRA MSG ---");
+    await waapiSendText({ to: telefonoCliente, body: normalizeWhatsAppText(msgCliente) });
+    await guardarMensajeChat({ telefono: telefonoCliente, texto: msgCliente, estado: "bot" }).catch(() => {});
   }
 
-  // Paso 3: Entrega
-  if (t.includes("entregado")) {
-    try {
-      await transitionOrderState({
-        orderId: pedidoId,
-        to: "entregado",
-        snapshotPatch: {
-          ...state,
-          repartidor_nombre: repartidorNombre,
-          courier_phone: String(state.repartidor_whatsapp ?? ensureMxWhatsappIntl(String(courier?.whatsapp ?? telefono))),
-        },
-        contextOverrides: {
-          courierPhone: telefono,
-          courier: {
-            name: repartidorNombre,
-            phone: String(state.repartidor_whatsapp ?? ensureMxWhatsappIntl(String(courier?.whatsapp ?? telefono))),
-          },
-        },
-      });
-      console.log("Cambio de estado:", "completado");
-    } catch (e: unknown) {
-      console.error("[mandalo] transición fallida repartidor_en_destino -> entregado", {
-        orderId: pedidoId,
-        message: e instanceof Error ? e.message : String(e),
-      });
-      const msg = `⚠️ No pude marcar la entrega del pedido ORDEN #${pedidoId}. Reintenta con: ORDEN #${pedidoId} ENTREGADO.`;
-      console.log("--- INTENTANDO ENVIAR A ULTRA MSG ---");
-      await waapiSendText({ to: telefono, body: normalizeWhatsAppText(msg) });
-      return { ok: true, role: "repartidor", accion: "entrega_no_confirmada", ordenId: pedidoId };
-    }
-    if (telefonoCliente) {
-      const msgCliente = "✅ Pedido entregado. ¡Gracias por usar Mándalo! 🙌";
-      console.log("--- INTENTANDO ENVIAR A ULTRA MSG ---");
-      await waapiSendText({ to: telefonoCliente, body: normalizeWhatsAppText(msgCliente) });
-      await guardarMensajeChat({ telefono: telefonoCliente, texto: msgCliente, estado: "bot" }).catch(() => {});
-    }
-    return { ok: true, role: "repartidor", accion: "completado", ordenId: pedidoId };
-  }
-
-  return { ok: true, role: "repartidor", accion: "ignorado" };
+  const ack = `✅ Entrega registrada para el pedido ${parseResult.legacyOrderId ?? parseResult.pedidoId}.`;
+  await waapiSendText({ to: telefono, body: normalizeWhatsAppText(ack) });
+  return {
+    ok: true,
+    role: "repartidor",
+    accion: "completado",
+    ordenId: parseResult.legacyOrderId ?? parseResult.pedidoId,
+  };
 }
 
 export async function processMandaloWebhook(incoming: IncomingWhatsAppMessage) {
