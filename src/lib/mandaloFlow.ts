@@ -1185,22 +1185,36 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
     // Guardamos mensaje entrante
     await guardarMensajeChat({ telefono, texto: String(mensaje ?? ""), estado: "cliente" }).catch(() => {});
 
+    const awaitingRow = awaitingTotal as PedidoRow;
+    let state: JsonObject = safeParseDetalleJson(awaitingRow?.detalle_pedido) ?? {};
+    const ordenId = Number(awaitingTotal.id);
+
+    if (String(state.final_confirmation_started_at ?? "").trim()) {
+      const msg = "Procesando tu pedido, por favor espera un momento. ⏳";
+      await waapiSendText({ to: telefono, body: normalizeWhatsAppText(msg) });
+      await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+      return { ok: true, role: "cliente", stage: "awaiting_confirm", ordenId, accion: "final_confirmation_locked" };
+    }
+
     if (!isYesConfirmation(mensaje)) {
-      const msg =
-        "💰 Para mandar tu pedido al repartidor, solo necesito tu confirmación.\n" +
-        "Responde *SÍ* para continuar. ✅";
-      console.log("--- INTENTANDO ENVIAR A ULTRA MSG ---");
+      const msg = "Procesando tu pedido, por favor espera un momento. ⏳";
       await waapiSendText({ to: telefono, body: normalizeWhatsAppText(msg) });
       await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
       return { ok: true, role: "cliente", stage: "awaiting_confirm", ordenId: Number(awaitingTotal.id) };
     }
 
+    // Lock atómico liviano para cortar reentradas mientras se procesa la confirmación final.
+    state.final_confirmation_started_at = new Date().toISOString();
+    await actualizarOrden(ordenId, { detalle_pedido: JSON.stringify(state) }).catch((e: unknown) => {
+      console.error("[mandalo] no se pudo persistir final_confirmation_started_at", {
+        orderId: ordenId,
+        message: getErrorMessage(e),
+      });
+    });
+
     // Cliente confirmó total: notificar al repartidor activo
-    const awaitingRow = awaitingTotal as PedidoRow;
-    let state: JsonObject = safeParseDetalleJson(awaitingRow?.detalle_pedido) ?? {};
     // Sincronización: si items viene vacío, intentamos recuperar la última versión con items en DB.
     state = await ensureItemsNotEmpty({ telefono, currentState: state, orderIdToUpdate: Number(awaitingTotal.id) });
-    const ordenId = Number(awaitingTotal.id);
     console.log("[DEBUG] Estado actual del pedido:", ordenId, "Status:", String(awaitingRow?.estado ?? "awaiting_confirm"));
     const customerName = String(state?.customer_name ?? "").trim();
     const addressText = String(state?.address_text ?? "").trim();

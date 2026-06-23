@@ -4,6 +4,30 @@ import type { OrderState } from "@/lib/orderStateMachine";
 
 type MensajeRol = "cliente" | "bot" | "tienda" | "repartidor" | "sistema";
 
+function formatUnknownError(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === "object") {
+    const maybe = error as { message?: unknown; details?: unknown; hint?: unknown; code?: unknown };
+    const parts = [
+      maybe.code != null ? `code=${String(maybe.code)}` : null,
+      maybe.message != null ? `message=${String(maybe.message)}` : null,
+      maybe.details != null ? `details=${String(maybe.details)}` : null,
+      maybe.hint != null ? `hint=${String(maybe.hint)}` : null,
+    ].filter(Boolean);
+    return parts.length ? parts.join(" | ") : JSON.stringify(error);
+  }
+  return String(error);
+}
+
+function toPlainRecord(value: Record<string, unknown> | null | undefined): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  try {
+    return JSON.parse(JSON.stringify(value)) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
 export type MirrorOrderUpsertFromLegacyParams = {
   legacyPedidoId: number;
   telefonoCliente: string;
@@ -26,6 +50,7 @@ export async function mirrorOrderUpsertFromLegacy(
   try {
     const tel = String(params.telefonoCliente ?? "").trim();
     if (!tel) return { pedidoV2Id: null, clienteId: null };
+    const snapshotPlain = toPlainRecord(params.snapshot);
 
     // 1) Upsert cliente por teléfono
     const { data: clienteRow, error: clienteErr } = await supabase
@@ -58,7 +83,7 @@ export async function mirrorOrderUpsertFromLegacy(
           google_maps_link: params.mapsLink ?? null,
           esta_en_zona_servicio: params.estaEnZonaServicio ?? null,
           zona_detectada: params.zonaDetectada ?? null,
-          snapshot_json: params.snapshot ?? {},
+          snapshot_json: snapshotPlain,
           origen_canal: "whatsapp",
         },
         { onConflict: "legacy_pedido_id" },
@@ -72,7 +97,13 @@ export async function mirrorOrderUpsertFromLegacy(
   } catch (e: unknown) {
     console.error("[dualWrite] mirrorOrderUpsertFromLegacy failed", {
       legacyPedidoId: params.legacyPedidoId,
-      message: e instanceof Error ? e.message : String(e),
+      canonicalEstado: params.canonicalEstado,
+      telefonoCliente: params.telefonoCliente,
+      negocioId: params.negocioId ?? null,
+      repartidorId: params.repartidorId ?? null,
+      total: params.total ?? null,
+      snapshotKeys: Object.keys(toPlainRecord(params.snapshot)),
+      message: formatUnknownError(e),
     });
     return { pedidoV2Id: null, clienteId: null };
   }
@@ -100,12 +131,12 @@ export async function mirrorOrderEvent(params: MirrorOrderEventParams): Promise<
       actor_tipo: params.actorTipo ?? null,
       actor_telefono: params.actorTelefono ?? null,
       descripcion: params.descripcion ?? null,
-      payload_json: params.payload ?? {},
+      payload_json: toPlainRecord(params.payload),
     });
   } catch (e: unknown) {
     console.error("[dualWrite] mirrorOrderEvent failed", {
       pedidoV2Id: params.pedidoV2Id,
-      message: e instanceof Error ? e.message : String(e),
+      message: formatUnknownError(e),
     });
   }
 }
@@ -164,13 +195,13 @@ export async function mirrorChatMessage(params: MirrorChatMessageParams): Promis
       telefono_destino: params.telefonoDestino ?? null,
       contenido: String(params.contenido ?? ""),
       canal: params.canal ?? "whatsapp",
-      metadata_json: params.metadata ?? {},
+      metadata_json: toPlainRecord(params.metadata),
     });
   } catch (e: unknown) {
     console.error("[dualWrite] mirrorChatMessage failed", {
       legacyPedidoId: params.legacyPedidoId ?? null,
       pedidoV2Id: params.pedidoV2Id ?? null,
-      message: e instanceof Error ? e.message : String(e),
+      message: formatUnknownError(e),
     });
   }
 }
@@ -206,8 +237,7 @@ export async function enqueueAdminNotification(params: EnqueueAdminNotificationP
     // En caso de idempotencia (unique), ignoramos el duplicado para no spamear.
     console.error("[dualWrite] enqueueAdminNotification failed", {
       pedidoV2Id: params.pedidoV2Id,
-      message: e instanceof Error ? e.message : String(e),
+      message: formatUnknownError(e),
     });
   }
 }
-
