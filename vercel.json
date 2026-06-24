@@ -3,6 +3,14 @@
     {
       "path": "/api/internal/admin-outbox",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/internal/dispatch-worker",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/internal/courier-timeout-worker",
+      "schedule": "* * * * *"
     }
   ]
 }
