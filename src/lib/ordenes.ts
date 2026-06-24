@@ -102,6 +102,13 @@ export function serializeOrderStateForPersistence(state: OrderState): string {
     repartidor_confirmado: "repartidor_asignado",
     pedido_recogido: "en_camino",
     repartidor_en_destino: "llegado",
+    pendiente: "pendiente",
+    confirmado: "confirmado",
+    dispatch_repartidor_pendiente: "en_proceso",
+    confirmado_para_repartidor: "repartidor_asignado",
+    reasignacion_pendiente: "reasignacion_pendiente",
+    recogido: "recogido",
+    en_camino: "en_camino",
     entregado: "completado",
     cancelado: "cancelado",
     rechazado_fuera_de_zona: "rechazado_fuera_de_zona",
@@ -110,13 +117,25 @@ export function serializeOrderStateForPersistence(state: OrderState): string {
   return map[state];
 }
 
-const MANDALO_SERVICE_FEE = 20;
-const MANDALO_DELIVERY_FEE = 35;
+export const MANDALO_SERVICE_FEE = 20;
+export const DELIVERY_FEE = 35;
+export const MANDALO_DELIVERY_FEE = DELIVERY_FEE;
+
+export function calculateOrderTotal(storePrice: number) {
+  const base = Number(storePrice);
+  const precioTienda = Number.isFinite(base) && base > 0 ? base : 0;
+  const total = precioTienda + MANDALO_SERVICE_FEE + DELIVERY_FEE;
+
+  return {
+    precioTienda,
+    servicioMandalo: MANDALO_SERVICE_FEE,
+    servicioDomicilio: DELIVERY_FEE,
+    total,
+  };
+}
 
 export function calculateFinalPrice(storePrice: number): number {
-  const base = Number(storePrice);
-  if (!Number.isFinite(base) || base < 0) return MANDALO_SERVICE_FEE + MANDALO_DELIVERY_FEE;
-  return base + MANDALO_SERVICE_FEE + MANDALO_DELIVERY_FEE;
+  return calculateOrderTotal(storePrice).total;
 }
 
 export type OrdenEstado =

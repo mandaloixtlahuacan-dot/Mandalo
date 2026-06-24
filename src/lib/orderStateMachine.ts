@@ -15,12 +15,42 @@ export const ORDER_STATES = [
   "repartidor_confirmado",
   "pedido_recogido",
   "repartidor_en_destino",
+  "pendiente",
+  "confirmado",
+  "dispatch_repartidor_pendiente",
+  "confirmado_para_repartidor",
+  "reasignacion_pendiente",
+  "recogido",
+  "en_camino",
   "entregado",
   "cancelado",
   "bloqueado_operativamente",
 ] as const;
 
 export type OrderState = (typeof ORDER_STATES)[number];
+
+export type OrderStatus =
+  | "pendiente"
+  | "confirmado"
+  | "dispatch_repartidor_pendiente"
+  | "confirmado_para_repartidor"
+  | "reasignacion_pendiente"
+  | "recogido"
+  | "en_camino"
+  | "entregado"
+  | "cancelado";
+
+export const VALID_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
+  pendiente: ["confirmado", "cancelado"],
+  confirmado: ["dispatch_repartidor_pendiente", "cancelado"],
+  dispatch_repartidor_pendiente: ["confirmado_para_repartidor", "reasignacion_pendiente", "cancelado"],
+  confirmado_para_repartidor: ["recogido", "reasignacion_pendiente", "cancelado"],
+  reasignacion_pendiente: ["dispatch_repartidor_pendiente", "cancelado"],
+  recogido: ["en_camino", "cancelado"],
+  en_camino: ["entregado", "cancelado"],
+  entregado: [],
+  cancelado: [],
+};
 
 export type OrderItem = {
   name: string;
@@ -89,18 +119,27 @@ const ALLOWED_TRANSITIONS: Readonly<Record<OrderState, readonly OrderState[]>> =
   pendiente_aprobacion_total: [
     "capturando_pedido",
     "pendiente_aceptacion_repartidor",
+    "dispatch_repartidor_pendiente",
     "cancelado",
     "bloqueado_operativamente",
   ],
   pendiente_aceptacion_repartidor: [
     "repartidor_confirmado",
     "pendiente_aprobacion_total",
+    "dispatch_repartidor_pendiente",
     "cancelado",
     "bloqueado_operativamente",
   ],
-  repartidor_confirmado: ["pedido_recogido", "cancelado", "bloqueado_operativamente"],
-  pedido_recogido: ["repartidor_en_destino", "cancelado", "bloqueado_operativamente"],
+  repartidor_confirmado: ["pedido_recogido", "recogido", "cancelado", "bloqueado_operativamente"],
+  pedido_recogido: ["repartidor_en_destino", "en_camino", "cancelado", "bloqueado_operativamente"],
   repartidor_en_destino: ["entregado", "cancelado", "bloqueado_operativamente"],
+  pendiente: VALID_TRANSITIONS.pendiente,
+  confirmado: VALID_TRANSITIONS.confirmado,
+  dispatch_repartidor_pendiente: VALID_TRANSITIONS.dispatch_repartidor_pendiente,
+  confirmado_para_repartidor: VALID_TRANSITIONS.confirmado_para_repartidor,
+  reasignacion_pendiente: VALID_TRANSITIONS.reasignacion_pendiente,
+  recogido: VALID_TRANSITIONS.recogido,
+  en_camino: VALID_TRANSITIONS.en_camino,
   entregado: [],
   cancelado: [],
   bloqueado_operativamente: [
@@ -124,10 +163,19 @@ export function normalizeLegacyState(raw: string): OrderState | null {
     awaiting_quote: "pendiente_cotizacion_tienda",
     cotizando: "pendiente_cotizacion_tienda",
     awaiting_confirm: "pendiente_aprobacion_total",
-    en_proceso: "pendiente_aceptacion_repartidor",
-    repartidor_asignado: "repartidor_confirmado",
-    asignado: "repartidor_confirmado",
-    en_camino: "pedido_recogido",
+    pendiente: "pendiente",
+    confirmado: "confirmado",
+    confirmado_para_repartidor: "confirmado_para_repartidor",
+    dispatch_repartidor_pendiente: "dispatch_repartidor_pendiente",
+    reasignacion_pendiente: "reasignacion_pendiente",
+    recogido: "recogido",
+    en_proceso: "dispatch_repartidor_pendiente",
+    pendiente_aceptacion_repartidor: "dispatch_repartidor_pendiente",
+    repartidor_asignado: "confirmado_para_repartidor",
+    repartidor_confirmado: "confirmado_para_repartidor",
+    asignado: "confirmado_para_repartidor",
+    en_camino: "en_camino",
+    pedido_recogido: "recogido",
     llegado: "repartidor_en_destino",
     completado: "entregado",
     entregado: "entregado",
@@ -227,7 +275,9 @@ export function validateTransitionGuards(
       if (!hasPositiveTotal(context.total)) failed.push("total");
       break;
     }
-    case "pendiente_aprobacion_total->pendiente_aceptacion_repartidor": {
+    case "pendiente_aprobacion_total->pendiente_aceptacion_repartidor":
+    case "pendiente_aprobacion_total->dispatch_repartidor_pendiente":
+    case "confirmado->dispatch_repartidor_pendiente": {
       if (!Boolean(String(context.customerPhone ?? "").trim())) failed.push("customerPhone");
       if (!hasAddress(context.addressText)) failed.push("addressText");
       if (!mapsLink) failed.push("mapsLink");
@@ -236,19 +286,23 @@ export function validateTransitionGuards(
       if (context.courierAvailable !== true) failed.push("courierAvailable");
       break;
     }
-    case "pendiente_aceptacion_repartidor->repartidor_confirmado": {
+    case "pendiente_aceptacion_repartidor->repartidor_confirmado":
+    case "dispatch_repartidor_pendiente->confirmado_para_repartidor": {
       if (!hasCourierAssigned(context.courier)) failed.push("courier");
       break;
     }
-    case "repartidor_confirmado->pedido_recogido": {
+    case "repartidor_confirmado->pedido_recogido":
+    case "confirmado_para_repartidor->recogido": {
       if (!hasCourierAssigned(context.courier)) failed.push("courier");
       break;
     }
-    case "pedido_recogido->repartidor_en_destino": {
+    case "pedido_recogido->repartidor_en_destino":
+    case "recogido->en_camino": {
       if (!hasCourierAssigned(context.courier)) failed.push("courier");
       break;
     }
-    case "repartidor_en_destino->entregado": {
+    case "repartidor_en_destino->entregado":
+    case "en_camino->entregado": {
       if (!hasCourierAssigned(context.courier)) failed.push("courier");
       break;
     }
