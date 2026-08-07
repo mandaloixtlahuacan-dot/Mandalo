@@ -54,6 +54,27 @@ function extractWaapiText(payload: unknown): string | null {
   return null;
 }
 
+function extractWaapiLocation(payload: unknown): { latitude: number; longitude: number } | null {
+  const body = (payload ?? {}) as Record<string, unknown>;
+  const data = (body.data ?? {}) as Record<string, unknown>;
+  const message = extractWaapiMessageObject(payload);
+
+  // Whapi.cloud entrega la ubicación anidada en message.location = { latitude, longitude, preview }.
+  // "preview" es una imagen en base64 (no una URL de mapa) — nunca debe tratarse como texto/dirección.
+  const candidates = [message.location, body.location, data.location];
+  for (const candidate of candidates) {
+    if (candidate && typeof candidate === "object") {
+      const loc = candidate as Record<string, unknown>;
+      const latitude = Number(loc.latitude);
+      const longitude = Number(loc.longitude);
+      if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+        return { latitude, longitude };
+      }
+    }
+  }
+  return null;
+}
+
 function extractWaapiChatId(payload: unknown): string | null {
   const body = (payload ?? {}) as Record<string, unknown>;
   const data = (body.data ?? {}) as Record<string, unknown>;
@@ -109,23 +130,33 @@ export async function POST(req: NextRequest) {
     // - Waapi: chatId + text/message
     const mensaje = extractWaapiText(body);
     const numeroRaw = extractWaapiChatId(body);
+    const ubicacion = extractWaapiLocation(body);
 
     if (!numeroRaw) {
       return NextResponse.json({ ok: false, error: "MISSING_FROM" }, { status: 200 });
     }
 
-    // No procesar mensajes vacíos
-    if (!mensaje || String(mensaje).trim() === "") {
+    // No procesar mensajes vacíos (un mensaje de ubicación no trae texto, así que
+    // solo lo descartamos si TAMPOCO trae coordenadas de ubicación válidas).
+    if ((!mensaje || String(mensaje).trim() === "") && !ubicacion) {
       return NextResponse.json({ ok: false, error: "EMPTY_MESSAGE" }, { status: 200 });
     }
 
     const numero = normalizePhone(String(numeroRaw));
-    console.log(`[Webhook] Procesando: ${String(mensaje)} de ${numero}`);
+    const textoMensaje =
+      mensaje && String(mensaje).trim() !== "" ? String(mensaje) : "📍 (Cliente compartió su ubicación GPS)";
+    console.log(
+      `[Webhook] Procesando: ${textoMensaje} de ${numero}${ubicacion ? " [con ubicación GPS]" : ""}`,
+    );
     console.log(`[Webhook] Intentando enviar respuesta a: ${numero} (raw: ${String(numeroRaw)})`);
 
     // Normalización al formato esperado por el flujo
     const normalized = {
-      data: { from: numero, body: String(mensaje) },
+      data: {
+        from: numero,
+        body: textoMensaje,
+        ...(ubicacion ? { latitude: ubicacion.latitude, longitude: ubicacion.longitude } : {}),
+      },
     };
 
     const incoming = parseIncomingWhatsAppMessage(normalized);

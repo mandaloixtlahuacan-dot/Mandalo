@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { mirrorChatMessage } from "@/lib/dualWrite";
+import { normalizePhone } from "@/lib/roles";
 
 export type ChatMessageRole = "cliente" | "bot";
 
@@ -17,10 +17,16 @@ export type IncomingWhatsAppMessage = {
   location?: { latitude: number; longitude: number };
 };
 
+// Nota: Whapi.cloud entrega la ubicación anidada en message.location.{latitude,longitude} —
+// distinto de este shape plano. La normalización real (leer el payload nativo de Whapi y
+// aplanarlo a { data: { from, body, latitude, longitude } }) vive en /api/webhook/route.ts
+// (extractWaapiLocation). Este parser solo consume el shape ya normalizado.
 const incomingSchema = z
   .object({
     from: z.string().min(3).optional(),
     body: z.string().min(1).optional(),
+    latitude: z.coerce.number().optional(),
+    longitude: z.coerce.number().optional(),
     data: z
       .object({
         from: z.string().min(3).optional(),
@@ -39,8 +45,8 @@ export function parseIncomingWhatsAppMessage(payload: unknown): IncomingWhatsApp
   const body = parsed.body ?? parsed.data?.body;
   if (!from || !body) throw new Error("Payload inválido. Se esperaba {from, body}.");
 
-  const latitude = parsed.data?.latitude;
-  const longitude = parsed.data?.longitude;
+  const latitude = parsed.data?.latitude ?? parsed.latitude;
+  const longitude = parsed.data?.longitude ?? parsed.longitude;
   const location =
     typeof latitude === "number" && typeof longitude === "number"
       ? { latitude, longitude }
@@ -49,59 +55,67 @@ export function parseIncomingWhatsAppMessage(payload: unknown): IncomingWhatsApp
   return { from, body, raw: payload, location };
 }
 
+// El historial de chat vive en clientes_new.metadata_json.chat_history (un
+// arreglo acotado), no en una tabla de pedidos: el cliente puede platicar
+// (saludo, small talk) sin tener un pedido activo, así que no puede depender
+// de que exista una fila de pedido. Reemplaza a la tabla legacy `pedidos`
+// (que mezclaba mensajes de chat con filas de orden) y al espejo en
+// pedido_mensajes que hacía dualWrite.ts.
+const CHAT_HISTORY_STORAGE_LIMIT = 30;
+
+async function getClienteMetadata(telefono: string): Promise<Record<string, unknown>> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("clientes_new")
+    .select("metadata_json")
+    .eq("telefono", telefono)
+    .maybeSingle();
+  if (error) throw error;
+  const metadata = data?.metadata_json;
+  return metadata && typeof metadata === "object" && !Array.isArray(metadata)
+    ? (metadata as Record<string, unknown>)
+    : {};
+}
+
 export async function saveChatMessage(params: {
   telefono: string;
   texto: string;
   estado: ChatMessageRole;
-  legacyPedidoId?: number;
-  pedidoV2Id?: number;
-  telefonoDestino?: string | null;
 }): Promise<void> {
-  const supabase = getSupabaseAdmin();
-  const { error } = await supabase.from("pedidos").insert({
-    telefono_cliente: params.telefono,
-    detalle_pedido: params.texto,
-    estado: params.estado,
-  });
-  if (error) throw error;
+  const telefono = normalizePhone(String(params.telefono ?? ""));
+  if (!telefono) return;
 
-  // Dual write best-effort (no rompe legacy).
-  try {
-    await mirrorChatMessage({
-      rolMensaje: params.estado,
-      contenido: params.texto,
-      telefonoOrigen: params.telefono,
-      telefonoDestino: params.telefonoDestino ?? null,
-      canal: "whatsapp",
-      legacyPedidoId: params.legacyPedidoId ?? null,
-      pedidoV2Id: params.pedidoV2Id ?? null,
-      telefonoCliente: params.telefono,
-    });
-  } catch {
-    // mirrorChatMessage ya es best-effort, pero blindamos doble.
-  }
+  const supabase = getSupabaseAdmin();
+  const metadata = await getClienteMetadata(telefono);
+  const history = Array.isArray(metadata.chat_history) ? (metadata.chat_history as ChatHistoryItem[]) : [];
+  const entry: ChatHistoryItem = {
+    texto: params.texto,
+    estado: params.estado,
+    created_at: new Date().toISOString(),
+  };
+  const nextHistory = [...history, entry].slice(-CHAT_HISTORY_STORAGE_LIMIT);
+
+  const { error } = await supabase
+    .from("clientes_new")
+    .upsert(
+      { telefono, metadata_json: { ...metadata, chat_history: nextHistory } },
+      { onConflict: "telefono" },
+    );
+  if (error) throw error;
 }
 
 export async function fetchRecentChatHistory(
   telefono: string,
   limit = 10,
 ): Promise<ChatHistoryItem[]> {
-  const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
-    .from("pedidos")
-    .select("detalle_pedido, estado, created_at")
-    .eq("telefono_cliente", telefono)
-    .in("estado", ["cliente", "bot"])
-    .order("created_at", { ascending: false })
-    .limit(limit);
-  if (error) throw error;
+  const normalized = normalizePhone(String(telefono ?? ""));
+  if (!normalized) return [];
 
-  return (data ?? []).map((x) => ({
-    texto: String((x as { detalle_pedido?: unknown }).detalle_pedido ?? ""),
-    estado:
-      String((x as { estado?: unknown }).estado ?? "cliente") === "bot" ? "bot" : "cliente",
-    created_at: String((x as { created_at?: unknown }).created_at ?? ""),
-  }));
+  const metadata = await getClienteMetadata(normalized);
+  const history = Array.isArray(metadata.chat_history) ? (metadata.chat_history as ChatHistoryItem[]) : [];
+
+  // Mismo contrato que antes: más reciente primero.
+  return history.slice(-limit).reverse();
 }
 
 export function sanitizeCustomerReply(text: string): string {
@@ -114,58 +128,6 @@ export function sanitizeCustomerReply(text: string): string {
   // Normalizar espacios
   t = t.replace(/\s+/g, " ").trim();
   return t;
-}
-
-export type OrderItem = {
-  name: string;
-  qty?: string | null;
-  details?: string | null;
-};
-
-function asOrderItems(value: unknown): OrderItem[] {
-  if (!Array.isArray(value)) return [];
-  const out: OrderItem[] = [];
-  for (const it of value) {
-    if (!it || typeof it !== "object") continue;
-    const o = it as Record<string, unknown>;
-    const name = String(o.name ?? "").trim();
-    if (!name) continue;
-    const qty = o.qty == null ? null : String(o.qty);
-    const details = o.details == null ? null : String(o.details);
-    out.push({ name, qty, details });
-  }
-  return out;
-}
-
-export function formatPedidoForBusiness(orderState: unknown): string {
-  const o = (orderState ?? {}) as Record<string, unknown>;
-  const items = asOrderItems(o.items);
-  if (!items.length) {
-    const raw = String(o.notes ?? "").trim();
-    return raw ? raw : "(sin detalle)";
-  }
-  return items
-    .map((it) => {
-      const parts = [String(it.qty ?? "").trim(), it.name].filter(Boolean).join(" ").trim();
-      return `- ${parts}${it.details ? ` (${String(it.details).trim()})` : ""}`.trim();
-    })
-    .join("\n");
-}
-
-export function formatCustomerOrderSummary(state: unknown): string {
-  const o = (state ?? {}) as Record<string, unknown>;
-  const items = asOrderItems(o.items);
-  const lista = items.length
-    ? items
-        .map((it) => {
-          const parts = [String(it.qty ?? "").trim(), it.name].filter(Boolean).join(" ").trim();
-          return `• ${parts}${it.details ? ` (${String(it.details).trim()})` : ""}`.trim();
-        })
-        .join("\n")
-    : "• (sin productos)";
-
-  const dir = String((o.address_text ?? o.addressText ?? "") as string).trim();
-  return `${lista}${dir ? `\n\n📍 Dirección: ${dir}` : ""}`.trim();
 }
 
 export function isYesConfirmation(text: string): boolean {
@@ -200,11 +162,6 @@ export function isNewOrderIntent(text: string): boolean {
   );
 }
 
-export function isContinueIntent(text: string): boolean {
-  const t = normalizeMessageIntentText(text);
-  return t.includes("continuar") || t.includes("seguir") || t === "si" || t === "ok" || t === "va";
-}
-
 export function isConversationModeMessage(text: string): boolean {
   const t = normalizeMessageIntentText(text);
   // Heurística simple: mensajes emocionales o de charla general
@@ -224,73 +181,3 @@ export function isConversationModeMessage(text: string): boolean {
   );
 }
 
-export function isCourierStatusUpdate(text: string): boolean {
-  const t = normalizeMessageIntentText(text);
-  return t.includes("ya recogi") || t.includes("ya llegue") || t.includes("entregado");
-}
-
-export function formatBusinessQuoteRequest(params: {
-  orderId: number;
-  customerName?: string | null;
-  addressText?: string | null;
-  items: OrderItem[];
-  notes?: string | null;
-}): string {
-  const pedido = params.items.length
-    ? params.items
-        .map((it) => {
-          const parts = [String(it.qty ?? "").trim(), it.name].filter(Boolean).join(" ").trim();
-          return `- ${parts}${it.details ? ` (${String(it.details).trim()})` : ""}`.trim();
-        })
-        .join("\n")
-    : "(sin detalle)";
-
-  const header =
-    `COTIZAR. ORDEN #${params.orderId}\n` +
-    `${params.customerName ? `Cliente: ${params.customerName}\n` : ""}` +
-    `${params.addressText ? `Dirección: ${params.addressText}\n` : ""}` +
-    `Pedido:\n${pedido}\n\n` +
-    `Responde así: ORDEN #${params.orderId} PRECIO 150`;
-
-  const notes = String(params.notes ?? "").trim();
-  return notes ? `${header}\n\nNotas:\n${notes}` : header;
-}
-
-export function formatCourierAssignmentMessage(params: {
-  courierName: string;
-  customerName?: string | null;
-  customerPhone: string;
-  addressText?: string | null;
-  mapsLink?: string | null;
-  total?: number | null;
-  items: OrderItem[];
-  orderId: number;
-}): string {
-  const pedido = params.items.length
-    ? params.items
-        .map((it) => {
-          const parts = [String(it.qty ?? "").trim(), it.name].filter(Boolean).join(" ").trim();
-          return `• ${parts}${it.details ? ` (${String(it.details).trim()})` : ""}`.trim();
-        })
-        .join("\n")
-    : "• (sin productos)";
-
-  const totalLine =
-    typeof params.total === "number" && Number.isFinite(params.total) && params.total > 0
-      ? `💰 Total: $${params.total}\n`
-      : "";
-
-  const mapsLine = params.mapsLink ? `🗺️ Mapa: ${params.mapsLink}\n` : "";
-
-  return (
-    `Hola ${params.courierName}, tienes un nuevo servicio. 📦\n\n` +
-    `🧾 ORDEN #${params.orderId}\n` +
-    `👤 Cliente: ${params.customerName || "(sin nombre)"}\n` +
-    `📞 Tel cliente: ${params.customerPhone}\n` +
-    `📍 Dirección: ${params.addressText || "(sin dirección)"}\n` +
-    totalLine +
-    mapsLine +
-    `\nProductos:\n${pedido}\n\n` +
-    "¿Aceptas el servicio? Responde SÍ para confirmar."
-  );
-}

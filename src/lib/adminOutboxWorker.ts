@@ -91,16 +91,8 @@ async function markNotificationFailed(
   if (error) throw error;
 }
 
-async function claimAdminOutboxBatch(): Promise<AdminNotificationRow[]> {
-  const env = getEnv();
-  const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase.rpc("claim_admin_notificaciones_batch", {
-    p_limit: env.ADMIN_OUTBOX_BATCH_SIZE,
-    p_max_attempts: env.ADMIN_OUTBOX_MAX_ATTEMPTS,
-    p_reclaim_stale_after_seconds: 900,
-  });
-  if (error) throw error;
-  return ((data ?? []) as Array<Record<string, unknown>>).map((row) => ({
+function mapAdminNotificationRow(row: Record<string, unknown>): AdminNotificationRow {
+  return {
     id: Number(row.id),
     pedido_id: row.pedido_id == null ? null : Number(row.pedido_id),
     tipo: String(row.tipo ?? ""),
@@ -113,10 +105,58 @@ async function claimAdminOutboxBatch(): Promise<AdminNotificationRow[]> {
       row.metadata_json && typeof row.metadata_json === "object"
         ? (row.metadata_json as Record<string, unknown>)
         : {},
-  }));
+  };
 }
 
-export async function processAdminOutboxBatch(): Promise<AdminOutboxBatchSummary> {
+async function claimAdminOutboxBatch(): Promise<AdminNotificationRow[]> {
+  const env = getEnv();
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase.rpc("claim_admin_notificaciones_batch", {
+    p_limit: env.ADMIN_OUTBOX_BATCH_SIZE,
+    p_max_attempts: env.ADMIN_OUTBOX_MAX_ATTEMPTS,
+    p_reclaim_stale_after_seconds: 900,
+  });
+  if (error) throw error;
+  return ((data ?? []) as Array<Record<string, unknown>>).map(mapAdminNotificationRow);
+}
+
+async function claimAdminOutboxNotification(notificationId: number): Promise<AdminNotificationRow | null> {
+  const env = getEnv();
+  const supabase = getSupabaseAdmin();
+  const nowIso = new Date().toISOString();
+  const { data: current, error: currentError } = await supabase
+    .from("admin_notificaciones")
+    .select("id, estado_envio, intentos, next_attempt_at")
+    .eq("id", notificationId)
+    .in("estado_envio", ["pendiente", "fallida"])
+    .lt("intentos", env.ADMIN_OUTBOX_MAX_ATTEMPTS)
+    .lte("next_attempt_at", nowIso)
+    .maybeSingle();
+
+  if (currentError) throw currentError;
+  if (!current) return null;
+
+  const nextAttemptCount = Number(current.intentos ?? 0) + 1;
+  const { data, error } = await supabase
+    .from("admin_notificaciones")
+    .update({
+      estado_envio: "enviando",
+      intentos: nextAttemptCount,
+      updated_at: nowIso,
+    })
+    .eq("id", notificationId)
+    .eq("estado_envio", String(current.estado_envio ?? ""))
+    .eq("intentos", Number(current.intentos ?? 0))
+    .select("id, pedido_id, tipo, destinatario_telefono, contenido, estado_envio, intentos, next_attempt_at, metadata_json")
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) return null;
+
+  return mapAdminNotificationRow(data as Record<string, unknown>);
+}
+
+export async function processAdminOutboxBatch(params?: { notificationId?: number }): Promise<AdminOutboxBatchSummary> {
   const env = getEnv();
   const summary: AdminOutboxBatchSummary = {
     totalClaimed: 0,
@@ -129,7 +169,12 @@ export async function processAdminOutboxBatch(): Promise<AdminOutboxBatchSummary
 
   let claimed: AdminNotificationRow[] = [];
   try {
-    claimed = await claimAdminOutboxBatch();
+    if (params?.notificationId != null) {
+      const notification = await claimAdminOutboxNotification(params.notificationId);
+      claimed = notification ? [notification] : [];
+    } else {
+      claimed = await claimAdminOutboxBatch();
+    }
   } catch (e: unknown) {
     const msg = formatUnknownError(e);
     console.error("[adminOutboxWorker] claim failed", { message: msg });

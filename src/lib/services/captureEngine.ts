@@ -1,33 +1,7 @@
+import type { OrderState } from "@/lib/orderStateMachine";
 import { normalizePhone } from "@/lib/roles";
 
 type JsonObject = Record<string, unknown>;
-
-export type EstadoFlujoPedido =
-  | "capturando_pedido"
-  | "requiere_especificacion_producto"
-  | "requiere_direccion_completa"
-  | "requiere_negocio"
-  | "listo_para_confirmacion_cliente"
-  | "confirmado_para_cotizacion"
-  | "dispatch_tienda_pendiente"
-  | "enviando_a_tienda"
-  | "enviado_a_tienda"
-  | "pendiente_respuesta_tienda"
-  | "cotizacion_recibida"
-  | "pendiente_aprobacion_total"
-  | "confirmado_para_repartidor"
-  | "dispatch_repartidor_pendiente"
-  | "enviando_a_repartidor"
-  | "enviado_a_repartidor"
-  | "pendiente_confirmacion_repartidor"
-  | "repartidor_asignado"
-  | "pedido_recogido"
-  | "en_camino"
-  | "entregado"
-  | "reasignacion_pendiente"
-  | "incidencia_dispatch"
-  | "incidencia_repartidor"
-  | "cancelado_operativamente";
 
 export type PedidoItemInput = {
   nombre_producto: string;
@@ -44,6 +18,8 @@ export type PedidoSnapshot = {
   businessName?: string | null;
   businessPhone?: string | null;
   addressText?: string | null;
+  latitud?: number | null;
+  longitud?: number | null;
   flags?: {
     addressValidated?: boolean;
     itemsValidated?: boolean;
@@ -54,7 +30,7 @@ export type PedidoSnapshot = {
 
 export type PedidoV2Record = {
   id: number;
-  estado_flujo: EstadoFlujoPedido;
+  estado: OrderState;
   snapshot_json: PedidoSnapshot;
 };
 
@@ -81,7 +57,7 @@ export type ValidationIssue = {
 
 export type ValidationResult = {
   ok: boolean;
-  nextState: EstadoFlujoPedido;
+  nextState: OrderState;
   missingFields: MissingField[];
   issues: ValidationIssue[];
   validatedAddress: {
@@ -110,14 +86,13 @@ export type CaptureInput = {
   customerPhone: string;
   customerName?: string | null;
   userMessage: string;
-  currentPedidoId?: number | null;
   currentSnapshot?: PedidoSnapshot | null;
   llmOrderState?: JsonObject | null;
 };
 
 export type CaptureOutput = {
   pedidoId: number;
-  nextState: EstadoFlujoPedido;
+  nextState: OrderState;
   snapshot: PedidoSnapshot;
   items: PedidoItemInput[];
   validation: ValidationResult;
@@ -133,10 +108,12 @@ export type PedidoRepositoryV2Deps = {
   }): Promise<PedidoV2Record>;
   updatePedidoSnapshot(params: {
     pedidoId: number;
-    estadoFlujo: EstadoFlujoPedido;
+    estado: OrderState;
     snapshot: PedidoSnapshot;
-    direccionEntregaTexto?: string | null;
-    negocioId?: number | null;
+    addressText?: string | null;
+    latitud?: number | null;
+    longitud?: number | null;
+    tiendaId?: number | null;
   }): Promise<void>;
   replacePedidoItems(params: {
     pedidoId: number;
@@ -145,9 +122,9 @@ export type PedidoRepositoryV2Deps = {
   appendPedidoEvento(params: {
     pedidoId: number;
     tipoEvento: string;
-    estadoOrigen?: EstadoFlujoPedido | null;
-    estadoDestino?: EstadoFlujoPedido | null;
-    actorTipo: "cliente" | "sistema" | "negocio" | "repartidor" | "admin";
+    estadoOrigen?: OrderState | null;
+    estadoDestino?: OrderState | null;
+    actorTipo: "cliente" | "bot" | "tienda" | "repartidor" | "sistema";
     payload?: Record<string, unknown>;
   }): Promise<void>;
 };
@@ -217,10 +194,17 @@ export function mergeSnapshot(params: {
     cleanText(llm.business_phone ?? llm.businessPhone),
   );
 
-  const addressText = chooseMoreCompleteText(
-    cleanText(current.addressText),
-    cleanText(llm.address_text ?? llm.addressText),
-  );
+  // Coordenadas GPS: si vienen en este turno, ganan siempre sobre cualquier
+  // dirección de texto anterior — son la fuente de verdad más precisa
+  // (Regla de oro #1). Una vez fijadas, se conservan aunque el turno
+  // siguiente no las repita (no vienen en cada mensaje).
+  const latitud = toNullableNumber(llm.latitud ?? llm.latitude) ?? current.latitud ?? null;
+  const longitud = toNullableNumber(llm.longitud ?? llm.longitude) ?? current.longitud ?? null;
+
+  const addressText =
+    latitud != null && longitud != null
+      ? cleanText(llm.address_text ?? llm.addressText) ?? current.addressText ?? null
+      : chooseMoreCompleteText(cleanText(current.addressText), cleanText(llm.address_text ?? llm.addressText));
 
   const customerName = chooseMoreCompleteText(
     cleanText(current.customerName),
@@ -234,6 +218,8 @@ export function mergeSnapshot(params: {
     businessName,
     businessPhone,
     addressText,
+    latitud,
+    longitud,
     raw: {
       ...(asObject(current.raw)),
       ...llm,
@@ -326,8 +312,8 @@ export function buildCustomerMessage(params: {
 
     if (first?.field === "direccion") {
       return (
-        "🏠 Para continuar, necesito una dirección más completa.\n\n" +
-        "Incluye calle, número y una referencia o colonia."
+        "🏠 Para continuar, necesito una dirección más completa (o comparte tu ubicación GPS).\n\n" +
+        "Si es por escrito, incluye calle, número y una referencia o colonia."
       );
     }
 
@@ -383,10 +369,12 @@ export function createCaptureEngine(deps: CaptureEngineDeps) {
 
       await pedidoRepository.updatePedidoSnapshot({
         pedidoId: pedido.id,
-        estadoFlujo: validation.nextState,
+        estado: validation.nextState,
         snapshot: nextSnapshot,
-        direccionEntregaTexto: validation.validatedAddress?.isValid ? validation.validatedAddress.raw : null,
-        negocioId: validation.validatedBusiness.businessId,
+        addressText: validation.validatedAddress?.isValid ? validation.validatedAddress.raw || null : null,
+        latitud: nextSnapshot.latitud ?? null,
+        longitud: nextSnapshot.longitud ?? null,
+        tiendaId: validation.validatedBusiness.businessId,
       });
 
       await pedidoRepository.replacePedidoItems({
@@ -397,7 +385,7 @@ export function createCaptureEngine(deps: CaptureEngineDeps) {
       await pedidoRepository.appendPedidoEvento({
         pedidoId: pedido.id,
         tipoEvento: "captura_actualizada",
-        estadoOrigen: pedido.estado_flujo,
+        estadoOrigen: pedido.estado,
         estadoDestino: validation.nextState,
         actorTipo: "cliente",
         payload: {
