@@ -4,7 +4,7 @@ import { enqueueAdminNotification } from "@/lib/repositories/outboxRepository";
 import { canTransition, type OrderState } from "@/lib/orderStateMachine";
 import type { OutboxMessageType } from "@/lib/services/dispatchWorker";
 
-// Ciclo de vida del repartidor sobre pedidos_new. Antes vivía en pedidos_v2 con
+// Ciclo de vida del repartidor sobre pedidos. Antes vivía en pedidos_v2 con
 // un vocabulario de estados propio (EstadoFlujoPedido: pendiente_confirmacion_repartidor,
 // reasignacion_pendiente, incidencia_repartidor, ...) que no correspondía 1:1 con
 // los 11 estados canónicos de la Sección 7. Se consolidó: el estado de alto nivel
@@ -94,7 +94,7 @@ function upsertCourierAttempt(
 async function getPedidoState(pedidoId: number): Promise<PedidoStateRow> {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
-    .from("pedidos_new")
+    .from("pedidos")
     .select("id, estado, metadata_json, total_cliente, repartidor_id")
     .eq("id", pedidoId)
     .maybeSingle();
@@ -122,7 +122,7 @@ async function writePedidoState(params: {
   const metadata = { ...current.metadata_json, ...(params.metadataPatch ?? {}) };
 
   const { error } = await supabase
-    .from("pedidos_new")
+    .from("pedidos")
     .update({
       estado: params.estado,
       metadata_json: metadata,

@@ -90,7 +90,7 @@ function isDeadlineDue(deadlineAt: string | null, nowMs: number): boolean {
 async function getPedidoTimeoutState(pedidoId: number): Promise<PedidoTimeoutState | null> {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
-    .from("pedidos_new")
+    .from("pedidos")
     .select("id, estado, metadata_json")
     .eq("id", pedidoId)
     .maybeSingle();

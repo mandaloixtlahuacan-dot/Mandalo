@@ -64,7 +64,7 @@ async function findCourierByPhone(phone: string): Promise<{
   const phoneNorm = normalizePhone(phone);
   const phone10 = phoneNorm.length <= 10 ? phoneNorm : phoneNorm.slice(-10);
   const { data, error } = await supabase
-    .from("repartidores_new")
+    .from("repartidores")
     .select("id, nombre, telefono, activo")
     .limit(500);
   if (error) throw error;

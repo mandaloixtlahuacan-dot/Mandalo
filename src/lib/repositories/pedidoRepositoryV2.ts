@@ -52,7 +52,7 @@ async function ensureClienteByPhone(phone: string, customerName?: string | null)
   const nombre = cleanText(customerName);
   if (nombre) payload.nombre = nombre;
 
-  const { error } = await supabase.from("clientes_new").upsert(payload, { onConflict: "telefono" });
+  const { error } = await supabase.from("clientes").upsert(payload, { onConflict: "telefono" });
   if (error) throw error;
   return telefono;
 }
@@ -99,7 +99,7 @@ export async function getOpenPedidoByCustomerPhone(phone: string): Promise<Pedid
   // cuanto llega a entregado/cancelado, así que cualquier fila que exista para
   // este teléfono es, por definición, un pedido activo.
   const { data, error } = await supabase
-    .from("pedidos_new")
+    .from("pedidos")
     .select("id, estado, metadata_json")
     .in("cliente_telefono", phoneVariants)
     .order("created_at", { ascending: false })
@@ -122,7 +122,7 @@ export async function getOrCreateDraftPedido(params: {
   const telefono = await ensureClienteByPhone(params.customerPhone, params.customerName ?? null);
 
   const { data, error } = await supabase
-    .from("pedidos_new")
+    .from("pedidos")
     .insert({
       cliente_telefono: telefono,
       estado: "seleccion_productos" satisfies OrderState,
@@ -131,7 +131,7 @@ export async function getOrCreateDraftPedido(params: {
     .maybeSingle();
 
   if (error) throw error;
-  if (!data) throw new Error("No se pudo crear el pedido draft en pedidos_new.");
+  if (!data) throw new Error("No se pudo crear el pedido draft en pedidos.");
   return mapPedidoRow(data as UnknownRow);
 }
 
@@ -147,7 +147,7 @@ export async function updatePedidoSnapshot(params: {
   const supabase = getSupabaseAdmin();
 
   const { data: current, error: readError } = await supabase
-    .from("pedidos_new")
+    .from("pedidos")
     .select("metadata_json")
     .eq("id", params.pedidoId)
     .maybeSingle();
@@ -157,7 +157,7 @@ export async function updatePedidoSnapshot(params: {
   metadata.capture_snapshot = toPlainObject(params.snapshot as unknown as Record<string, unknown>);
 
   const { error } = await supabase
-    .from("pedidos_new")
+    .from("pedidos")
     .update({
       estado: params.estado,
       direccion_entrega: cleanText(params.addressText) ?? null,
@@ -186,7 +186,7 @@ export async function replacePedidoItems(params: {
 
   const supabase = getSupabaseAdmin();
   const { error: deleteErr } = await supabase
-    .from("pedido_items_new")
+    .from("pedido_items")
     .delete()
     .eq("pedido_tienda_id", pedidoTiendaId);
   if (deleteErr) throw deleteErr;
@@ -203,7 +203,7 @@ export async function replacePedidoItems(params: {
 
   if (!rows.length) return;
 
-  const { error: insertErr } = await supabase.from("pedido_items_new").insert(rows);
+  const { error: insertErr } = await supabase.from("pedido_items").insert(rows);
   if (insertErr) throw insertErr;
 }
 
@@ -262,11 +262,11 @@ export type PedidoFullRecord = {
 export async function getPedidoById(pedidoId: number): Promise<PedidoFullRecord | null> {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
-    .from("pedidos_new")
+    .from("pedidos")
     .select(
       "id, estado, cliente_telefono, repartidor_id, direccion_entrega, latitud, longitud, " +
         "servicio_mandalo, servicio_repartidor, total_cliente, metadata_json, " +
-        "pedido_tiendas(id, tienda_id, subtotal_tienda, estado_tienda, tiendas(nombre, telefono), pedido_items_new(id, nombre_producto, cantidad))",
+        "pedido_tiendas(id, tienda_id, subtotal_tienda, estado_tienda, tiendas(nombre, telefono), pedido_items(id, nombre_producto, cantidad))",
     )
     .eq("id", pedidoId)
     .maybeSingle();
@@ -280,7 +280,7 @@ export async function getPedidoById(pedidoId: number): Promise<PedidoFullRecord 
   const pt = pedidoTiendasRaw[0] as UnknownRow | undefined;
   const tiendaRaw = pt?.tiendas;
   const tiendaInfo = (Array.isArray(tiendaRaw) ? tiendaRaw[0] : tiendaRaw) as UnknownRow | undefined;
-  const itemsRaw = pt && Array.isArray(pt.pedido_items_new) ? (pt.pedido_items_new as UnknownRow[]) : [];
+  const itemsRaw = pt && Array.isArray(pt.pedido_items) ? (pt.pedido_items as UnknownRow[]) : [];
 
   return {
     id: Number(row.id),
@@ -332,7 +332,7 @@ export async function setPedidoTotales(params: {
 }): Promise<void> {
   const supabase = getSupabaseAdmin();
   const { error } = await supabase
-    .from("pedidos_new")
+    .from("pedidos")
     .update({
       servicio_repartidor: params.servicioRepartidor,
       total_cliente: params.totalCliente,
@@ -345,7 +345,7 @@ export async function setPedidoTotales(params: {
 export async function setPedidoEstado(params: { pedidoId: number; estado: OrderState }): Promise<void> {
   const supabase = getSupabaseAdmin();
   const { error } = await supabase
-    .from("pedidos_new")
+    .from("pedidos")
     .update({ estado: params.estado, updated_at: new Date().toISOString() })
     .eq("id", params.pedidoId);
   if (error) throw error;

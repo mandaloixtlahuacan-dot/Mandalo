@@ -43,7 +43,7 @@ function getAttemptedCourierIds(metadata: Record<string, unknown>): number[] {
 async function getTimedOutPedidoIds(params: { limit: number; nowIso: string; pedidoId?: number }): Promise<number[]> {
   const supabase = getSupabaseAdmin();
   let query = supabase
-    .from("pedidos_new")
+    .from("pedidos")
     .select("id")
     .eq("estado", "dispatch_repartidor_pendiente")
     .lte("metadata_json->>courier_confirmation_deadline_at", params.nowIso)
@@ -61,7 +61,7 @@ async function getTimedOutPedidoIds(params: { limit: number; nowIso: string; ped
 async function findNextCourier(excludedIds: number[]): Promise<{ id: number; nombre: string; telefono: string } | null> {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
-    .from("repartidores_new")
+    .from("repartidores")
     .select("id, nombre, telefono, activo, disponible")
     .eq("activo", true)
     .eq("disponible", true)

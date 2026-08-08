@@ -55,7 +55,7 @@ export function parseIncomingWhatsAppMessage(payload: unknown): IncomingWhatsApp
   return { from, body, raw: payload, location };
 }
 
-// El historial de chat vive en clientes_new.metadata_json.chat_history (un
+// El historial de chat vive en clientes.metadata_json.chat_history (un
 // arreglo acotado), no en una tabla de pedidos: el cliente puede platicar
 // (saludo, small talk) sin tener un pedido activo, así que no puede depender
 // de que exista una fila de pedido. Reemplaza a la tabla legacy `pedidos`
@@ -66,7 +66,7 @@ const CHAT_HISTORY_STORAGE_LIMIT = 30;
 async function getClienteMetadata(telefono: string): Promise<Record<string, unknown>> {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
-    .from("clientes_new")
+    .from("clientes")
     .select("metadata_json")
     .eq("telefono", telefono)
     .maybeSingle();
@@ -96,7 +96,7 @@ export async function saveChatMessage(params: {
   const nextHistory = [...history, entry].slice(-CHAT_HISTORY_STORAGE_LIMIT);
 
   const { error } = await supabase
-    .from("clientes_new")
+    .from("clientes")
     .upsert(
       { telefono, metadata_json: { ...metadata, chat_history: nextHistory } },
       { onConflict: "telefono" },

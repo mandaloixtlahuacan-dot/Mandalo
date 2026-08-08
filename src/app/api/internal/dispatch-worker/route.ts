@@ -92,7 +92,7 @@ function isRelevantDispatchEvent(payload: DispatchWorkerEventPayload): boolean {
 async function getPedidoDispatchState(pedidoId: number): Promise<PedidoDispatchState | null> {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
-    .from("pedidos_new")
+    .from("pedidos")
     .select("id, estado")
     .eq("id", pedidoId)
     .maybeSingle();

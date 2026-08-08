@@ -38,7 +38,7 @@ async function getActorsCache(): Promise<ActorsCache> {
   const [{ data: tiendas, error: e1 }, { data: repartidores, error: e2 }] =
     await Promise.all([
       supabase.from("tiendas").select("id, telefono").limit(1000),
-      supabase.from("repartidores_new").select("id, telefono").limit(1000),
+      supabase.from("repartidores").select("id, telefono").limit(1000),
     ]);
   if (e1) throw e1;
   if (e2) throw e2;

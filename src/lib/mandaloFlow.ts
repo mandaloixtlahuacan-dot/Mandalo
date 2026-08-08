@@ -265,20 +265,20 @@ async function findActiveCourier(): Promise<CourierRow | null> {
   const supabase = getSupabaseAdmin();
   try {
     const { data, error } = await supabase
-      .from("repartidores_new")
+      .from("repartidores")
       .select("id, nombre, telefono, activo, disponible, vehiculo")
       .eq("activo", true)
       .eq("disponible", true)
       .order("id", { ascending: true })
       .limit(1);
     if (error) {
-      console.error("[mandalo] error consultando repartidores_new:", { message: error.message });
+      console.error("[mandalo] error consultando repartidores:", { message: error.message });
       return null;
     }
     const row = (data ?? [])[0] as CourierRow | undefined;
     if (row?.telefono) return row;
   } catch (e: unknown) {
-    console.error("[mandalo] excepción consultando repartidores_new:", { message: getErrorMessage(e) });
+    console.error("[mandalo] excepción consultando repartidores:", { message: getErrorMessage(e) });
   }
   return null;
 }
@@ -288,9 +288,9 @@ async function findCourierByPhone(phone: string): Promise<CourierRow | null> {
   const phoneNorm = normalizePhone(String(phone ?? ""));
   const phone10 = phoneNorm.length <= 10 ? phoneNorm : phoneNorm.slice(-10);
   try {
-    const { data, error } = await supabase.from("repartidores_new").select("id, nombre, telefono, activo, vehiculo").limit(500);
+    const { data, error } = await supabase.from("repartidores").select("id, nombre, telefono, activo, vehiculo").limit(500);
     if (error) {
-      console.error("[mandalo] error consultando repartidores_new:", { message: error.message });
+      console.error("[mandalo] error consultando repartidores:", { message: error.message });
       return null;
     }
     const hit = (data ?? []).find((r) => {
@@ -301,7 +301,7 @@ async function findCourierByPhone(phone: string): Promise<CourierRow | null> {
     });
     if (hit) return hit as CourierRow;
   } catch (e: unknown) {
-    console.error("[mandalo] excepción consultando repartidores_new:", { message: getErrorMessage(e) });
+    console.error("[mandalo] excepción consultando repartidores:", { message: getErrorMessage(e) });
   }
   return null;
 }
@@ -901,7 +901,7 @@ export async function processMandaloWebhook(incoming: IncomingWhatsAppMessage): 
   }
 
   // Fallback: si detectActorByPhone no reconoce al repartidor (caché stale),
-  // intentamos matchear directo contra repartidores_new.
+  // intentamos matchear directo contra repartidores.
   const courier = await findCourierByPhone(incoming.from);
   if (courier) {
     return handleRepartidorMessage(normalizePhone(String(incoming.from)), incoming.body);
