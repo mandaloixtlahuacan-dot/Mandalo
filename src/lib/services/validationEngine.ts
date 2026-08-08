@@ -1,5 +1,5 @@
+import type { OrderState } from "@/lib/orderStateMachine";
 import type {
-  EstadoFlujoPedido,
   PedidoItemInput,
   PedidoSnapshot,
   ValidationIssue,
@@ -44,12 +44,23 @@ export function validateBusiness(snapshot: PedidoSnapshot): ValidationResult["va
   };
 }
 
-export function validateAddress(addressText?: string | null): ValidationResult["validatedAddress"] {
+export function validateAddress(
+  addressText?: string | null,
+  coords?: { latitud?: number | null; longitud?: number | null } | null,
+): ValidationResult["validatedAddress"] {
   const raw = cleanText(addressText) ?? "";
   const normalized = raw.toLowerCase();
   const hasStreet = raw.length >= 10;
   const hasNumber = /\d/.test(raw);
   const hasReference = /(col\.?|colonia|frente|entre|esquina|referencia|cerca|junto a|cp|c\.p\.)/i.test(raw);
+
+  // Un pin de GPS real siempre cuenta como dirección válida — es más preciso
+  // que cualquier heurística de texto libre (Regla de oro #1).
+  const hasCoords =
+    typeof coords?.latitud === "number" &&
+    Number.isFinite(coords.latitud) &&
+    typeof coords?.longitud === "number" &&
+    Number.isFinite(coords.longitud);
 
   return {
     raw,
@@ -57,7 +68,7 @@ export function validateAddress(addressText?: string | null): ValidationResult["
     hasStreet,
     hasNumber,
     hasReference,
-    isValid: raw.length >= 15 && hasStreet && hasNumber && hasReference,
+    isValid: hasCoords || (raw.length >= 15 && hasStreet && hasNumber && hasReference),
   };
 }
 
@@ -125,12 +136,10 @@ function decideNextState(params: {
   addressValid: boolean;
   hasItems: boolean;
   allItemsSpecific: boolean;
-}): EstadoFlujoPedido {
-  if (!params.businessValid) return "requiere_negocio";
-  if (!params.hasItems) return "capturando_pedido";
-  if (!params.allItemsSpecific) return "requiere_especificacion_producto";
-  if (!params.addressValid) return "requiere_direccion_completa";
-  return "listo_para_confirmacion_cliente";
+}): OrderState {
+  const ready =
+    params.businessValid && params.addressValid && params.hasItems && params.allItemsSpecific;
+  return ready ? "confirmacion_cliente" : "seleccion_productos";
 }
 
 export function validateCaptureForConfirmation(params: {
@@ -138,7 +147,10 @@ export function validateCaptureForConfirmation(params: {
   items: PedidoItemInput[];
 }): ValidationResult {
   const validatedBusiness = validateBusiness(params.snapshot);
-  const validatedAddress = validateAddress(params.snapshot.addressText);
+  const validatedAddress = validateAddress(params.snapshot.addressText, {
+    latitud: params.snapshot.latitud,
+    longitud: params.snapshot.longitud,
+  });
   const validatedItems = validateItems(params.items);
 
   const issues: ValidationIssue[] = [...validatedItems.issues];
@@ -176,13 +188,13 @@ export function validateCaptureForConfirmation(params: {
   });
 
   return {
-    ok: nextState === "listo_para_confirmacion_cliente",
+    ok: nextState === "confirmacion_cliente",
     nextState,
     missingFields,
     issues,
     validatedAddress,
     validatedBusiness,
     validatedItems,
-    readyForConfirmation: nextState === "listo_para_confirmacion_cliente",
+    readyForConfirmation: nextState === "confirmacion_cliente",
   };
 }

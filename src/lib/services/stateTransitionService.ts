@@ -1,16 +1,21 @@
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { appendPedidoEvento } from "@/lib/repositories/pedidoRepositoryV2";
-import { enqueueAdminNotification } from "@/lib/dualWrite";
-import type { EstadoFlujoPedido } from "@/lib/services/captureEngine";
+import { enqueueAdminNotification } from "@/lib/repositories/outboxRepository";
+import { canTransition, type OrderState } from "@/lib/orderStateMachine";
 import type { OutboxMessageType } from "@/lib/services/dispatchWorker";
+
+// Ciclo de vida del repartidor sobre pedidos. Antes vivía en pedidos_v2 con
+// un vocabulario de estados propio (EstadoFlujoPedido: pendiente_confirmacion_repartidor,
+// reasignacion_pendiente, incidencia_repartidor, ...) que no correspondía 1:1 con
+// los 11 estados canónicos de la Sección 7. Se consolidó: el estado de alto nivel
+// siempre es uno de los 11 canónicos; el detalle fino de "en qué intento vamos,
+// cuál es el deadline, si el último intento venció" vive en metadata_json.
 
 type PedidoStateRow = {
   id: number;
-  legacy_pedido_id: number | null;
-  estado_flujo: EstadoFlujoPedido;
-  snapshot_json: Record<string, unknown> | null;
+  estado: OrderState;
+  metadata_json: Record<string, unknown>;
   total_cliente: number | null;
-  negocio_id: number | null;
   repartidor_id: number | null;
 };
 
@@ -46,8 +51,8 @@ function toNullableNumber(value: unknown): number | null {
   return null;
 }
 
-function getCourierAttempts(snapshot: Record<string, unknown> | null): CourierAttempt[] {
-  const attempts = Array.isArray(snapshot?.courier_attempts) ? snapshot.courier_attempts : [];
+function getCourierAttempts(metadata: Record<string, unknown>): CourierAttempt[] {
+  const attempts = Array.isArray(metadata.courier_attempts) ? metadata.courier_attempts : [];
   return attempts
     .map((row, index) => {
       const item = asRecord(row);
@@ -58,9 +63,7 @@ function getCourierAttempts(snapshot: Record<string, unknown> | null): CourierAt
         courierPhone: cleanText(item.courierPhone),
         assignedAt: cleanText(item.assignedAt),
         deadlineAt: cleanText(item.deadlineAt),
-        status:
-          (cleanText(item.status) as CourierAttempt["status"] | null) ??
-          "pending",
+        status: (cleanText(item.status) as CourierAttempt["status"] | null) ?? "pending",
       };
     })
     .filter((row) => row.attemptNumber > 0);
@@ -73,10 +76,7 @@ function upsertCourierAttempt(
   const next = [...attempts];
   const index = next.findIndex((item) => item.attemptNumber === patch.attemptNumber);
   if (index >= 0) {
-    next[index] = {
-      ...next[index],
-      ...patch,
-    };
+    next[index] = { ...next[index], ...patch };
   } else {
     next.push({
       attemptNumber: patch.attemptNumber,
@@ -94,43 +94,38 @@ function upsertCourierAttempt(
 async function getPedidoState(pedidoId: number): Promise<PedidoStateRow> {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
-    .from("pedidos_v2")
-    .select("id, legacy_pedido_id, estado_flujo, snapshot_json, total_cliente, negocio_id, repartidor_id")
+    .from("pedidos")
+    .select("id, estado, metadata_json, total_cliente, repartidor_id")
     .eq("id", pedidoId)
     .maybeSingle();
 
   if (error) throw error;
-  if (!data) throw new Error(`Pedido v2 no encontrado: ${pedidoId}`);
+  if (!data) throw new Error(`Pedido no encontrado: ${pedidoId}`);
 
   return {
     id: Number(data.id),
-    legacy_pedido_id: data.legacy_pedido_id == null ? null : Number(data.legacy_pedido_id),
-    estado_flujo: String(data.estado_flujo ?? "capturando_pedido") as EstadoFlujoPedido,
-    snapshot_json: asRecord(data.snapshot_json),
+    estado: String(data.estado ?? "seleccion_productos") as OrderState,
+    metadata_json: asRecord(data.metadata_json),
     total_cliente: data.total_cliente == null ? null : Number(data.total_cliente),
-    negocio_id: data.negocio_id == null ? null : Number(data.negocio_id),
     repartidor_id: data.repartidor_id == null ? null : Number(data.repartidor_id),
   };
 }
 
-async function updatePedidoState(params: {
+async function writePedidoState(params: {
   pedidoId: number;
-  estadoFlujo: EstadoFlujoPedido;
-  snapshotPatch?: Record<string, unknown>;
+  estado: OrderState;
+  metadataPatch?: Record<string, unknown>;
   extraUpdates?: Record<string, unknown>;
 }): Promise<void> {
   const supabase = getSupabaseAdmin();
   const current = await getPedidoState(params.pedidoId);
-  const snapshot = {
-    ...current.snapshot_json,
-    ...(params.snapshotPatch ?? {}),
-  };
+  const metadata = { ...current.metadata_json, ...(params.metadataPatch ?? {}) };
 
   const { error } = await supabase
-    .from("pedidos_v2")
+    .from("pedidos")
     .update({
-      estado_flujo: params.estadoFlujo,
-      snapshot_json: snapshot,
+      estado: params.estado,
+      metadata_json: metadata,
       updated_at: new Date().toISOString(),
       ...(params.extraUpdates ?? {}),
     })
@@ -139,13 +134,35 @@ async function updatePedidoState(params: {
   if (error) throw error;
 }
 
+// Valida y persiste una transición de estado de alto nivel usando el mismo
+// grafo canónico que el resto del flujo (orderStateMachine.ts). Los guards de
+// negocio (items/dirección/total/etc.) no aplican aquí porque para este tramo
+// del flujo (confirmado_tiendas en adelante) ya se validaron antes.
+async function transitionPedidoState(params: {
+  pedidoId: number;
+  from: OrderState;
+  to: OrderState;
+  metadataPatch?: Record<string, unknown>;
+  extraUpdates?: Record<string, unknown>;
+}): Promise<void> {
+  if (!canTransition(params.from, params.to)) {
+    throw new Error(`Transición ilegal: ${params.from} -> ${params.to}`);
+  }
+  await writePedidoState({
+    pedidoId: params.pedidoId,
+    estado: params.to,
+    metadataPatch: params.metadataPatch,
+    extraUpdates: params.extraUpdates,
+  });
+}
+
 async function emitTransitionEvent(params: {
   pedidoId: number;
-  estadoOrigen: EstadoFlujoPedido | null;
-  estadoDestino: EstadoFlujoPedido | null;
+  estadoOrigen: OrderState | null;
+  estadoDestino: OrderState | null;
   tipoEvento: string;
   payload?: Record<string, unknown>;
-  actorTipo?: "cliente" | "sistema" | "negocio" | "repartidor" | "admin";
+  actorTipo?: "cliente" | "bot" | "tienda" | "repartidor" | "sistema";
 }): Promise<void> {
   await appendPedidoEvento({
     pedidoId: params.pedidoId,
@@ -157,18 +174,15 @@ async function emitTransitionEvent(params: {
   });
 }
 
-async function notifyAdmin(params: {
-  pedidoId: number;
-  contenido: string;
-}): Promise<void> {
+async function notifyAdmin(params: { pedidoId: number; contenido: string }): Promise<void> {
   await enqueueAdminNotification({
-    pedidoV2Id: params.pedidoId,
-    tipo: "venta_entregada",
+    pedidoId: params.pedidoId,
+    tipo: "alerta_operativa",
     contenido: params.contenido,
   });
 }
 
-function assertAllowedState(current: EstadoFlujoPedido, allowed: EstadoFlujoPedido[], action: string) {
+function assertAllowedState(current: OrderState, allowed: OrderState[], action: string) {
   if (!allowed.includes(current)) {
     throw new Error(`Transición inválida para ${action}. Estado actual: ${current}`);
   }
@@ -204,10 +218,10 @@ export function createStateTransitionService() {
       const nowIso = new Date().toISOString();
 
       if (params.messageType === "cotizacion_tienda") {
-        await updatePedidoState({
+        await writePedidoState({
           pedidoId: params.pedidoId,
-          estadoFlujo: "pendiente_respuesta_tienda",
-          snapshotPatch: {
+          estado: current.estado,
+          metadataPatch: {
             store_dispatch_sent_at: nowIso,
             store_dispatch_message_id: params.providerMessageId ?? null,
             store_dispatch_provider_status: params.providerStatus ?? null,
@@ -216,8 +230,8 @@ export function createStateTransitionService() {
 
         await emitTransitionEvent({
           pedidoId: params.pedidoId,
-          estadoOrigen: current.estado_flujo,
-          estadoDestino: "pendiente_respuesta_tienda",
+          estadoOrigen: current.estado,
+          estadoDestino: current.estado,
           tipoEvento: "dispatch_tienda_ack",
           payload: {
             messageId: params.messageId,
@@ -230,12 +244,12 @@ export function createStateTransitionService() {
       }
 
       if (params.messageType === "dispatch_repartidor") {
+        assertAllowedState(current.estado, ["dispatch_repartidor_pendiente"], "envío a repartidor");
         const deadlineIso = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-        const snapshot = current.snapshot_json ?? {};
         const attemptNumber =
           toNullableNumber(params.payload?.attemptNumber) ??
-          (toNullableNumber(snapshot.courier_assignment_attempt) ?? 0) + 1;
-        const attempts = upsertCourierAttempt(getCourierAttempts(snapshot), {
+          (toNullableNumber(current.metadata_json.courier_assignment_attempt) ?? 0) + 1;
+        const attempts = upsertCourierAttempt(getCourierAttempts(current.metadata_json), {
           attemptNumber,
           courierId: toNullableNumber(params.payload?.courierId),
           courierName: cleanText(params.payload?.courierName),
@@ -245,10 +259,10 @@ export function createStateTransitionService() {
           status: "pending",
         });
 
-        await updatePedidoState({
+        await writePedidoState({
           pedidoId: params.pedidoId,
-          estadoFlujo: "pendiente_confirmacion_repartidor",
-          snapshotPatch: {
+          estado: current.estado,
+          metadataPatch: {
             courier_assigned_at: nowIso,
             courier_confirmation_deadline_at: deadlineIso,
             courier_dispatch_message_id: params.providerMessageId ?? null,
@@ -259,17 +273,12 @@ export function createStateTransitionService() {
             current_courier_phone: cleanText(params.payload?.courierPhone),
             courier_attempts: attempts,
           },
-          extraUpdates: {
-            repartidor_id: toNullableNumber(params.payload?.courierId),
-            courier_assigned_at: nowIso,
-            courier_confirmation_deadline_at: deadlineIso,
-          },
         });
 
         await emitTransitionEvent({
           pedidoId: params.pedidoId,
-          estadoOrigen: current.estado_flujo,
-          estadoDestino: "pendiente_confirmacion_repartidor",
+          estadoOrigen: current.estado,
+          estadoDestino: current.estado,
           tipoEvento: "dispatch_repartidor_ack",
           payload: {
             messageId: params.messageId,
@@ -285,8 +294,8 @@ export function createStateTransitionService() {
 
       await emitTransitionEvent({
         pedidoId: params.pedidoId,
-        estadoOrigen: current.estado_flujo,
-        estadoDestino: current.estado_flujo,
+        estadoOrigen: current.estado,
+        estadoDestino: current.estado,
         tipoEvento: "dispatch_ack",
         payload: {
           messageId: params.messageId,
@@ -308,10 +317,10 @@ export function createStateTransitionService() {
       const current = await getPedidoState(params.pedidoId);
 
       if (params.finalFailure) {
-        await updatePedidoState({
+        await writePedidoState({
           pedidoId: params.pedidoId,
-          estadoFlujo: "incidencia_dispatch",
-          snapshotPatch: {
+          estado: current.estado,
+          metadataPatch: {
             last_dispatch_failure_at: new Date().toISOString(),
             last_dispatch_failure_reason: params.errorMessage ?? null,
             last_dispatch_failure_type: params.messageType,
@@ -320,8 +329,8 @@ export function createStateTransitionService() {
 
         await emitTransitionEvent({
           pedidoId: params.pedidoId,
-          estadoOrigen: current.estado_flujo,
-          estadoDestino: "incidencia_dispatch",
+          estadoOrigen: current.estado,
+          estadoDestino: current.estado,
           tipoEvento: "dispatch_failed_final",
           payload: {
             messageId: params.messageId,
@@ -348,8 +357,8 @@ export function createStateTransitionService() {
 
       await emitTransitionEvent({
         pedidoId: params.pedidoId,
-        estadoOrigen: current.estado_flujo,
-        estadoDestino: current.estado_flujo,
+        estadoOrigen: current.estado,
+        estadoDestino: current.estado,
         tipoEvento: "dispatch_retry_scheduled",
         payload: {
           messageId: params.messageId,
@@ -367,11 +376,10 @@ export function createStateTransitionService() {
       courierPhone: string;
     }): Promise<void> {
       const current = await getPedidoState(params.pedidoId);
-      assertAllowedState(current.estado_flujo, ["pendiente_confirmacion_repartidor"], "confirmación de repartidor");
+      assertAllowedState(current.estado, ["dispatch_repartidor_pendiente"], "confirmación de repartidor");
 
-      const snapshot = current.snapshot_json ?? {};
-      const attemptNumber = toNullableNumber(snapshot.courier_assignment_attempt) ?? 1;
-      const attempts = upsertCourierAttempt(getCourierAttempts(snapshot), {
+      const attemptNumber = toNullableNumber(current.metadata_json.courier_assignment_attempt) ?? 1;
+      const attempts = upsertCourierAttempt(getCourierAttempts(current.metadata_json), {
         attemptNumber,
         courierId: params.courierId,
         courierName: params.courierName,
@@ -380,37 +388,36 @@ export function createStateTransitionService() {
       });
       const confirmedAt = new Date().toISOString();
 
-      await updatePedidoState({
+      await transitionPedidoState({
         pedidoId: params.pedidoId,
-        estadoFlujo: "repartidor_asignado",
-        snapshotPatch: {
+        from: current.estado,
+        to: "repartidor_asignado",
+        metadataPatch: {
           current_courier_id: params.courierId,
           current_courier_name: params.courierName,
           current_courier_phone: params.courierPhone,
           courier_confirmed_at: confirmedAt,
+          courier_confirmation_deadline_at: null,
           courier_attempts: attempts,
         },
-        extraUpdates: {
-          repartidor_id: params.courierId,
-          courier_confirmation_deadline_at: null,
-        },
+        extraUpdates: { repartidor_id: params.courierId },
       });
 
       await emitTransitionEvent({
         pedidoId: params.pedidoId,
-        estadoOrigen: current.estado_flujo,
+        estadoOrigen: current.estado,
         estadoDestino: "repartidor_asignado",
         tipoEvento: "courier_confirmed",
-        payload: {
-          courierId: params.courierId,
-          courierName: params.courierName,
-          courierPhone: params.courierPhone,
-          confirmedAt,
-        },
+        payload: { courierId: params.courierId, courierName: params.courierName, courierPhone: params.courierPhone, confirmedAt },
         actorTipo: "repartidor",
       });
     },
 
+    // #RECOGI: para el alcance actual (una sola tienda por pedido), recoger es
+    // instantáneo — no hay razón operativa para dejar el pedido "parado" en
+    // recogiendo, así que se valida el paso pero se persiste directo en
+    // en_camino_cliente. Cuando exista soporte multi-tienda real, esto debe
+    // quedarse en recogiendo hasta que TODAS las tiendas estén recogidas.
     async handleCourierPickedUp(params: {
       pedidoId: number;
       courierId: number | null;
@@ -418,11 +425,13 @@ export function createStateTransitionService() {
       courierPhone: string;
     }): Promise<void> {
       const current = await getPedidoState(params.pedidoId);
-      assertAllowedState(current.estado_flujo, ["repartidor_asignado"], "recogida");
+      assertAllowedState(current.estado, ["repartidor_asignado"], "recogida");
+      if (!canTransition("repartidor_asignado", "recogiendo") || !canTransition("recogiendo", "en_camino_cliente")) {
+        throw new Error("Ruta de transición repartidor_asignado -> recogiendo -> en_camino_cliente inválida.");
+      }
 
-      const snapshot = current.snapshot_json ?? {};
-      const attemptNumber = toNullableNumber(snapshot.courier_assignment_attempt) ?? 1;
-      const attempts = upsertCourierAttempt(getCourierAttempts(snapshot), {
+      const attemptNumber = toNullableNumber(current.metadata_json.courier_assignment_attempt) ?? 1;
+      const attempts = upsertCourierAttempt(getCourierAttempts(current.metadata_json), {
         attemptNumber,
         courierId: params.courierId,
         courierName: params.courierName,
@@ -431,10 +440,10 @@ export function createStateTransitionService() {
       });
       const pickedUpAt = new Date().toISOString();
 
-      await updatePedidoState({
+      await writePedidoState({
         pedidoId: params.pedidoId,
-        estadoFlujo: "pedido_recogido",
-        snapshotPatch: {
+        estado: "en_camino_cliente",
+        metadataPatch: {
           current_courier_id: params.courierId,
           current_courier_name: params.courierName,
           current_courier_phone: params.courierPhone,
@@ -445,15 +454,10 @@ export function createStateTransitionService() {
 
       await emitTransitionEvent({
         pedidoId: params.pedidoId,
-        estadoOrigen: current.estado_flujo,
-        estadoDestino: "pedido_recogido",
+        estadoOrigen: current.estado,
+        estadoDestino: "en_camino_cliente",
         tipoEvento: "courier_picked_up",
-        payload: {
-          courierId: params.courierId,
-          courierName: params.courierName,
-          courierPhone: params.courierPhone,
-          pickedUpAt,
-        },
+        payload: { courierId: params.courierId, courierName: params.courierName, courierPhone: params.courierPhone, pickedUpAt },
         actorTipo: "repartidor",
       });
     },
@@ -465,11 +469,10 @@ export function createStateTransitionService() {
       courierPhone: string;
     }): Promise<void> {
       const current = await getPedidoState(params.pedidoId);
-      assertAllowedState(current.estado_flujo, ["pedido_recogido", "en_camino"], "entrega");
+      assertAllowedState(current.estado, ["en_camino_cliente"], "entrega");
 
-      const snapshot = current.snapshot_json ?? {};
-      const attemptNumber = toNullableNumber(snapshot.courier_assignment_attempt) ?? 1;
-      const attempts = upsertCourierAttempt(getCourierAttempts(snapshot), {
+      const attemptNumber = toNullableNumber(current.metadata_json.courier_assignment_attempt) ?? 1;
+      const attempts = upsertCourierAttempt(getCourierAttempts(current.metadata_json), {
         attemptNumber,
         courierId: params.courierId,
         courierName: params.courierName,
@@ -478,42 +481,36 @@ export function createStateTransitionService() {
       });
       const deliveredAt = new Date().toISOString();
 
-      await updatePedidoState({
+      await transitionPedidoState({
         pedidoId: params.pedidoId,
-        estadoFlujo: "entregado",
-        snapshotPatch: {
+        from: current.estado,
+        to: "entregado",
+        metadataPatch: {
           current_courier_id: params.courierId,
           current_courier_name: params.courierName,
           current_courier_phone: params.courierPhone,
           delivered_at: deliveredAt,
           courier_attempts: attempts,
         },
-        extraUpdates: {
-          delivered_at: deliveredAt,
-          closed_at: deliveredAt,
-        },
       });
 
       await emitTransitionEvent({
         pedidoId: params.pedidoId,
-        estadoOrigen: current.estado_flujo,
+        estadoOrigen: current.estado,
         estadoDestino: "entregado",
         tipoEvento: "courier_delivered",
-        payload: {
-          courierId: params.courierId,
-          courierName: params.courierName,
-          courierPhone: params.courierPhone,
-          deliveredAt,
-        },
+        payload: { courierId: params.courierId, courierName: params.courierName, courierPhone: params.courierPhone, deliveredAt },
         actorTipo: "repartidor",
       });
+
+      // Nota: la regla de retención (borrar el pedido al llegar a entregado)
+      // se implementa aparte, en la Fase 4 — todavía no aquí.
 
       try {
         await notifyAdmin({
           pedidoId: params.pedidoId,
           contenido:
             `Pedido entregado\n\n` +
-            `Cliente: ${cleanText(snapshot.customerName) ?? "Cliente"}\n` +
             `Total: $${current.total_cliente ?? 0}\n` +
             `Hora: ${deliveredAt}\n` +
             `Repartidor: ${params.courierName}`,
@@ -526,44 +523,34 @@ export function createStateTransitionService() {
       }
     },
 
-    async handleCourierTimeout(params: {
-      pedidoId: number;
-      errorMessage?: string | null;
-    }): Promise<void> {
+    async handleCourierTimeout(params: { pedidoId: number; errorMessage?: string | null }): Promise<void> {
       const current = await getPedidoState(params.pedidoId);
-      assertAllowedState(current.estado_flujo, ["pendiente_confirmacion_repartidor"], "timeout de repartidor");
+      assertAllowedState(current.estado, ["dispatch_repartidor_pendiente"], "timeout de repartidor");
 
-      const snapshot = current.snapshot_json ?? {};
-      const attemptNumber = toNullableNumber(snapshot.courier_assignment_attempt) ?? 1;
-      const attempts = upsertCourierAttempt(getCourierAttempts(snapshot), {
+      const attemptNumber = toNullableNumber(current.metadata_json.courier_assignment_attempt) ?? 1;
+      const attempts = upsertCourierAttempt(getCourierAttempts(current.metadata_json), {
         attemptNumber,
         status: "timed_out",
       });
       const timeoutAt = new Date().toISOString();
 
-      await updatePedidoState({
+      await writePedidoState({
         pedidoId: params.pedidoId,
-        estadoFlujo: "reasignacion_pendiente",
-        snapshotPatch: {
+        estado: current.estado,
+        metadataPatch: {
           courier_attempts: attempts,
+          courier_confirmation_deadline_at: null,
           last_courier_timeout_at: timeoutAt,
           last_courier_timeout_reason: params.errorMessage ?? "No se recibió #CONFIRMO dentro del deadline",
-        },
-        extraUpdates: {
-          courier_confirmation_deadline_at: null,
         },
       });
 
       await emitTransitionEvent({
         pedidoId: params.pedidoId,
-        estadoOrigen: current.estado_flujo,
-        estadoDestino: "reasignacion_pendiente",
+        estadoOrigen: current.estado,
+        estadoDestino: current.estado,
         tipoEvento: "courier_confirmation_timeout",
-        payload: {
-          timeoutAt,
-          attemptNumber,
-          errorMessage: params.errorMessage ?? null,
-        },
+        payload: { timeoutAt, attemptNumber, errorMessage: params.errorMessage ?? null },
       });
 
       try {
@@ -591,10 +578,9 @@ export function createStateTransitionService() {
       attemptNumber: number;
     }): Promise<void> {
       const current = await getPedidoState(params.pedidoId);
-      assertAllowedState(current.estado_flujo, ["reasignacion_pendiente"], "reasignación de repartidor");
+      assertAllowedState(current.estado, ["dispatch_repartidor_pendiente"], "reasignación de repartidor");
 
-      const snapshot = current.snapshot_json ?? {};
-      const attempts = upsertCourierAttempt(getCourierAttempts(snapshot), {
+      const attempts = upsertCourierAttempt(getCourierAttempts(current.metadata_json), {
         attemptNumber: params.attemptNumber,
         courierId: params.courierId,
         courierName: params.courierName,
@@ -603,10 +589,10 @@ export function createStateTransitionService() {
         status: "pending",
       });
 
-      await updatePedidoState({
+      await writePedidoState({
         pedidoId: params.pedidoId,
-        estadoFlujo: "dispatch_repartidor_pendiente",
-        snapshotPatch: {
+        estado: current.estado,
+        metadataPatch: {
           courier_assignment_attempt: params.attemptNumber,
           courier_reassignment_count: Math.max(0, params.attemptNumber - 1),
           current_courier_id: params.courierId,
@@ -614,15 +600,13 @@ export function createStateTransitionService() {
           current_courier_phone: params.courierPhone,
           courier_attempts: attempts,
         },
-        extraUpdates: {
-          repartidor_id: params.courierId,
-        },
+        extraUpdates: { repartidor_id: params.courierId },
       });
 
       await emitTransitionEvent({
         pedidoId: params.pedidoId,
-        estadoOrigen: current.estado_flujo,
-        estadoDestino: "dispatch_repartidor_pendiente",
+        estadoOrigen: current.estado,
+        estadoDestino: current.estado,
         tipoEvento: "courier_reassigned",
         payload: {
           courierId: params.courierId,
@@ -633,15 +617,12 @@ export function createStateTransitionService() {
       });
     },
 
-    async handleCourierReassignmentFailed(params: {
-      pedidoId: number;
-      errorMessage?: string | null;
-    }): Promise<void> {
+    async handleCourierReassignmentFailed(params: { pedidoId: number; errorMessage?: string | null }): Promise<void> {
       const current = await getPedidoState(params.pedidoId);
-      await updatePedidoState({
+      await writePedidoState({
         pedidoId: params.pedidoId,
-        estadoFlujo: "incidencia_repartidor",
-        snapshotPatch: {
+        estado: current.estado,
+        metadataPatch: {
           last_courier_failure_at: new Date().toISOString(),
           last_courier_failure_reason: params.errorMessage ?? "No hay repartidores disponibles para reasignación",
         },
@@ -649,12 +630,10 @@ export function createStateTransitionService() {
 
       await emitTransitionEvent({
         pedidoId: params.pedidoId,
-        estadoOrigen: current.estado_flujo,
-        estadoDestino: "incidencia_repartidor",
+        estadoOrigen: current.estado,
+        estadoDestino: current.estado,
         tipoEvento: "courier_reassignment_failed",
-        payload: {
-          errorMessage: params.errorMessage ?? null,
-        },
+        payload: { errorMessage: params.errorMessage ?? null },
       });
 
       try {

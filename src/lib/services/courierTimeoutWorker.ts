@@ -1,31 +1,14 @@
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { normalizePhone } from "@/lib/roles";
 import * as outboxRepository from "@/lib/repositories/outboxRepository";
+import { getPedidoById } from "@/lib/repositories/pedidoRepositoryV2";
 import { createStateTransitionService } from "@/lib/services/stateTransitionService";
-
-type TimedOutPedidoRow = {
-  id?: unknown;
-  legacy_pedido_id?: unknown;
-  estado_flujo?: unknown;
-  snapshot_json?: unknown;
-  total_cliente?: unknown;
-  repartidor_id?: unknown;
-};
+import { buildMapsLinkFromCoords } from "@/lib/services/geo";
 
 type CourierRow = {
   id?: unknown;
   nombre?: unknown;
-  whatsapp?: unknown;
-  activo?: unknown;
-};
-
-type PedidoItemRow = {
-  nombre_producto?: unknown;
-  marca?: unknown;
-  presentacion?: unknown;
-  cantidad?: unknown;
-  unidad?: unknown;
-  notas?: unknown;
+  telefono?: unknown;
 };
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -46,63 +29,42 @@ function toNullableNumber(value: unknown): number | null {
   return null;
 }
 
-function getAttemptedCourierIds(snapshot: Record<string, unknown>): number[] {
-  const attempts = Array.isArray(snapshot.courier_attempts) ? snapshot.courier_attempts : [];
+function getAttemptedCourierIds(metadata: Record<string, unknown>): number[] {
+  const attempts = Array.isArray(metadata.courier_attempts) ? metadata.courier_attempts : [];
   return attempts
     .map((row) => toNullableNumber(asRecord(row).courierId))
     .filter((id): id is number => id != null);
 }
 
-function formatPedidoItems(items: PedidoItemRow[]): string {
-  if (!items.length) return "- Sin productos definidos";
-  return items
-    .map((row) => {
-      const parts = [
-        cleanText(row.nombre_producto),
-        cleanText(row.marca),
-        cleanText(row.presentacion),
-        toNullableNumber(row.cantidad) != null ? `x${Number(row.cantidad)}` : null,
-        cleanText(row.unidad),
-      ].filter(Boolean);
-      return `- ${parts.join(" ")}`;
-    })
-    .join("\n");
-}
-
-async function getTimedOutPedidos(limit: number, nowIso: string): Promise<Array<{
-  id: number;
-  legacyOrderId: number | null;
-  snapshot: Record<string, unknown>;
-  totalCliente: number | null;
-}>> {
+// Escaneo de deadlines vencidos: el deadline vive en metadata_json (no es un
+// campo del spec de la Sección 4, ver CLAUDE.md), así que se filtra por el
+// path jsonb — PostgREST lo soporta vía `->>`. A la escala de este proyecto
+// (un pueblo, no miles de pedidos concurrentes) no hace falta un índice extra.
+async function getTimedOutPedidoIds(params: { limit: number; nowIso: string; pedidoId?: number }): Promise<number[]> {
   const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
-    .from("pedidos_v2")
-    .select("id, legacy_pedido_id, estado_flujo, snapshot_json, total_cliente, repartidor_id, courier_confirmation_deadline_at")
-    .eq("estado_flujo", "pendiente_confirmacion_repartidor")
-    .lte("courier_confirmation_deadline_at", nowIso)
-    .limit(limit);
+  let query = supabase
+    .from("pedidos")
+    .select("id")
+    .eq("estado", "dispatch_repartidor_pendiente")
+    .lte("metadata_json->>courier_confirmation_deadline_at", params.nowIso)
+    .limit(params.limit);
 
+  if (params.pedidoId != null) {
+    query = query.eq("id", params.pedidoId);
+  }
+
+  const { data, error } = await query;
   if (error) throw error;
-
-  return ((data ?? []) as TimedOutPedidoRow[]).map((row) => ({
-    id: Number(row.id),
-    legacyOrderId: toNullableNumber(row.legacy_pedido_id),
-    snapshot: asRecord(row.snapshot_json),
-    totalCliente: toNullableNumber(row.total_cliente),
-  }));
+  return (data ?? []).map((row) => Number((row as { id: unknown }).id));
 }
 
-async function findNextCourier(excludedIds: number[]): Promise<{
-  id: number;
-  nombre: string;
-  whatsapp: string;
-} | null> {
+async function findNextCourier(excludedIds: number[]): Promise<{ id: number; nombre: string; telefono: string } | null> {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("repartidores")
-    .select("id, nombre, whatsapp, activo")
+    .select("id, nombre, telefono, activo, disponible")
     .eq("activo", true)
+    .eq("disponible", true)
     .order("id", { ascending: true })
     .limit(100);
 
@@ -110,56 +72,48 @@ async function findNextCourier(excludedIds: number[]): Promise<{
   const excluded = new Set(excludedIds);
   const hit = ((data ?? []) as CourierRow[]).find((row) => {
     const id = toNullableNumber(row.id);
-    return id != null && !excluded.has(id) && cleanText(row.whatsapp);
+    return id != null && !excluded.has(id) && cleanText(row.telefono);
   });
 
   if (!hit) return null;
   return {
     id: Number(hit.id),
     nombre: cleanText(hit.nombre) ?? "Repartidor",
-    whatsapp: normalizePhone(String(hit.whatsapp ?? "")),
+    telefono: normalizePhone(String(hit.telefono ?? "")),
   };
 }
 
-async function getPedidoItems(pedidoId: number): Promise<PedidoItemRow[]> {
-  const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
-    .from("pedido_items")
-    .select("nombre_producto, marca, presentacion, cantidad, unidad, notas")
-    .eq("pedido_id", pedidoId)
-    .order("id", { ascending: true });
-
-  if (error) throw error;
-  return (data ?? []) as PedidoItemRow[];
+function formatPedidoItems(items: Array<{ nombreProducto: string; cantidad: number | null }>): string {
+  if (!items.length) return "- Sin productos definidos";
+  return items
+    .map((item) => `- ${item.nombreProducto}${item.cantidad != null ? ` x${item.cantidad}` : ""}`)
+    .join("\n");
 }
 
 function buildCourierDispatchMessage(params: {
   pedidoId: number;
-  legacyOrderId: number | null;
-  snapshot: Record<string, unknown>;
+  customerPhone: string;
+  addressText: string | null;
+  latitud: number | null;
+  longitud: number | null;
   totalCliente: number | null;
   courierName: string;
   itemsText: string;
 }): string {
-  const negocioNombre = cleanText(params.snapshot.businessName ?? params.snapshot.business_name) ?? "la tienda";
-  const customerName = cleanText(params.snapshot.customerName ?? params.snapshot.customer_name) ?? "(sin nombre)";
-  const addressText = cleanText(params.snapshot.addressText ?? params.snapshot.address_text) ?? "(sin dirección)";
-  const customerPhone = cleanText(params.snapshot.customerPhone ?? params.snapshot.customer_phone) ?? "(sin teléfono)";
-  const mapsLink = addressText
-    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addressText)}`
-    : "";
-  const orderRef = params.legacyOrderId ?? params.pedidoId;
+  const mapsLink =
+    params.latitud != null && params.longitud != null
+      ? buildMapsLinkFromCoords({ latitude: params.latitud, longitude: params.longitud })
+      : null;
 
   return (
-    `Hola ${params.courierName}, tienes un nuevo pedido de ${negocioNombre}.\n\n` +
-    `Cliente: ${customerName}\n` +
-    `Dirección: ${addressText}\n` +
+    `Hola ${params.courierName}, tienes un nuevo pedido.\n\n` +
+    `Dirección: ${params.addressText ?? "(sin dirección)"}\n` +
     `${params.totalCliente != null ? `Total: $${params.totalCliente}\n` : ""}` +
-    `Tel cliente: ${customerPhone}\n` +
+    `Tel cliente: ${params.customerPhone}\n` +
     `${mapsLink ? `Mapa: ${mapsLink}\n` : ""}` +
     `\nProductos:\n${params.itemsText}\n\n` +
-    `Responde con: #CONFIRMO ${orderRef}\n` +
-    `Luego usa: #RECOGI ${orderRef} y #ENTREGADO ${orderRef}`
+    `Responde con: #CONFIRMO ${params.pedidoId}\n` +
+    `Luego usa: #RECOGI ${params.pedidoId} y #ENTREGADO ${params.pedidoId}`
   );
 }
 
@@ -174,80 +128,85 @@ export function createCourierTimeoutWorker() {
   const transitionService = createStateTransitionService();
 
   return {
-    async run(params?: { limit?: number }): Promise<CourierTimeoutWorkerRunResult> {
+    async run(params?: { limit?: number; pedidoId?: number }): Promise<CourierTimeoutWorkerRunResult> {
       const limit = params?.limit ?? 20;
       const nowIso = new Date().toISOString();
-      const timedOutPedidos = await getTimedOutPedidos(limit, nowIso);
+      const timedOutIds = await getTimedOutPedidoIds({ limit, nowIso, pedidoId: params?.pedidoId });
 
       const summary: CourierTimeoutWorkerRunResult = {
-        scanned: timedOutPedidos.length,
+        scanned: timedOutIds.length,
         timedOut: 0,
         reassigned: 0,
         failed: 0,
       };
 
-      for (const pedido of timedOutPedidos) {
+      for (const pedidoId of timedOutIds) {
         summary.timedOut += 1;
         await transitionService.handleCourierTimeout({
-          pedidoId: pedido.id,
+          pedidoId,
           errorMessage: "No se recibió #CONFIRMO dentro de 5 minutos",
         });
 
-        const snapshot = pedido.snapshot;
-        const currentAttempt = toNullableNumber(snapshot.courier_assignment_attempt) ?? 1;
+        const pedido = await getPedidoById(pedidoId);
+        if (!pedido) {
+          summary.failed += 1;
+          continue;
+        }
+
+        const currentAttempt = toNullableNumber(pedido.metadata.courier_assignment_attempt) ?? 1;
         const nextAttempt = currentAttempt + 1;
         if (nextAttempt > 3) {
           await transitionService.handleCourierReassignmentFailed({
-            pedidoId: pedido.id,
+            pedidoId,
             errorMessage: "Se agotaron los intentos automáticos de reasignación.",
           });
           summary.failed += 1;
           continue;
         }
 
-        const excludedIds = getAttemptedCourierIds(snapshot);
+        const excludedIds = getAttemptedCourierIds(pedido.metadata);
         const nextCourier = await findNextCourier(excludedIds);
         if (!nextCourier) {
           await transitionService.handleCourierReassignmentFailed({
-            pedidoId: pedido.id,
+            pedidoId,
             errorMessage: "No hay repartidores activos disponibles para reasignación.",
           });
           summary.failed += 1;
           continue;
         }
 
-        const items = await getPedidoItems(pedido.id);
         const body = buildCourierDispatchMessage({
-          pedidoId: pedido.id,
-          legacyOrderId: pedido.legacyOrderId,
-          snapshot,
+          pedidoId,
+          customerPhone: pedido.clienteTelefono,
+          addressText: pedido.direccionEntrega,
+          latitud: pedido.latitud,
+          longitud: pedido.longitud,
           totalCliente: pedido.totalCliente,
           courierName: nextCourier.nombre,
-          itemsText: formatPedidoItems(items),
+          itemsText: formatPedidoItems(pedido.items),
         });
 
         await outboxRepository.enqueueOutboundMessage({
-          pedidoId: pedido.id,
+          pedidoId,
           tipoMensaje: "dispatch_repartidor",
           destinatarioTipo: "repartidor",
           destinatarioId: nextCourier.id,
-          telefonoDestino: nextCourier.whatsapp,
+          telefonoDestino: nextCourier.telefono,
           payload: {
             body,
-            legacyOrderId: pedido.legacyOrderId,
             courierId: nextCourier.id,
             courierName: nextCourier.nombre,
-            courierPhone: nextCourier.whatsapp,
+            courierPhone: nextCourier.telefono,
             attemptNumber: nextAttempt,
           },
-          idempotencyKey: `pedido:${pedido.id}:dispatch_repartidor:attempt:${nextAttempt}`,
+          idempotencyKey: `pedido:${pedidoId}:dispatch_repartidor:attempt:${nextAttempt}`,
         });
 
         await transitionService.handleCourierReassignmentQueued({
-          pedidoId: pedido.id,
+          pedidoId,
           courierId: nextCourier.id,
           courierName: nextCourier.nombre,
-          courierPhone: nextCourier.whatsapp,
+          courierPhone: nextCourier.telefono,
           attemptNumber: nextAttempt,
         });
         summary.reassigned += 1;
@@ -257,4 +216,3 @@ export function createCourierTimeoutWorker() {
     },
   };
 }
-

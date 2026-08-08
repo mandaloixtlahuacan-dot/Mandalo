@@ -41,6 +41,8 @@ export type OutboxRepositoryDeps = {
     limit: number;
     workerId: string;
     nowIso: string;
+    pedidoId?: number;
+    tipoMensaje?: OutboxMessageType;
   }): Promise<ReservedOutboxMessage[]>;
   markMessageSent(params: {
     messageId: number;
@@ -147,7 +149,12 @@ export function createDispatchWorker(deps: DispatchWorkerDeps) {
   const now = deps.now ?? (() => new Date());
 
   return {
-    async run(params?: { limit?: number; workerId?: string }): Promise<DispatchWorkerRunResult> {
+    async run(params?: {
+      limit?: number;
+      workerId?: string;
+      pedidoId?: number;
+      tipoMensaje?: OutboxMessageType;
+    }): Promise<DispatchWorkerRunResult> {
       const limit = params?.limit ?? 20;
       const workerId = params?.workerId ?? `dispatch-worker-${process.pid}`;
       const nowIso = now().toISOString();
@@ -156,6 +163,8 @@ export function createDispatchWorker(deps: DispatchWorkerDeps) {
         limit,
         workerId,
         nowIso,
+        pedidoId: params?.pedidoId,
+        tipoMensaje: params?.tipoMensaje,
       });
 
       const result: DispatchWorkerRunResult = {

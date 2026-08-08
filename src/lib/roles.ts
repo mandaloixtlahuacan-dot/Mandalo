@@ -4,7 +4,7 @@ export type ActorRole = "cliente" | "tienda" | "repartidor";
 
 export type ActorIdentity =
   | { role: "cliente"; telefono: string }
-  | { role: "tienda"; telefono: string; negocioId: number }
+  | { role: "tienda"; telefono: string; tiendaId: number }
   | { role: "repartidor"; telefono: string; repartidorId: number };
 
 export function normalizePhone(raw: string) {
@@ -19,12 +19,12 @@ function last10Digits(raw: string) {
 
 type ActorPhoneRow = {
   id?: unknown;
-  whatsapp?: unknown;
+  telefono?: unknown;
 };
 
 type ActorsCache = {
   at: number;
-  negocios: ActorPhoneRow[];
+  tiendas: ActorPhoneRow[];
   repartidores: ActorPhoneRow[];
 };
 
@@ -35,17 +35,17 @@ async function getActorsCache(): Promise<ActorsCache> {
   if (cache && now - cache.at < 60_000) return cache; // 60s
 
   const supabase = getSupabaseAdmin();
-  const [{ data: negocios, error: e1 }, { data: repartidores, error: e2 }] =
+  const [{ data: tiendas, error: e1 }, { data: repartidores, error: e2 }] =
     await Promise.all([
-      supabase.from("negocios").select("id, whatsapp").limit(1000),
-      supabase.from("repartidores").select("id, whatsapp").limit(1000),
+      supabase.from("tiendas").select("id, telefono").limit(1000),
+      supabase.from("repartidores").select("id, telefono").limit(1000),
     ]);
   if (e1) throw e1;
   if (e2) throw e2;
 
   cache = {
     at: now,
-    negocios: (negocios ?? []) as ActorPhoneRow[],
+    tiendas: (tiendas ?? []) as ActorPhoneRow[],
     repartidores: (repartidores ?? []) as ActorPhoneRow[],
   };
   return cache;
@@ -53,8 +53,8 @@ async function getActorsCache(): Promise<ActorsCache> {
 
 /**
  * Regla:
- * - Si el número está en `negocios.whatsapp` => TIENDA
- * - Si está en `repartidores.whatsapp` => REPARTIDOR
+ * - Si el número está en `tiendas.telefono` => TIENDA
+ * - Si está en `repartidores.telefono` => REPARTIDOR
  * - En otro caso => CLIENTE
  */
 export async function detectActorByPhone(telefono: string): Promise<ActorIdentity> {
@@ -67,17 +67,17 @@ export async function detectActorByPhone(telefono: string): Promise<ActorIdentit
   const actors = await getActorsCache();
   const tel10 = last10Digits(tel);
 
-  const negocio = actors.negocios.find(
+  const tienda = actors.tiendas.find(
     (n) => {
-      const db = normalizePhone(String(n.whatsapp ?? ""));
+      const db = normalizePhone(String(n.telefono ?? ""));
       return db === tel || last10Digits(db) === tel10;
     },
   );
-  if (negocio?.id) return { role: "tienda", telefono: tel, negocioId: Number(negocio.id) };
+  if (tienda?.id) return { role: "tienda", telefono: tel, tiendaId: Number(tienda.id) };
 
   const repartidor = actors.repartidores.find(
     (r) => {
-      const db = normalizePhone(String(r.whatsapp ?? ""));
+      const db = normalizePhone(String(r.telefono ?? ""));
       return db === tel || last10Digits(db) === tel10;
     },
   );

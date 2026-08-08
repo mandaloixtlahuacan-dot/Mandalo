@@ -13,7 +13,7 @@ const envSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(20),
 
   OPENAI_API_KEY: z.string().min(20),
-  OPENAI_MODEL: z.string().default("gpt-4o-mini"),
+  OPENAI_MODEL: z.string().default("gpt-4-turbo"),
 
   WAAPI_TOKEN: z.string().min(3),
   WAAPI_API_BASE: z.string().url().default("https://gate.whapi.cloud"),
@@ -52,7 +52,7 @@ export function getEnv(): Env {
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
 
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
-    OPENAI_MODEL: process.env.OPENAI_MODEL ?? "gpt-4o-mini",
+    OPENAI_MODEL: process.env.OPENAI_MODEL ?? "gpt-4-turbo",
 
     WAAPI_TOKEN: process.env.WAAPI_TOKEN,
     WAAPI_API_BASE: process.env.WAAPI_API_BASE ?? "https://gate.whapi.cloud",
