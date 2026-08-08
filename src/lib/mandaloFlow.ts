@@ -71,6 +71,16 @@ function formatEstimatedArrival(minutesToAdd = 20): string {
   return eta.toLocaleTimeString("es-MX", { hour: "numeric", minute: "2-digit", hour12: true });
 }
 
+function buildSaludoInicial(): string {
+  const hour = Number(
+    new Intl.DateTimeFormat("en-US", { hour: "numeric", hour12: false, timeZone: "America/Mexico_City" }).format(
+      new Date(),
+    ),
+  );
+  const franja = hour >= 6 && hour < 12 ? "¡Buenos días!" : hour >= 12 && hour < 19 ? "¡Buenas tardes!" : "¡Buenas noches!";
+  return `${franja} Bienvenido a Mándalo. ¿Qué se te antoja hoy? ¿Buscas algo de la tienda o tienes antojo de comida preparada?`;
+}
+
 function ensureSafeLlmOrderState(value: unknown, fallbackStage = "collecting"): MandaloAgentResponse["order_state"] {
   const base = asJsonObject(value);
   const stage = String(base.stage ?? "").trim() || fallbackStage;
@@ -172,6 +182,7 @@ export async function getLLMResponse(params: {
     negociosDisponibles: tiendas_text,
     repartidoresActivos: String(params.supabaseJson?.repartidores_text ?? "(sin repartidores)"),
     historial: String(params.supabaseJson?.historial_text ?? ""),
+    saludoInicial: buildSaludoInicial(),
   });
 
   const messages: LlmMessage[] = [
@@ -689,8 +700,18 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
     missingFields: captureResult.validation.missingFields,
   });
 
-  await sendWhatsApp(telefono, captureResult.customerMessage);
-  await guardarMensajeChat({ telefono, texto: captureResult.customerMessage, estado: "bot" }).catch((e: unknown) => {
+  // Mientras falte información, dejamos que hable la IA: ya trae el hilo de la
+  // conversación (historial + order_state) y el prompt le pide preguntar una
+  // sola cosa a la vez sin repetirse. El mensaje fijo de captureEngine se
+  // reserva para el resumen final de confirmación, donde sí necesitamos texto
+  // exacto/estructurado (tienda, productos, dirección) y no una paráfrasis.
+  const llmReplyClean = sanitizeCustomerReply(String(respuesta.customer_reply ?? ""));
+  const customerMessage = captureResult.readyForConfirmation
+    ? captureResult.customerMessage
+    : llmReplyClean || captureResult.customerMessage;
+
+  await sendWhatsApp(telefono, customerMessage);
+  await guardarMensajeChat({ telefono, texto: customerMessage, estado: "bot" }).catch((e: unknown) => {
     console.error("[mandalo] guardarMensajeChat(bot) falló", { message: getErrorMessage(e) });
   });
 

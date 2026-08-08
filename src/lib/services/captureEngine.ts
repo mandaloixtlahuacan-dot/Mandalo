@@ -20,6 +20,7 @@ export type PedidoSnapshot = {
   addressText?: string | null;
   latitud?: number | null;
   longitud?: number | null;
+  items?: PedidoItemInput[] | null;
   flags?: {
     addressValidated?: boolean;
     itemsValidated?: boolean;
@@ -170,6 +171,17 @@ function mergeBusinessPhone(previous: string | null, incoming: string | null): s
   return normalizePhone(incoming);
 }
 
+// El JSON de la IA de este turno solo trae los productos que decidió reportar
+// ahora mismo — no necesariamente el pedido completo. Si trae algo, lo
+// tratamos como la lista completa y vigente (el prompt le exige a la IA
+// devolver siempre el pedido completo, no solo lo mencionado en el mensaje
+// actual). Si no trae nada, conservamos lo que ya teníamos — un turno sobre
+// la dirección, por ejemplo, no debe borrar los productos ya capturados.
+function mergeItems(previous: PedidoItemInput[] | null | undefined, incoming: PedidoItemInput[]): PedidoItemInput[] {
+  if (incoming.length) return incoming;
+  return Array.isArray(previous) ? previous : [];
+}
+
 export function mergeSnapshot(params: {
   currentSnapshot?: PedidoSnapshot | null;
   llmOrderState?: JsonObject | null;
@@ -211,6 +223,8 @@ export function mergeSnapshot(params: {
     cleanText(params.customerName),
   );
 
+  const items = mergeItems(current.items, extractCandidateItems(llm));
+
   return {
     ...current,
     customerName,
@@ -220,6 +234,7 @@ export function mergeSnapshot(params: {
     addressText,
     latitud,
     longitud,
+    items,
     raw: {
       ...(asObject(current.raw)),
       ...llm,
@@ -351,14 +366,19 @@ export function createCaptureEngine(deps: CaptureEngineDeps) {
         customerName: input.customerName ?? null,
       });
 
-      const candidateItems = extractCandidateItems(input.llmOrderState ?? null);
+      // mergedSnapshot.items ya viene fusionado (turno actual + lo ya capturado
+      // antes) — validamos sobre esa lista completa, no solo lo del turno.
       const validation = validationEngine.validateCaptureForConfirmation({
         snapshot: mergedSnapshot,
-        items: candidateItems,
+        items: mergedSnapshot.items ?? [],
       });
 
       const nextSnapshot: PedidoSnapshot = {
         ...mergedSnapshot,
+        // Persistimos la versión validada/normalizada (nombres limpios, items
+        // sin nombre descartados) para no volver a arrastrar basura en el
+        // siguiente turno.
+        items: validation.validatedItems.items,
         flags: {
           ...(mergedSnapshot.flags ?? {}),
           addressValidated: Boolean(validation.validatedAddress?.isValid),
