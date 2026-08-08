@@ -153,7 +153,11 @@ export function validateCaptureForConfirmation(params: {
   });
   const validatedItems = validateItems(params.items);
 
-  const issues: ValidationIssue[] = [...validatedItems.issues];
+  // Orden de prioridad de issues/missingFields: tienda -> dirección -> producto,
+  // igual que la regla de decisión del prompt (BLOQUE 4). Los issues de producto
+  // van al final aunque validateItems los calcule primero, para que "¿qué falta
+  // primero?" siempre refleje esa misma prioridad cuando falta más de una cosa.
+  const issues: ValidationIssue[] = [];
   const missingFields: ValidationResult["missingFields"] = [];
 
   if (!validatedBusiness.isValid) {
@@ -173,6 +177,8 @@ export function validateCaptureForConfirmation(params: {
     });
     missingFields.push("direccion");
   }
+
+  issues.push(...validatedItems.issues);
 
   if (!validatedItems.hasItems) {
     missingFields.push("productos");

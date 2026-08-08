@@ -689,8 +689,18 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
     missingFields: captureResult.validation.missingFields,
   });
 
-  await sendWhatsApp(telefono, captureResult.customerMessage);
-  await guardarMensajeChat({ telefono, texto: captureResult.customerMessage, estado: "bot" }).catch((e: unknown) => {
+  // Mientras falte información, dejamos que hable la IA: ya trae el hilo de la
+  // conversación (historial + order_state) y el prompt le pide preguntar una
+  // sola cosa a la vez sin repetirse. El mensaje fijo de captureEngine se
+  // reserva para el resumen final de confirmación, donde sí necesitamos texto
+  // exacto/estructurado (tienda, productos, dirección) y no una paráfrasis.
+  const llmReplyClean = sanitizeCustomerReply(String(respuesta.customer_reply ?? ""));
+  const customerMessage = captureResult.readyForConfirmation
+    ? captureResult.customerMessage
+    : llmReplyClean || captureResult.customerMessage;
+
+  await sendWhatsApp(telefono, customerMessage);
+  await guardarMensajeChat({ telefono, texto: customerMessage, estado: "bot" }).catch((e: unknown) => {
     console.error("[mandalo] guardarMensajeChat(bot) falló", { message: getErrorMessage(e) });
   });
 
