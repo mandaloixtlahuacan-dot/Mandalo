@@ -181,3 +181,4 @@ Cuando Víctor suba la carpeta del proyecto actual (desarrollado antes en Trae) 
 - [ ] Valor exacto del radio de cobertura en km (calibrar con direcciones reales de Ixtlahuacán del Río)
 - [ ] Nombre exacto del comando de "cambio de repartidor"
 - [ ] Migración de datos existentes (si aplica) desde el esquema anterior de Supabase al nuevo
+- [ ] `PedidoSnapshot` no guarda los productos capturados entre turnos — la IA depende solo del historial de chat en texto plano para "recordar" qué se pidió. Si el cliente aclara un producto sin repetir el nombre completo, se pierde. Detectado en la prueba de punta a punta de la Fase 2 (agosto 2026) contra el Preview real de Vercel. Arreglo: agregar `items` al snapshot y pasarlo de vuelta a la IA como contexto explícito, no solo como historial de chat.
