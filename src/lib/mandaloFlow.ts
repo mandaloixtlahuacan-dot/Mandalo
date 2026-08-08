@@ -71,6 +71,16 @@ function formatEstimatedArrival(minutesToAdd = 20): string {
   return eta.toLocaleTimeString("es-MX", { hour: "numeric", minute: "2-digit", hour12: true });
 }
 
+function buildSaludoInicial(): string {
+  const hour = Number(
+    new Intl.DateTimeFormat("en-US", { hour: "numeric", hour12: false, timeZone: "America/Mexico_City" }).format(
+      new Date(),
+    ),
+  );
+  const franja = hour >= 6 && hour < 12 ? "¡Buenos días!" : hour >= 12 && hour < 19 ? "¡Buenas tardes!" : "¡Buenas noches!";
+  return `${franja} Bienvenido a Mándalo. ¿Qué se te antoja hoy? ¿Buscas algo de la tienda o tienes antojo de comida preparada?`;
+}
+
 function ensureSafeLlmOrderState(value: unknown, fallbackStage = "collecting"): MandaloAgentResponse["order_state"] {
   const base = asJsonObject(value);
   const stage = String(base.stage ?? "").trim() || fallbackStage;
@@ -172,6 +182,7 @@ export async function getLLMResponse(params: {
     negociosDisponibles: tiendas_text,
     repartidoresActivos: String(params.supabaseJson?.repartidores_text ?? "(sin repartidores)"),
     historial: String(params.supabaseJson?.historial_text ?? ""),
+    saludoInicial: buildSaludoInicial(),
   });
 
   const messages: LlmMessage[] = [

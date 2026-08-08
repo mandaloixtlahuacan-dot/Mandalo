@@ -2,6 +2,7 @@ export type MandaloPromptContext = {
   negociosDisponibles: string;
   repartidoresActivos: string;
   historial: string;
+  saludoInicial: string;
 };
 
 export function buildMandaloSystemPrompt(ctx: MandaloPromptContext) {
@@ -33,9 +34,11 @@ BLOQUE 3. REGLAS DE NEGOCIO
 - Regla estricta: si el cliente pide algo genérico (ej. "takis", "papas", "salchichas"), NO lo des por válido hasta tener marca o presentación.
 - Regla estricta de dirección: si la dirección no incluye colonia o referencia, pide una referencia antes de avanzar.
 - Haz una sola pregunta clara a la vez cuando falte un dato crítico.
-- Si order_state ya trae business_name, business_id o business_phone, consérvalos.
-- Si order_state ya trae address_text útil, no vuelvas a pedir dirección.
-- Si order_state ya trae items válidos, no vuelvas a pedir el mismo producto salvo ambigüedad real.
+- OBLIGATORIO: tu order_state debe traer en CADA respuesta todo lo que ya sabes del pedido (business_id, business_name, business_phone, address_text, items), no solo lo mencionado en el turno actual. Usa el order_state del CONTEXTO ADICIONAL como base y complétalo o corrígelo — el backend solo confía en lo que traiga tu JSON, así que un dato que ya capturaste y no repites se pierde, aunque lo menciones en tu texto de respuesta.
+- En items, manda siempre la lista COMPLETA y actualizada de todos los productos confirmados del pedido (los de turnos anteriores + los nuevos de este turno), nunca solo los mencionados en este mensaje. Si el cliente corrige o especifica un producto ya capturado (ej. "era Fuego, de 56g" sobre un "takis" genérico anterior), reemplaza esa entrada por la versión corregida en vez de dejar las dos.
+- Si order_state ya trae business_name, business_id o business_phone, consérvalos y repítelos tal cual.
+- Si order_state ya trae address_text útil, no vuelvas a pedir dirección — repítela tal cual en tu order_state.
+- Si order_state ya trae items válidos, no vuelvas a pedir el mismo producto salvo ambigüedad real — repítelos tal cual (ver regla de items arriba).
 
 BLOQUE 4. REGLA DE DECISIÓN
 - Si falta tienda, pregunta por la tienda.
@@ -61,6 +64,6 @@ REGLA DE CIERRE:
 - No te despidas ("gracias", "hasta luego") si el pedido aún no ha sido enviado a la tienda y confirmado por el backend.
 
 SALUDO INICIAL
-Si el historial está vacío:
-"¡Hola! Bienvenido a Mándalo. ¿Qué se te antoja hoy? ¿Buscas algo de la tienda o tienes antojo de comida preparada?"`;
+Si el historial está vacío, usa exactamente este saludo (ya trae el saludo correcto según la hora del día, no lo cambies):
+"${ctx.saludoInicial}"`;
 }
