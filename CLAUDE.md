@@ -2,6 +2,10 @@
 
 > Este archivo es la fuente de verdad del negocio y arquitectura de Mándalo.
 > Última actualización: 04 de agosto de 2026
+>
+> Para saber qué está construido, qué está roto y qué falta ahora mismo, ver
+> **`ROADMAP.md`** — ese archivo se actualiza cada ciclo de trabajo; este
+> documento describe reglas de negocio y arquitectura, que cambian poco.
 
 ## 1. Qué es Mándalo
 
@@ -178,7 +182,10 @@ Cuando Víctor suba la carpeta del proyecto actual (desarrollado antes en Trae) 
 
 ## 14. Pendientes por definir
 
+Decisiones de negocio que le tocan a Víctor. Para el estado de ingeniería
+(bugs conocidos, qué falta construir), ver `ROADMAP.md` — no se duplica aquí.
+
 - [ ] Valor exacto del radio de cobertura en km (calibrar con direcciones reales de Ixtlahuacán del Río)
 - [ ] Nombre exacto del comando de "cambio de repartidor"
-- [ ] Migración de datos existentes (si aplica) desde el esquema anterior de Supabase al nuevo
-- [ ] **Captura de pedido no persiste de forma confiable entre turnos (tienda, dirección y productos).** Alcance ampliado tras probar en vivo el fix conversacional de la rama `fix/captura-conversacional` (agosto 2026): no es solo que `items` no se fusione entre turnos (como se documentó originalmente) — `business_name`/`business_id`/`address_text` tampoco se conservan de forma consistente, porque la IA no siempre repite esos campos en su `order_state` (JSON) aunque los mencione correctamente en `customer_reply` (texto). El backend solo confía en el JSON, así que un turno donde la IA "sabe" la tienda en prosa pero no la escribe en el JSON hace que el backend la trate como si nunca se hubiera capturado — y en el caso de `items`, hasta los borra (`replacePedidoItems` reemplaza en vez de fusionar). Reproducido end-to-end contra un Preview real: tienda + producto + dirección se capturaron correctamente turno a turno según las respuestas de la IA, pero `pedido_items`/`pedido_tiendas` quedaron vacíos y `capture_snapshot` en `metadata_json` quedó con todo en null. Arreglo propuesto (dos partes, pendiente de implementar en su propio ciclo): (a) fusionar `items` en `captureEngine`/`mergeSnapshot` igual que ya se fusionan tienda/dirección, en vez de reemplazar con lo del turno actual; (b) reforzar `mandaloPrompt.ts` para exigir que la IA repita siempre en `order_state` los campos ya capturados (tienda, dirección, productos), no solo "conservarlos si los trae".
+- [x] ~~Migración de datos existentes desde el esquema anterior de Supabase al nuevo~~ — resuelto: Fases 1-3 completas (agosto 2026), datos maestros migrados con Fase 1, sin pedidos reales que conservar.
+- [x] ~~`PedidoSnapshot` no persiste tienda/dirección/productos entre turnos~~ — arreglado y mergeado a `main` (commit `5809027`, agosto 2026); pendiente de validar en vivo por Víctor vía WhatsApp real antes de darlo por cerrado del todo (ver `ROADMAP.md`).
