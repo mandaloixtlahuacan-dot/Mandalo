@@ -104,6 +104,23 @@ export async function saveChatMessage(params: {
   if (error) throw error;
 }
 
+// Retención (CLAUDE.md Sección 4 / brief Sección 3): "no se guarda nada del
+// cliente entre pedidos — al cerrar un pedido, el chat se reinicia por
+// completo". Se llama junto con la eliminación del pedido al llegar a un
+// estado terminal (ver pedidoRepositoryV2.finalizePedidoRetention).
+export async function resetChatHistory(telefono: string): Promise<void> {
+  const tel = normalizePhone(String(telefono ?? ""));
+  if (!tel) return;
+
+  const supabase = getSupabaseAdmin();
+  const metadata = await getClienteMetadata(tel);
+  const { error } = await supabase
+    .from("clientes")
+    .update({ metadata_json: { ...metadata, chat_history: [] } })
+    .eq("telefono", tel);
+  if (error) throw error;
+}
+
 export async function fetchRecentChatHistory(
   telefono: string,
   limit = 10,
@@ -178,6 +195,38 @@ export function isConversationModeMessage(text: string): boolean {
     t.includes("buenas tardes") ||
     t.includes("buenas noches") ||
     t.includes("gracias")
+  );
+}
+
+// Escalamiento de quejas (brief sección 4 paso 9): "si hay una queja o algo
+// salió mal, el bot escala directo al número de admin". Heurística de
+// prioridad alta — se revisa antes que el resto del flujo, con o sin pedido
+// activo (puede llegar después de que la retención ya borró el pedido).
+export function isComplaintMessage(text: string): boolean {
+  const t = normalizeMessageIntentText(text);
+  return (
+    t.includes("queja") ||
+    t.includes("reclamo") ||
+    t.includes("me quejo") ||
+    t.includes("no llego") ||
+    t.includes("nunca llego") ||
+    t.includes("no me llego") ||
+    t.includes("no ha llegado") ||
+    t.includes("salio mal") ||
+    t.includes("esta mal") ||
+    t.includes("llego mal") ||
+    t.includes("llego incompleto") ||
+    t.includes("faltaron") ||
+    t.includes("faltan productos") ||
+    t.includes("cobraron mal") ||
+    t.includes("me cobraron de mas") ||
+    t.includes("no es lo que pedi") ||
+    t.includes("hablar con alguien") ||
+    t.includes("hablar con una persona") ||
+    t.includes("atencion al cliente") ||
+    t.includes("quiero hablar con el administrador") ||
+    t.includes("pesimo") ||
+    t.includes("terrible servicio")
   );
 }
 

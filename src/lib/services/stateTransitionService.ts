@@ -1,7 +1,9 @@
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { appendPedidoEvento } from "@/lib/repositories/pedidoRepositoryV2";
+import { appendPedidoEvento, finalizePedidoRetention } from "@/lib/repositories/pedidoRepositoryV2";
+import { incrementMetric } from "@/lib/repositories/metricsRepository";
 import { enqueueAdminNotification } from "@/lib/repositories/outboxRepository";
 import { canTransition, type OrderState } from "@/lib/orderStateMachine";
+import { buildOrderTimeoutMetadata } from "@/lib/services/orderTimeouts";
 import type { OutboxMessageType } from "@/lib/services/dispatchWorker";
 
 // Ciclo de vida del repartidor sobre pedidos. Antes vivía en pedidos_v2 con
@@ -245,7 +247,8 @@ export function createStateTransitionService() {
 
       if (params.messageType === "dispatch_repartidor") {
         assertAllowedState(current.estado, ["dispatch_repartidor_pendiente"], "envío a repartidor");
-        const deadlineIso = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+        const timeoutMetadata = buildOrderTimeoutMetadata("courier_confirmation", nowIso);
+        const deadlineIso = String(timeoutMetadata.courier_confirmation_deadline_at);
         const attemptNumber =
           toNullableNumber(params.payload?.attemptNumber) ??
           (toNullableNumber(current.metadata_json.courier_assignment_attempt) ?? 0) + 1;
@@ -263,8 +266,8 @@ export function createStateTransitionService() {
           pedidoId: params.pedidoId,
           estado: current.estado,
           metadataPatch: {
+            ...timeoutMetadata,
             courier_assigned_at: nowIso,
-            courier_confirmation_deadline_at: deadlineIso,
             courier_dispatch_message_id: params.providerMessageId ?? null,
             courier_dispatch_provider_status: params.providerStatus ?? null,
             courier_assignment_attempt: attemptNumber,
@@ -369,12 +372,19 @@ export function createStateTransitionService() {
       });
     },
 
+    // Claim atómico (CLAUDE.md Sección 8, nota técnica): el UPDATE solo aplica
+    // si el pedido SIGUE en dispatch_repartidor_pendiente en el instante exacto
+    // de la escritura (`.eq("estado", ...)` como guarda condicional a nivel de
+    // base de datos, no un read-then-write en JS). Si dos repartidores mandan
+    // #CONFIRMO casi al mismo tiempo, solo el primero cuyo UPDATE llega a
+    // Postgres se queda con el pedido — el segundo recibe claimed:false y el
+    // llamador (courierCommandParser.ts) le avisa "ya fue tomado".
     async handleCourierConfirm(params: {
       pedidoId: number;
       courierId: number | null;
       courierName: string;
       courierPhone: string;
-    }): Promise<void> {
+    }): Promise<{ claimed: boolean }> {
       const current = await getPedidoState(params.pedidoId);
       assertAllowedState(current.estado, ["dispatch_repartidor_pendiente"], "confirmación de repartidor");
 
@@ -388,20 +398,30 @@ export function createStateTransitionService() {
       });
       const confirmedAt = new Date().toISOString();
 
-      await transitionPedidoState({
-        pedidoId: params.pedidoId,
-        from: current.estado,
-        to: "repartidor_asignado",
-        metadataPatch: {
-          current_courier_id: params.courierId,
-          current_courier_name: params.courierName,
-          current_courier_phone: params.courierPhone,
-          courier_confirmed_at: confirmedAt,
-          courier_confirmation_deadline_at: null,
-          courier_attempts: attempts,
-        },
-        extraUpdates: { repartidor_id: params.courierId },
-      });
+      const supabase = getSupabaseAdmin();
+      const { data, error } = await supabase
+        .from("pedidos")
+        .update({
+          estado: "repartidor_asignado",
+          repartidor_id: params.courierId,
+          metadata_json: {
+            ...current.metadata_json,
+            current_courier_id: params.courierId,
+            current_courier_name: params.courierName,
+            current_courier_phone: params.courierPhone,
+            courier_confirmed_at: confirmedAt,
+            courier_confirmation_deadline_at: null,
+            courier_attempts: attempts,
+          },
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", params.pedidoId)
+        .eq("estado", "dispatch_repartidor_pendiente")
+        .select("id")
+        .maybeSingle();
+
+      if (error) throw error;
+      if (!data) return { claimed: false };
 
       await emitTransitionEvent({
         pedidoId: params.pedidoId,
@@ -411,6 +431,8 @@ export function createStateTransitionService() {
         payload: { courierId: params.courierId, courierName: params.courierName, courierPhone: params.courierPhone, confirmedAt },
         actorTipo: "repartidor",
       });
+
+      return { claimed: true };
     },
 
     // #RECOGI: para el alcance actual (una sola tienda por pedido), recoger es
@@ -570,6 +592,76 @@ export function createStateTransitionService() {
       }
     },
 
+    // Cancelación por vencimiento de cualquiera de los tres timeouts unificados
+    // de 10 min (Sección 3 del brief): tienda sin cotizar, cliente sin
+    // confirmar precio final, o repartidor sin aceptar. orderTimeoutWorker.ts
+    // es el único llamador — decide QUÉ pedidos vencieron y a quién avisar
+    // (cliente/tienda), este método solo mueve el estado y notifica al admin.
+    async handleOrderTimeoutExpired(params: {
+      pedidoId: number;
+      fromState: OrderState;
+      reasonCode: "store_quote_timeout" | "final_confirmation_timeout" | "courier_confirmation_timeout";
+      adminMessage: string;
+      customerPhone: string;
+    }): Promise<void> {
+      const current = await getPedidoState(params.pedidoId);
+      assertAllowedState(current.estado, [params.fromState], `timeout: ${params.reasonCode}`);
+
+      await transitionPedidoState({
+        pedidoId: params.pedidoId,
+        from: current.estado,
+        to: "cancelado",
+        metadataPatch: {
+          cancelled_reason: params.reasonCode,
+          cancelled_at: new Date().toISOString(),
+        },
+      });
+
+      await emitTransitionEvent({
+        pedidoId: params.pedidoId,
+        estadoOrigen: current.estado,
+        estadoDestino: "cancelado",
+        tipoEvento: "timeout_cancelado",
+        payload: { reasonCode: params.reasonCode },
+      });
+
+      try {
+        await notifyAdmin({ pedidoId: params.pedidoId, contenido: params.adminMessage });
+      } catch (e: unknown) {
+        console.error("[stateTransitionService] no se pudo notificar timeout al admin", {
+          pedidoId: params.pedidoId,
+          message: errorMessage(e),
+        });
+      }
+
+      // Reporte semanal (brief sección 5): contador agregado, no guarda nada
+      // del pedido en sí.
+      try {
+        await incrementMetric("pedidos_cancelados");
+      } catch (e: unknown) {
+        console.error("[stateTransitionService] incrementMetric falló (pedidos_cancelados)", {
+          pedidoId: params.pedidoId,
+          message: errorMessage(e),
+        });
+      }
+
+      // Retención (CLAUDE.md Sección 4): va al final — orderTimeoutWorker.ts
+      // ya encoló cualquier aviso a cliente/tienda antes de llamar aquí.
+      try {
+        await finalizePedidoRetention({ pedidoId: params.pedidoId, customerPhone: params.customerPhone });
+      } catch (e: unknown) {
+        console.error("[stateTransitionService] finalizePedidoRetention falló tras timeout", {
+          pedidoId: params.pedidoId,
+          message: errorMessage(e),
+        });
+      }
+    },
+
+    // Reservado para el futuro comando explícito de "cambio de repartidor"
+    // (CLAUDE.md Sección 14, nombre exacto pendiente de definir) — un
+    // repartidor que ya aceptó y no puede completar a medio pedido. No lo usa
+    // el timeout automático de aceptación inicial (ver handleOrderTimeoutExpired
+    // arriba), que ahora cancela directo en vez de reintentar con otro repartidor.
     async handleCourierReassignmentQueued(params: {
       pedidoId: number;
       courierId: number | null;

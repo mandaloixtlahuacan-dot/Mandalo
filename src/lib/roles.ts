@@ -12,6 +12,16 @@ export function normalizePhone(raw: string) {
   return String(raw ?? "").replace(/[^\d]/g, "");
 }
 
+// WhatsApp México suele usar 52 + 10 dígitos (a veces 521 + 10) — WAAPI
+// necesita ese prefijo internacional en el `to` de cada envío saliente.
+export function ensureMxWhatsappIntl(raw: string) {
+  const d = normalizePhone(String(raw ?? ""));
+  if (d.length === 10) return `52${d}`;
+  if (d.length === 12 && d.startsWith("52")) return d;
+  if (d.length === 13 && d.startsWith("521")) return d;
+  return d;
+}
+
 function last10Digits(raw: string) {
   const n = normalizePhone(raw);
   return n.length <= 10 ? n : n.slice(-10);

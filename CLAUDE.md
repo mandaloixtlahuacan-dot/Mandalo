@@ -1,7 +1,7 @@
 # Mándalo — Contexto del Proyecto (leer siempre antes de programar)
 
 > Este archivo es la fuente de verdad del negocio y arquitectura de Mándalo.
-> Última actualización: 04 de agosto de 2026
+> Última actualización: 12 de agosto de 2026
 >
 > Para saber qué está construido, qué está roto y qué falta ahora mismo, ver
 > **`ROADMAP.md`** — ese archivo se actualiza cada ciclo de trabajo; este
@@ -85,9 +85,10 @@ Sistema de delivery automatizado por WhatsApp para **Ixtlahuacán del Río**. Un
 
 **Retención:** solo se conservan pedidos activos. Al llegar a `entregado` o `cancelado`, el registro se elimina (no se guarda historial).
 
-**Notas de implementación (Fase 2 de la migración, agosto 2026):** dos columnas/tablas que no pide esta sección pero que se agregaron por necesidad operativa real, detectada al reescribir el código sobre el esquema definitivo:
-- `pedidos.metadata_json` (jsonb): guarda detalle operativo del ciclo de vida del repartidor (intentos de asignación, deadlines de confirmación, timestamps de recogida/entrega) que no tiene sentido aplanar en columnas fijas — es el mismo patrón que ya usan otras tablas del esquema (Bloque 7).
+**Notas de implementación (Fase 2 de la migración, agosto 2026):** columnas/tablas que no pide esta sección pero que se agregaron por necesidad operativa real, detectada al reescribir el código sobre el esquema definitivo:
+- `pedidos.metadata_json` (jsonb): guarda detalle operativo del ciclo de vida del repartidor (intentos de asignación, deadlines de confirmación, timestamps de recogida/entrega) que no tiene sentido aplanar en columnas fijas — es el mismo patrón que ya usan otras tablas del esquema (Bloque 7). Desde agosto 2026 también guarda los deadlines/recordatorios de los tres timeouts unificados de 10 min (Sección 8).
 - `admin_notificaciones` se amplió como outbox general de mensajes (no solo avisos al administrador): se le agregaron `destinatario_tipo`/`destinatario_id`, y `tipo` pasó de enum cerrado a texto libre. Reaprovecha el mecanismo de claim atómico ya probado (`FOR UPDATE SKIP LOCKED`) en vez de construir una tabla outbox aparte desde cero. Incluye un RPC nuevo, `claim_admin_notificacion_by_id`, para reclamar una notificación puntual (disparo por webhook) además del claim por lote ya existente.
+- `clientes.metadata_json` (jsonb): guarda `chat_history` (historial de chat reciente, acotado a las últimas ~30 entradas) — vive en `clientes` y no en `pedidos` porque el cliente puede platicar con el bot (saludo, small talk) sin tener un pedido activo. Se reinicia por completo cuando un pedido cierra (Sección 4, regla de retención) — ver `messages.resetChatHistory` / `pedidoRepositoryV2.finalizePedidoRetention`.
 
 ## 5. Reglas de oro (innegociables)
 
@@ -132,19 +133,24 @@ cancelado
 
 ## 8. Timeouts y casos límite (definidos)
 
+Timeouts **unificados a 10 minutos, con recordatorio a los 5**, en los tres puntos de espera del flujo (redefinido agosto 2026 — reemplaza los 7 minutos que este documento pedía antes para tienda; confirmado con Víctor que el brief manda sobre esta sección):
+
 | Caso | Regla |
 |---|---|
-| Tienda no responde | 7 minutos → se cancela esa parte del pedido; se avisa a las demás tiendas del mismo pedido que ya no preparen nada |
-| Repartidor no puede completar a medio pedido | Repartidor original cancela con comando de cambio de repartidor; sistema reasigna a otro repartidor activo; cliente recibe aviso de que "hubo un cambio pero su pedido sigue en pie"; los repartidores se coordinan la entrega física entre ellos, fuera del sistema |
+| Tienda no responde a la cotización | 10 minutos (recordatorio a los 5) → se cancela el pedido; se informa al cliente que puede pedir de otra tienda; se avisa a la tienda que ya no es necesario cotizar |
+| Cliente no confirma el precio final | 10 minutos (recordatorio a los 5) → se cancela el pedido; se notifica al cliente y a la tienda involucrada |
+| Ningún repartidor acepta el pedido dentro del plazo (asignación inicial) | 10 minutos (recordatorio a los 5) → se cancela el pedido directo (**no** se reintenta con otro repartidor en cadena — simplificación confirmada con Víctor en agosto 2026); se avisa al cliente que no hay repartidores disponibles por ahora y a la tienda que ya no es necesario prepararlo |
+| Repartidor no puede completar a medio pedido (ya había aceptado) | Caso distinto al de arriba — aquí el repartidor SÍ había aceptado. Repartidor original cancela con comando de cambio de repartidor (nombre exacto pendiente); sistema reasigna a otro repartidor activo; cliente recibe aviso de que "hubo un cambio pero su pedido sigue en pie"; los repartidores se coordinan la entrega física entre ellos, fuera del sistema |
 | Pedido multi-tienda, confirmaciones asíncronas | El repartidor NO recibe el pedido hasta que **todas** las tiendas hayan confirmado precio/disponibilidad — evita confusión sobre cuánto cobrar |
 | Cliente no responde a un ajuste de producto | 10 minutos → se cancela el pedido automáticamente y se notifica al cliente y a la(s) tienda(s) que ya no esperen confirmación |
-| Varios repartidores disponibles | Se notifica a todos los repartidores activos; el primero en confirmar se queda con el pedido; a los demás se les avisa "pedido ya tomado". **Nota técnica para implementación:** la asignación debe ser atómica (evitar que dos repartidores queden asignados al mismo pedido por una confirmación simultánea) |
+| Varios repartidores confirman casi al mismo tiempo | El primero en confirmar se queda con el pedido; a los demás se les avisa "pedido ya tomado". **Nota técnica para implementación:** la asignación debe ser atómica (evitar que dos repartidores queden asignados al mismo pedido por una confirmación simultánea) |
 | Tienda fuera de horario | Se valida automáticamente contra `hora_apertura`/`hora_cierre`; si está cerrada, no aparece como opción para el cliente en ese momento |
 | Error de escritura del cliente en productos | La IA confirma siempre el producto entendido antes de continuar |
 
 **Notas técnicas de implementación (no son reglas de negocio nuevas, son detalles que Claude Code debe resolver bien al programar):**
-- Al cancelar por timeout de tienda (7 min) o de cliente (10 min) en un pedido multi-tienda, notificar también a las demás tiendas involucradas para que no dejen apartado el producto sin saberlo que se canceló.
-- La asignación de repartidor (cuando varios confirman casi al mismo tiempo) debe ser atómica a nivel de base de datos (ej. actualización condicional o transacción) para evitar que dos repartidores queden asignados al mismo pedido.
+- Al cancelar por cualquiera de los tres timeouts de 10 min en un pedido multi-tienda, notificar también a las demás tiendas involucradas para que no dejen apartado el producto sin saberlo que se canceló.
+- La asignación de repartidor (cuando varios confirman casi al mismo tiempo) debe ser atómica a nivel de base de datos (`UPDATE ... WHERE estado = ...` condicional, no un read-then-write) para evitar que dos repartidores queden asignados al mismo pedido.
+- Los tres timeouts de 10 min no se pueden disparar por un Database Webhook (nada cambia en la BD cuando "pasa el tiempo sin respuesta") — se implementan con un job de `pg_cron` dentro de Supabase corriendo cada minuto, no con un Cron Job de Vercel (el plan Hobby limita esos a 1/día). Ver `orderTimeoutWorker.ts` y la migración `20260812_order_timeout_worker_cron.sql`.
 
 ## 9. Tono y atención al cliente del bot
 
