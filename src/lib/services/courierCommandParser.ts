@@ -26,7 +26,7 @@ export type CourierCommandParseResult =
     }
   | {
       ok: false;
-      action: "invalid" | "ignored";
+      action: "invalid" | "ignored" | "already_taken";
       courierMessage: string;
       pedidoId?: number | null;
     };
@@ -164,12 +164,20 @@ export function createCourierCommandParser() {
       };
 
       if (parsed.type === "CONFIRMO") {
-        await transitionService.handleCourierConfirm({
+        const { claimed } = await transitionService.handleCourierConfirm({
           pedidoId: pedido.id,
           courierId: courier.id,
           courierName: courier.nombre,
           courierPhone: courier.telefono,
         });
+        if (!claimed) {
+          return {
+            ok: false,
+            action: "already_taken",
+            pedidoId: pedido.id,
+            courierMessage: `⚠️ El pedido ${pedido.id} ya fue tomado por otro repartidor.`,
+          };
+        }
         return { ok: true, action: "confirmed", ...resultBase };
       }
 

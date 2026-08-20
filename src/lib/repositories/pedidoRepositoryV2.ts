@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { normalizePhone } from "@/lib/roles";
+import { resetChatHistory } from "@/lib/messages";
 import type { OrderState } from "@/lib/orderStateMachine";
 import type { PedidoItemInput, PedidoSnapshot, PedidoV2Record } from "@/lib/services/captureEngine";
 
@@ -95,13 +96,18 @@ export async function getOpenPedidoByCustomerPhone(phone: string): Promise<Pedid
   const supabase = getSupabaseAdmin();
   const phoneVariants = getPhoneVariants(phone);
 
-  // No hace falta filtrar por estado: la regla de retención borra el pedido en
-  // cuanto llega a entregado/cancelado, así que cualquier fila que exista para
-  // este teléfono es, por definición, un pedido activo.
+  // La retención borra el pedido en cuanto llega a entregado/cancelado
+  // (finalizePedidoRetention), así que en operación normal nunca debería
+  // quedar una fila terminal para este teléfono. Aun así se filtra por
+  // estado explícitamente: si esa limpieza falla a medias (o hay filas de
+  // antes de que existiera esta regla), un pedido viejo entregado/cancelado
+  // no debe "revivir" y mezclarse con el siguiente pedido del cliente — bug
+  // real ya confirmado en producción (ver ROADMAP.md).
   const { data, error } = await supabase
     .from("pedidos")
     .select("id, estado, metadata_json")
     .in("cliente_telefono", phoneVariants)
+    .not("estado", "in", "(entregado,cancelado)")
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -250,6 +256,7 @@ export type PedidoFullRecord = {
     tiendaId: number;
     nombre: string | null;
     telefono: string | null;
+    direccion: string | null;
     subtotal: number | null;
     estadoTienda: string;
   } | null;
@@ -266,7 +273,7 @@ export async function getPedidoById(pedidoId: number): Promise<PedidoFullRecord 
     .select(
       "id, estado, cliente_telefono, repartidor_id, direccion_entrega, latitud, longitud, " +
         "servicio_mandalo, servicio_repartidor, total_cliente, metadata_json, " +
-        "pedido_tiendas(id, tienda_id, subtotal_tienda, estado_tienda, tiendas(nombre, telefono), pedido_items(id, nombre_producto, cantidad))",
+        "pedido_tiendas(id, tienda_id, subtotal_tienda, estado_tienda, tiendas(nombre, telefono, direccion), pedido_items(id, nombre_producto, cantidad))",
     )
     .eq("id", pedidoId)
     .maybeSingle();
@@ -301,6 +308,7 @@ export async function getPedidoById(pedidoId: number): Promise<PedidoFullRecord 
           tiendaId: Number(pt.tienda_id),
           nombre: tiendaInfo?.nombre == null ? null : String(tiendaInfo.nombre),
           telefono: tiendaInfo?.telefono == null ? null : String(tiendaInfo.telefono),
+          direccion: tiendaInfo?.direccion == null ? null : String(tiendaInfo.direccion),
           subtotal: pt.subtotal_tienda == null ? null : Number(pt.subtotal_tienda),
           estadoTienda: String(pt.estado_tienda ?? "pendiente"),
         }
@@ -342,11 +350,46 @@ export async function setPedidoTotales(params: {
   if (error) throw error;
 }
 
-export async function setPedidoEstado(params: { pedidoId: number; estado: OrderState }): Promise<void> {
+export async function setPedidoEstado(params: {
+  pedidoId: number;
+  estado: OrderState;
+  metadataPatch?: Record<string, unknown>;
+}): Promise<void> {
   const supabase = getSupabaseAdmin();
-  const { error } = await supabase
-    .from("pedidos")
-    .update({ estado: params.estado, updated_at: new Date().toISOString() })
-    .eq("id", params.pedidoId);
+  const update: Record<string, unknown> = { estado: params.estado, updated_at: new Date().toISOString() };
+
+  if (params.metadataPatch) {
+    const { data: current, error: readError } = await supabase
+      .from("pedidos")
+      .select("metadata_json")
+      .eq("id", params.pedidoId)
+      .maybeSingle();
+    if (readError) throw readError;
+    update.metadata_json = { ...toPlainObject(current?.metadata_json as Record<string, unknown> | null), ...params.metadataPatch };
+  }
+
+  const { error } = await supabase.from("pedidos").update(update).eq("id", params.pedidoId);
   if (error) throw error;
+}
+
+// Retención (CLAUDE.md Sección 4): "solo se conservan pedidos activos. Al
+// llegar a entregado o cancelado, el registro se elimina (no se guarda
+// historial)". pedido_tiendas/pedido_items/pedido_eventos caen por cascada
+// (on delete cascade, ver supabase/migrations/20260804_fase1_esquema_definitivo.sql
+// y 20260805_fase2_pedidos_metadata.sql); admin_notificaciones.pedido_id usa
+// on delete set null, así que el outbox ya enviado no se pierde.
+export async function deletePedido(pedidoId: number): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("pedidos").delete().eq("id", pedidoId);
+  if (error) throw error;
+}
+
+// Llamar SIEMPRE después de encolar cualquier mensaje final que referencie
+// este pedidoId (admin_notificaciones.pedido_id no acepta un id que ya no
+// exista) — nunca antes. Cierra el ciclo de vida completo de un pedido
+// terminal: borra el registro y reinicia la conversación del cliente
+// (messages.resetChatHistory), tal como pide la Sección 4 del CLAUDE.md.
+export async function finalizePedidoRetention(params: { pedidoId: number; customerPhone: string }): Promise<void> {
+  await resetChatHistory(params.customerPhone);
+  await deletePedido(params.pedidoId);
 }

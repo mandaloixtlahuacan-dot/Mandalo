@@ -2,7 +2,7 @@
  * Utilidades geográficas puras — Regla de oro #1 (CLAUDE.md).
  *
  * Antes vivían inline en mandaloFlow.ts; se movieron aquí porque
- * courierTimeoutWorker.ts (y otros workers) también las necesitan para
+ * orderTimeoutWorker.ts (y otros workers) también las necesitan para
  * construir links de mapa precisos a partir de coordenadas reales.
  */
 

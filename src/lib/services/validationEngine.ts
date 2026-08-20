@@ -37,10 +37,15 @@ export function validateBusiness(snapshot: PedidoSnapshot): ValidationResult["va
   const businessId = snapshot.businessId ?? null;
   const businessName = cleanText(snapshot.businessName);
 
+  // Requiere el ID real de la tienda, no solo el nombre en texto libre: sin
+  // ID, mandaloFlow.upsertPedidoTienda nunca crea la fila en pedido_tiendas,
+  // y sin esa fila no hay teléfono al que mandar la cotización — el pedido
+  // llegaría a confirmacion_cliente y se quedaría esperando para siempre
+  // (bug raíz reportado en Mandalo_Brief_Final_ClaudeCode_2.md, sección 7).
   return {
     businessId,
     businessName,
-    isValid: Boolean(businessId || businessName),
+    isValid: businessId != null,
   };
 }
 
@@ -154,7 +159,7 @@ export function validateCaptureForConfirmation(params: {
   const validatedItems = validateItems(params.items);
 
   // Orden de prioridad de issues/missingFields: tienda -> dirección -> producto,
-  // igual que la regla de decisión del prompt (BLOQUE 4). Los issues de producto
+  // igual que la regla de decisión del prompt (mandaloPrompt.ts, BLOQUE 5). Los issues de producto
   // van al final aunque validateItems los calcule primero, para que "¿qué falta
   // primero?" siempre refleje esa misma prioridad cuando falta más de una cosa.
   const issues: ValidationIssue[] = [];

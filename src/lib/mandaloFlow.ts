@@ -2,13 +2,16 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getChatCompletion, getOpenAIModel } from "@/lib/openaiClient";
 import { buildMandaloSystemPrompt } from "@/lib/mandaloPrompt";
 import { normalizeWhatsAppText, waapiSendText } from "@/lib/waapi";
-import { detectActorByPhone, normalizePhone } from "@/lib/roles";
-import { getEnv } from "@/lib/env";
+import { detectActorByPhone, ensureMxWhatsappIntl, normalizePhone } from "@/lib/roles";
 import { createCaptureEngine } from "@/lib/services/captureEngine";
 import * as pedidoRepositoryV2 from "@/lib/repositories/pedidoRepositoryV2";
+import { getAdminPhone } from "@/lib/repositories/configRepository";
+import * as metricsRepository from "@/lib/repositories/metricsRepository";
 import * as validationEngine from "@/lib/services/validationEngine";
 import * as outboxRepository from "@/lib/repositories/outboxRepository";
 import { createCourierCommandParser } from "@/lib/services/courierCommandParser";
+import { buildOrderTimeoutMetadata } from "@/lib/services/orderTimeouts";
+import { checkTiendaSchedule, formatMandaloHours, isMandaloOpenNow } from "@/lib/services/businessHours";
 import { calculateFinalPrice, extraerOrdenId, extraerPrecio } from "@/lib/ordenes";
 import { isTerminalState, type OrderState } from "@/lib/orderStateMachine";
 import {
@@ -22,6 +25,7 @@ import {
 import { MandaloAgentResponse, mandaloAgentResponseSchema } from "@/lib/llmResponseSchema";
 import {
   fetchRecentChatHistory as fetchHistorialReciente,
+  isComplaintMessage,
   isConversationModeMessage,
   isNewOrderIntent,
   isYesConfirmation,
@@ -35,7 +39,14 @@ import type { PedidoFullRecord } from "@/lib/repositories/pedidoRepositoryV2";
 import type { PedidoV2Record } from "@/lib/services/captureEngine";
 
 type JsonObject = Record<string, unknown>;
-type TiendaRow = { id?: unknown; nombre?: unknown; categoria?: unknown; telefono?: unknown };
+type TiendaRow = {
+  id?: unknown;
+  nombre?: unknown;
+  categoria?: unknown;
+  telefono?: unknown;
+  hora_apertura?: unknown;
+  hora_cierre?: unknown;
+};
 type CourierRow = { id?: unknown; nombre?: unknown; telefono?: unknown; activo?: unknown; vehiculo?: unknown };
 type HistorialMessage = { texto: string; estado: "cliente" | "bot"; created_at: string };
 type LlmMessage = { role: "system" | "user" | "assistant"; content: string };
@@ -48,22 +59,12 @@ function asJsonObject(value: unknown): JsonObject {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as JsonObject) : {};
 }
 
-function isAdminSender(phone: string): boolean {
-  const env = getEnv();
-  const admin = normalizePhone(String(env.MANDALO_ADMIN_PHONE ?? ""));
+async function isAdminSender(phone: string): Promise<boolean> {
+  const admin = await getAdminPhone();
   if (!admin) return false;
   const sender = normalizePhone(String(phone ?? ""));
   if (!sender) return false;
   return sender === admin || sender.slice(-10) === admin.slice(-10);
-}
-
-function ensureMxWhatsappIntl(raw: string) {
-  const d = normalizePhone(String(raw ?? ""));
-  // WhatsApp México suele usar 52 + 10 dígitos (a veces 521 + 10)
-  if (d.length === 10) return `52${d}`;
-  if (d.length === 12 && d.startsWith("52")) return d;
-  if (d.length === 13 && d.startsWith("521")) return d;
-  return d;
 }
 
 function formatEstimatedArrival(minutesToAdd = 20): string {
@@ -162,11 +163,24 @@ export async function getLLMResponse(params: {
   const supabase = getSupabaseAdmin();
   let tiendas: TiendaRow[] = [];
   try {
-    const { data, error } = await supabase.from("tiendas").select("id, nombre, categoria, telefono").limit(500);
+    const { data, error } = await supabase
+      .from("tiendas")
+      .select("id, nombre, categoria, telefono, hora_apertura, hora_cierre")
+      .eq("activa", true)
+      .limit(500);
     if (error) throw error;
-    tiendas = (data ?? []).filter(
-      (n) => String((n as TiendaRow)?.nombre ?? "").trim() && String((n as TiendaRow)?.telefono ?? "").trim(),
-    );
+    tiendas = (data ?? [])
+      .filter((n) => String((n as TiendaRow)?.nombre ?? "").trim() && String((n as TiendaRow)?.telefono ?? "").trim())
+      // Horario de tienda (brief sección 3): una tienda fuera de su horario no
+      // se ofrece como opción — ni en la lista legible ni en el JSON crudo que
+      // ve la IA, para que nunca la sugiera aunque el cliente la mencione.
+      .filter((n) => {
+        const row = n as TiendaRow;
+        return checkTiendaSchedule({
+          horaApertura: row.hora_apertura == null ? null : String(row.hora_apertura),
+          horaCierre: row.hora_cierre == null ? null : String(row.hora_cierre),
+        }).withinSchedule;
+      });
   } catch (e: unknown) {
     console.error("[mandalo] getLLMResponse: error consultando tiendas", { message: getErrorMessage(e) });
   }
@@ -232,22 +246,67 @@ export async function getLLMResponse(params: {
 
 // --- Resolución de tiendas / repartidores ---
 
-async function resolveTiendaStrictByName(nombre: string) {
+type TiendaResolution =
+  | { status: "found"; id: number; nombre: string; telefono: string }
+  | { status: "closed"; nombre: string; horaApertura: string; horaCierre: string }
+  | { status: "not_found" };
+
+const TIENDA_RESOLUTION_SELECT = "id, nombre, telefono, activa, hora_apertura, hora_cierre";
+
+function resolveTiendaRow(row: {
+  id: unknown;
+  nombre: unknown;
+  telefono: unknown;
+  activa: unknown;
+  hora_apertura: unknown;
+  hora_cierre: unknown;
+} | null | undefined, fallbackName: string): TiendaResolution {
+  if (!row?.telefono || row.activa === false) return { status: "not_found" };
+
+  const schedule = checkTiendaSchedule({
+    horaApertura: row.hora_apertura == null ? null : String(row.hora_apertura),
+    horaCierre: row.hora_cierre == null ? null : String(row.hora_cierre),
+  });
+  if (!schedule.withinSchedule) {
+    return {
+      status: "closed",
+      nombre: String(row.nombre ?? fallbackName),
+      horaApertura: schedule.horaApertura,
+      horaCierre: schedule.horaCierre,
+    };
+  }
+
+  return {
+    id: Number(row.id),
+    nombre: String(row.nombre ?? fallbackName),
+    telefono: ensureMxWhatsappIntl(String(row.telefono)),
+    status: "found",
+  };
+}
+
+// Horario de tienda (brief sección 3): validado antes de asignar, no solo al
+// listarla — un cliente puede nombrar directamente una tienda que el bot no
+// mostró en este turno (la recuerda de un turno anterior, o la escribió de
+// memoria), así que la resolución por nombre también tiene que revisar
+// horario, no solo la lista que arma getLLMResponse.
+async function resolveTiendaStrictByName(nombre: string): Promise<TiendaResolution> {
   const supabase = getSupabaseAdmin();
   const name = String(nombre ?? "").trim();
-  if (!name) return null;
+  if (!name) return { status: "not_found" };
 
-  const exact = await supabase.from("tiendas").select("id, nombre, telefono").eq("nombre", name).limit(1);
-  if (!exact.error && exact.data?.[0]?.telefono) {
-    return { id: Number(exact.data[0].id), nombre: String(exact.data[0].nombre ?? name), telefono: ensureMxWhatsappIntl(String(exact.data[0].telefono)) };
+  const exact = await supabase.from("tiendas").select(TIENDA_RESOLUTION_SELECT).eq("nombre", name).limit(1);
+  if (!exact.error && exact.data?.[0]) {
+    const resolved = resolveTiendaRow(exact.data[0], name);
+    if (resolved.status !== "not_found") return resolved;
   }
 
-  const like = await supabase.from("tiendas").select("id, nombre, telefono").ilike("nombre", `%${name}%`).limit(1);
-  if (!like.error && like.data?.[0]?.telefono) {
-    return { id: Number(like.data[0].id), nombre: String(like.data[0].nombre ?? name), telefono: ensureMxWhatsappIntl(String(like.data[0].telefono)) };
+  const like = await supabase.from("tiendas").select(TIENDA_RESOLUTION_SELECT).ilike("nombre", `%${name}%`).limit(1);
+  if (!like.error && like.data?.[0]) {
+    const resolved = resolveTiendaRow(like.data[0], name);
+    if (resolved.status !== "not_found") return resolved;
   }
 
-  return null;
+  return { status: "not_found" };
 }
 
 async function isTiendaSenderPhone(rawPhone: string): Promise<boolean> {
@@ -351,7 +410,7 @@ async function sendWhatsApp(to: string, body: string): Promise<void> {
 
 // --- Cliente ---
 
-async function cancelOpenPedido(pedido: PedidoV2Record, reason: string): Promise<void> {
+async function cancelOpenPedido(pedido: PedidoV2Record, telefono: string, reason: string): Promise<void> {
   await pedidoRepositoryV2.setPedidoEstado({ pedidoId: pedido.id, estado: "cancelado" });
   await pedidoRepositoryV2.appendPedidoEvento({
     pedidoId: pedido.id,
@@ -361,13 +420,27 @@ async function cancelOpenPedido(pedido: PedidoV2Record, reason: string): Promise
     actorTipo: "cliente",
     payload: { reason },
   });
+
+  // Reporte semanal (brief sección 5): contador agregado, no guarda nada del
+  // pedido en sí. Best-effort — nunca debe tumbar el cierre real del pedido.
+  await metricsRepository.incrementMetric("pedidos_cancelados").catch((e: unknown) => {
+    console.error("[mandalo] incrementMetric falló (pedidos_cancelados)", { pedidoId: pedido.id, message: getErrorMessage(e) });
+  });
+
+  // Retención (CLAUDE.md Sección 4): borra el pedido y reinicia el chat del
+  // cliente. Va al final: nada más queda pendiente de encolar sobre este
+  // pedidoId después de este punto en ninguno de los dos llamadores.
+  await pedidoRepositoryV2.finalizePedidoRetention({ pedidoId: pedido.id, customerPhone: telefono });
 }
 
+// Folio corto y visible (brief sección 3): el id numérico del pedido hace de
+// folio ("pedido #12") en todo mensaje de seguimiento al cliente, para que
+// tenga una referencia rápida a mano si necesita escribir por una queja.
 function buildResumenPedido(pedido: PedidoV2Record): string {
   const snapshot = pedido.snapshot_json;
   const tienda = String(snapshot.businessName ?? "").trim() || "(sin tienda)";
   const direccion = String(snapshot.addressText ?? "").trim() || "(sin dirección)";
-  return `Tienda: ${tienda}\n\n🏠 Entrega:\n${direccion}`;
+  return `Pedido #${pedido.id}\n\nTienda: ${tienda}\n\n🏠 Entrega:\n${direccion}`;
 }
 
 async function handleEsperandoConfirmacionInicial(
@@ -403,10 +476,33 @@ async function handleEsperandoConfirmacionInicial(
   const full = await pedidoRepositoryV2.getPedidoById(pedido.id);
   if (!full?.tienda?.telefono) {
     console.error("[ERROR CRÍTICO] No se encontró el teléfono de la tienda.", { pedidoId: pedido.id, tienda: full?.tienda ?? null });
-    const msg = "⚠️ No pude identificar la tienda para tu pedido.\nDime de qué negocio quieres pedir y lo reintentamos. 🛒";
+
+    // Red de seguridad: sin tienda vinculada no hay a quién mandarle la
+    // cotización. Antes esto dejaba el pedido varado en confirmacion_cliente
+    // para siempre (el cliente no tenía forma de recuperarse). Regresamos a
+    // captura con el negocio invalidado para que la IA vuelva a pedirlo y
+    // mandaloFlow reintente resolveTiendaStrictByName en el siguiente turno.
+    const resetSnapshot = { ...snapshot, businessId: null, businessName: null, businessPhone: null };
+    await pedidoRepositoryV2.updatePedidoSnapshot({
+      pedidoId: pedido.id,
+      estado: "seleccion_productos",
+      snapshot: resetSnapshot,
+      addressText: snapshot.addressText ?? null,
+      latitud: snapshot.latitud ?? null,
+      longitud: snapshot.longitud ?? null,
+    });
+    await pedidoRepositoryV2.appendPedidoEvento({
+      pedidoId: pedido.id,
+      tipoEvento: "tienda_no_resuelta_reintento",
+      estadoOrigen: "confirmacion_cliente",
+      estadoDestino: "seleccion_productos",
+      actorTipo: "sistema",
+    });
+
+    const msg = "⚠️ No pude identificar la tienda para tu pedido.\nDime el nombre exacto del negocio y seguimos. 🛒";
     await sendWhatsApp(telefono, msg);
     await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
-    return { ok: true, role: "cliente", stage: "confirmacion_cliente", pedidoId: pedido.id };
+    return { ok: true, role: "cliente", stage: "seleccion_productos", pedidoId: pedido.id };
   }
 
   const tiendaTelefono = ensureMxWhatsappIntl(full.tienda.telefono);
@@ -436,7 +532,11 @@ async function handleEsperandoConfirmacionInicial(
       idempotencyKey: `pedido:${full.id}:cotizacion_tienda:v1`,
     });
 
-    await pedidoRepositoryV2.setPedidoEstado({ pedidoId: full.id, estado: "pendiente_tiendas" });
+    await pedidoRepositoryV2.setPedidoEstado({
+      pedidoId: full.id,
+      estado: "pendiente_tiendas",
+      metadataPatch: buildOrderTimeoutMetadata("store_quote"),
+    });
     await pedidoRepositoryV2.appendPedidoEvento({
       pedidoId: full.id,
       tipoEvento: "dispatch_tienda",
@@ -452,7 +552,7 @@ async function handleEsperandoConfirmacionInicial(
     return { ok: true, role: "cliente", stage: "confirmacion_cliente", pedidoId: pedido.id };
   }
 
-  const msgCliente = `📩 Tu pedido quedó registrado para envío a *${full.tienda.nombre}*.\n\nTe avisaré en cuanto la tienda confirme el precio.`;
+  const msgCliente = `📩 Pedido #${full.id} quedó registrado para envío a *${full.tienda.nombre}*.\n\nTe avisaré en cuanto la tienda confirme el precio.`;
   await sendWhatsApp(telefono, msgCliente);
   await guardarMensajeChat({ telefono, texto: msgCliente, estado: "bot" }).catch(() => {});
   return { ok: true, role: "cliente", stage: "pendiente_tiendas", pedidoId: full.id };
@@ -490,7 +590,7 @@ async function handleConfirmadoTiendas(telefono: string, mensaje: string, pedido
         idempotencyKey: `pedido:${pedido.id}:store_notice_no_courier:v1`,
       });
     }
-    const msg = "⚠️ Por ahora no tengo repartidores activos disponibles.\nEn cuanto haya uno libre, te aviso. 🙏";
+    const msg = `⚠️ Pedido #${pedido.id}: por ahora no tengo repartidores activos disponibles.\nEn cuanto haya uno libre, te aviso. 🙏`;
     await sendWhatsApp(telefono, msg);
     await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
     return { ok: true, role: "cliente", stage: "confirmado_tiendas", pedidoId: pedido.id };
@@ -502,10 +602,11 @@ async function handleConfirmadoTiendas(telefono: string, mensaje: string, pedido
 
   const msgRepartidor =
     `Hola ${repartidorNombre}, tienes un nuevo pedido de ${pedido.tienda?.nombre ?? "la tienda"}. 📦\n\n` +
-    `📍 Dirección: ${pedido.direccionEntrega || "(sin dirección)"}\n` +
+    `🏪 Recoger en: ${pedido.tienda?.direccion || "(sin dirección de tienda registrada, confirma con la tienda)"}\n` +
+    `📍 Entregar en: ${pedido.direccionEntrega || "(sin dirección)"}\n` +
     `${pedido.totalCliente != null ? `💰 Total: $${pedido.totalCliente}\n` : ""}` +
     `📞 Tel cliente: ${telefono}\n` +
-    `${mapsLink ? `🗺️ Mapa: ${mapsLink}\n` : ""}` +
+    `${mapsLink ? `🗺️ Mapa de entrega: ${mapsLink}\n` : ""}` +
     `\nProductos:\n${formatItemsForMessage(pedido.items)}\n\n` +
     `Responde con: #CONFIRMO ${pedido.id}\n` +
     `Luego: #RECOGI ${pedido.id} y #ENTREGADO ${pedido.id}`;
@@ -540,7 +641,7 @@ async function handleConfirmadoTiendas(telefono: string, mensaje: string, pedido
   }
 
   const etaText = formatEstimatedArrival(20);
-  const msgCliente = `✅ Tu pedido ha sido confirmado.\nLlegará aproximadamente a las ${etaText}.\n\nEstamos coordinando tu entrega con *${repartidorNombre}*.\nTe avisaré en cuanto confirme. 📦`;
+  const msgCliente = `✅ Pedido #${pedido.id} confirmado.\nLlegará aproximadamente a las ${etaText}.\n\nEstamos coordinando tu entrega con *${repartidorNombre}*.\nTe avisaré en cuanto confirme. 📦`;
   await sendWhatsApp(telefono, msgCliente);
   await guardarMensajeChat({ telefono, texto: msgCliente, estado: "bot" }).catch(() => {});
   return { ok: true, role: "cliente", stage: "dispatch_repartidor_pendiente", pedidoId: pedido.id };
@@ -574,11 +675,48 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
   });
   const hasActivePedido = Boolean(openPedido && !isTerminalState(openPedido.estado));
 
+  // Horario de Mándalo (brief sección 3): 8am-8pm fijo. Solo bloquea pedidos
+  // NUEVOS — un cliente con un pedido ya en curso (ej. en camino a las 8:05pm)
+  // debe poder seguir recibiendo actualizaciones sin que el bot lo trate como
+  // cerrado a medio proceso.
+  if (!hasActivePedido && !isMandaloOpenNow()) {
+    const msg = `🕗 Por ahora estamos cerrados.\n\nNuestro horario es de ${formatMandaloHours()}. ¡Te esperamos! 🙏`;
+    await sendWhatsApp(telefono, msg);
+    await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+    return { ok: true, role: "cliente", accion: "mandalo_cerrado" };
+  }
+
+  // Escalamiento de quejas (brief sección 4 paso 9): prioridad más alta que
+  // el hard reset — si alguien está molesto o algo salió mal, no lo recibimos
+  // con "¿qué se te antoja hoy?": lo conectamos directo con el admin, con o
+  // sin pedido activo (puede llegar después de que la retención ya borró el
+  // pedido que originó la queja).
+  if (isComplaintMessage(mensaje)) {
+    await guardarMensajeChat({ telefono, texto: String(mensaje ?? ""), estado: "cliente" }).catch(() => {});
+    await outboxRepository
+      .enqueueAdminNotification({
+        pedidoId: openPedido?.id ?? null,
+        tipo: "queja_cliente",
+        contenido:
+          `Queja de cliente\n\n` +
+          `Tel: ${telefono}\n` +
+          `${openPedido ? `Pedido relacionado: #${openPedido.id}\n` : ""}` +
+          `Mensaje: ${mensaje}`,
+      })
+      .catch((e: unknown) => {
+        console.error("[mandalo] no se pudo escalar queja al admin", { message: getErrorMessage(e) });
+      });
+    const msg = "🙏 Ya avisé a nuestro equipo de lo que pasó. Te van a contactar directo para resolverlo.\n\nGracias por avisarnos.";
+    await sendWhatsApp(telefono, msg);
+    await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+    return { ok: true, role: "cliente", accion: "queja_escalada" };
+  }
+
   // HARD RESET (prioridad absoluta): si el usuario pide pedido nuevo/reiniciar,
   // cancelamos cualquier pedido activo y arrancamos limpio.
   if (isNewOrderIntent(mensaje)) {
     if (hasActivePedido && openPedido) {
-      await cancelOpenPedido(openPedido, "hard_reset").catch((e: unknown) => {
+      await cancelOpenPedido(openPedido, telefono, "hard_reset").catch((e: unknown) => {
         console.error("[mandalo] cancelOpenPedido falló en hard reset", { pedidoId: openPedido.id, message: getErrorMessage(e) });
       });
     }
@@ -605,7 +743,8 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
     if (openPedido.estado !== "seleccion_productos") {
       const flag = getSessionFlag(telefono);
       if (isRedundantConfirmationMessage(mensaje) || isOrderTrackingQuestion(mensaje) || !flag?.pedido_en_proceso) {
-        const trackingMsg = TRACKING_MESSAGES[openPedido.estado] ?? "Tu pedido sigue en proceso. Te aviso en cuanto haya una actualización. 📦";
+        const trackingBody = TRACKING_MESSAGES[openPedido.estado] ?? "Tu pedido sigue en proceso. Te aviso en cuanto haya una actualización. 📦";
+        const trackingMsg = `Pedido #${openPedido.id}: ${trackingBody}`;
         await sendWhatsApp(telefono, trackingMsg);
         await guardarMensajeChat({ telefono, texto: trackingMsg, estado: "bot" }).catch(() => {});
         return { ok: true, role: "cliente", stage: openPedido.estado, pedidoId: openPedido.id };
@@ -678,8 +817,21 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
   const llmBusinessId = Number(llmOrderState?.business_id ?? llmOrderState?.businessId);
   const llmBusinessName = String(llmOrderState?.business_name ?? llmOrderState?.businessName ?? "").trim();
   if (llmOrderState && !Number.isFinite(llmBusinessId) && llmBusinessName) {
-    const resolved = await resolveTiendaStrictByName(llmBusinessName).catch(() => null);
-    if (resolved) {
+    const resolved = await resolveTiendaStrictByName(llmBusinessName).catch(
+      (): TiendaResolution => ({ status: "not_found" }),
+    );
+
+    // Horario de tienda (brief sección 3): si el cliente nombró una tienda
+    // real pero cerrada, se lo decimos directo en vez de dejar que el flujo
+    // normal de captura vuelva a pedirle "el nombre exacto" (ya lo dio bien).
+    if (resolved.status === "closed") {
+      const msg = `😕 *${resolved.nombre}* está cerrada ahora mismo.\n\nAbre de ${resolved.horaApertura} a ${resolved.horaCierre}. ¿Quieres pedir de otra tienda? 🛒`;
+      await sendWhatsApp(telefono, msg);
+      await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+      return { ok: true, role: "cliente", accion: "tienda_cerrada" };
+    }
+
+    if (resolved.status === "found") {
       llmOrderState = { ...llmOrderState, business_id: resolved.id, business_name: resolved.nombre, business_phone: resolved.telefono };
     }
   }
@@ -757,7 +909,11 @@ async function handleTiendaMessage(telefono: string, mensaje: string, tiendaId: 
 
   await pedidoRepositoryV2.setPedidoTiendaCotizacion({ pedidoTiendaId: pedido.tienda.pedidoTiendaId, subtotal });
   await pedidoRepositoryV2.setPedidoTotales({ pedidoId: ordenId, servicioRepartidor: MANDALO_DELIVERY_FEE, totalCliente: total });
-  await pedidoRepositoryV2.setPedidoEstado({ pedidoId: ordenId, estado: "confirmado_tiendas" });
+  await pedidoRepositoryV2.setPedidoEstado({
+    pedidoId: ordenId,
+    estado: "confirmado_tiendas",
+    metadataPatch: buildOrderTimeoutMetadata("final_confirmation"),
+  });
   await pedidoRepositoryV2.appendPedidoEvento({
     pedidoId: ordenId,
     tipoEvento: "cotizacion_recibida",
@@ -769,6 +925,7 @@ async function handleTiendaMessage(telefono: string, mensaje: string, tiendaId: 
 
   const msg =
     `Ya me contestó *${pedido.tienda.nombre ?? "la tienda"}* ✅\n\n` +
+    `Pedido #${ordenId}\n` +
     `Subtotal: $${subtotal}\n` +
     `Servicio Mándalo: $${MANDALO_SERVICE_FEE}\n` +
     `Envío: $${MANDALO_DELIVERY_FEE}\n` +
@@ -803,7 +960,7 @@ async function handleRepartidorMessage(telefono: string, mensaje: string): Promi
 
   if (parseResult.action === "confirmed") {
     if (telefonoCliente) {
-      const msgCliente = `✅ ¡Excelente! *${parseResult.courierName}* aceptó tu pedido.\nEn cuanto lo recoja, te aviso. 📦`;
+      const msgCliente = `✅ Pedido #${parseResult.pedidoId}: ¡Excelente! *${parseResult.courierName}* aceptó tu pedido.\nEn cuanto lo recoja, te aviso. 📦`;
       await outboxRepository.enqueueOutboundMessage({
         pedidoId: parseResult.pedidoId,
         tipoMensaje: "notificacion_cliente",
@@ -837,7 +994,7 @@ async function handleRepartidorMessage(telefono: string, mensaje: string): Promi
 
   if (parseResult.action === "picked_up") {
     if (telefonoCliente) {
-      const msgCliente = `📦 ¡${parseResult.courierName} ya tiene tu pedido y está en camino!`;
+      const msgCliente = `📦 Pedido #${parseResult.pedidoId}: ¡${parseResult.courierName} ya tiene tu pedido y está en camino!`;
       await outboxRepository.enqueueOutboundMessage({
         pedidoId: parseResult.pedidoId,
         tipoMensaje: "notificacion_cliente",
@@ -855,7 +1012,7 @@ async function handleRepartidorMessage(telefono: string, mensaje: string): Promi
 
   // delivered
   if (telefonoCliente) {
-    const msgCliente = "✅ Pedido entregado. ¡Gracias por tu compra y por confiar en nosotros! 🙌";
+    const msgCliente = `✅ Pedido #${parseResult.pedidoId} entregado. ¡Gracias por tu compra y por confiar en nosotros! 🙌`;
     await outboxRepository.enqueueOutboundMessage({
       pedidoId: parseResult.pedidoId,
       tipoMensaje: "notificacion_cliente",
@@ -868,21 +1025,44 @@ async function handleRepartidorMessage(telefono: string, mensaje: string): Promi
   }
   const ack = `✅ Entrega registrada para el pedido ${parseResult.pedidoId}.`;
   await sendWhatsApp(telefono, ack);
-  // Nota: la regla de retención (borrar el pedido al llegar a entregado) se
-  // implementa aparte, en la Fase 4 — todavía no aquí.
+
+  // Reporte semanal (brief sección 5): contador agregado, no guarda nada del
+  // pedido en sí.
+  await metricsRepository.incrementMetric("pedidos_entregados").catch((e: unknown) => {
+    console.error("[mandalo] incrementMetric falló (pedidos_entregados)", { pedidoId: parseResult.pedidoId, message: getErrorMessage(e) });
+  });
+  if (pedido?.totalCliente != null) {
+    await metricsRepository.incrementMetric("ingresos_entregados", pedido.totalCliente).catch((e: unknown) => {
+      console.error("[mandalo] incrementMetric falló (ingresos_entregados)", { pedidoId: parseResult.pedidoId, message: getErrorMessage(e) });
+    });
+  }
+
+  // Retención (CLAUDE.md Sección 4): va al final, después de encolar el
+  // mensaje de cierre al cliente — admin_notificaciones.pedido_id no acepta
+  // un id que ya no exista.
+  if (telefonoCliente) {
+    await pedidoRepositoryV2
+      .finalizePedidoRetention({ pedidoId: parseResult.pedidoId, customerPhone: telefonoCliente })
+      .catch((e: unknown) => {
+        console.error("[mandalo] finalizePedidoRetention falló tras entrega", {
+          pedidoId: parseResult.pedidoId,
+          message: getErrorMessage(e),
+        });
+      });
+  }
   return { ok: true, role: "repartidor", accion: "completado", ordenId: parseResult.pedidoId };
 }
 
 export async function processMandaloWebhook(incoming: IncomingWhatsAppMessage): Promise<JsonObject> {
   // Backdoor admin: RESET_BOT <NUMERO_TELEFONO>
   const bodyTextRaw = String(incoming.body ?? "");
-  if (isAdminSender(incoming.from)) {
+  if (await isAdminSender(incoming.from)) {
     const m = bodyTextRaw.match(/^\s*RESET_BOT\s+([0-9+\-\s]{8,})\s*$/i);
     if (m?.[1]) {
       const target = normalizePhone(m[1]);
       const openPedido = await pedidoRepositoryV2.getOpenPedidoByCustomerPhone(target).catch(() => null);
       if (openPedido && !isTerminalState(openPedido.estado)) {
-        await cancelOpenPedido(openPedido, "reset_bot_admin").catch(() => {});
+        await cancelOpenPedido(openPedido, target, "reset_bot_admin").catch(() => {});
       }
       sessionFlags.delete(target);
       const msg = `✅ RESET aplicado. Número desbloqueado: ${target}`;

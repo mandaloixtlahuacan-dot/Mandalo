@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getEnv } from "@/lib/env";
+import { getAdminPhone } from "@/lib/repositories/configRepository";
 import type {
   EnqueueOutboundMessageInput,
   OutboxMessageType,
@@ -199,14 +200,13 @@ export async function markMessageDead(params: {
 // (venta entregada, timeout de repartidor, fallo de dispatch, etc.). Es el
 // carril de adminOutboxWorker.ts, no el de dispatchWorker.ts.
 export async function enqueueAdminNotification(params: {
-  pedidoId: number;
+  pedidoId: number | null;
   tipo: string;
   contenido: string;
 }): Promise<void> {
-  const env = getEnv();
-  const adminPhone = String(env.MANDALO_ADMIN_PHONE ?? "").trim();
+  const adminPhone = await getAdminPhone();
   if (!adminPhone) {
-    console.warn("[outboxRepository] MANDALO_ADMIN_PHONE vacío; no se encola notificación a admin.");
+    console.warn("[outboxRepository] no hay teléfono de admin configurado (ni BD ni MANDALO_ADMIN_PHONE); no se encola notificación.");
     return;
   }
 
