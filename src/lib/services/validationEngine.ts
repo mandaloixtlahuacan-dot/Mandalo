@@ -49,9 +49,26 @@ export function validateBusiness(snapshot: PedidoSnapshot): ValidationResult["va
   };
 }
 
+// Normaliza un nombre de zona para comparar ("Calle Venustiano Carranza" ->
+// "venustiano carranza") — quita acentos, mayúsculas, el prefijo genérico
+// (calle/colonia/boulevard/avenida) y cualquier paréntesis aclaratorio como
+// el "(Ixtlahuacán del Río)" de la entrada "Centro". Mismo criterio en
+// ambos lados de la comparación (BD y lo que sugiere la IA).
+function normalizeZoneName(value: string): string {
+  return String(value ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/^(calle|colonia|col\.?|boulevard|blvd\.?|avenida|av\.?)\s+/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function validateAddress(
   addressText?: string | null,
   coords?: { latitud?: number | null; longitud?: number | null } | null,
+  zone?: { addressZone?: string | null; knownZoneNames?: string[] } | null,
 ): ValidationResult["validatedAddress"] {
   const raw = cleanText(addressText) ?? "";
   const normalized = raw.toLowerCase();
@@ -67,13 +84,29 @@ export function validateAddress(
     typeof coords?.longitud === "number" &&
     Number.isFinite(coords.longitud);
 
+  // Zona de cobertura confirmada contra zonas_cobertura (mismo patrón que
+  // resolveTiendaStrictByName: la IA sugiere el nombre, aquí se verifica con
+  // match exacto —normalizado— contra la lista real de la BD, nunca se
+  // confía en el string de la IA a ciegas). Reemplaza la vieja heurística
+  // que daba por válida CUALQUIER dirección de texto suficientemente larga
+  // sin verificar nunca si de verdad caía dentro del radio de cobertura —
+  // hueco real de Regla de oro #1 detectado en producción (agosto 2026).
+  const knownZoneNames = zone?.knownZoneNames ?? [];
+  const zoneMatch =
+    Boolean(zone?.addressZone) &&
+    knownZoneNames.some((known) => normalizeZoneName(known) === normalizeZoneName(String(zone?.addressZone)));
+
+  // Con la zona ya confirmada, solo falta un dato mínimo para que el
+  // repartidor ubique la casa exacta — un número o una referencia clara.
+  const hasMinimalDetail = raw.length >= 8 && (hasNumber || hasReference);
+
   return {
     raw,
     normalized,
     hasStreet,
     hasNumber,
     hasReference,
-    isValid: hasCoords || (raw.length >= 15 && hasStreet && hasNumber && hasReference),
+    isValid: hasCoords || (zoneMatch && hasMinimalDetail),
   };
 }
 
@@ -150,12 +183,14 @@ function decideNextState(params: {
 export function validateCaptureForConfirmation(params: {
   snapshot: PedidoSnapshot;
   items: PedidoItemInput[];
+  knownZoneNames?: string[];
 }): ValidationResult {
   const validatedBusiness = validateBusiness(params.snapshot);
-  const validatedAddress = validateAddress(params.snapshot.addressText, {
-    latitud: params.snapshot.latitud,
-    longitud: params.snapshot.longitud,
-  });
+  const validatedAddress = validateAddress(
+    params.snapshot.addressText,
+    { latitud: params.snapshot.latitud, longitud: params.snapshot.longitud },
+    { addressZone: params.snapshot.addressZone, knownZoneNames: params.knownZoneNames },
+  );
   const validatedItems = validateItems(params.items);
 
   // Orden de prioridad de issues/missingFields: tienda -> dirección -> producto,
