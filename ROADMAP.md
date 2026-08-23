@@ -2,9 +2,10 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 20 de agosto de 2026, rama `fix/cotizacion-tienda-y-pendientes`
-> (punchlist completo de `Mandalo_Brief_Final_ClaudeCode_2.md`, sección 7 — **validado en vivo,
-> lista para mergear a `main`** — ver checklist de reversión de config antes de cerrar el ciclo).
+> Última actualización: 24 de agosto de 2026, rama `fix/refinamientos-post-produccion`
+> (mergeada desde `fix/cotizacion-tienda-y-pendientes` a `main` el 2026-08-20 — commit
+> `fa1de26` — con validación en vivo en producción confirmada por Víctor: tienda,
+> repartidor, admin y cliente reciben todos sus mensajes correctamente).
 
 ## ✅ Completo y confirmado en producción
 
@@ -38,19 +39,35 @@ Punchlist completo del brief, los 14 puntos de la sección 7 — código listo, 
 
 **Nota sobre `handleCourierReassignmentQueued`/`handleCourierReassignmentFailed`** (`stateTransitionService.ts`): quedaron sin llamador tras retirar el worker viejo. No se borraron — son la base ya construida para el futuro comando explícito de "cambio de repartidor" (CLAUDE.md Sección 14, nombre pendiente; caso real: repartidor que ya aceptó y no puede completar a medio pedido). Si ese comando nunca se construye, vale la pena revisar si siguen valiendo la pena o se retiran en una limpieza futura.
 
-## 🔴 Pendiente antes de mergear/desplegar este bloque
+## ✅ Reversión de configuración temporal de Preview (cerrado 2026-08-20/21)
 
-**Reversión de configuración temporal usada para probar en Preview** (urgente, independiente de si se mergea hoy o después — mientras no se revierta, producción no recibe avisos por outbox y el Preview puede seguir mandando WhatsApps reales si alguien le pega al endpoint):
-- [ ] Regresar el trigger `trg_admin_notificaciones_dispatch_fn` en Supabase a apuntar a la URL de producción (`https://mandalo1.vercel.app/api/internal/admin-outbox`) con el `CRON_SECRET` **de producción** (no el de Preview) — hoy sigue apuntando al Preview Deployment usado para las pruebas.
-- [ ] Regresar `ADMIN_OUTBOX_DRY_RUN` a `true` en el scope Preview de Vercel (se puso en `false` a propósito para que la prueba en vivo mandara un WhatsApp real a la tienda) y redesplegar Preview para que tome el valor.
-- [ ] Confirmar/revertir el webhook de Whapi.cloud de vuelta a la URL de producción (se repuntó al Preview para poder recibir mensajes reales de WhatsApp durante las pruebas) — sin este paso, producción se queda sorda a WhatsApp.
+Todo lo usado para probar en vivo contra Preview quedó revertido y confirmado por Víctor: trigger `trg_admin_notificaciones_dispatch_fn` de vuelta a producción, `ADMIN_OUTBOX_DRY_RUN` de vuelta a `true` en Preview, webhook de Whapi.cloud de vuelta a la URL de producción. Nota operativa aprendida en el camino (relevante para cualquier cambio futuro de variables "Sensitive" en Vercel): no se pueden releer una vez guardadas — ni por dashboard ni por `vercel env pull` (que puede quedarse con un valor viejo sin avisar). La única forma confiable de verificar o corregir una es rotarla a un valor nuevo conocido y redesplegar. También: una variable sin scope de rama específico se comparte entre Production y Preview como una sola entrada — borrarla "solo de Preview" puede borrarla de ambos si nunca se había separado antes.
 
-**Migraciones aún sin correr** (necesarias para que lo nuevo de este bloque funcione en producción una vez mergeado):
-- Correr `supabase/migrations/20260812_order_timeout_worker_cron.sql` (activa el reloj de timeouts — sin esto, los timeouts no se disparan).
-- Correr `supabase/migrations/20260812_metricas_semanales.sql` (activa el reporte semanal).
+Durante el primer intento de prueba real en producción (post-merge) aparecieron dos problemas de configuración *en producción*, distintos de los de Preview, también ya resueltos: `MANDALO_WEBHOOK_SECRET` y `CRON_SECRET` de producción rotados a valores nuevos (el deployment de producción llevaba 12 días sin redeploy, así que corría con secretos desactualizados frente a lo último editado en Vercel) y `ADMIN_OUTBOX_DRY_RUN` de producción, que había quedado en `true` por accidente al restaurarla tras el incidente de la variable compartida — se confirmó y corrigió a `false` (producción sí debe enviar mensajes reales, a diferencia de Preview).
+
+## ⚪ Migraciones opcionales aún sin correr
+
 - Opcional: correr `supabase/migrations/20260812_configuracion_admin_telefono.sql` (permite cambiar el número de admin sin redeploy).
 
-**Nota operativa aprendida en este bloque:** las variables de entorno marcadas "Sensitive" en Vercel no se pueden releer una vez guardadas — ni por dashboard ni por `vercel env pull` (que puede quedarse con un valor viejo en el archivo local sin avisar). Para verificar o corregir una de estas variables con certeza, la única forma confiable es rotarla a un valor nuevo conocido y redesplegar — no asumir que un pull reciente trae el valor real. También: una variable sin scope de rama específico se comparte entre Production y Preview como una sola entrada — borrarla "solo de Preview" puede borrarla de ambos si nunca se había separado antes.
+## 🚧 Bloque de trabajo 2026-08-22 → 2026-08-24 (rama `fix/refinamientos-post-produccion`, sin mergear)
+
+Cuatro ajustes reportados por Víctor tras la validación en vivo en producción — con esto, Mándalo queda al 100% del plan original:
+
+1. **Reconocimiento de producto sin nombre exacto** — `mandaloPrompt.ts` BLOQUE 4: nueva regla explícita para que la IA nunca invente un nombre comercial cuando el cliente da una descripción en vez de un nombre ("un té con tapa morada, no sé cómo se llama"). La IA debe usar la descripción tal cual como `nombre_producto`, confirmarla con el cliente, y mandarla así a la tienda — la tienda identifica el producto real, no la IA. `validationEngine.ts` ya aceptaba esto sin cambios (un producto genérico con descripción en `notas`/`presentacion` ya pasaba la validación); el problema era puramente de comportamiento del prompt.
+2. **Dirección escrita sin GPS obligatorio** — se detectó que la validación de texto ya aceptaba una dirección sin GPS si tenía suficiente detalle (calle+número+referencia), **sin que el chequeo Haversine de Regla de oro #1 se ejecutara nunca** para ese camino (`isWithinCoverageArea` solo se llama si el cliente comparte GPS ese turno). Ampliar la aceptación de texto sin resolver esto habría ensanchado ese hueco. Solución acordada con Víctor (opción C de tres presentadas): tabla nueva `zonas_cobertura` (lista blanca de calles/colonias confirmadas dentro del radio de 1.5km, `supabase/migrations/20260823_zonas_cobertura.sql`, sembrada con 11 entradas iniciales). Se inyecta al prompt igual que `NEGOCIOS DISPONIBLES`; la IA normaliza la dirección escrita del cliente contra esa lista y regresa el nombre exacto de la zona reconocida en `order_state.address_zone`. El backend (`validationEngine.validateAddress`) verifica ese valor con match exacto normalizado contra la tabla real — mismo patrón que `resolveTiendaStrictByName` con el nombre de tienda: la IA sugiere, la base de datos real decide. Una dirección de texto ahora es válida solo si la zona coincide con la lista **y** trae un número o una referencia — ya no basta con "sonar como una dirección completa". GPS sigue funcionando exactamente igual que antes (Haversine, sin tocar).
+3. **Cancelación en lenguaje natural** — `messages.isCancelIntent` nueva, cubre frases como "cancelar", "ya no lo quiero", "anular pedido" (antes solo la frase exacta "pedido nuevo"/"reiniciar" disparaba algo). Al ampliar esto, se detectó que el hard-reset ya existente cancelaba un pedido en **cualquier** estado, incluyendo con repartidor ya en camino físico — contradice CLAUDE.md Sección 5 ("cancelación gratuita solo antes de que la tienda confirme el precio"). Se corrigió para ambas frases (la nueva y la vieja): antes de `confirmado_tiendas` cancela y borra normal; de `confirmado_tiendas` en adelante, ya no se autocancela — se escala al admin (mismo mecanismo que `isComplaintMessage`) y se le dice al cliente que el equipo lo va a contactar.
+4. **Silencio tras elegir tienda** ("¡Entendido! Dame un momento" y luego nada) — causa raíz confirmada en código: `max_tokens: 600` en la llamada a OpenAI se quedaba corto justo cuando el JSON de respuesta crece de golpe (debe repetir tienda completa + todos los items). Cuando la IA se quedaba sin espacio, a veces omitía la clave `customer_reply` por completo (JSON válido pero incompleto), y el default del schema Zod rellenaba con un texto de relleno sin ninguna pregunta real, dejando al cliente sin nada que responder. Fix: `max_tokens` subido a 900, y `getLLMResponse` ahora trata una `customer_reply` faltante como cadena vacía (no como el relleno del schema) para que cada llamador use su propio mensaje de respaldo real — el flujo de captura ya caía a `captureEngine.customerMessage`; el modo conversación no tenía respaldo propio, se le agregó uno.
+
+**Cómo agregar zonas de cobertura nuevas** (para que Víctor lo haga solo, sin ayuda): un `insert` directo en el SQL Editor de Supabase, sin ningún deploy de código —
+```sql
+insert into public.zonas_cobertura (nombre) values ('Calle Nueva');
+```
+El bot la lee fresca de la tabla en cada turno. Para desactivar una zona sin borrarla: `update public.zonas_cobertura set activa = false where nombre = 'Calle X';`.
+
+Confirmado en vivo por Víctor (2026-08-24): un pedido con dirección escrita a mano, sin GPS, corrió completo hasta la entrega. En esa misma prueba salieron dos ajustes más, ya resueltos en el mismo bloque:
+
+5. **Link de mapa a 0,0 cuando no había GPS real** — bug real en `geo.ts:resolveMapsLink`, no solo un caso sin cubrir: `Number(null)` da `0` en JavaScript, y `0` sí es finito, así que un pedido con `latitud`/`longitud` en `null` (dirección de texto, sin coordenadas) pasaba el chequeo `Number.isFinite` de todas formas y generaba un link de Google Maps a `0,0` — un punto en el océano. Se corrigió comprobando `typeof === "number"` antes de `Number.isFinite`, y de paso se quitó el fallback que antes generaba un link "de búsqueda" geocodificado a partir del texto de la dirección (impreciso) — pedido explícito de Víctor: sin GPS real, el repartidor recibe solo la dirección de texto, sin ningún link de mapa.
+6. **GPS ofrecido activamente como opción más fácil** — antes el bot pedía "una dirección más completa (o comparte tu ubicación GPS)" como algo secundario. Se invirtió el orden en el prompt (`mandaloPrompt.ts` BLOQUE 5) y en el mensaje estructurado de respaldo (`captureEngine.buildCustomerMessage`): ahora ofrece GPS primero como la opción más fácil, pero deja explícito que la dirección escrita también es válida — sin insistir en GPS si el cliente ya está escribiendo.
 
 ## ⚪ No construido todavía (fuera del punchlist del brief)
 

@@ -18,6 +18,11 @@ export type PedidoSnapshot = {
   businessName?: string | null;
   businessPhone?: string | null;
   addressText?: string | null;
+  // Zona de cobertura confirmada (calle/colonia) cuando la dirección viene
+  // por texto en vez de GPS — debe coincidir literal con una fila activa de
+  // `zonas_cobertura` (ver validationEngine.validateAddress). null/undefined
+  // cuando el cliente comparte GPS o cuando la IA no reconoció ninguna zona.
+  addressZone?: string | null;
   latitud?: number | null;
   longitud?: number | null;
   items?: PedidoItemInput[] | null;
@@ -89,6 +94,10 @@ export type CaptureInput = {
   userMessage: string;
   currentSnapshot?: PedidoSnapshot | null;
   llmOrderState?: JsonObject | null;
+  // Nombres activos de zonas_cobertura para este turno — se reenvían tal
+  // cual a validationEngine para verificar la zona que sugiera la IA contra
+  // la lista real (mismo patrón que resolveTiendaStrictByName con tiendas).
+  knownZoneNames?: string[];
 };
 
 export type CaptureOutput = {
@@ -134,6 +143,7 @@ export type ValidationEngineDeps = {
   validateCaptureForConfirmation(params: {
     snapshot: PedidoSnapshot;
     items: PedidoItemInput[];
+    knownZoneNames?: string[];
   }): ValidationResult;
 };
 
@@ -218,6 +228,15 @@ export function mergeSnapshot(params: {
       ? cleanText(llm.address_text ?? llm.addressText) ?? current.addressText ?? null
       : chooseMoreCompleteText(cleanText(current.addressText), cleanText(llm.address_text ?? llm.addressText));
 
+  // Zona de cobertura sugerida por la IA (ver mandaloPrompt.ts): solo
+  // relevante para direcciones de texto — si llegan coordenadas GPS este
+  // turno, la zona deja de importar (Haversine ya manda). Si el turno no
+  // trae una zona nueva, se conserva la anterior en vez de perderla.
+  const addressZone =
+    latitud != null && longitud != null
+      ? null
+      : cleanText(llm.address_zone ?? llm.addressZone) ?? current.addressZone ?? null;
+
   const customerName = chooseMoreCompleteText(
     cleanText(current.customerName),
     cleanText(params.customerName),
@@ -232,6 +251,7 @@ export function mergeSnapshot(params: {
     businessName,
     businessPhone,
     addressText,
+    addressZone,
     latitud,
     longitud,
     items,
@@ -327,8 +347,8 @@ export function buildCustomerMessage(params: {
 
     if (first?.field === "direccion") {
       return (
-        "🏠 Para continuar, necesito una dirección más completa (o comparte tu ubicación GPS).\n\n" +
-        "Si es por escrito, incluye calle, número y una referencia o colonia."
+        "🏠 ¿Me compartes tu ubicación por GPS? Es lo más fácil y rápido.\n\n" +
+        "Si prefieres, también puedes escribirme tu dirección — incluye calle, número y una referencia o colonia."
       );
     }
 
@@ -371,6 +391,7 @@ export function createCaptureEngine(deps: CaptureEngineDeps) {
       const validation = validationEngine.validateCaptureForConfirmation({
         snapshot: mergedSnapshot,
         items: mergedSnapshot.items ?? [],
+        knownZoneNames: input.knownZoneNames ?? [],
       });
 
       const nextSnapshot: PedidoSnapshot = {

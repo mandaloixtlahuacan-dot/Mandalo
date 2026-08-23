@@ -25,6 +25,7 @@ import {
 import { MandaloAgentResponse, mandaloAgentResponseSchema } from "@/lib/llmResponseSchema";
 import {
   fetchRecentChatHistory as fetchHistorialReciente,
+  isCancelIntent,
   isComplaintMessage,
   isConversationModeMessage,
   isNewOrderIntent,
@@ -154,6 +155,26 @@ const courierCommandParser = createCourierCommandParser();
 const tiendaPhoneCache = new Map<string, { isTienda: boolean; at: number }>();
 const PHONE_CACHE_TTL_MS = 10 * 60 * 1000;
 
+// Zonas de cobertura confirmadas (calles/colonias dentro del radio de
+// 1.5km) — lista blanca que Víctor mantiene directo en Supabase (ver
+// supabase/migrations/20260823_zonas_cobertura.sql). Se usa en dos lugares
+// del mismo turno: aquí para inyectarla al prompt, y en handleClienteMessage
+// para que validationEngine verifique contra la lista real lo que sugiera
+// la IA — mismo patrón que resolveTiendaStrictByName con el nombre de tienda.
+async function fetchZonasCobertura(): Promise<string[]> {
+  const supabase = getSupabaseAdmin();
+  try {
+    const { data, error } = await supabase.from("zonas_cobertura").select("nombre").eq("activa", true).limit(500);
+    if (error) throw error;
+    return (data ?? [])
+      .map((row) => String((row as { nombre?: unknown })?.nombre ?? "").trim())
+      .filter(Boolean);
+  } catch (e: unknown) {
+    console.error("[mandalo] fetchZonasCobertura: error consultando zonas_cobertura", { message: getErrorMessage(e) });
+    return [];
+  }
+}
+
 export async function getLLMResponse(params: {
   historialReciente: Array<{ role: "user" | "assistant"; content: string }>;
   supabaseJson: JsonObject;
@@ -191,10 +212,16 @@ export async function getLLMResponse(params: {
         .join("\n")
     : "(sin tiendas disponibles)";
 
+  const zonasCoberturaNombres = await fetchZonasCobertura();
+  const zonasCobertura_text = zonasCoberturaNombres.length
+    ? zonasCoberturaNombres.map((z) => `- ${z}`).join("\n")
+    : "(sin zonas confirmadas)";
+
   const model = getOpenAIModel();
   const system = buildMandaloSystemPrompt({
     negociosDisponibles: tiendas_text,
     repartidoresActivos: String(params.supabaseJson?.repartidores_text ?? "(sin repartidores)"),
+    zonasCobertura: zonasCobertura_text,
     historial: String(params.supabaseJson?.historial_text ?? ""),
     saludoInicial: buildSaludoInicial(),
   });
@@ -213,7 +240,12 @@ export async function getLLMResponse(params: {
     { role: "user", content: params.userMessage },
   ];
 
-  const text = await getChatCompletion({ model, messages, max_tokens: 600, temperature: 0 });
+  // 900 (antes 600): justo después de elegir tienda, el JSON que debe
+  // devolver la IA crece de golpe (tiene que repetir business_name/id/phone
+  // + la lista completa de items, BLOQUE 4). Con 600 tokens, la IA a veces
+  // se quedaba sin espacio y omitía "customer_reply" para priorizar terminar
+  // bien el order_state — ver nota más abajo sobre qué pasaba en ese caso.
+  const text = await getChatCompletion({ model, messages, max_tokens: 900, temperature: 0 });
 
   // Reparación del parser:
   // - NUNCA hacemos JSON.parse sobre texto sin antes extraer un bloque {...} por regex.
@@ -228,7 +260,21 @@ export async function getLLMResponse(params: {
       const parsedJson = JSON.parse(candidate);
       const parsed = mandaloAgentResponseSchema.safeParse(parsedJson);
       if (parsed.success) {
-        return { ...parsed.data, order_state: ensureSafeLlmOrderState(parsed.data.order_state, "collecting") };
+        // Si la IA omite la clave "customer_reply" (JSON válido pero
+        // incompleto), el schema la rellena con un texto de relleno
+        // ("¡Entendido! Dame un momento.") que no invita a nada — el cliente
+        // se quedaba sin saber qué sigue hasta que insistía con otro
+        // mensaje. Tratamos ese caso como respuesta vacía para que cada
+        // llamador use su propio mensaje de respaldo real en vez de este
+        // relleno genérico.
+        const hadRealReply =
+          typeof (parsedJson as Record<string, unknown>).customer_reply === "string" &&
+          String((parsedJson as Record<string, unknown>).customer_reply).trim().length > 0;
+        return {
+          ...parsed.data,
+          customer_reply: hadRealReply ? parsed.data.customer_reply : "",
+          order_state: ensureSafeLlmOrderState(parsed.data.order_state, "collecting"),
+        };
       }
       console.error("Error de validación en IA:", parsed.error);
       console.error("Error de validación en IA (flatten):", parsed.error.flatten());
@@ -598,7 +644,7 @@ async function handleConfirmadoTiendas(telefono: string, mensaje: string, pedido
 
   const repartidorNombre = String(repartidor?.nombre ?? "").trim() || "Repartidor";
   const repartidorTelefono = ensureMxWhatsappIntl(String(repartidor?.telefono ?? ""));
-  const mapsLink = resolveMapsLink({ latitud: pedido.latitud, longitud: pedido.longitud, addressText: pedido.direccionEntrega });
+  const mapsLink = resolveMapsLink({ latitud: pedido.latitud, longitud: pedido.longitud });
 
   const msgRepartidor =
     `Hola ${repartidorNombre}, tienes un nuevo pedido de ${pedido.tienda?.nombre ?? "la tienda"}. 📦\n\n` +
@@ -712,19 +758,60 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
     return { ok: true, role: "cliente", accion: "queja_escalada" };
   }
 
-  // HARD RESET (prioridad absoluta): si el usuario pide pedido nuevo/reiniciar,
-  // cancelamos cualquier pedido activo y arrancamos limpio.
-  if (isNewOrderIntent(mensaje)) {
+  // Cancelación / hard reset (prioridad absoluta): dispara igual sin importar
+  // si la frase fue el reset explícito ("pedido nuevo") o lenguaje natural de
+  // cancelación ("ya no lo quiero"). CLAUDE.md Sección 5: "la cancelación es
+  // gratuita solo antes de que la tienda confirme el precio" — de
+  // confirmado_tiendas en adelante ya no es autoservicio simple, así que en
+  // vez de cancelar y borrar solo, escalamos al admin (mismo mecanismo que
+  // isComplaintMessage) porque puede haber un repartidor ya en camino físico.
+  const wantsNewOrder = isNewOrderIntent(mensaje);
+  const wantsCancel = isCancelIntent(mensaje);
+  if (wantsNewOrder || wantsCancel) {
+    const PAST_FREE_CANCEL_WINDOW: OrderState[] = [
+      "confirmado_tiendas",
+      "dispatch_repartidor_pendiente",
+      "repartidor_asignado",
+      "recogiendo",
+      "en_camino_cliente",
+    ];
+    const pastFreeCancelWindow =
+      hasActivePedido && openPedido != null && PAST_FREE_CANCEL_WINDOW.includes(openPedido.estado);
+
+    if (pastFreeCancelWindow && openPedido) {
+      await guardarMensajeChat({ telefono, texto: String(mensaje ?? ""), estado: "cliente" }).catch(() => {});
+      await outboxRepository
+        .enqueueAdminNotification({
+          pedidoId: openPedido.id,
+          tipo: "cancelacion_tardia",
+          contenido:
+            `Cliente pide cancelar un pedido ya avanzado\n\n` +
+            `Tel: ${telefono}\n` +
+            `Pedido: #${openPedido.id}\n` +
+            `Estado actual: ${openPedido.estado}\n` +
+            `Mensaje: ${mensaje}`,
+        })
+        .catch((e: unknown) => {
+          console.error("[mandalo] no se pudo escalar cancelación tardía al admin", { message: getErrorMessage(e) });
+        });
+      const msg = `⚠️ Tu pedido #${openPedido.id} ya está en proceso avanzado, así que no puedo cancelarlo yo solo.\n\nYa avisé a nuestro equipo — te van a contactar directo. 🙏`;
+      await sendWhatsApp(telefono, msg);
+      await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+      return { ok: true, role: "cliente", accion: "cancelacion_escalada", pedidoId: openPedido.id };
+    }
+
     if (hasActivePedido && openPedido) {
-      await cancelOpenPedido(openPedido, telefono, "hard_reset").catch((e: unknown) => {
-        console.error("[mandalo] cancelOpenPedido falló en hard reset", { pedidoId: openPedido.id, message: getErrorMessage(e) });
+      await cancelOpenPedido(openPedido, telefono, wantsNewOrder ? "hard_reset" : "cliente_cancelo").catch((e: unknown) => {
+        console.error("[mandalo] cancelOpenPedido falló", { pedidoId: openPedido.id, message: getErrorMessage(e) });
       });
     }
     setSessionFlag(telefono, { pedido_en_proceso: true });
-    const msg = "¡Entendido! Pedido anterior cancelado. ¿Qué te gustaría pedir hoy? 🛒";
+    const msg = wantsNewOrder
+      ? "¡Entendido! Pedido anterior cancelado. ¿Qué te gustaría pedir hoy? 🛒"
+      : "✅ Listo, cancelé tu pedido.\n\nCuando quieras hacer uno nuevo, aquí estoy. 🛒";
     await sendWhatsApp(telefono, msg);
     await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
-    return { ok: true, role: "cliente", accion: "hard_reset" };
+    return { ok: true, role: "cliente", accion: wantsNewOrder ? "hard_reset" : "cancelado_por_cliente" };
   }
 
   if (hasActivePedido && openPedido) {
@@ -771,7 +858,13 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
       userMessage: mensaje,
     });
 
-    const customerReplyClean = sanitizeCustomerReply(String(respuesta.customer_reply ?? ""));
+    // A diferencia del flujo de captura (que puede caer al mensaje
+    // estructurado de captureEngine si la IA no trae customer_reply), este
+    // modo no tiene ningún respaldo estructurado propio — necesita su propio
+    // mensaje genérico para no mandar un WhatsApp vacío.
+    const customerReplyClean =
+      sanitizeCustomerReply(String(respuesta.customer_reply ?? "")) ||
+      "¿En qué te ayudo? Cuéntame qué se te antoja o qué necesitas. 🛒";
     await sendWhatsApp(telefono, customerReplyClean);
     await guardarMensajeChat({ telefono, texto: customerReplyClean, estado: "bot" }).catch(() => {});
     return { ok: true, role: "cliente", accion: "modo_conversacion" };
@@ -836,12 +929,14 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
     }
   }
 
+  const knownZoneNames = await fetchZonasCobertura();
   const captureResult = await captureEngine.processCustomerCapture({
     customerPhone: telefono,
     customerName: String(currentOrderState?.customerName ?? "").trim() || null,
     userMessage: mensaje,
     currentSnapshot: null,
     llmOrderState: llmOrderState as Record<string, unknown> | null,
+    knownZoneNames,
   });
 
   console.log("[captureEngine] pedido:", {

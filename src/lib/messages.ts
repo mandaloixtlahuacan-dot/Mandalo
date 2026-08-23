@@ -179,6 +179,33 @@ export function isNewOrderIntent(text: string): boolean {
   );
 }
 
+// Cancelación en lenguaje natural (CLAUDE.md Sección 5: "la cancelación es
+// gratuita solo antes de que la tienda confirme el precio"). Antes solo el
+// hard-reset con la frase exacta "pedido nuevo"/"reiniciar" cancelaba algo —
+// un cliente real dice "ya no lo quiero", no esa frase específica.
+// "cancel"/"anular" como raíz cubre todas las conjugaciones normales
+// (cancelar/cancela/cancelalo/cancele/cancelo, anular/anula/anúlalo) sin
+// tener que listar cada una — mismo estilo de heurística por substring que
+// el resto de este archivo.
+export function isCancelIntent(text: string): boolean {
+  const t = normalizeMessageIntentText(text);
+  return (
+    t.includes("cancel") ||
+    t.includes("anular") ||
+    t.includes("ya no lo quiero") ||
+    t.includes("ya no quiero mi pedido") ||
+    t.includes("ya no quiero el pedido") ||
+    t.includes("ya no quiero continuar") ||
+    t.includes("no quiero continuar") ||
+    t.includes("no quiero seguir con") ||
+    t.includes("olvidalo") ||
+    t.includes("detener el pedido") ||
+    t.includes("detener mi pedido") ||
+    t.includes("ya no va") ||
+    t.includes("ya no quiero nada")
+  );
+}
+
 export function isConversationModeMessage(text: string): boolean {
   const t = normalizeMessageIntentText(text);
   // Heurística simple: mensajes emocionales o de charla general
