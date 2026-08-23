@@ -644,7 +644,7 @@ async function handleConfirmadoTiendas(telefono: string, mensaje: string, pedido
 
   const repartidorNombre = String(repartidor?.nombre ?? "").trim() || "Repartidor";
   const repartidorTelefono = ensureMxWhatsappIntl(String(repartidor?.telefono ?? ""));
-  const mapsLink = resolveMapsLink({ latitud: pedido.latitud, longitud: pedido.longitud, addressText: pedido.direccionEntrega });
+  const mapsLink = resolveMapsLink({ latitud: pedido.latitud, longitud: pedido.longitud });
 
   const msgRepartidor =
     `Hola ${repartidorNombre}, tienes un nuevo pedido de ${pedido.tienda?.nombre ?? "la tienda"}. 📦\n\n` +

@@ -46,20 +46,20 @@ export function buildAddressTextFromCoords(coords: Coordinates): string {
   return `Ubicación compartida por GPS: ${buildMapsLinkFromCoords(coords)}`;
 }
 
-// Preferimos un link de mapa preciso construido desde coordenadas reales (GPS)
-// sobre un link "de búsqueda" geocodificado a partir de texto libre (impreciso).
+// Solo devuelve link de mapa si hay coordenadas GPS reales — nunca a partir
+// de texto libre. Antes intentaba un link "de búsqueda" geocodificado desde
+// addressText cuando faltaban coordenadas, pero además tenía un bug real:
+// `Number(null)` da `0` en JS, y `0` SÍ es finito, así que un pedido sin GPS
+// (latitud/longitud null en BD) pasaba el chequeo igual y generaba un link
+// a 0,0 — un punto en el océano, no una dirección real. Con dirección
+// escrita (sin GPS), el repartidor recibe solo el texto, sin ningún link.
 export function resolveMapsLink(params: {
   latitud?: number | null;
   longitud?: number | null;
-  addressText?: string | null;
 }): string | null {
-  const lat = Number(params.latitud);
-  const lng = Number(params.longitud);
-  if (Number.isFinite(lat) && Number.isFinite(lng)) {
-    return buildMapsLinkFromCoords({ latitude: lat, longitude: lng });
+  const { latitud, longitud } = params;
+  if (typeof latitud === "number" && Number.isFinite(latitud) && typeof longitud === "number" && Number.isFinite(longitud)) {
+    return buildMapsLinkFromCoords({ latitude: latitud, longitude: longitud });
   }
-  const addressText = String(params.addressText ?? "").trim();
-  return addressText
-    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addressText)}`
-    : null;
+  return null;
 }

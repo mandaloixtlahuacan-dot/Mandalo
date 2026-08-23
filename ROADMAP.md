@@ -2,7 +2,7 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 23 de agosto de 2026, rama `fix/refinamientos-post-produccion`
+> Última actualización: 24 de agosto de 2026, rama `fix/refinamientos-post-produccion`
 > (mergeada desde `fix/cotizacion-tienda-y-pendientes` a `main` el 2026-08-20 — commit
 > `fa1de26` — con validación en vivo en producción confirmada por Víctor: tienda,
 > repartidor, admin y cliente reciben todos sus mensajes correctamente).
@@ -49,7 +49,7 @@ Durante el primer intento de prueba real en producción (post-merge) aparecieron
 
 - Opcional: correr `supabase/migrations/20260812_configuracion_admin_telefono.sql` (permite cambiar el número de admin sin redeploy).
 
-## 🚧 Bloque de trabajo 2026-08-22 → 2026-08-23 (rama `fix/refinamientos-post-produccion`, sin mergear)
+## 🚧 Bloque de trabajo 2026-08-22 → 2026-08-24 (rama `fix/refinamientos-post-produccion`, sin mergear)
 
 Cuatro ajustes reportados por Víctor tras la validación en vivo en producción — con esto, Mándalo queda al 100% del plan original:
 
@@ -63,6 +63,11 @@ Cuatro ajustes reportados por Víctor tras la validación en vivo en producción
 insert into public.zonas_cobertura (nombre) values ('Calle Nueva');
 ```
 El bot la lee fresca de la tabla en cada turno. Para desactivar una zona sin borrarla: `update public.zonas_cobertura set activa = false where nombre = 'Calle X';`.
+
+Confirmado en vivo por Víctor (2026-08-24): un pedido con dirección escrita a mano, sin GPS, corrió completo hasta la entrega. En esa misma prueba salieron dos ajustes más, ya resueltos en el mismo bloque:
+
+5. **Link de mapa a 0,0 cuando no había GPS real** — bug real en `geo.ts:resolveMapsLink`, no solo un caso sin cubrir: `Number(null)` da `0` en JavaScript, y `0` sí es finito, así que un pedido con `latitud`/`longitud` en `null` (dirección de texto, sin coordenadas) pasaba el chequeo `Number.isFinite` de todas formas y generaba un link de Google Maps a `0,0` — un punto en el océano. Se corrigió comprobando `typeof === "number"` antes de `Number.isFinite`, y de paso se quitó el fallback que antes generaba un link "de búsqueda" geocodificado a partir del texto de la dirección (impreciso) — pedido explícito de Víctor: sin GPS real, el repartidor recibe solo la dirección de texto, sin ningún link de mapa.
+6. **GPS ofrecido activamente como opción más fácil** — antes el bot pedía "una dirección más completa (o comparte tu ubicación GPS)" como algo secundario. Se invirtió el orden en el prompt (`mandaloPrompt.ts` BLOQUE 5) y en el mensaje estructurado de respaldo (`captureEngine.buildCustomerMessage`): ahora ofrece GPS primero como la opción más fácil, pero deja explícito que la dirección escrita también es válida — sin insistir en GPS si el cliente ya está escribiendo.
 
 ## ⚪ No construido todavía (fuera del punchlist del brief)
 

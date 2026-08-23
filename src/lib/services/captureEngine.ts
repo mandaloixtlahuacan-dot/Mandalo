@@ -347,8 +347,8 @@ export function buildCustomerMessage(params: {
 
     if (first?.field === "direccion") {
       return (
-        "🏠 Para continuar, necesito una dirección más completa (o comparte tu ubicación GPS).\n\n" +
-        "Si es por escrito, incluye calle, número y una referencia o colonia."
+        "🏠 ¿Me compartes tu ubicación por GPS? Es lo más fácil y rápido.\n\n" +
+        "Si prefieres, también puedes escribirme tu dirección — incluye calle, número y una referencia o colonia."
       );
     }
 
