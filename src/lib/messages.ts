@@ -147,9 +147,23 @@ export function sanitizeCustomerReply(text: string): string {
   return t;
 }
 
+// Una pregunta nunca es una confirmación, aunque de paso mencione una
+// palabra de confirmación (ej. "antes de confirmar, hasta dónde tienes
+// servicio" contiene "confirmar" pero es una pregunta real, no un sí — bug
+// reportado en producción agosto 2026: el pedido avanzaba solo). Se revisa
+// el texto ORIGINAL, sin quitar acentos: en español el acento es justo lo
+// que distingue la forma interrogativa de la palabra común (cómo/como,
+// cuándo/cuando, dónde/donde, qué/que) — normalizar antes perdería esa señal.
+const QUESTION_WORDS_REGEX =
+  /\b(qué|cómo|cuándo|dónde|adónde|cuál|cuáles|cuánto|cuánta|cuántos|cuántas|quién|quiénes)\b/i;
+
 export function isYesConfirmation(text: string): boolean {
+  const raw = String(text ?? "").trim();
+  if (!raw) return false;
+  if (/[?¿]/.test(raw) || QUESTION_WORDS_REGEX.test(raw)) return false;
+
   return /\b(si|sí|ok|va|confirmo|confirmar|dale|de acuerdo|visto bueno)\b/i.test(
-    String(text ?? "").trim(),
+    normalizeMessageIntentText(raw),
   );
 }
 

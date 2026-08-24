@@ -2,10 +2,11 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 24 de agosto de 2026, rama `fix/refinamientos-post-produccion`
-> (mergeada desde `fix/cotizacion-tienda-y-pendientes` a `main` el 2026-08-20 — commit
-> `fa1de26` — con validación en vivo en producción confirmada por Víctor: tienda,
-> repartidor, admin y cliente reciben todos sus mensajes correctamente).
+> Última actualización: 24 de agosto de 2026, rama `fix/confirmacion-pregunta-vs-si`
+> (`fix/refinamientos-post-produccion` mergeada directo a `main` el 2026-08-24 — commit
+> `b566216`, sin pasar por Preview esta vez — y validada en vivo en producción por
+> Víctor). `fix/cotizacion-tienda-y-pendientes` sigue mergeada desde el 2026-08-20
+> (commit `fa1de26`), también validada en vivo.
 
 ## ✅ Completo y confirmado en producción
 
@@ -49,7 +50,7 @@ Durante el primer intento de prueba real en producción (post-merge) aparecieron
 
 - Opcional: correr `supabase/migrations/20260812_configuracion_admin_telefono.sql` (permite cambiar el número de admin sin redeploy).
 
-## 🚧 Bloque de trabajo 2026-08-22 → 2026-08-24 (rama `fix/refinamientos-post-produccion`, sin mergear)
+## ✅ Bloque de trabajo 2026-08-22 → 2026-08-24 (`fix/refinamientos-post-produccion`, mergeado a `main` commit `b566216`, validado en vivo)
 
 Cuatro ajustes reportados por Víctor tras la validación en vivo en producción — con esto, Mándalo queda al 100% del plan original:
 
@@ -68,6 +69,14 @@ Confirmado en vivo por Víctor (2026-08-24): un pedido con dirección escrita a 
 
 5. **Link de mapa a 0,0 cuando no había GPS real** — bug real en `geo.ts:resolveMapsLink`, no solo un caso sin cubrir: `Number(null)` da `0` en JavaScript, y `0` sí es finito, así que un pedido con `latitud`/`longitud` en `null` (dirección de texto, sin coordenadas) pasaba el chequeo `Number.isFinite` de todas formas y generaba un link de Google Maps a `0,0` — un punto en el océano. Se corrigió comprobando `typeof === "number"` antes de `Number.isFinite`, y de paso se quitó el fallback que antes generaba un link "de búsqueda" geocodificado a partir del texto de la dirección (impreciso) — pedido explícito de Víctor: sin GPS real, el repartidor recibe solo la dirección de texto, sin ningún link de mapa.
 6. **GPS ofrecido activamente como opción más fácil** — antes el bot pedía "una dirección más completa (o comparte tu ubicación GPS)" como algo secundario. Se invirtió el orden en el prompt (`mandaloPrompt.ts` BLOQUE 5) y en el mensaje estructurado de respaldo (`captureEngine.buildCustomerMessage`): ahora ofrece GPS primero como la opción más fácil, pero deja explícito que la dirección escrita también es válida — sin insistir en GPS si el cliente ya está escribiendo.
+
+Este bloque se mergeó directo a `main` el 2026-08-24 (commit `b566216`) **sin pasar por Preview** — decisión de Víctor de ir por el plan más simple. Confirmado en vivo en producción: el bot ofrece GPS primero (punto 6), el link de mapa sale con coordenadas reales en vez de 0,0 (punto 5), y el timeout de 10 minutos canceló correctamente un pedido cuando la tienda no respondió.
+
+## 🚧 Bloque de trabajo 2026-08-24 (rama `fix/confirmacion-pregunta-vs-si`, sin mergear)
+
+Bug nuevo encontrado por Víctor en esa misma ronda de pruebas en producción:
+
+7. **Una pregunta en el paso de confirmación se trataba como un "SÍ"** — en el punto donde el bot pide confirmar el pedido con *SÍ*, Víctor respondió "antes de confirmar, hasta dónde tienes servicio" (una pregunta, no una confirmación) y el bot avanzó el pedido de todas formas. Causa raíz: `messages.isYesConfirmation` usaba un regex que solo busca si alguna de estas palabras aparece **en cualquier parte** del mensaje (`si|sí|ok|va|confirmo|confirmar|dale|de acuerdo|visto bueno`) — el mensaje de Víctor contiene literalmente la palabra "confirmar", así que el regex lo marcaba como un sí aunque fuera evidentemente una pregunta. Se corrigió agregando un chequeo previo: si el mensaje trae "?"/"¿" o una palabra interrogativa acentuada (qué, cómo, cuándo, dónde, cuál, cuánto, quién — se revisa el texto ORIGINAL sin quitar acentos, porque el acento es justo lo que distingue la forma interrogativa de la palabra común en español, p. ej. "cómo" vs "como"), nunca cuenta como confirmación, sin importar qué otras palabras traiga. De paso se encontró y corrigió el mismo defecto duplicado en `isRedundantConfirmationMessage` (mandaloFlow.ts), que tenía su propio `includes("confirmar")` aparte — ahora delega en `isYesConfirmation` en vez de repetir la lógica. El mensaje de respaldo (repetir el resumen y pedir SÍ de nuevo) no se tocó — ya cumplía con "pedir aclaración sin avanzar el pedido"; no se intentó que el bot conteste la pregunta en sí, porque este paso puntual del flujo no pasa por la IA (es una decisión de diseño existente, no algo a resolver aquí).
 
 ## ⚪ No construido todavía (fuera del punchlist del brief)
 
