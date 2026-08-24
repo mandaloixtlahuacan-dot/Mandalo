@@ -94,9 +94,13 @@ function ensureSafeLlmOrderState(value: unknown, fallbackStage = "collecting"): 
   };
 }
 
+// Antes tenía su propio includes("confirmar")/includes("confirmado") además
+// de isYesConfirmation — duplicaba el mismo defecto que causaba que una
+// pregunta con la palabra "confirmar" adentro (ej. "antes de confirmar,
+// hasta dónde tienes servicio") se tratara como redundante. isYesConfirmation
+// ya distingue eso correctamente; no hace falta un segundo chequeo aparte.
 function isRedundantConfirmationMessage(text: string): boolean {
-  const normalized = normalizeText(text);
-  return isYesConfirmation(text) || normalized.includes("confirmar") || normalized.includes("confirmado");
+  return isYesConfirmation(text);
 }
 
 function isOrderTrackingQuestion(text: string): boolean {
