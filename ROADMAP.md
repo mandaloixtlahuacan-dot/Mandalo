@@ -2,11 +2,11 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 24 de agosto de 2026, rama `fix/confirmacion-pregunta-vs-si`
-> (`fix/refinamientos-post-produccion` mergeada directo a `main` el 2026-08-24 — commit
-> `b566216`, sin pasar por Preview esta vez — y validada en vivo en producción por
-> Víctor). `fix/cotizacion-tienda-y-pendientes` sigue mergeada desde el 2026-08-20
-> (commit `fa1de26`), también validada en vivo.
+> Última actualización: 24 de agosto de 2026, rama `feature/mandalo-24-7-pedidos-programados`
+> (`fix/confirmacion-pregunta-vs-si` mergeada a `main` el 2026-08-24, commit `d9c8c2a` —
+> `fix/refinamientos-post-produccion` mergeada el mismo día, commit `b566216`, sin Preview,
+> validada en vivo por Víctor. `fix/cotizacion-tienda-y-pendientes` mergeada desde el
+> 2026-08-20, commit `fa1de26`, también validada en vivo).
 
 ## ✅ Completo y confirmado en producción
 
@@ -72,11 +72,37 @@ Confirmado en vivo por Víctor (2026-08-24): un pedido con dirección escrita a 
 
 Este bloque se mergeó directo a `main` el 2026-08-24 (commit `b566216`) **sin pasar por Preview** — decisión de Víctor de ir por el plan más simple. Confirmado en vivo en producción: el bot ofrece GPS primero (punto 6), el link de mapa sale con coordenadas reales en vez de 0,0 (punto 5), y el timeout de 10 minutos canceló correctamente un pedido cuando la tienda no respondió.
 
-## 🚧 Bloque de trabajo 2026-08-24 (rama `fix/confirmacion-pregunta-vs-si`, sin mergear)
+## ✅ Bloque de trabajo 2026-08-24 (`fix/confirmacion-pregunta-vs-si`, mergeado a `main` commit `d9c8c2a`)
 
 Bug nuevo encontrado por Víctor en esa misma ronda de pruebas en producción:
 
 7. **Una pregunta en el paso de confirmación se trataba como un "SÍ"** — en el punto donde el bot pide confirmar el pedido con *SÍ*, Víctor respondió "antes de confirmar, hasta dónde tienes servicio" (una pregunta, no una confirmación) y el bot avanzó el pedido de todas formas. Causa raíz: `messages.isYesConfirmation` usaba un regex que solo busca si alguna de estas palabras aparece **en cualquier parte** del mensaje (`si|sí|ok|va|confirmo|confirmar|dale|de acuerdo|visto bueno`) — el mensaje de Víctor contiene literalmente la palabra "confirmar", así que el regex lo marcaba como un sí aunque fuera evidentemente una pregunta. Se corrigió agregando un chequeo previo: si el mensaje trae "?"/"¿" o una palabra interrogativa acentuada (qué, cómo, cuándo, dónde, cuál, cuánto, quién — se revisa el texto ORIGINAL sin quitar acentos, porque el acento es justo lo que distingue la forma interrogativa de la palabra común en español, p. ej. "cómo" vs "como"), nunca cuenta como confirmación, sin importar qué otras palabras traiga. De paso se encontró y corrigió el mismo defecto duplicado en `isRedundantConfirmationMessage` (mandaloFlow.ts), que tenía su propio `includes("confirmar")` aparte — ahora delega en `isYesConfirmation` en vez de repetir la lógica. El mensaje de respaldo (repetir el resumen y pedir SÍ de nuevo) no se tocó — ya cumplía con "pedir aclaración sin avanzar el pedido"; no se intentó que el bot conteste la pregunta en sí, porque este paso puntual del flujo no pasa por la IA (es una decisión de diseño existente, no algo a resolver aquí).
+
+## 🚧 Bloque de trabajo 2026-08-24 (rama `feature/mandalo-24-7-pedidos-programados`, sin mergear)
+
+Feature nueva pedida por Víctor tras validar los bloques anteriores: Mándalo pasa a operar 24/7. Diseñada con `EnterPlanMode` (plan revisado y aprobado con Víctor antes de escribir código, incluyendo 3 preguntas de negocio confirmadas explícitamente — ver detalle abajo).
+
+1. **Se quita el horario fijo de Mándalo (8am-8pm)** — el bot ya no rechaza pedidos nuevos fuera de un rango de horas general. `isMandaloOpenNow`/`formatMandaloHours`/`MANDALO_OPEN_HOUR`/`MANDALO_CLOSE_HOUR` retirados de `businessHours.ts` (código muerto, sin otros llamadores). El horario por tienda (`hora_apertura`/`hora_cierre`, `checkTiendaSchedule`) no cambia — sigue validándose normal.
+2. **Pedido programado si la tienda elegida está cerrada** — antes, si el cliente nombraba una tienda cerrada, el bot rechazaba el pedido de plano. Ahora el pedido se arma igual (items, dirección) y se programa: en cuanto la tienda abre, la cotización se dispara sola, sin que el cliente tenga que volver a escribir. Tres decisiones de negocio confirmadas explícitamente con Víctor antes de programar:
+   - **Tiempo máximo de espera: 48 horas.** Si la tienda no abre en ese plazo, se cancela sola, se notifica al cliente y se avisa al admin.
+   - **Aviso al cliente: antes de confirmar**, no después — el resumen que pide "responde SÍ" ya dice que la tienda está cerrada y a qué hora se enviará.
+   - **Aviso a la tienda: solo hasta que abre** — no hay mensaje adelantado, la tienda se entera exactamente igual que en un pedido normal.
+
+**Cómo quedó construido:**
+- **Nuevo estado `esperando_apertura_tienda`** en la máquina de estados (`orderStateMachine.ts` + migración `ALTER TYPE` standalone, `20260824_esperando_apertura_tienda_estado.sql` — Postgres no deja usar un valor de enum recién agregado en la misma transacción en que se agrega, así que esta migración va sola y **antes** de cualquier otra). Alcanzable desde `confirmacion_cliente` (en vez de `pendiente_tiendas` directo, cuando la tienda está cerrada al confirmar); transiciona a `pendiente_tiendas` cuando la tienda abre, exactamente como un pedido normal a partir de ahí. Sigue dentro de la ventana de cancelación gratuita (CLAUDE.md Sección 5) — no se agregó a `PAST_FREE_CANCEL_WINDOW`, la tienda todavía no vio el pedido.
+- **`resolveTiendaRow`/`TiendaResolution`** (`mandaloFlow.ts`): la variante `"closed"` ahora también trae `id`/`telefono` (antes solo nombre y horario) — hacen falta para seguir armando el pedido contra esa tienda. El call site que antes rechazaba de plano ahora completa `business_id/name/phone` igual que una tienda abierta; el aviso de "está cerrada" se mueve al resumen de confirmación.
+- **`handleEsperandoConfirmacionInicial`** reescrito: el `getPedidoById` (antes solo se pedía tras el SÍ) se mueve a antes de checar `isYesConfirmation`, para poder avisar en el resumen si la tienda está cerrada, y decidir tras el SÍ si se despacha ya o se programa.
+- **`storeDispatch.ts`** (nuevo): la lógica de "mandar cotización a la tienda" se extrajo de `mandaloFlow.ts` a un módulo compartido (`dispatchCotizacionToStore`) para poder llamarla también desde el worker nuevo. De paso se corrigió el orden de las operaciones a un claim atómico (`UPDATE ... WHERE estado = ...` condicional antes de encolar el mensaje, mismo patrón que `stateTransitionService.handleCourierConfirm`) — el worker recorre varios pedidos con awaits entre cada uno, así que había una ventana real para que una cancelación del cliente se cruzara a la mitad; el flujo en vivo (una sola request) no tenía ese riesgo pero queda protegido igual.
+- **`scheduledDispatchWorker.ts`** (nuevo) + ruta `/api/internal/scheduled-dispatch-worker` + migración de cron `20260824_scheduled_dispatch_worker_cron.sql` (mismo patrón que `order-timeout-worker`: pg_cron cada minuto, no Database Webhook, porque nada cambia en la BD en el instante exacto en que una tienda abre). Revisa cada pedido en `esperando_apertura_tienda`: si la tienda ya está dentro de su horario, despacha; si pasaron 48h sin que abriera, cancela (reusa `stateTransitionService.handleOrderTimeoutExpired` con un `reasonCode` nuevo, `"store_never_opened"`).
+- **`getPedidoById`** (`pedidoRepositoryV2.ts`) ahora trae `hora_apertura`/`hora_cierre` de la tienda — cambio de una línea en el sub-select, sin restructurar nada.
+- **Caso límite documentado, no completamente resuelto:** si `dispatchCotizacionToStore` falla porque la tienda no tiene teléfono registrado (mismo caso raro que ya existía en el flujo en vivo), el worker no puede pedirle al cliente que reintente como hace la rama en vivo (no hay turno de conversación) — deja el pedido en espera y alerta al admin una sola vez (flag `store_phone_missing_alerted_at` en `metadata_json`, para no re-alertar en cada tick).
+
+**CLAUDE.md actualizado**: Sección 5 (regla de oro nueva: horario 24/7), Sección 7 (estado `esperando_apertura_tienda` en la máquina de estados), Sección 8 (fila de "tienda fuera de horario" actualizada, fila nueva del límite de 48h).
+
+**Pendiente antes de mergear/desplegar:**
+- Correr `supabase/migrations/20260824_esperando_apertura_tienda_estado.sql` **primero, sola, confirmada** — antes de desplegar cualquier código de esta rama.
+- Correr `supabase/migrations/20260824_scheduled_dispatch_worker_cron.sql` (reemplazar placeholders de URL y `CRON_SECRET`) — sin esto, los pedidos programados nunca se disparan solos.
+- Probar en vivo: pedir a una tienda de prueba fuera de su horario, confirmar que el resumen avisa antes del SÍ, confirmar que el pedido entra a `esperando_apertura_tienda`, y verificar el disparo real ajustando el horario de la tienda de prueba a un rango ya abierto (no hace falta esperar 48h de verdad para probar el caso de cancelación — se puede simular con datos de prueba si hace falta).
 
 ## ⚪ No construido todavía (fuera del punchlist del brief)
 

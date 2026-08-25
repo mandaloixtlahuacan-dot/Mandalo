@@ -37,3 +37,20 @@ export function buildOrderTimeoutMetadata(
 export function orderTimeoutFieldNames(kind: OrderTimeoutKind) {
   return fieldNames(kind);
 }
+
+// Límite de espera para que una tienda cerrada abra (CLAUDE.md Sección 8,
+// agosto 2026) — distinto de los tres timeouts de arriba: no espera una
+// respuesta de alguien en la conversación, espera un evento real (la tienda
+// abre), así que el plazo es mucho más largo y no tiene "recordatorio" a la
+// mitad. Nombre de campo separado a propósito (no reusa fieldNames/kind) para
+// no mezclar semánticas distintas bajo la misma convención de 10 minutos.
+export const STORE_REOPEN_MAX_WAIT_HOURS = 48;
+export const ESPERANDO_APERTURA_DEADLINE_FIELD = "esperando_apertura_deadline_at";
+
+export function buildEsperandoAperturaMetadata(fromIso: string = new Date().toISOString()): Record<string, unknown> {
+  const fromMs = Date.parse(fromIso);
+  const base = Number.isFinite(fromMs) ? fromMs : Date.now();
+  return {
+    [ESPERANDO_APERTURA_DEADLINE_FIELD]: new Date(base + STORE_REOPEN_MAX_WAIT_HOURS * 60 * 60 * 1000).toISOString(),
+  };
+}

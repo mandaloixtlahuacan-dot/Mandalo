@@ -10,8 +10,9 @@ import * as metricsRepository from "@/lib/repositories/metricsRepository";
 import * as validationEngine from "@/lib/services/validationEngine";
 import * as outboxRepository from "@/lib/repositories/outboxRepository";
 import { createCourierCommandParser } from "@/lib/services/courierCommandParser";
-import { buildOrderTimeoutMetadata } from "@/lib/services/orderTimeouts";
-import { checkTiendaSchedule, formatMandaloHours, isMandaloOpenNow } from "@/lib/services/businessHours";
+import { buildOrderTimeoutMetadata, buildEsperandoAperturaMetadata } from "@/lib/services/orderTimeouts";
+import { checkTiendaSchedule } from "@/lib/services/businessHours";
+import { dispatchCotizacionToStore } from "@/lib/services/storeDispatch";
 import { calculateFinalPrice, extraerOrdenId, extraerPrecio } from "@/lib/ordenes";
 import { isTerminalState, type OrderState } from "@/lib/orderStateMachine";
 import {
@@ -298,7 +299,7 @@ export async function getLLMResponse(params: {
 
 type TiendaResolution =
   | { status: "found"; id: number; nombre: string; telefono: string }
-  | { status: "closed"; nombre: string; horaApertura: string; horaCierre: string }
+  | { status: "closed"; id: number; nombre: string; telefono: string; horaApertura: string; horaCierre: string }
   | { status: "not_found" };
 
 const TIENDA_RESOLUTION_SELECT = "id, nombre, telefono, activa, hora_apertura, hora_cierre";
@@ -320,7 +321,9 @@ function resolveTiendaRow(row: {
   if (!schedule.withinSchedule) {
     return {
       status: "closed",
+      id: Number(row.id),
       nombre: String(row.nombre ?? fallbackName),
+      telefono: ensureMxWhatsappIntl(String(row.telefono)),
       horaApertura: schedule.horaApertura,
       horaCierre: schedule.horaCierre,
     };
@@ -516,13 +519,11 @@ async function handleEsperandoConfirmacionInicial(
     });
   }
 
-  if (!isYesConfirmation(mensaje)) {
-    const msg = `✅ Ya tengo tu pedido:\n${buildResumenPedido({ ...pedido, snapshot_json: snapshot })}\n\n¿Es correcto tu pedido? Responde *SÍ* para confirmar. ✅`;
-    await sendWhatsApp(telefono, msg);
-    await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
-    return { ok: true, role: "cliente", stage: "confirmacion_cliente", pedidoId: pedido.id };
-  }
-
+  // Se trae aquí (antes solo se traía tras el SÍ) porque ahora hace falta en
+  // las dos ramas: para avisar en el resumen si la tienda está cerrada
+  // (Sección 5 regla 6 — Víctor pidió que el cliente se entere antes de
+  // confirmar, no después) y para decidir, tras el SÍ, si se despacha ya o
+  // se programa.
   const full = await pedidoRepositoryV2.getPedidoById(pedido.id);
   if (!full?.tienda?.telefono) {
     console.error("[ERROR CRÍTICO] No se encontró el teléfono de la tienda.", { pedidoId: pedido.id, tienda: full?.tienda ?? null });
@@ -555,47 +556,57 @@ async function handleEsperandoConfirmacionInicial(
     return { ok: true, role: "cliente", stage: "seleccion_productos", pedidoId: pedido.id };
   }
 
-  const tiendaTelefono = ensureMxWhatsappIntl(full.tienda.telefono);
-  const encabezado =
-    `COTIZAR. ORDEN #${full.id}\n` +
-    `${full.direccionEntrega ? `Dirección: ${full.direccionEntrega}\n` : ""}` +
-    `Pedido:\n${formatItemsForMessage(full.items)}\n\n` +
-    `Responde así: ORDEN #${full.id} PRECIO 150`;
+  const schedule = checkTiendaSchedule({ horaApertura: full.tienda.horaApertura, horaCierre: full.tienda.horaCierre });
 
-  logBusinessDispatch({
-    orderId: full.id,
-    tiendaId: full.tienda.tiendaId,
-    tiendaNombre: full.tienda.nombre,
-    tiendaTelefono,
-    to: tiendaTelefono,
-    body: encabezado,
-  });
+  if (!isYesConfirmation(mensaje)) {
+    const avisoCerrada = !schedule.withinSchedule
+      ? `\n\n⏰ Ojo: *${full.tienda.nombre}* está cerrada ahora. Se la voy a mandar en cuanto abra, a las ${schedule.horaApertura}.`
+      : "";
+    const msg = `✅ Ya tengo tu pedido:\n${buildResumenPedido({ ...pedido, snapshot_json: snapshot })}${avisoCerrada}\n\n¿Es correcto tu pedido? Responde *SÍ* para confirmar. ✅`;
+    await sendWhatsApp(telefono, msg);
+    await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+    return { ok: true, role: "cliente", stage: "confirmacion_cliente", pedidoId: pedido.id };
+  }
 
-  try {
-    await outboxRepository.enqueueOutboundMessage({
-      pedidoId: full.id,
-      tipoMensaje: "cotizacion_tienda",
-      destinatarioTipo: "negocio",
-      destinatarioId: full.tienda.tiendaId,
-      telefonoDestino: tiendaTelefono,
-      payload: { body: encabezado },
-      idempotencyKey: `pedido:${full.id}:cotizacion_tienda:v1`,
-    });
+  // Tienda cerrada: no se despacha todavía — se programa. La tienda no se
+  // entera hasta que abra (decisión de Víctor); scheduledDispatchWorker.ts
+  // hace el disparo real cuando checkTiendaSchedule diga que ya abrió.
+  if (!schedule.withinSchedule) {
+    try {
+      await pedidoRepositoryV2.setPedidoEstado({
+        pedidoId: full.id,
+        estado: "esperando_apertura_tienda",
+        metadataPatch: buildEsperandoAperturaMetadata(),
+      });
+      await pedidoRepositoryV2.appendPedidoEvento({
+        pedidoId: full.id,
+        tipoEvento: "pedido_programado",
+        estadoOrigen: "confirmacion_cliente",
+        estadoDestino: "esperando_apertura_tienda",
+        actorTipo: "cliente",
+      });
+    } catch (e: unknown) {
+      console.error("[mandalo] no se pudo programar el pedido para apertura de tienda", { pedidoId: full.id, message: getErrorMessage(e) });
+      const msg = "⚠️ Hubo un problema al programar tu pedido.\n\nInténtalo de nuevo respondiendo *SÍ*. Si vuelve a fallar, avísame.";
+      await sendWhatsApp(telefono, msg);
+      await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+      return { ok: true, role: "cliente", stage: "confirmacion_cliente", pedidoId: pedido.id };
+    }
 
-    await pedidoRepositoryV2.setPedidoEstado({
-      pedidoId: full.id,
-      estado: "pendiente_tiendas",
-      metadataPatch: buildOrderTimeoutMetadata("store_quote"),
-    });
-    await pedidoRepositoryV2.appendPedidoEvento({
-      pedidoId: full.id,
-      tipoEvento: "dispatch_tienda",
-      estadoOrigen: "confirmacion_cliente",
-      estadoDestino: "pendiente_tiendas",
-      actorTipo: "cliente",
-    });
-  } catch (e: unknown) {
-    console.error("[mandalo] no se pudo encolar o transicionar dispatch a tienda", { pedidoId: full.id, message: getErrorMessage(e) });
+    const msgCliente = `✅ Pedido #${full.id} programado.\n\nSe lo voy a mandar a *${full.tienda.nombre}* en cuanto abra, a las ${schedule.horaApertura}. Te aviso apenas se lo mande. 📦`;
+    await sendWhatsApp(telefono, msgCliente);
+    await guardarMensajeChat({ telefono, texto: msgCliente, estado: "bot" }).catch(() => {});
+    return { ok: true, role: "cliente", stage: "esperando_apertura_tienda", pedidoId: full.id };
+  }
+
+  const dispatchResult = await dispatchCotizacionToStore(full, { fromEstado: "confirmacion_cliente", actorTipo: "cliente" }).catch(
+    (e: unknown) => {
+      console.error("[mandalo] no se pudo encolar o transicionar dispatch a tienda", { pedidoId: full.id, message: getErrorMessage(e) });
+      return { ok: false as const, reason: "dispatch_failed" as const };
+    },
+  );
+
+  if (!dispatchResult.ok) {
     const msg = "⚠️ Hubo un problema al registrar tu pedido para enviarlo a la tienda.\n\nInténtalo de nuevo respondiendo *SÍ*. Si vuelve a fallar, avísame.";
     await sendWhatsApp(telefono, msg);
     await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
@@ -725,17 +736,6 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
   });
   const hasActivePedido = Boolean(openPedido && !isTerminalState(openPedido.estado));
 
-  // Horario de Mándalo (brief sección 3): 8am-8pm fijo. Solo bloquea pedidos
-  // NUEVOS — un cliente con un pedido ya en curso (ej. en camino a las 8:05pm)
-  // debe poder seguir recibiendo actualizaciones sin que el bot lo trate como
-  // cerrado a medio proceso.
-  if (!hasActivePedido && !isMandaloOpenNow()) {
-    const msg = `🕗 Por ahora estamos cerrados.\n\nNuestro horario es de ${formatMandaloHours()}. ¡Te esperamos! 🙏`;
-    await sendWhatsApp(telefono, msg);
-    await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
-    return { ok: true, role: "cliente", accion: "mandalo_cerrado" };
-  }
-
   // Escalamiento de quejas (brief sección 4 paso 9): prioridad más alta que
   // el hard reset — si alguien está molesto o algo salió mal, no lo recibimos
   // con "¿qué se te antoja hoy?": lo conectamos directo con el admin, con o
@@ -834,7 +834,24 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
     if (openPedido.estado !== "seleccion_productos") {
       const flag = getSessionFlag(telefono);
       if (isRedundantConfirmationMessage(mensaje) || isOrderTrackingQuestion(mensaje) || !flag?.pedido_en_proceso) {
-        const trackingBody = TRACKING_MESSAGES[openPedido.estado] ?? "Tu pedido sigue en proceso. Te aviso en cuanto haya una actualización. 📦";
+        // esperando_apertura_tienda es un estado pasivo como pendiente_tiendas
+        // (el cliente no tiene nada que responder, solo espera) — a diferencia
+        // de confirmacion_cliente/confirmado_tiendas, que sí necesitan
+        // interpretar isYesConfirmation. El mensaje no puede ser estático
+        // porque depende de qué tienda y a qué hora abre, así que se arma
+        // dinámico aquí en vez de vivir en TRACKING_MESSAGES.
+        let trackingBody = TRACKING_MESSAGES[openPedido.estado] ?? "Tu pedido sigue en proceso. Te aviso en cuanto haya una actualización. 📦";
+        if (openPedido.estado === "esperando_apertura_tienda") {
+          const full = await pedidoRepositoryV2.getPedidoById(openPedido.id);
+          const tiendaNombre = full?.tienda?.nombre ?? "la tienda";
+          const schedule = full?.tienda
+            ? checkTiendaSchedule({ horaApertura: full.tienda.horaApertura, horaCierre: full.tienda.horaCierre })
+            : null;
+          trackingBody =
+            schedule && !schedule.withinSchedule
+              ? `Sigue programado para *${tiendaNombre}*. Se lo voy a mandar en cuanto abra, a las ${schedule.horaApertura}. 🕗`
+              : `*${tiendaNombre}* ya debería estar abierta — en un momento te aviso que se mandó tu pedido. 📦`;
+        }
         const trackingMsg = `Pedido #${openPedido.id}: ${trackingBody}`;
         await sendWhatsApp(telefono, trackingMsg);
         await guardarMensajeChat({ telefono, texto: trackingMsg, estado: "bot" }).catch(() => {});
@@ -918,17 +935,13 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
       (): TiendaResolution => ({ status: "not_found" }),
     );
 
-    // Horario de tienda (brief sección 3): si el cliente nombró una tienda
-    // real pero cerrada, se lo decimos directo en vez de dejar que el flujo
-    // normal de captura vuelva a pedirle "el nombre exacto" (ya lo dio bien).
-    if (resolved.status === "closed") {
-      const msg = `😕 *${resolved.nombre}* está cerrada ahora mismo.\n\nAbre de ${resolved.horaApertura} a ${resolved.horaCierre}. ¿Quieres pedir de otra tienda? 🛒`;
-      await sendWhatsApp(telefono, msg);
-      await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
-      return { ok: true, role: "cliente", accion: "tienda_cerrada" };
-    }
-
-    if (resolved.status === "found") {
+    // Horario de tienda (Sección 5 regla 6, agosto 2026): una tienda cerrada
+    // ya NO rechaza el pedido — se sigue armando igual (items, dirección) y
+    // se programa para dispararse en cuanto abra. El aviso de "está cerrada,
+    // se le mandará a las X" se lo decimos en el resumen de confirmación
+    // (handleEsperandoConfirmacionInicial), no aquí — ahí es donde Víctor
+    // pidió que el cliente se entere, antes de decir SÍ.
+    if (resolved.status === "found" || resolved.status === "closed") {
       llmOrderState = { ...llmOrderState, business_id: resolved.id, business_name: resolved.nombre, business_phone: resolved.telefono };
     }
   }

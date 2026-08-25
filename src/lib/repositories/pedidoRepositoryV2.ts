@@ -257,6 +257,8 @@ export type PedidoFullRecord = {
     nombre: string | null;
     telefono: string | null;
     direccion: string | null;
+    horaApertura: string | null;
+    horaCierre: string | null;
     subtotal: number | null;
     estadoTienda: string;
   } | null;
@@ -273,7 +275,7 @@ export async function getPedidoById(pedidoId: number): Promise<PedidoFullRecord 
     .select(
       "id, estado, cliente_telefono, repartidor_id, direccion_entrega, latitud, longitud, " +
         "servicio_mandalo, servicio_repartidor, total_cliente, metadata_json, " +
-        "pedido_tiendas(id, tienda_id, subtotal_tienda, estado_tienda, tiendas(nombre, telefono, direccion), pedido_items(id, nombre_producto, cantidad))",
+        "pedido_tiendas(id, tienda_id, subtotal_tienda, estado_tienda, tiendas(nombre, telefono, direccion, hora_apertura, hora_cierre), pedido_items(id, nombre_producto, cantidad))",
     )
     .eq("id", pedidoId)
     .maybeSingle();
@@ -309,6 +311,8 @@ export async function getPedidoById(pedidoId: number): Promise<PedidoFullRecord 
           nombre: tiendaInfo?.nombre == null ? null : String(tiendaInfo.nombre),
           telefono: tiendaInfo?.telefono == null ? null : String(tiendaInfo.telefono),
           direccion: tiendaInfo?.direccion == null ? null : String(tiendaInfo.direccion),
+          horaApertura: tiendaInfo?.hora_apertura == null ? null : String(tiendaInfo.hora_apertura),
+          horaCierre: tiendaInfo?.hora_cierre == null ? null : String(tiendaInfo.hora_cierre),
           subtotal: pt.subtotal_tienda == null ? null : Number(pt.subtotal_tienda),
           estadoTienda: String(pt.estado_tienda ?? "pendiente"),
         }

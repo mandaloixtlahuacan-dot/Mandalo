@@ -1,13 +1,12 @@
-// Validación de horario — brief sección 3: Mándalo opera 8:00am-8:00pm fijo;
-// cada tienda tiene su propio horario en base de datos (tiendas.hora_apertura
-// / hora_cierre, columnas `text` libres — ver Fase 1). Los repartidores no
+// Validación de horario — Mándalo opera 24/7 (sin horario fijo general,
+// retirado agosto 2026 para poder atender pedidos a cualquier hora); cada
+// tienda tiene su propio horario en base de datos (tiendas.hora_apertura /
+// hora_cierre, columnas `text` libres — ver Fase 1). Los repartidores no
 // tienen columnas de horario en el esquema (CLAUDE.md Sección 4): su
 // disponibilidad ya se gobierna por `disponible`/`activo`, que es lo que
 // findActiveCourier() ya filtra — no hace falta nada nuevo para ellos aquí.
 
 const MANDALO_TIMEZONE = "America/Mexico_City";
-export const MANDALO_OPEN_HOUR = 8;
-export const MANDALO_CLOSE_HOUR = 20;
 
 function nowInMandaloMinutes(now: Date): number {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -42,15 +41,6 @@ export function parseHourToMinutes(raw: string | null | undefined): number | nul
   if (hour > 23) return null;
 
   return hour * 60 + minute;
-}
-
-export function isMandaloOpenNow(now: Date = new Date()): boolean {
-  const nowMinutes = nowInMandaloMinutes(now);
-  return nowMinutes >= MANDALO_OPEN_HOUR * 60 && nowMinutes < MANDALO_CLOSE_HOUR * 60;
-}
-
-export function formatMandaloHours(): string {
-  return "8:00am a 8:00pm";
 }
 
 export type TiendaScheduleCheck = { withinSchedule: true } | { withinSchedule: false; horaApertura: string; horaCierre: string };
