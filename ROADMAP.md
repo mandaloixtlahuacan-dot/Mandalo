@@ -4,7 +4,7 @@
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
 > Última actualización: 25 de agosto de 2026, trabajo directo sobre `main`
 > (decisión de Víctor desde el 2026-08-24 en adelante: sin rama aparte ni
-> Preview), commit `10d2711`.
+> Preview), commit `7355ca2` — todavía sin probar en vivo.
 > `fix/zod-items-schema-mismatch` mergeada a `main` el 2026-08-24 (validada en
 > vivo antes de mergear) — `feature/mandalo-24-7-pedidos-programados` mergeada
 > el mismo día, commit `2f54558` — `fix/confirmacion-pregunta-vs-si` mergeada
@@ -140,6 +140,17 @@ Cinco ajustes pedidos por Víctor tras la ronda de pruebas anterior:
 ## ✅ Bloque de trabajo 2026-08-25 (commit `10d2711`, directo sobre `main`)
 
 Bug de zona horaria encontrado por Víctor en la misma prueba en vivo: un pedido confirmado a las 8:05am mostró "llegará aproximadamente a las 2:25 p.m." — desfase de casi 6 horas (exactamente UTC-6, la diferencia con `America/Mexico_City`). Causa: `formatEstimatedArrival` (`mandaloFlow.ts`) usaba `toLocaleTimeString` sin `timeZone` explícito, así que tomaba la zona del servidor (Vercel corre en UTC) — mismo tipo de bug ya corregido antes en el cron del reporte semanal. La función vecina `buildSaludoInicial`, un renglón abajo en el mismo archivo, ya lo hacía bien (si sirve de referencia para futuras funciones de fecha/hora en este archivo). Fix: agregar `timeZone: "America/Mexico_City"` a las opciones de formato. Revisado el resto del código (`grep` de `toLocaleTimeString`/`toLocaleDateString`/`hour12`) — no se encontró ningún otro punto con el mismo problema.
+
+## ✅ Bloque de trabajo 2026-08-25 (commit `7355ca2`, directo sobre `main`)
+
+Cuatro ajustes más, encontrados por Víctor en la misma ronda de pruebas en vivo:
+
+1. **Regresión: el link de mapa desapareció por completo** — al arreglar el bug de link duplicado (bloque `6db4f8a`), `buildAddressTextFromCoords` se quedó sin ningún link en vez de dejar solo uno; el resumen de confirmación y el recibo inicial dejaron de mostrarlo del todo cuando el cliente compartía GPS. Fix: el link se calcula aparte de `addressText` (vía `resolveMapsLink`, directo de lat/lng) en los dos lugares que arman el texto de dirección al cliente (`mandaloFlow.buildResumenPedido` y `captureEngine.formatAddress`) — aparece una sola vez, ya no duplicado ni ausente.
+2. **Normalización de productos** — regla nueva en el prompt (BLOQUE 4): un producto real (no una descripción sin nombre) se entiende igual sin importar el orden de las palabras o errores menores ("tomate kilo" = "kilo de tomate"), separando bien `nombre_producto`/`cantidad`/`unidad` y con el nombre limpio y capitalizado antes de mandarlo a la tienda.
+3. **Mensajes menos saturados** — regla más estricta en BLOQUE 1 (máximo 3-4 emojis por mensaje, nunca repetir la misma idea dos veces). Limpieza de las plantillas propias: el mensaje de dispatch a repartidor tenía 6 emojis distintos, uno por línea — bajó a 1; se quitaron los `✅` duplicados en el resumen de confirmación y en el mensaje de total de la tienda.
+4. **Mensaje de lista de tiendas por categoría, reescrito con formato fijo** — la regla anterior dejaba la redacción libre a la IA, y en la práctica salía redundante (nombre de tienda y categoría repetidos varias veces en el mismo mensaje). Ahora el prompt exige un formato corto y fijo: "Tengo estas tiendas disponibles: - Nombre1 - Nombre2 (cerrada, abre a las HH:MM). ¿De cuál quieres pedir?" — sin repetir el nombre ni la categoría después de la lista.
+
+**Pendiente:** probar en vivo los cuatro puntos — especialmente confirmar que el link de mapa vuelve a aparecer (una sola vez) en un pedido con GPS real.
 
 ## ⚪ No construido todavía (fuera del punchlist del brief)
 
