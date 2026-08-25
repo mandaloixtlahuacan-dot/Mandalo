@@ -70,9 +70,18 @@ async function isAdminSender(phone: string): Promise<boolean> {
   return sender === admin || sender.slice(-10) === admin.slice(-10);
 }
 
+// Bug real de zona horaria (mismo tipo que el del cron de reporte semanal):
+// sin `timeZone` explícito, toLocaleTimeString usa la zona del servidor
+// (Vercel corre en UTC), no la de Ixtlahuacán del Río — un pedido confirmado
+// a las 8:05am mostraba "llegará a las 2:25pm" (desfase de 6h, UTC-6).
 function formatEstimatedArrival(minutesToAdd = 20): string {
   const eta = new Date(Date.now() + minutesToAdd * 60 * 1000);
-  return eta.toLocaleTimeString("es-MX", { hour: "numeric", minute: "2-digit", hour12: true });
+  return eta.toLocaleTimeString("es-MX", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZone: "America/Mexico_City",
+  });
 }
 
 function buildSaludoInicial(): string {
