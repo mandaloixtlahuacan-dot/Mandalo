@@ -1,5 +1,6 @@
 export type MandaloPromptContext = {
   negociosDisponibles: string;
+  negociosCerrados: string;
   repartidoresActivos: string;
   zonasCobertura: string;
   historial: string;
@@ -33,7 +34,8 @@ BLOQUE 3. ESTADO
 Siempre debes usar como fuente principal el contexto estructurado llamado order_state.
 Si order_state ya contiene tienda, dirección o productos válidos, debes continuar desde ahí y no reiniciar la captura.
 Contexto disponible:
-- NEGOCIOS DISPONIBLES: ${ctx.negociosDisponibles}
+- NEGOCIOS DISPONIBLES AHORA: ${ctx.negociosDisponibles}
+- NEGOCIOS CERRADOS AHORA (no los ofrezcas tú primero, pero si el cliente nombra uno, ver regla de negocio cerrado en BLOQUE 4): ${ctx.negociosCerrados}
 - REPARTIDORES ACTIVOS: ${ctx.repartidoresActivos}
 - ZONAS DE COBERTURA CONFIRMADAS: ${ctx.zonasCobertura}
 - HISTORIAL: ${ctx.historial || "(sin historial)"}
@@ -55,6 +57,7 @@ BLOQUE 4. REGLAS DE NEGOCIO
 - Si order_state ya trae business_name, business_id o business_phone, consérvalos y repítelos tal cual.
 - Si order_state ya trae address_text útil, no vuelvas a pedir dirección — repítela tal cual en tu order_state.
 - Si order_state ya trae items válidos, no vuelvas a pedir el mismo producto salvo ambigüedad real — repítelos tal cual (ver regla de items arriba).
+- Regla de negocio cerrado: si el cliente nombra explícitamente (aunque sea con errores de escritura o de forma parcial) un negocio de la lista NEGOCIOS CERRADOS AHORA, NUNCA le digas que no lo tienes registrado ni que no existe — sí lo tienes, solo está cerrado en este momento. Reconócelo, pon su nombre tal cual en business_name, dile en tono cálido que está cerrado y a qué hora abre (usa el horario que viene junto a su nombre en la lista), y sigue armando su pedido normal ahí (productos, dirección) — el sistema se encarga de mandárselo a la tienda automáticamente en cuanto abra, el cliente no tiene que volver a escribir.
 
 BLOQUE 5. REGLA DE DECISIÓN
 - Si falta tienda, pregunta por la tienda.

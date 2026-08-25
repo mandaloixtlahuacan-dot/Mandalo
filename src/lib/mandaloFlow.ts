@@ -188,6 +188,7 @@ export async function getLLMResponse(params: {
 }): Promise<MandaloAgentResponse> {
   const supabase = getSupabaseAdmin();
   let tiendas: TiendaRow[] = [];
+  let tiendasCerradas: TiendaRow[] = [];
   try {
     const { data, error } = await supabase
       .from("tiendas")
@@ -195,18 +196,25 @@ export async function getLLMResponse(params: {
       .eq("activa", true)
       .limit(500);
     if (error) throw error;
-    tiendas = (data ?? [])
-      .filter((n) => String((n as TiendaRow)?.nombre ?? "").trim() && String((n as TiendaRow)?.telefono ?? "").trim())
-      // Horario de tienda (brief sección 3): una tienda fuera de su horario no
-      // se ofrece como opción — ni en la lista legible ni en el JSON crudo que
-      // ve la IA, para que nunca la sugiera aunque el cliente la mencione.
-      .filter((n) => {
-        const row = n as TiendaRow;
-        return checkTiendaSchedule({
+    const activas = (data ?? []).filter(
+      (n) => String((n as TiendaRow)?.nombre ?? "").trim() && String((n as TiendaRow)?.telefono ?? "").trim(),
+    ) as TiendaRow[];
+    // Horario de tienda (Sección 5 regla 6, Mándalo 24/7): una tienda cerrada
+    // ya no se ofrece de entrada, pero SÍ debe seguir siendo reconocible por
+    // nombre si el cliente la nombra explícitamente — de lo contrario la IA
+    // nunca sabe que existe y le dice al cliente que "no la tiene registrada",
+    // en vez de reconocerla y ofrecer programar el pedido para cuando abra
+    // (bug encontrado en producción agosto 2026: Agua Santa cerrada quedaba
+    // invisible por completo, incluso nombrada de forma explícita). Por eso
+    // se separan en dos listas en vez de filtrar la cerrada fuera del todo.
+    tiendas = activas.filter(
+      (row) =>
+        checkTiendaSchedule({
           horaApertura: row.hora_apertura == null ? null : String(row.hora_apertura),
           horaCierre: row.hora_cierre == null ? null : String(row.hora_cierre),
-        }).withinSchedule;
-      });
+        }).withinSchedule,
+    );
+    tiendasCerradas = activas.filter((row) => !tiendas.includes(row));
   } catch (e: unknown) {
     console.error("[mandalo] getLLMResponse: error consultando tiendas", { message: getErrorMessage(e) });
   }
@@ -217,6 +225,12 @@ export async function getLLMResponse(params: {
         .join("\n")
     : "(sin tiendas disponibles)";
 
+  const tiendasCerradas_text = tiendasCerradas.length
+    ? tiendasCerradas
+        .map((n) => `- ${String(n.nombre ?? "")} (cerrada ahora, abre a las ${String(n.hora_apertura ?? "?")})`)
+        .join("\n")
+    : "(ninguna)";
+
   const zonasCoberturaNombres = await fetchZonasCobertura();
   const zonasCobertura_text = zonasCoberturaNombres.length
     ? zonasCoberturaNombres.map((z) => `- ${z}`).join("\n")
@@ -225,6 +239,7 @@ export async function getLLMResponse(params: {
   const model = getOpenAIModel();
   const system = buildMandaloSystemPrompt({
     negociosDisponibles: tiendas_text,
+    negociosCerrados: tiendasCerradas_text,
     repartidoresActivos: String(params.supabaseJson?.repartidores_text ?? "(sin repartidores)"),
     zonasCobertura: zonasCobertura_text,
     historial: String(params.supabaseJson?.historial_text ?? ""),
@@ -1052,6 +1067,11 @@ async function handleTiendaMessage(telefono: string, mensaje: string, tiendaId: 
     idempotencyKey: `pedido:${ordenId}:cliente:cotizacion_recibida:v1`,
   });
   await guardarMensajeChat({ telefono: pedido.clienteTelefono, texto: msg, estado: "bot" }).catch(() => {});
+
+  // Confirmación corta a la tienda misma — sin esto, el dueño manda el precio
+  // y no vuelve a saber nada, no tiene forma de confirmar que su mensaje se
+  // procesó bien (a diferencia del repartidor, que sí recibe un ack aquí abajo).
+  await sendWhatsApp(telefono, `Recibido, gracias — ya le avisé al cliente el total del pedido #${ordenId}.`);
 
   return { ok: true, role: "tienda", ordenId, total };
 }
