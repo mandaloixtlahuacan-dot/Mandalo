@@ -48,7 +48,7 @@ type OutboundNotice = {
 type TimeoutKindConfig = {
   kind: OrderTimeoutKind;
   estado: OrderState;
-  reasonCode: "store_quote_timeout" | "final_confirmation_timeout" | "courier_confirmation_timeout";
+  reasonCode: "store_quote_timeout" | "final_confirmation_timeout" | "courier_confirmation_timeout" | "product_adjustment_timeout";
   buildReminder(pedido: PedidoFullRecord): OutboundNotice | null;
   buildCancelNotices(pedido: PedidoFullRecord): OutboundNotice[];
   adminMessage(pedido: PedidoFullRecord): string;
@@ -176,6 +176,47 @@ const TIMEOUT_CONFIGS: TimeoutKindConfig[] = [
     },
     adminMessage: (pedido) =>
       `Timeout de repartidor.\n\nPedido: ${pedido.id}\nNingún repartidor confirmó en 10 min. Pedido cancelado.`,
+  },
+  {
+    kind: "product_adjustment",
+    estado: "ajuste_producto",
+    reasonCode: "product_adjustment_timeout",
+    buildReminder(pedido) {
+      const itemNombre = cleanText(pedido.metadata.product_adjustment_item_nombre) ?? "un producto";
+      return {
+        telefono: ensureMxWhatsappIntl(pedido.clienteTelefono),
+        body:
+          `⏰ Tu pedido #${pedido.id} sigue esperando tu decisión sobre "${itemNombre}".\n\n` +
+          `Responde en los próximos 5 minutos: escribe "sin él" para continuar sin ese producto, o dime por cuál lo cambio — si no, se cancelará.`,
+        tipoMensaje: "notificacion_cliente",
+        destinatarioTipo: "cliente",
+        destinatarioId: null,
+      };
+    },
+    buildCancelNotices(pedido) {
+      const itemNombre = cleanText(pedido.metadata.product_adjustment_item_nombre) ?? "un producto";
+      const notices: OutboundNotice[] = [
+        {
+          telefono: ensureMxWhatsappIntl(pedido.clienteTelefono),
+          body: `⚠️ Tu pedido #${pedido.id} se canceló: no respondiste a tiempo sobre "${itemNombre}".\n\nCuando quieras, puedes hacer un nuevo pedido. 🙏`,
+          tipoMensaje: "notificacion_cliente",
+          destinatarioTipo: "cliente",
+          destinatarioId: null,
+        },
+      ];
+      if (pedido.tienda?.telefono) {
+        notices.push({
+          telefono: ensureMxWhatsappIntl(pedido.tienda.telefono),
+          body: `El pedido #${pedido.id} se canceló: el cliente no respondió a tiempo sobre "${itemNombre}". Ya no es necesario prepararlo.`,
+          tipoMensaje: "cotizacion_tienda",
+          destinatarioTipo: "negocio",
+          destinatarioId: pedido.tienda.tiendaId,
+        });
+      }
+      return notices;
+    },
+    adminMessage: (pedido) =>
+      `Timeout de ajuste de producto.\n\nPedido: ${pedido.id}\nEl cliente no decidió en 10 min. Pedido cancelado.`,
   },
 ];
 

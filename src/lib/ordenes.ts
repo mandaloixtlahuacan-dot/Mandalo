@@ -51,6 +51,32 @@ export function extraerPrecio(texto: string): number | null {
   return m ? Number(m[1]) : null;
 }
 
+// Comando de tienda mencionado desde BLOQUE 1 del prompt ("Asume disponibilidad
+// y deja que la tienda cotice o responda #NO_DISPONIBLE") pero nunca antes
+// implementado — cierra el estado ajuste_producto, que existía en la máquina
+// de estados sin lógica real detrás. Formato esperado: "ORDEN #162 NO_DISPONIBLE
+// takis fuego" (mismo estilo que "ORDEN #162 PRECIO 87") — el texto después del
+// comando es la referencia del producto, se resuelve por coincidencia difusa
+// contra pedido_items en el llamador.
+export function extraerNoDisponible(texto: string): { productoTexto: string } | null {
+  const normalized = String(texto ?? "");
+  const m = normalized.match(/no_disponible\b[:\-]?\s*(.+)/i);
+  if (!m) return null;
+  const productoTexto = m[1].trim();
+  return productoTexto ? { productoTexto } : null;
+}
+
+// Formato de moneda consistente para mensajes al cliente/tienda/repartidor:
+// enteros sin decimales ($150), no enteros con dos decimales ($150.50) — evita
+// artefactos de punto flotante (ej. $150.30000000000001) y mensajes con
+// formato inconsistente entre distintos puntos del flujo.
+export function formatMoney(amount: number): string {
+  const n = Number(amount);
+  if (!Number.isFinite(n)) return "$0";
+  const rounded = Math.round(n * 100) / 100;
+  return Number.isInteger(rounded) ? `$${rounded}` : `$${rounded.toFixed(2)}`;
+}
+
 export function esConfirmacionCliente(texto: string): boolean {
   return /\b(si|sí|ok|va|confirmo|confirmar|dale|de acuerdo)\b/i.test(texto.trim());
 }

@@ -220,6 +220,31 @@ export function isCancelIntent(text: string): boolean {
   );
 }
 
+// Decisión del cliente ante un ajuste_producto (CLAUDE.md Sección 6 paso 5):
+// "sin él/eso/ese" o "quítalo" significa continuar sin ese producto puntual —
+// deliberadamente sin superponerse con isCancelIntent ("cancel"/"anular"),
+// que ya tiene prioridad global y cancela el PEDIDO completo, no solo un
+// producto. Cualquier otro texto en este estado se trata como el nombre del
+// producto de reemplazo (ver handleAjusteProducto en mandaloFlow.ts).
+export function isDropProductIntent(text: string): boolean {
+  const t = normalizeMessageIntentText(text);
+  return (
+    /\bsin (el|el producto|eso|ese|esa|ello)\b/.test(t) ||
+    t.includes("quitalo") ||
+    t.includes("quita ese") ||
+    t.includes("quita el producto") ||
+    t.includes("borralo") ||
+    t.includes("borra ese") ||
+    t.includes("saquenlo") ||
+    t.includes("saquenlo del pedido") ||
+    t.includes("eliminalo") ||
+    t.includes("no lo pongas") ||
+    t.includes("mejor sin eso") ||
+    t.includes("continua sin") ||
+    t.includes("sigue sin")
+  );
+}
+
 export function isConversationModeMessage(text: string): boolean {
   const t = normalizeMessageIntentText(text);
   // Heurística simple: mensajes emocionales o de charla general

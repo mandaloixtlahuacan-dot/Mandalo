@@ -300,7 +300,7 @@ function formatAddress(snapshot: PedidoSnapshot): string {
   return snapshot.addressText?.trim() || "Sin dirección completa";
 }
 
-function formatItems(items: PedidoItemInput[]): string {
+export function formatItems(items: PedidoItemInput[]): string {
   if (!items.length) return "- Sin productos definidos";
 
   return items
@@ -348,7 +348,8 @@ export function buildCustomerMessage(params: {
     if (first?.field === "direccion") {
       return (
         "🏠 ¿Me compartes tu ubicación por GPS? Es lo más fácil y rápido.\n\n" +
-        "Si prefieres, también puedes escribirme tu dirección — incluye calle, número y una referencia o colonia."
+        "Si prefieres, también puedes escribirme tu dirección: calle y número, colonia o una referencia clara " +
+        '(ej. "frente a la tortillería", "casa azul").'
       );
     }
 

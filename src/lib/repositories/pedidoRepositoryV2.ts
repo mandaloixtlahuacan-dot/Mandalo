@@ -262,7 +262,7 @@ export type PedidoFullRecord = {
     subtotal: number | null;
     estadoTienda: string;
   } | null;
-  items: Array<{ id: number; nombreProducto: string; cantidad: number | null }>;
+  items: Array<{ id: number; nombreProducto: string; cantidad: number | null; disponible: boolean }>;
 };
 
 // Lectura completa de un pedido (con su tienda e items) por id — para los
@@ -275,7 +275,7 @@ export async function getPedidoById(pedidoId: number): Promise<PedidoFullRecord 
     .select(
       "id, estado, cliente_telefono, repartidor_id, direccion_entrega, latitud, longitud, " +
         "servicio_mandalo, servicio_repartidor, total_cliente, metadata_json, " +
-        "pedido_tiendas(id, tienda_id, subtotal_tienda, estado_tienda, tiendas(nombre, telefono, direccion, hora_apertura, hora_cierre), pedido_items(id, nombre_producto, cantidad))",
+        "pedido_tiendas(id, tienda_id, subtotal_tienda, estado_tienda, tiendas(nombre, telefono, direccion, hora_apertura, hora_cierre), pedido_items(id, nombre_producto, cantidad, disponible))",
     )
     .eq("id", pedidoId)
     .maybeSingle();
@@ -321,6 +321,7 @@ export async function getPedidoById(pedidoId: number): Promise<PedidoFullRecord 
       id: Number(it.id),
       nombreProducto: String(it.nombre_producto ?? ""),
       cantidad: it.cantidad == null ? null : Number(it.cantidad),
+      disponible: it.disponible !== false,
     })),
   };
 }
@@ -334,6 +335,73 @@ export async function setPedidoTiendaCotizacion(params: {
     .from("pedido_tiendas")
     .update({ subtotal_tienda: params.subtotal, estado_tienda: "confirmado" })
     .eq("id", params.pedidoTiendaId);
+  if (error) throw error;
+}
+
+export async function setPedidoTiendaEstado(params: {
+  pedidoTiendaId: number;
+  estadoTienda: "pendiente" | "confirmado" | "ajuste_producto" | "cancelado";
+}): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("pedido_tiendas")
+    .update({ estado_tienda: params.estadoTienda })
+    .eq("id", params.pedidoTiendaId);
+  if (error) throw error;
+}
+
+// Coincidencia difusa (exacta, luego parcial) del texto que manda la tienda
+// en #NO_DISPONIBLE contra los productos reales del pedido — mismo patrón de
+// "exacto, luego ILIKE" que resolveTiendaStrictByName en mandaloFlow.ts.
+export async function findPedidoItemByText(
+  pedidoTiendaId: number,
+  texto: string,
+): Promise<{ id: number; nombreProducto: string } | null> {
+  const supabase = getSupabaseAdmin();
+  const needle = cleanText(texto);
+  if (!needle) return null;
+
+  const { data, error } = await supabase
+    .from("pedido_items")
+    .select("id, nombre_producto")
+    .eq("pedido_tienda_id", pedidoTiendaId);
+  if (error) throw error;
+
+  const rows = (data ?? []) as Array<{ id: unknown; nombre_producto: unknown }>;
+  const normalizedNeedle = needle.toLowerCase();
+
+  const exact = rows.find((r) => String(r.nombre_producto ?? "").trim().toLowerCase() === normalizedNeedle);
+  if (exact) return { id: Number(exact.id), nombreProducto: String(exact.nombre_producto) };
+
+  const partial = rows.find((r) => {
+    const nombre = String(r.nombre_producto ?? "").trim().toLowerCase();
+    return nombre.includes(normalizedNeedle) || normalizedNeedle.includes(nombre);
+  });
+  if (partial) return { id: Number(partial.id), nombreProducto: String(partial.nombre_producto) };
+
+  return null;
+}
+
+export async function setPedidoItemDisponible(itemId: number, disponible: boolean): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("pedido_items").update({ disponible }).eq("id", itemId);
+  if (error) throw error;
+}
+
+export async function removePedidoItem(itemId: number): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("pedido_items").delete().eq("id", itemId);
+  if (error) throw error;
+}
+
+// Reemplaza el producto (el cliente lo cambió por otro) — vuelve a marcarlo
+// disponible=true, ya es un producto distinto que la tienda todavía no evaluó.
+export async function replacePedidoItemText(itemId: number, nuevoTexto: string): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("pedido_items")
+    .update({ nombre_producto: nuevoTexto, disponible: true })
+    .eq("id", itemId);
   if (error) throw error;
 }
 

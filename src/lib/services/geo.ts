@@ -42,8 +42,12 @@ export function buildMapsLinkFromCoords(coords: Coordinates): string {
   return `https://www.google.com/maps?q=${coords.latitude},${coords.longitude}`;
 }
 
-export function buildAddressTextFromCoords(coords: Coordinates): string {
-  return `Ubicación compartida por GPS: ${buildMapsLinkFromCoords(coords)}`;
+// Sin el link crudo aquí a propósito: quien necesita el mapa (ej. el mensaje
+// al repartidor) ya lo arma aparte con resolveMapsLink/buildMapsLinkFromCoords
+// a partir de lat/lng reales — meterlo también en el texto de dirección
+// producía el mismo link duplicado dos veces en el mismo mensaje.
+export function buildAddressTextFromCoords(): string {
+  return "Ubicación compartida por GPS 📍";
 }
 
 // Solo devuelve link de mapa si hay coordenadas GPS reales — nunca a partir

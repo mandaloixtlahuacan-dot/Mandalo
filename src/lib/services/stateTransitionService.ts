@@ -607,7 +607,8 @@ export function createStateTransitionService() {
         | "store_quote_timeout"
         | "final_confirmation_timeout"
         | "courier_confirmation_timeout"
-        | "store_never_opened";
+        | "store_never_opened"
+        | "product_adjustment_timeout";
       adminMessage: string;
       customerPhone: string;
     }): Promise<void> {

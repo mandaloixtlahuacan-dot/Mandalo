@@ -7,7 +7,7 @@
 export const ORDER_TIMEOUT_MINUTES = 10;
 export const ORDER_TIMEOUT_REMINDER_BEFORE_MINUTES = 5;
 
-export type OrderTimeoutKind = "store_quote" | "final_confirmation" | "courier_confirmation";
+export type OrderTimeoutKind = "store_quote" | "final_confirmation" | "courier_confirmation" | "product_adjustment";
 
 function fieldNames(kind: OrderTimeoutKind) {
   return {

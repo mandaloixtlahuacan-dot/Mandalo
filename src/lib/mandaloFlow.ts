@@ -3,7 +3,7 @@ import { getChatCompletion, getOpenAIModel } from "@/lib/openaiClient";
 import { buildMandaloSystemPrompt } from "@/lib/mandaloPrompt";
 import { normalizeWhatsAppText, waapiSendText } from "@/lib/waapi";
 import { detectActorByPhone, ensureMxWhatsappIntl, normalizePhone } from "@/lib/roles";
-import { createCaptureEngine } from "@/lib/services/captureEngine";
+import { createCaptureEngine, formatItems as formatSnapshotItems } from "@/lib/services/captureEngine";
 import * as pedidoRepositoryV2 from "@/lib/repositories/pedidoRepositoryV2";
 import { getAdminPhone } from "@/lib/repositories/configRepository";
 import * as metricsRepository from "@/lib/repositories/metricsRepository";
@@ -13,7 +13,7 @@ import { createCourierCommandParser } from "@/lib/services/courierCommandParser"
 import { buildOrderTimeoutMetadata, buildEsperandoAperturaMetadata } from "@/lib/services/orderTimeouts";
 import { checkTiendaSchedule } from "@/lib/services/businessHours";
 import { dispatchCotizacionToStore } from "@/lib/services/storeDispatch";
-import { calculateFinalPrice, extraerOrdenId, extraerPrecio } from "@/lib/ordenes";
+import { calculateFinalPrice, extraerNoDisponible, extraerOrdenId, extraerPrecio, formatMoney } from "@/lib/ordenes";
 import { isTerminalState, type OrderState } from "@/lib/orderStateMachine";
 import {
   extractCoordsFromUbicacion,
@@ -28,6 +28,7 @@ import {
   fetchRecentChatHistory as fetchHistorialReciente,
   isCancelIntent,
   isComplaintMessage,
+  isDropProductIntent,
   isConversationModeMessage,
   isNewOrderIntent,
   isYesConfirmation,
@@ -227,7 +228,10 @@ export async function getLLMResponse(params: {
 
   const tiendasCerradas_text = tiendasCerradas.length
     ? tiendasCerradas
-        .map((n) => `- ${String(n.nombre ?? "")} (cerrada ahora, abre a las ${String(n.hora_apertura ?? "?")})`)
+        .map(
+          (n) =>
+            `- ${String(n.nombre ?? "")}${n.categoria ? ` (${String(n.categoria)})` : ""} — cerrada ahora, abre a las ${String(n.hora_apertura ?? "?")}`,
+        )
         .join("\n")
     : "(ninguna)";
 
@@ -508,7 +512,8 @@ function buildResumenPedido(pedido: PedidoV2Record): string {
   const snapshot = pedido.snapshot_json;
   const tienda = String(snapshot.businessName ?? "").trim() || "(sin tienda)";
   const direccion = String(snapshot.addressText ?? "").trim() || "(sin dirección)";
-  return `Pedido #${pedido.id}\n\nTienda: ${tienda}\n\n🏠 Entrega:\n${direccion}`;
+  const items = formatSnapshotItems(snapshot.items ?? []);
+  return `🧾 Pedido #${pedido.id}\n\nTienda: ${tienda}\n\n🛒 Productos:\n${items}\n\n🏠 Entrega:\n${direccion}`;
 }
 
 async function handleEsperandoConfirmacionInicial(
@@ -522,7 +527,7 @@ async function handleEsperandoConfirmacionInicial(
   // Si el cliente comparte (o vuelve a compartir) su ubicación GPS mientras
   // esperamos confirmación, la usamos como dirección exacta de inmediato.
   if (ubicacionCoords) {
-    const addressText = buildAddressTextFromCoords(ubicacionCoords);
+    const addressText = buildAddressTextFromCoords();
     snapshot = { ...snapshot, addressText, latitud: ubicacionCoords.latitude, longitud: ubicacionCoords.longitude };
     await pedidoRepositoryV2.updatePedidoSnapshot({
       pedidoId: pedido.id,
@@ -677,13 +682,14 @@ async function handleConfirmadoTiendas(telefono: string, mensaje: string, pedido
   const mapsLink = resolveMapsLink({ latitud: pedido.latitud, longitud: pedido.longitud });
 
   const msgRepartidor =
-    `Hola ${repartidorNombre}, tienes un nuevo pedido de ${pedido.tienda?.nombre ?? "la tienda"}. 📦\n\n` +
-    `🏪 Recoger en: ${pedido.tienda?.direccion || "(sin dirección de tienda registrada, confirma con la tienda)"}\n` +
-    `📍 Entregar en: ${pedido.direccionEntrega || "(sin dirección)"}\n` +
-    `${pedido.totalCliente != null ? `💰 Total: $${pedido.totalCliente}\n` : ""}` +
-    `📞 Tel cliente: ${telefono}\n` +
-    `${mapsLink ? `🗺️ Mapa de entrega: ${mapsLink}\n` : ""}` +
-    `\nProductos:\n${formatItemsForMessage(pedido.items)}\n\n` +
+    `Hola ${repartidorNombre}, tienes un nuevo pedido 📦\n\n` +
+    `🧾 Pedido #${pedido.id} — ${pedido.tienda?.nombre ?? "la tienda"}\n\n` +
+    `🏪 Recoger en:\n${pedido.tienda?.direccion || "(sin dirección de tienda registrada, confirma con la tienda)"}\n\n` +
+    `📍 Entregar en:\n${pedido.direccionEntrega || "(sin dirección)"}\n` +
+    `${mapsLink ? `🗺️ Mapa: ${mapsLink}\n` : ""}\n` +
+    `🛒 Productos:\n${formatItemsForMessage(pedido.items)}\n\n` +
+    `${pedido.totalCliente != null ? `*Cobrar: ${formatMoney(pedido.totalCliente)}*\n` : ""}` +
+    `📞 Tel. cliente: ${telefono}\n\n` +
     `Responde con: #CONFIRMO ${pedido.id}\n` +
     `Luego: #RECOGI ${pedido.id} y #ENTREGADO ${pedido.id}`;
 
@@ -721,6 +727,92 @@ async function handleConfirmadoTiendas(telefono: string, mensaje: string, pedido
   await sendWhatsApp(telefono, msgCliente);
   await guardarMensajeChat({ telefono, texto: msgCliente, estado: "bot" }).catch(() => {});
   return { ok: true, role: "cliente", stage: "dispatch_repartidor_pendiente", pedidoId: pedido.id };
+}
+
+// Contraparte del cliente para handleTiendaProductoNoDisponible: decide si
+// continúa sin el producto (isDropProductIntent) o lo cambia por otro
+// (cualquier otro texto se toma como la descripción del reemplazo — mismo
+// principio que "no inventes el nombre exacto" de BLOQUE 4 del prompt, aquí
+// aplicado a texto que ya viene directo del cliente, sin pasar por la IA).
+// Reusa dispatchCotizacionToStore para volver a pendiente_tiendas y re-cotizar
+// con la tienda — mismo mecanismo que el dispatch inicial.
+async function handleAjusteProducto(telefono: string, mensaje: string, pedido: PedidoFullRecord): Promise<JsonObject> {
+  if (!pedido.tienda) {
+    console.error("[mandalo] ajuste_producto sin tienda vinculada", { pedidoId: pedido.id });
+    const msg = "⚠️ Hubo un problema con tu pedido. Ya avisé a nuestro equipo. 🙏";
+    await sendWhatsApp(telefono, msg);
+    await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+    return { ok: true, role: "cliente", stage: "ajuste_producto", pedidoId: pedido.id };
+  }
+  const pedidoTiendaId = pedido.tienda.pedidoTiendaId;
+
+  const itemNombre = String(pedido.metadata.product_adjustment_item_nombre ?? "ese producto");
+  const itemIdRaw = pedido.metadata.product_adjustment_item_id;
+  const itemId = typeof itemIdRaw === "number" ? itemIdRaw : Number(itemIdRaw);
+
+  if (!Number.isFinite(itemId)) {
+    const msg = `Sigo esperando tu decisión sobre un producto de tu pedido #${pedido.id}.\n\nEscríbeme "sin él" para quitarlo, o dime por cuál producto lo cambio.`;
+    await sendWhatsApp(telefono, msg);
+    await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+    return { ok: true, role: "cliente", stage: "ajuste_producto", pedidoId: pedido.id };
+  }
+
+  async function reDispatchTrasAjuste(resumenCambio: string): Promise<JsonObject> {
+    await pedidoRepositoryV2.setPedidoTiendaEstado({ pedidoTiendaId, estadoTienda: "pendiente" });
+    const fresh = await pedidoRepositoryV2.getPedidoById(pedido.id);
+    if (!fresh) {
+      const msg = "⚠️ Hubo un problema al actualizar tu pedido. Inténtalo de nuevo en un momento.";
+      await sendWhatsApp(telefono, msg);
+      await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+      return { ok: true, role: "cliente", stage: "ajuste_producto", pedidoId: pedido.id };
+    }
+
+    const dispatchResult = await dispatchCotizacionToStore(fresh, { fromEstado: "ajuste_producto", actorTipo: "cliente" }).catch(
+      (e: unknown) => {
+        console.error("[mandalo] no se pudo re-despachar tras ajuste_producto", { pedidoId: pedido.id, message: getErrorMessage(e) });
+        return { ok: false as const, reason: "dispatch_failed" as const };
+      },
+    );
+
+    const msg = dispatchResult.ok
+      ? `${resumenCambio}\n\nTu pedido ahora es:\n${formatItemsForMessage(fresh.items)}\n\nLe avisé a *${pedido.tienda?.nombre ?? "la tienda"}* para que confirme el nuevo precio. 🧾`
+      : `${resumenCambio}\n\nHubo un problema al avisarle a la tienda — dame un momento y lo reintento. 🙏`;
+    await sendWhatsApp(telefono, msg);
+    await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+    return { ok: true, role: "cliente", accion: "ajuste_resuelto", pedidoId: pedido.id };
+  }
+
+  if (isDropProductIntent(mensaje)) {
+    await pedidoRepositoryV2.removePedidoItem(itemId);
+    const restantes = pedido.items.filter((it) => it.id !== itemId);
+
+    if (!restantes.length) {
+      await cancelOpenPedido(
+        { id: pedido.id, estado: pedido.estado, snapshot_json: pedido.snapshot },
+        telefono,
+        "sin_productos_tras_ajuste",
+      );
+      const msg =
+        `De acuerdo, quité "${itemNombre}" — pero era el único producto de tu pedido #${pedido.id}, así que lo cancelé. 🙏\n\n` +
+        `Cuando quieras, hacemos uno nuevo. 🛒`;
+      await sendWhatsApp(telefono, msg);
+      await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+      return { ok: true, role: "cliente", accion: "cancelado_sin_productos", pedidoId: pedido.id };
+    }
+
+    return reDispatchTrasAjuste(`✅ Listo, quité "${itemNombre}" de tu pedido #${pedido.id}.`);
+  }
+
+  const nuevoTexto = String(mensaje ?? "").trim();
+  if (!nuevoTexto) {
+    const msg = `Dime "sin él" para quitar "${itemNombre}" de tu pedido, o el nombre del producto por el que lo cambio.`;
+    await sendWhatsApp(telefono, msg);
+    await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+    return { ok: true, role: "cliente", stage: "ajuste_producto", pedidoId: pedido.id };
+  }
+
+  await pedidoRepositoryV2.replacePedidoItemText(itemId, nuevoTexto);
+  return reDispatchTrasAjuste(`✅ Listo, cambié "${itemNombre}" por "${nuevoTexto}" en tu pedido #${pedido.id}.`);
 }
 
 const TRACKING_MESSAGES: Partial<Record<OrderState, string>> = {
@@ -846,6 +938,15 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
       if (full) return handleConfirmadoTiendas(telefono, mensaje, full);
     }
 
+    // A diferencia de pendiente_tiendas/esperando_apertura_tienda (estados
+    // pasivos, el cliente solo espera), en ajuste_producto SÍ hay algo que
+    // decidir — no puede caer en el branch genérico de abajo, que solo manda
+    // un mensaje de "tu pedido sigue en proceso" sin procesar la respuesta.
+    if (openPedido.estado === "ajuste_producto") {
+      const full = await pedidoRepositoryV2.getPedidoById(openPedido.id);
+      if (full) return handleAjusteProducto(telefono, mensaje, full);
+    }
+
     if (openPedido.estado !== "seleccion_productos") {
       const flag = getSessionFlag(telefono);
       if (isRedundantConfirmationMessage(mensaje) || isOrderTrackingQuestion(mensaje) || !flag?.pedido_en_proceso) {
@@ -933,7 +1034,7 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
   let llmOrderState: Record<string, unknown> | null = ubicacionCoords
     ? {
         ...ensureSafeLlmOrderState(respuesta.order_state),
-        address_text: buildAddressTextFromCoords(ubicacionCoords),
+        address_text: buildAddressTextFromCoords(),
         latitud: ubicacionCoords.latitude,
         longitud: ubicacionCoords.longitude,
       }
@@ -1005,8 +1106,98 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
 
 // --- Tienda ---
 
+// Cierra el estado ajuste_producto (CLAUDE.md Sección 6 paso 5, existía en la
+// máquina de estados sin lógica real detrás): la tienda reporta que un
+// producto puntual no está disponible mientras cotiza, ANTES de mandar
+// #PRECIO. El pedido completo no se cancela — se pausa solo ese producto y el
+// cliente decide (handleAjusteProducto abajo). Mismas validaciones de
+// ownership/estado que handleTiendaMessage porque comparte el mismo
+// remitente/comando de "ORDEN #<id> ...".
+async function handleTiendaProductoNoDisponible(
+  telefono: string,
+  tiendaId: number,
+  ordenId: number,
+  productoTexto: string,
+): Promise<JsonObject> {
+  const pedido = await pedidoRepositoryV2.getPedidoById(ordenId);
+  if (!pedido) {
+    const msg = `⚠️ No encontré el pedido ${ordenId}. Verifica el número e intenta de nuevo.`;
+    await sendWhatsApp(telefono, msg);
+    return { ok: true, role: "tienda", ordenId, error: "PEDIDO_NO_ENCONTRADO" };
+  }
+
+  if (!pedido.tienda || pedido.tienda.tiendaId !== tiendaId) {
+    const msg = "⚠️ Ese pedido no corresponde a tu negocio. Verifica el número de orden.";
+    await sendWhatsApp(telefono, msg);
+    return { ok: true, role: "tienda", ordenId, error: "TIENDA_NO_CORRESPONDE" };
+  }
+
+  if (pedido.estado !== "pendiente_tiendas") {
+    const msg = `Ese pedido ya no está esperando cotización (estado actual: ${pedido.estado}).`;
+    await sendWhatsApp(telefono, msg);
+    return { ok: true, role: "tienda", ordenId, error: "ESTADO_INVALIDO" };
+  }
+
+  const item = await pedidoRepositoryV2.findPedidoItemByText(pedido.tienda.pedidoTiendaId, productoTexto);
+  if (!item) {
+    const msg =
+      `No encontré "${productoTexto}" en el pedido #${ordenId}.\n\n` +
+      `Productos del pedido:\n${formatItemsForMessage(pedido.items)}\n\n` +
+      `Escribe el nombre tal como aparece arriba, ej: ORDEN #${ordenId} NO_DISPONIBLE ${pedido.items[0]?.nombreProducto ?? "producto"}`;
+    await sendWhatsApp(telefono, msg);
+    return { ok: true, role: "tienda", ordenId, error: "PRODUCTO_NO_ENCONTRADO" };
+  }
+
+  await pedidoRepositoryV2.setPedidoItemDisponible(item.id, false);
+  await pedidoRepositoryV2.setPedidoTiendaEstado({ pedidoTiendaId: pedido.tienda.pedidoTiendaId, estadoTienda: "ajuste_producto" });
+  await pedidoRepositoryV2.setPedidoEstado({
+    pedidoId: ordenId,
+    estado: "ajuste_producto",
+    metadataPatch: {
+      ...buildOrderTimeoutMetadata("product_adjustment"),
+      product_adjustment_item_id: item.id,
+      product_adjustment_item_nombre: item.nombreProducto,
+    },
+  });
+  await pedidoRepositoryV2.appendPedidoEvento({
+    pedidoId: ordenId,
+    tipoEvento: "producto_no_disponible",
+    estadoOrigen: "pendiente_tiendas",
+    estadoDestino: "ajuste_producto",
+    actorTipo: "tienda",
+    payload: { itemId: item.id, itemNombre: item.nombreProducto },
+  });
+
+  const msgCliente =
+    `📦 *${pedido.tienda.nombre ?? "La tienda"}* no tiene disponible:\n"${item.nombreProducto}"\n\n` +
+    `¿Quieres continuar tu pedido sin este producto, o prefieres cambiarlo por otro?\n\n` +
+    `Responde "sin él" para quitarlo, o dime el producto por el que lo cambias. 🙏`;
+  await outboxRepository.enqueueOutboundMessage({
+    pedidoId: ordenId,
+    tipoMensaje: "notificacion_cliente",
+    destinatarioTipo: "cliente",
+    telefonoDestino: pedido.clienteTelefono,
+    payload: { body: msgCliente },
+    idempotencyKey: `pedido:${ordenId}:cliente:producto_no_disponible:${item.id}:v1`,
+  });
+  await guardarMensajeChat({ telefono: pedido.clienteTelefono, texto: msgCliente, estado: "bot" }).catch(() => {});
+
+  await sendWhatsApp(
+    telefono,
+    `Recibido, gracias — ya le avisé al cliente que "${item.nombreProducto}" no está disponible. En cuanto me diga qué hacer, seguimos. 🙏`,
+  );
+
+  return { ok: true, role: "tienda", ordenId, accion: "producto_no_disponible", itemId: item.id };
+}
+
 async function handleTiendaMessage(telefono: string, mensaje: string, tiendaId: number): Promise<JsonObject> {
   const ordenId = extraerOrdenId(String(mensaje));
+  const noDisponible = extraerNoDisponible(String(mensaje));
+
+  if (ordenId && noDisponible) {
+    return handleTiendaProductoNoDisponible(telefono, tiendaId, ordenId, noDisponible.productoTexto);
+  }
+
   const precio = extraerPrecio(String(mensaje));
   if (!ordenId || precio == null || Number.isNaN(precio)) {
     return { ok: true, role: "tienda" };
@@ -1051,13 +1242,13 @@ async function handleTiendaMessage(telefono: string, mensaje: string, tiendaId: 
   });
 
   const msg =
-    `Ya me contestó *${pedido.tienda.nombre ?? "la tienda"}* ✅\n\n` +
-    `Pedido #${ordenId}\n` +
-    `Subtotal: $${subtotal}\n` +
-    `Servicio Mándalo: $${MANDALO_SERVICE_FEE}\n` +
-    `Envío: $${MANDALO_DELIVERY_FEE}\n` +
-    `Total a pagar: $${total}\n\n` +
-    `¿Confirmas tu pedido? (Responde SÍ)`;
+    `✅ *${pedido.tienda.nombre ?? "La tienda"}* ya respondió — este es tu total:\n\n` +
+    `🧾 Pedido #${ordenId}\n` +
+    `Subtotal: ${formatMoney(subtotal)}\n` +
+    `Servicio Mándalo: ${formatMoney(MANDALO_SERVICE_FEE)}\n` +
+    `Envío: ${formatMoney(MANDALO_DELIVERY_FEE)}\n` +
+    `*Total a pagar: ${formatMoney(total)}*\n\n` +
+    `¿Confirmas tu pedido? Responde *SÍ* ✅`;
   await outboxRepository.enqueueOutboundMessage({
     pedidoId: ordenId,
     tipoMensaje: "notificacion_cliente",
