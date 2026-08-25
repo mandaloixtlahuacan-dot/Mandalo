@@ -520,7 +520,13 @@ async function cancelOpenPedido(pedido: PedidoV2Record, telefono: string, reason
 function buildResumenPedido(pedido: PedidoV2Record): string {
   const snapshot = pedido.snapshot_json;
   const tienda = String(snapshot.businessName ?? "").trim() || "(sin tienda)";
-  const direccion = String(snapshot.addressText ?? "").trim() || "(sin dirección)";
+  const direccionBase = String(snapshot.addressText ?? "").trim() || "(sin dirección)";
+  // El link de mapa se calcula aparte de addressText a propósito (no vive
+  // embebido en el texto guardado) — ver buildAddressTextFromCoords en geo.ts.
+  // Sin esta línea el cliente dejaba de ver el link por completo al confirmar
+  // por GPS (bug reportado en producción agosto 2026).
+  const mapsLink = resolveMapsLink({ latitud: snapshot.latitud ?? null, longitud: snapshot.longitud ?? null });
+  const direccion = mapsLink ? `${direccionBase}\n${mapsLink}` : direccionBase;
   const items = formatSnapshotItems(snapshot.items ?? []);
   return `🧾 Pedido #${pedido.id}\n\nTienda: ${tienda}\n\n🛒 Productos:\n${items}\n\n🏠 Entrega:\n${direccion}`;
 }
@@ -591,7 +597,7 @@ async function handleEsperandoConfirmacionInicial(
     const avisoCerrada = !schedule.withinSchedule
       ? `\n\n⏰ Ojo: *${full.tienda.nombre}* está cerrada ahora. Se la voy a mandar en cuanto abra, a las ${schedule.horaApertura}.`
       : "";
-    const msg = `✅ Ya tengo tu pedido:\n${buildResumenPedido({ ...pedido, snapshot_json: snapshot })}${avisoCerrada}\n\n¿Es correcto tu pedido? Responde *SÍ* para confirmar. ✅`;
+    const msg = `${buildResumenPedido({ ...pedido, snapshot_json: snapshot })}${avisoCerrada}\n\n¿Es correcto? Responde *SÍ* para confirmar. ✅`;
     await sendWhatsApp(telefono, msg);
     await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
     return { ok: true, role: "cliente", stage: "confirmacion_cliente", pedidoId: pedido.id };
@@ -692,13 +698,13 @@ async function handleConfirmadoTiendas(telefono: string, mensaje: string, pedido
 
   const msgRepartidor =
     `Hola ${repartidorNombre}, tienes un nuevo pedido 📦\n\n` +
-    `🧾 Pedido #${pedido.id} — ${pedido.tienda?.nombre ?? "la tienda"}\n\n` +
-    `🏪 Recoger en:\n${pedido.tienda?.direccion || "(sin dirección de tienda registrada, confirma con la tienda)"}\n\n` +
-    `📍 Entregar en:\n${pedido.direccionEntrega || "(sin dirección)"}\n` +
-    `${mapsLink ? `🗺️ Mapa: ${mapsLink}\n` : ""}\n` +
-    `🛒 Productos:\n${formatItemsForMessage(pedido.items)}\n\n` +
+    `Pedido #${pedido.id} — ${pedido.tienda?.nombre ?? "la tienda"}\n\n` +
+    `Recoger en:\n${pedido.tienda?.direccion || "(sin dirección de tienda registrada, confirma con la tienda)"}\n\n` +
+    `Entregar en:\n${pedido.direccionEntrega || "(sin dirección)"}\n` +
+    `${mapsLink ? `Mapa: ${mapsLink}\n` : ""}\n` +
+    `Productos:\n${formatItemsForMessage(pedido.items)}\n\n` +
     `${pedido.totalCliente != null ? `*Cobrar: ${formatMoney(pedido.totalCliente)}*\n` : ""}` +
-    `📞 Tel. cliente: ${telefono}\n\n` +
+    `Tel. cliente: ${telefono}\n\n` +
     `Responde con: #CONFIRMO ${pedido.id}\n` +
     `Luego: #RECOGI ${pedido.id} y #ENTREGADO ${pedido.id}`;
 
@@ -1251,8 +1257,8 @@ async function handleTiendaMessage(telefono: string, mensaje: string, tiendaId: 
   });
 
   const msg =
-    `✅ *${pedido.tienda.nombre ?? "La tienda"}* ya respondió — este es tu total:\n\n` +
-    `🧾 Pedido #${ordenId}\n` +
+    `*${pedido.tienda.nombre ?? "La tienda"}* ya respondió — este es tu total:\n\n` +
+    `Pedido #${ordenId}\n` +
     `Subtotal: ${formatMoney(subtotal)}\n` +
     `Servicio Mándalo: ${formatMoney(MANDALO_SERVICE_FEE)}\n` +
     `Envío: ${formatMoney(MANDALO_DELIVERY_FEE)}\n` +

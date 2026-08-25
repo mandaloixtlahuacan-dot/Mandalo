@@ -1,5 +1,6 @@
 import type { OrderState } from "@/lib/orderStateMachine";
 import { normalizePhone } from "@/lib/roles";
+import { resolveMapsLink } from "@/lib/services/geo";
 
 type JsonObject = Record<string, unknown>;
 
@@ -297,7 +298,12 @@ function formatBusiness(snapshot: PedidoSnapshot): string {
 }
 
 function formatAddress(snapshot: PedidoSnapshot): string {
-  return snapshot.addressText?.trim() || "Sin dirección completa";
+  const direccion = snapshot.addressText?.trim() || "Sin dirección completa";
+  // addressText nunca trae el link embebido (ver buildAddressTextFromCoords
+  // en geo.ts) — se calcula aparte de lat/lng cada vez, para que solo
+  // aparezca una vez en el mensaje en vez de duplicado.
+  const mapsLink = resolveMapsLink({ latitud: snapshot.latitud ?? null, longitud: snapshot.longitud ?? null });
+  return mapsLink ? `${direccion}\n${mapsLink}` : direccion;
 }
 
 export function formatItems(items: PedidoItemInput[]): string {
