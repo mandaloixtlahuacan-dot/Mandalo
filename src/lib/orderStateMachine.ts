@@ -19,6 +19,7 @@
 export const ORDER_STATES = [
   "seleccion_productos",
   "confirmacion_cliente",
+  "esperando_apertura_tienda",
   "pendiente_tiendas",
   "ajuste_producto",
   "confirmado_tiendas",
@@ -81,7 +82,11 @@ export type TransitionValidationResult = {
 // cancelar en cualquier punto del flujo — Sección 8).
 export const ALLOWED_TRANSITIONS: Readonly<Record<OrderState, readonly OrderState[]>> = {
   seleccion_productos: ["seleccion_productos", "confirmacion_cliente", "cancelado"],
-  confirmacion_cliente: ["seleccion_productos", "pendiente_tiendas", "cancelado"],
+  confirmacion_cliente: ["seleccion_productos", "pendiente_tiendas", "esperando_apertura_tienda", "cancelado"],
+  // La tienda elegida estaba cerrada al momento de confirmar (Sección 5,
+  // regla 6) — espera aquí hasta que abra, luego sigue exactamente igual
+  // que un pedido normal (-> pendiente_tiendas).
+  esperando_apertura_tienda: ["pendiente_tiendas", "cancelado"],
   pendiente_tiendas: ["ajuste_producto", "confirmado_tiendas", "cancelado"],
   ajuste_producto: ["pendiente_tiendas", "cancelado"],
   confirmado_tiendas: ["dispatch_repartidor_pendiente", "cancelado"],
@@ -152,7 +157,14 @@ export function validateTransitionGuards(
       if (!hasAddress(context)) failed.push("addressText");
       break;
     }
-    case "confirmacion_cliente->pendiente_tiendas": {
+    case "confirmacion_cliente->pendiente_tiendas":
+    case "confirmacion_cliente->esperando_apertura_tienda":
+    case "esperando_apertura_tienda->pendiente_tiendas": {
+      // Mismas precondiciones en los tres casos: esperando_apertura_tienda
+      // es solo una versión diferida de confirmacion_cliente->pendiente_tiendas
+      // (la tienda estaba cerrada al confirmar); cuando abre, se completa
+      // exactamente la misma transición que si hubiera estado abierta desde
+      // el inicio.
       if (!hasBusiness(context)) failed.push("business.name");
       if (!hasBusinessPhone(context)) failed.push("business.phone");
       if (!hasItems(context.items)) failed.push("items");

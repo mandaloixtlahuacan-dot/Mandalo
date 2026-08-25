@@ -595,12 +595,19 @@ export function createStateTransitionService() {
     // Cancelación por vencimiento de cualquiera de los tres timeouts unificados
     // de 10 min (Sección 3 del brief): tienda sin cotizar, cliente sin
     // confirmar precio final, o repartidor sin aceptar. orderTimeoutWorker.ts
-    // es el único llamador — decide QUÉ pedidos vencieron y a quién avisar
-    // (cliente/tienda), este método solo mueve el estado y notifica al admin.
+    // es el único llamador de esos tres — decide QUÉ pedidos vencieron y a
+    // quién avisar (cliente/tienda), este método solo mueve el estado y
+    // notifica al admin. También reusado por scheduledDispatchWorker.ts para
+    // el límite de 48h de "tienda nunca abrió" (mismo mecanismo, plazo
+    // distinto) — genérico a propósito, no hace falta un método aparte.
     async handleOrderTimeoutExpired(params: {
       pedidoId: number;
       fromState: OrderState;
-      reasonCode: "store_quote_timeout" | "final_confirmation_timeout" | "courier_confirmation_timeout";
+      reasonCode:
+        | "store_quote_timeout"
+        | "final_confirmation_timeout"
+        | "courier_confirmation_timeout"
+        | "store_never_opened";
       adminMessage: string;
       customerPhone: string;
     }): Promise<void> {

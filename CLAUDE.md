@@ -1,7 +1,7 @@
 # Mándalo — Contexto del Proyecto (leer siempre antes de programar)
 
 > Este archivo es la fuente de verdad del negocio y arquitectura de Mándalo.
-> Última actualización: 12 de agosto de 2026
+> Última actualización: 24 de agosto de 2026
 >
 > Para saber qué está construido, qué está roto y qué falta ahora mismo, ver
 > **`ROADMAP.md`** — ese archivo se actualiza cada ciclo de trabajo; este
@@ -99,6 +99,7 @@ Sistema de delivery automatizado por WhatsApp para **Ixtlahuacán del Río**. Un
 3. **Pago:** solo efectivo, cobrado por el repartidor directamente al cliente.
 4. **Roles fijos por número:** un número registrado como tienda o repartidor NO puede pedir como cliente desde ese mismo número — se comunica manualmente a cada empleado que use un número distinto para pedidos personales. Cualquier número no registrado se trata como cliente.
 5. **Confirmación de productos:** la IA siempre repite/confirma el producto entendido antes de mandarlo a la tienda, para corregir errores de escritura del cliente.
+6. **Horario de atención:** Mándalo opera 24/7 — no hay horario fijo de cierre general del servicio (regla anterior de 8am-8pm retirada en agosto 2026). Cada tienda mantiene su propio horario (`hora_apertura`/`hora_cierre`); si el cliente pide de una tienda cerrada en ese momento, el pedido se arma normal y se programa para dispararse automáticamente en cuanto la tienda abra (ver Sección 7, estado `esperando_apertura_tienda`, y Sección 8).
 
 ## 6. Flujo del pedido (paso a paso)
 
@@ -129,7 +130,10 @@ recogiendo
 en_camino_cliente
 entregado
 cancelado
+esperando_apertura_tienda
 ```
+
+`esperando_apertura_tienda` (agosto 2026): el cliente ya confirmó su pedido, pero la tienda elegida está cerrada — el pedido espera aquí hasta que la tienda abra (según `hora_apertura`/`hora_cierre`), momento en el que se dispara automáticamente la cotización y el pedido pasa a `pendiente_tiendas`, exactamente como un pedido normal a partir de ahí. Se alcanza desde `confirmacion_cliente` (en vez de `pendiente_tiendas` directo) cuando la tienda está cerrada en el momento de la confirmación. Sigue dentro de la ventana de cancelación gratuita (Sección 5: la tienda todavía no ha visto el pedido) — ver Sección 8 sobre el límite de 48h de espera.
 
 ## 8. Timeouts y casos límite (definidos)
 
@@ -144,7 +148,8 @@ Timeouts **unificados a 10 minutos, con recordatorio a los 5**, en los tres punt
 | Pedido multi-tienda, confirmaciones asíncronas | El repartidor NO recibe el pedido hasta que **todas** las tiendas hayan confirmado precio/disponibilidad — evita confusión sobre cuánto cobrar |
 | Cliente no responde a un ajuste de producto | 10 minutos → se cancela el pedido automáticamente y se notifica al cliente y a la(s) tienda(s) que ya no esperen confirmación |
 | Varios repartidores confirman casi al mismo tiempo | El primero en confirmar se queda con el pedido; a los demás se les avisa "pedido ya tomado". **Nota técnica para implementación:** la asignación debe ser atómica (evitar que dos repartidores queden asignados al mismo pedido por una confirmación simultánea) |
-| Tienda fuera de horario | Se valida automáticamente contra `hora_apertura`/`hora_cierre`; si está cerrada, no aparece como opción para el cliente en ese momento |
+| Tienda fuera de horario | Se valida automáticamente contra `hora_apertura`/`hora_cierre`. Al listar tiendas disponibles, una cerrada no aparece como opción. Si el cliente la nombra explícitamente de todos modos, el pedido se programa (estado `esperando_apertura_tienda`, Sección 7) en vez de rechazarse — el cliente se entera en el resumen de confirmación, antes de decir SÍ |
+| Tienda programada que nunca abre | 48 horas desde que el cliente confirmó sin que la tienda abra → se cancela automáticamente, se notifica al cliente y se avisa al admin. Reusa `stateTransitionService.handleOrderTimeoutExpired` (mismo mecanismo que los tres timeouts de 10 min, con un plazo distinto) |
 | Error de escritura del cliente en productos | La IA confirma siempre el producto entendido antes de continuar |
 
 **Notas técnicas de implementación (no son reglas de negocio nuevas, son detalles que Claude Code debe resolver bien al programar):**
