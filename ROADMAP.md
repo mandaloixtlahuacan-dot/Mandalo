@@ -2,9 +2,9 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 24 de agosto de 2026, trabajo directo sobre `main`
-> (decisión de Víctor desde este bloque en adelante: sin rama aparte ni Preview),
-> commit `6db4f8a` — todavía sin probar en vivo.
+> Última actualización: 25 de agosto de 2026, trabajo directo sobre `main`
+> (decisión de Víctor desde el 2026-08-24 en adelante: sin rama aparte ni
+> Preview), commit `10d2711`.
 > `fix/zod-items-schema-mismatch` mergeada a `main` el 2026-08-24 (validada en
 > vivo antes de mergear) — `feature/mandalo-24-7-pedidos-programados` mergeada
 > el mismo día, commit `2f54558` — `fix/confirmacion-pregunta-vs-si` mergeada
@@ -134,6 +134,12 @@ Cinco ajustes pedidos por Víctor tras la ronda de pruebas anterior:
 3. **Formato más profesional en mensajes de totales/ubicación** — mensaje de precio al cliente reordenado como recibo con el total en negritas; mensaje de dispatch al repartidor reestructurado (folio, tienda, recoger/entregar en líneas separadas, "Cobrar" resaltado); nuevo helper `ordenes.formatMoney` (enteros sin decimales, `$150`; con centavos, `$150.50`) reemplaza la interpolación directa de `$${valor}` en ambos mensajes, evitando artefactos de punto flotante. Se corrigió también un bug real de duplicación: `buildAddressTextFromCoords` metía el link crudo de Google Maps dentro del texto de dirección, que luego se repetía una segunda vez en la línea "🗺️ Mapa" del mensaje al repartidor — ahora la dirección por GPS solo dice "Ubicación compartida por GPS 📍" y el link vive una sola vez, en la línea de mapa (que ya se calcula aparte, directo de lat/lng). `buildResumenPedido` (recordatorio de confirmación) ahora también incluye la lista de productos — antes solo mostraba tienda y dirección, sin decir qué se estaba confirmando.
 4. **Explicación de cómo escribir la dirección a mano** — la primera vez que se pide dirección en la conversación, el prompt (BLOQUE 5) ahora incluye el formato esperado si el cliente prefiere no usar GPS: calle y número, colonia o una referencia clara, con ejemplo. Mismo ajuste en el mensaje de respaldo estático de `captureEngine.buildCustomerMessage` (el que se usa si la respuesta de la IA viene vacía ese turno), para que la guía no dependa de que la IA la genere bien cada vez.
 5. **Tono general: específico y amable** — regla nueva en BLOQUE 1 del prompt: contestar siempre con datos reales del contexto (nombres, horarios, productos) en vez de frases vagas tipo "tenemos varias opciones" sin decir cuáles.
+
+**Validado parcialmente en vivo (2026-08-25):** Víctor probó el punto 1 y encontró que, al pedir "algo de la tienda" (categoría abarrotes), el bot mostró Agua Santa Y Tacos el Grillo mezclados en la lista de cerradas, en vez de filtrar solo abarrotes. Diagnóstico: el filtrado por categoría es 100% responsabilidad de la IA (el backend no filtra nada, solo anota la categoría junto a cada nombre) y la regla del prompt nunca definió qué palabras del cliente equivalen a qué categoría real de la BD — si el valor de `categoria` en Agua Santa no es literalmente la palabra "tienda" que usó el cliente, el modelo puede dudar y mostrar de más en vez de excluir. **Pendiente:** Víctor va a correr `select nombre, categoria from tiendas where nombre ilike '%agua santa%' or nombre ilike '%grillo%'` para confirmar los valores reales; con eso se puede escribir un mapeo explícito de sinónimos (tienda/abarrotes/mandado vs comida preparada/antojitos) en vez de dejarlo a interpretación libre del modelo.
+
+## ✅ Bloque de trabajo 2026-08-25 (commit `10d2711`, directo sobre `main`)
+
+Bug de zona horaria encontrado por Víctor en la misma prueba en vivo: un pedido confirmado a las 8:05am mostró "llegará aproximadamente a las 2:25 p.m." — desfase de casi 6 horas (exactamente UTC-6, la diferencia con `America/Mexico_City`). Causa: `formatEstimatedArrival` (`mandaloFlow.ts`) usaba `toLocaleTimeString` sin `timeZone` explícito, así que tomaba la zona del servidor (Vercel corre en UTC) — mismo tipo de bug ya corregido antes en el cron del reporte semanal. La función vecina `buildSaludoInicial`, un renglón abajo en el mismo archivo, ya lo hacía bien (si sirve de referencia para futuras funciones de fecha/hora en este archivo). Fix: agregar `timeZone: "America/Mexico_City"` a las opciones de formato. Revisado el resto del código (`grep` de `toLocaleTimeString`/`toLocaleDateString`/`hour12`) — no se encontró ningún otro punto con el mismo problema.
 
 ## ⚪ No construido todavía (fuera del punchlist del brief)
 
