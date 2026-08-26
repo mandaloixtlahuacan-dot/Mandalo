@@ -4,7 +4,7 @@
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
 > Última actualización: 25 de agosto de 2026, trabajo directo sobre `main`
 > (decisión de Víctor desde el 2026-08-24 en adelante: sin rama aparte ni
-> Preview), commit `d81a31a` — Víctor presenta Mándalo a una tienda nueva
+> Preview), commit `8e61e97` — Víctor presenta Mándalo a una tienda nueva
 > hoy, así que este bloque necesita probarse en vivo antes de esa reunión.
 > `fix/zod-items-schema-mismatch` mergeada a `main` el 2026-08-24 (validada en
 > vivo antes de mergear) — `feature/mandalo-24-7-pedidos-programados` mergeada
@@ -168,6 +168,16 @@ Víctor pidió una auditoría completa de solo análisis (sin tocar código) bus
 2. **El repartidor ya no recibe silencio (`courierCommandParser.ts`)** — `handleCourierConfirm`/`PickedUp`/`Delivered` (stateTransitionService.ts) exigen un estado previo específico y truenan si el pedido ya no está ahí; esa excepción nunca se atrapaba entre este archivo y el webhook, así que un repartidor con un comando tardío (pedido ya tomado por otro, ya cancelado, ya entregado, o un `#RECOGI`/`#ENTREGADO` repetido) no recibía ninguna respuesta, ni de éxito ni de error. Las tres transiciones ahora están en try/catch: si truenan, se relee el estado real del pedido y se arma un mensaje específico (`buildStaleOrderMessage`) según lo que pasó realmente, en vez de dejarlo sin saber si su mensaje llegó.
 
 **Pendiente:** probar ambos casos en vivo antes de la reunión de hoy — cancelar un pedido con la tienda ya cotizando, y mandar un `#CONFIRMO` tardío desde un segundo repartidor de prueba.
+
+## ✅ Bloque de trabajo 2026-08-25 (commit `8e61e97`, directo sobre `main`)
+
+Dos bugs reportados por Víctor, arreglados antes de presentar Mándalo a una tienda nueva:
+
+1. **(Crítico) Cliente atorado al rechazar el precio final** — responder cualquier cosa que no fuera "SÍ" en `confirmado_tiendas` (incluyendo un "No" clarísimo) repetía "Procesando tu pedido..." para siempre, sin cancelar ni avanzar. Nueva función `messages.isNoConfirmation` (simétrica a `isYesConfirmation`, excluye frases de duda como "no sé"/"dame un momento" para no cancelar de más) distingue un rechazo claro de una respuesta ambigua: rechazo → cancela gratis y avisa; ambiguo → repite el total y pide de nuevo en vez de un filler vacío.
+   - **Corrección de regla de negocio de paso:** el corte de la cancelación gratuita estaba mal puesto en el código — se ponía en cuanto la TIENDA cotizaba (`confirmado_tiendas` ya estaba en `PAST_FREE_CANCEL_WINDOW`, escalando al admin), no en cuanto el CLIENTE confirmaba, que es la regla real. Se corrigió: `confirmado_tiendas` sale de `PAST_FREE_CANCEL_WINDOW` (ya no escala al admin) y entra a `TIENDA_NOTIFIABLE_CANCEL_STATES` en `cancelOpenPedido` (la tienda se entera si el cliente rechaza el precio después de ya haber cotizado). **CLAUDE.md Sección 5 ganó una regla nueva (#7, "Cancelación gratuita")** — antes se citaba como si ya existiera ahí desde varios bloques de trabajo atrás (ver notas de agosto 22), pero nunca se había escrito realmente; ahora sí queda explícita.
+2. **Comisiones desactualizadas ($20/$35 en vez de $10/$25)** — pedido de Víctor de una sesión anterior que nunca se aplicó. Causa raíz real: `mandaloFlow.ts` tenía sus **propias constantes duplicadas** (`MANDALO_SERVICE_FEE`/`MANDALO_DELIVERY_FEE`) además de las de `ordenes.ts` — cualquier cambio a un archivo dejaba al otro con los valores viejos, y de hecho el total (`calculateFinalPrice`, en `ordenes.ts`) y la columna `servicio_repartidor` guardada en BD (con la constante duplicada de `mandaloFlow.ts`) habrían quedado **inconsistentes entre sí** si solo se hubiera tocado un archivo. Se eliminaron las duplicadas — `mandaloFlow.ts` ahora importa de `ordenes.ts`, única fuente de verdad. Valores actualizados ahí y en CLAUDE.md Sección 5 regla 2: Mándalo $10, repartidor $25 (antes $20/$35) — $35 de cargos fijos en vez de $55.
+
+**Pendiente:** probar en vivo antes de la reunión de hoy — responder "No" a un precio final real y confirmar que cancela con el mensaje correcto (no más "procesando" infinito), y un pedido de prueba de punta a punta para confirmar que el total ya sale en $35 de cargos fijos.
 
 ## ⚪ No construido todavía (fuera del punchlist del brief)
 
