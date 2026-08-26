@@ -13,7 +13,15 @@ import { createCourierCommandParser } from "@/lib/services/courierCommandParser"
 import { buildOrderTimeoutMetadata, buildEsperandoAperturaMetadata } from "@/lib/services/orderTimeouts";
 import { checkTiendaSchedule } from "@/lib/services/businessHours";
 import { dispatchCotizacionToStore } from "@/lib/services/storeDispatch";
-import { calculateFinalPrice, extraerNoDisponible, extraerOrdenId, extraerPrecio, formatMoney } from "@/lib/ordenes";
+import {
+  calculateFinalPrice,
+  extraerNoDisponible,
+  extraerOrdenId,
+  extraerPrecio,
+  formatMoney,
+  MANDALO_DELIVERY_FEE,
+  MANDALO_SERVICE_FEE,
+} from "@/lib/ordenes";
 import { isTerminalState, type OrderState } from "@/lib/orderStateMachine";
 import {
   extractCoordsFromUbicacion,
@@ -31,6 +39,7 @@ import {
   isDropProductIntent,
   isConversationModeMessage,
   isNewOrderIntent,
+  isNoConfirmation,
   isYesConfirmation,
   normalizeMessageIntentText as normalizeText,
   parseIncomingWhatsAppMessage,
@@ -132,9 +141,6 @@ function formatItemsForMessage(items: Array<{ nombreProducto: string; cantidad: 
   if (!items.length) return "(sin productos)";
   return items.map((it) => `- ${it.nombreProducto}${it.cantidad != null ? ` x${it.cantidad}` : ""}`).join("\n");
 }
-
-const MANDALO_SERVICE_FEE = 20;
-const MANDALO_DELIVERY_FEE = 35;
 
 // Flags ligeros en memoria: solo se usan para no re-preguntar "¿continuar o
 // nuevo?" en la misma ráfaga de mensajes justo después de un hard reset.
@@ -491,14 +497,15 @@ async function sendWhatsApp(to: string, body: string): Promise<void> {
 
 // --- Cliente ---
 
-// Estados donde la tienda ya tiene el pedido y espera algo (cotizar, o
-// decidir un ajuste de producto) — cancelar sin avisarle aquí la deja
-// esperando (o a punto de cotizar) un pedido que ya no existe. En
-// seleccion_productos/confirmacion_cliente la tienda nunca se enteró del
-// pedido, así que no hace falta avisar nada. De confirmado_tiendas en
-// adelante, cancelOpenPedido ya ni se llama (se escala al admin en su lugar,
-// ver PAST_FREE_CANCEL_WINDOW en handleClienteMessage).
-const TIENDA_NOTIFIABLE_CANCEL_STATES: OrderState[] = ["pendiente_tiendas", "ajuste_producto"];
+// Estados donde la tienda ya tiene el pedido y espera algo (cotizar, decidir
+// un ajuste de producto, o ya cotizó y espera el SÍ final del cliente) —
+// cancelar sin avisarle aquí la deja esperando (o cobrando de más) un pedido
+// que ya no existe. En seleccion_productos/confirmacion_cliente la tienda
+// nunca se enteró del pedido, así que no hace falta avisar nada. La
+// cancelación gratuita llega hasta aquí, no más allá (CLAUDE.md Sección 5,
+// regla 7) — de dispatch_repartidor_pendiente en adelante, cancelOpenPedido
+// ya ni se llama (se escala al admin, ver PAST_FREE_CANCEL_WINDOW).
+const TIENDA_NOTIFIABLE_CANCEL_STATES: OrderState[] = ["pendiente_tiendas", "ajuste_producto", "confirmado_tiendas"];
 
 async function cancelOpenPedido(pedido: PedidoV2Record, telefono: string, reason: string): Promise<void> {
   await pedidoRepositoryV2.setPedidoEstado({ pedidoId: pedido.id, estado: "cancelado" });
@@ -527,7 +534,7 @@ async function cancelOpenPedido(pedido: PedidoV2Record, telefono: string, reason
           destinatarioTipo: "negocio",
           destinatarioId: businessId,
           telefonoDestino: tiendaTelefono,
-          payload: { body: `El pedido #${pedido.id} fue cancelado por el cliente. Ya no es necesario que lo cotices ni le des seguimiento.` },
+          payload: { body: `El pedido #${pedido.id} fue cancelado por el cliente. Ya no hace falta que le des seguimiento.` },
           idempotencyKey: `pedido:${pedido.id}:cliente_cancelo:aviso_tienda:v1`,
         })
         .catch((e: unknown) => {
@@ -695,7 +702,29 @@ async function handleEsperandoConfirmacionInicial(
 
 async function handleConfirmadoTiendas(telefono: string, mensaje: string, pedido: PedidoFullRecord): Promise<JsonObject> {
   if (!isYesConfirmation(mensaje)) {
-    const msg = "Procesando tu pedido, por favor espera un momento. ⏳";
+    // Bug real corregido agosto 2026: antes CUALQUIER respuesta que no fuera
+    // un SÍ (incluyendo un "No" clarísimo) repetía este mismo mensaje de
+    // "procesando" para siempre, sin avanzar ni cancelar — el cliente
+    // quedaba completamente atorado. Un rechazo claro ahora cancela gratis
+    // (CLAUDE.md Sección 5 regla 7: el cliente todavía no confirmó el precio
+    // final, así que no le cuesta nada a nadie). Cualquier otra respuesta
+    // ambigua repite el total y pide de nuevo, en vez de un filler vacío.
+    if (isNoConfirmation(mensaje)) {
+      await cancelOpenPedido(
+        { id: pedido.id, estado: pedido.estado, snapshot_json: pedido.snapshot },
+        telefono,
+        "cliente_rechazo_precio_final",
+      );
+      const msg = `De acuerdo, no confirmamos tu pedido #${pedido.id} — no se te cobra nada. 🙏\n\nCuando quieras hacer un pedido nuevo, aquí estoy. 🛒`;
+      await sendWhatsApp(telefono, msg);
+      await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+      return { ok: true, role: "cliente", accion: "rechazo_precio_final", pedidoId: pedido.id };
+    }
+
+    const msg =
+      `Tu pedido #${pedido.id} sigue esperando tu confirmación.\n\n` +
+      `Total a pagar: ${formatMoney(pedido.totalCliente ?? 0)}\n\n` +
+      `¿Confirmas? Responde *SÍ* para continuar, o dime si ya no lo quieres.`;
     await sendWhatsApp(telefono, msg);
     await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
     return { ok: true, role: "cliente", stage: "confirmado_tiendas", pedidoId: pedido.id };
@@ -925,16 +954,19 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
 
   // Cancelación / hard reset (prioridad absoluta): dispara igual sin importar
   // si la frase fue el reset explícito ("pedido nuevo") o lenguaje natural de
-  // cancelación ("ya no lo quiero"). CLAUDE.md Sección 5: "la cancelación es
-  // gratuita solo antes de que la tienda confirme el precio" — de
-  // confirmado_tiendas en adelante ya no es autoservicio simple, así que en
-  // vez de cancelar y borrar solo, escalamos al admin (mismo mecanismo que
-  // isComplaintMessage) porque puede haber un repartidor ya en camino físico.
+  // cancelación ("ya no lo quiero"). CLAUDE.md Sección 5 regla 7: la
+  // cancelación es gratuita mientras el CLIENTE no haya confirmado el precio
+  // final con SÍ — confirmado_tiendas (tienda ya cotizó, esperando ese SÍ)
+  // sigue siendo gratuita, corregido agosto 2026 (antes el corte se ponía en
+  // cuanto la tienda cotizaba, no en cuanto el cliente confirmaba). De
+  // dispatch_repartidor_pendiente en adelante ya no es autoservicio simple,
+  // así que en vez de cancelar y borrar solo, escalamos al admin (mismo
+  // mecanismo que isComplaintMessage) porque puede haber un repartidor ya en
+  // camino físico.
   const wantsNewOrder = isNewOrderIntent(mensaje);
   const wantsCancel = isCancelIntent(mensaje);
   if (wantsNewOrder || wantsCancel) {
     const PAST_FREE_CANCEL_WINDOW: OrderState[] = [
-      "confirmado_tiendas",
       "dispatch_repartidor_pendiente",
       "repartidor_asignado",
       "recogiendo",

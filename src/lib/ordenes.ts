@@ -9,8 +9,8 @@
  * paralelo. Este archivo queda como funciones puras, sin efectos de lado.
  */
 
-export const MANDALO_SERVICE_FEE = 20;
-export const DELIVERY_FEE = 35;
+export const MANDALO_SERVICE_FEE = 10;
+export const DELIVERY_FEE = 25;
 export const MANDALO_DELIVERY_FEE = DELIVERY_FEE;
 
 export function calculateOrderTotal(storePrice: number) {

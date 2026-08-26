@@ -94,12 +94,14 @@ Sistema de delivery automatizado por WhatsApp para **Ixtlahuacán del Río**. Un
 
 1. **Cobertura geográfica:** solo Ixtlahuacán del Río. Se valida por radio de distancia (Haversine) desde un punto central del pueblo, usando SIEMPRE ubicación GPS compartida por WhatsApp (no texto libre). Si está fuera del radio, se cancela antes de crear cualquier registro. *(Radio a calibrar con direcciones reales del pueblo — pendiente de definir el valor exacto en km).*
 2. **Precio:**
-   `total_cliente = Σ subtotal_tienda + $20 (Mándalo) + servicio_repartidor`
-   `servicio_repartidor = $35 + $15 × (número de tiendas adicionales más allá de la primera)`
+   `total_cliente = Σ subtotal_tienda + $10 (Mándalo) + servicio_repartidor`
+   `servicio_repartidor = $25 + $15 × (número de tiendas adicionales más allá de la primera)`
+   *(Ajustado agosto 2026: antes $20/$35 — Mándalo $10 + repartidor $25 = $35 de cargos fijos, en vez de $55.)*
 3. **Pago:** solo efectivo, cobrado por el repartidor directamente al cliente.
 4. **Roles fijos por número:** un número registrado como tienda o repartidor NO puede pedir como cliente desde ese mismo número — se comunica manualmente a cada empleado que use un número distinto para pedidos personales. Cualquier número no registrado se trata como cliente.
 5. **Confirmación de productos:** la IA siempre repite/confirma el producto entendido antes de mandarlo a la tienda, para corregir errores de escritura del cliente.
 6. **Horario de atención:** Mándalo opera 24/7 — no hay horario fijo de cierre general del servicio (regla anterior de 8am-8pm retirada en agosto 2026). Cada tienda mantiene su propio horario (`hora_apertura`/`hora_cierre`); si el cliente pide de una tienda cerrada en ese momento, el pedido se arma normal y se programa para dispararse automáticamente en cuanto la tienda abra (ver Sección 7, estado `esperando_apertura_tienda`, y Sección 8).
+7. **Cancelación gratuita:** el cliente puede cancelar sin costo mientras **él mismo** no haya confirmado el precio final con un SÍ — esto incluye el tramo en que la tienda ya cotizó y se le muestra el total (`confirmado_tiendas`), no solo antes de que la tienda responda. A partir de que el cliente confirma (`dispatch_repartidor_pendiente` en adelante, con repartidor ya involucrado), cancelar deja de ser autoservicio: se escala al administrador. *(Corregido agosto 2026 — antes el corte se ponía en cuanto la tienda cotizaba, no en cuanto el cliente confirmaba; un "No" del cliente al precio final dejaba el pedido atorado sin cancelarse.)*
 
 ## 6. Flujo del pedido (paso a paso)
 

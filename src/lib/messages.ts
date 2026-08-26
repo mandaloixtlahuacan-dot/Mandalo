@@ -167,6 +167,42 @@ export function isYesConfirmation(text: string): boolean {
   );
 }
 
+// Frases de duda/pausa que NO son un rechazo — un cliente que dice "no sé"
+// o "dame un momento" está pidiendo tiempo, no cancelando. Se revisan antes
+// que cualquier patrón de "no" para no confundir una cosa con la otra.
+const NO_HESITATION_PHRASES = [
+  "no se",
+  "no puedo",
+  "no todavia",
+  "no ahorita",
+  "no por ahora",
+  "espera",
+  "un momento",
+  "dame un momento",
+  "dame un minuto",
+  "dame chance",
+];
+
+// Simétrico a isYesConfirmation — usado en pasos de sí/no puntuales (ej.
+// confirmar el precio final) donde CUALQUIER respuesta que no sea un SÍ
+// claro se quedaba atorada repitiendo un mensaje de "procesando" para
+// siempre (bug real en producción agosto 2026: un "No" o "no lo quiero"
+// nunca cancelaba el pedido ni le decía nada útil al cliente). No es lo
+// mismo que isCancelIntent (esa dispara desde CUALQUIER punto de la
+// conversación, no solo respondiendo una pregunta puntual) — aunque la
+// incluye como caso positivo.
+export function isNoConfirmation(text: string): boolean {
+  const raw = String(text ?? "").trim();
+  if (!raw) return false;
+  if (/[?¿]/.test(raw) || QUESTION_WORDS_REGEX.test(raw)) return false;
+
+  const t = normalizeMessageIntentText(raw);
+  if (NO_HESITATION_PHRASES.some((phrase) => t.includes(phrase))) return false;
+  if (isCancelIntent(raw)) return true;
+
+  return /^no\b/.test(t) || t.includes("no lo quiero") || t.includes("no gracias") || t.includes("mejor no") || t === "ya no";
+}
+
 export function normalizeMessageIntentText(text: string): string {
   return String(text ?? "")
     .toLowerCase()
