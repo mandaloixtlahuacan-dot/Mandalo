@@ -491,6 +491,15 @@ async function sendWhatsApp(to: string, body: string): Promise<void> {
 
 // --- Cliente ---
 
+// Estados donde la tienda ya tiene el pedido y espera algo (cotizar, o
+// decidir un ajuste de producto) — cancelar sin avisarle aquí la deja
+// esperando (o a punto de cotizar) un pedido que ya no existe. En
+// seleccion_productos/confirmacion_cliente la tienda nunca se enteró del
+// pedido, así que no hace falta avisar nada. De confirmado_tiendas en
+// adelante, cancelOpenPedido ya ni se llama (se escala al admin en su lugar,
+// ver PAST_FREE_CANCEL_WINDOW en handleClienteMessage).
+const TIENDA_NOTIFIABLE_CANCEL_STATES: OrderState[] = ["pendiente_tiendas", "ajuste_producto"];
+
 async function cancelOpenPedido(pedido: PedidoV2Record, telefono: string, reason: string): Promise<void> {
   await pedidoRepositoryV2.setPedidoEstado({ pedidoId: pedido.id, estado: "cancelado" });
   await pedidoRepositoryV2.appendPedidoEvento({
@@ -501,6 +510,36 @@ async function cancelOpenPedido(pedido: PedidoV2Record, telefono: string, reason
     actorTipo: "cliente",
     payload: { reason },
   });
+
+  // Aviso a la tienda (bug confirmado en producción agosto 2026): sin esto,
+  // la tienda se queda cotizando o esperando una decisión sobre un pedido
+  // que el cliente ya canceló, y podría responder #PRECIO para nada.
+  if (TIENDA_NOTIFIABLE_CANCEL_STATES.includes(pedido.estado)) {
+    const businessPhone = String(pedido.snapshot_json.businessPhone ?? "").trim();
+    if (businessPhone) {
+      const tiendaTelefono = ensureMxWhatsappIntl(businessPhone);
+      const businessId =
+        typeof pedido.snapshot_json.businessId === "number" ? pedido.snapshot_json.businessId : null;
+      await outboxRepository
+        .enqueueOutboundMessage({
+          pedidoId: pedido.id,
+          tipoMensaje: "cotizacion_tienda",
+          destinatarioTipo: "negocio",
+          destinatarioId: businessId,
+          telefonoDestino: tiendaTelefono,
+          payload: { body: `El pedido #${pedido.id} fue cancelado por el cliente. Ya no es necesario que lo cotices ni le des seguimiento.` },
+          idempotencyKey: `pedido:${pedido.id}:cliente_cancelo:aviso_tienda:v1`,
+        })
+        .catch((e: unknown) => {
+          console.error("[mandalo] no se pudo avisar a la tienda de la cancelación", { pedidoId: pedido.id, message: getErrorMessage(e) });
+        });
+    } else {
+      console.error("[mandalo] cancelación sin businessPhone en snapshot, no se pudo avisar a la tienda", {
+        pedidoId: pedido.id,
+        estado: pedido.estado,
+      });
+    }
+  }
 
   // Reporte semanal (brief sección 5): contador agregado, no guarda nada del
   // pedido en sí. Best-effort — nunca debe tumbar el cierre real del pedido.
