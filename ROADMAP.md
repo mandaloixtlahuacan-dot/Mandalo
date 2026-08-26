@@ -4,7 +4,8 @@
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
 > Última actualización: 25 de agosto de 2026, trabajo directo sobre `main`
 > (decisión de Víctor desde el 2026-08-24 en adelante: sin rama aparte ni
-> Preview), commit `7355ca2` — todavía sin probar en vivo.
+> Preview), commit `d81a31a` — Víctor presenta Mándalo a una tienda nueva
+> hoy, así que este bloque necesita probarse en vivo antes de esa reunión.
 > `fix/zod-items-schema-mismatch` mergeada a `main` el 2026-08-24 (validada en
 > vivo antes de mergear) — `feature/mandalo-24-7-pedidos-programados` mergeada
 > el mismo día, commit `2f54558` — `fix/confirmacion-pregunta-vs-si` mergeada
@@ -151,6 +152,22 @@ Cuatro ajustes más, encontrados por Víctor en la misma ronda de pruebas en viv
 4. **Mensaje de lista de tiendas por categoría, reescrito con formato fijo** — la regla anterior dejaba la redacción libre a la IA, y en la práctica salía redundante (nombre de tienda y categoría repetidos varias veces en el mismo mensaje). Ahora el prompt exige un formato corto y fijo: "Tengo estas tiendas disponibles: - Nombre1 - Nombre2 (cerrada, abre a las HH:MM). ¿De cuál quieres pedir?" — sin repetir el nombre ni la categoría después de la lista.
 
 **Pendiente:** probar en vivo los cuatro puntos — especialmente confirmar que el link de mapa vuelve a aparecer (una sola vez) en un pedido con GPS real.
+
+## ✅ Bloque de trabajo 2026-08-25 (commit `d81a31a`, directo sobre `main`) — auditoría de huecos de notificación
+
+Víctor pidió una auditoría completa de solo análisis (sin tocar código) buscando casos donde una acción de un lado del sistema (cliente cancela, timeout, etc.) debería notificar a otro lado (tienda, repartidor, admin) y no lo hace. Reporte completo entregado y discutido antes de tocar nada — resumen de severidad:
+
+- 🔴 Crítico: `cancelOpenPedido` nunca avisaba a la tienda al cancelar en `pendiente_tiendas`/`ajuste_producto` — **arreglado en este bloque**, ver punto 1 abajo.
+- 🟠 Alto: repartidor con comando para un pedido cuyo estado ya cambió recibía silencio total — **arreglado en este bloque**, ver punto 2 abajo.
+- 🟡 Medio: no hay timeout para `confirmacion_cliente` (antes de que la tienda se entere) — **pospuesto explícitamente por Víctor**, no urgente para hoy.
+- 🟢 Bajo (sin resolver, no bloquean nada): mensajes de escalamiento a admin (queja, cancelación tardía) no incluyen teléfono/nombre de tienda o repartidor ya asignado; `dispatchCotizacionToStore` colapsa `no_store_phone`/`not_claimed` en un solo mensaje genérico al cliente; código huérfano sin llamador (`handleCourierTimeout`, y ya documentados antes `handleCourierReassignmentQueued`/`Failed`).
+
+**Arreglado hoy, antes de que Víctor presente Mándalo a una tienda nueva:**
+
+1. **Aviso a la tienda al cancelar (`cancelOpenPedido`, mandaloFlow.ts)** — nuevo bloque que, solo si `pedido.estado` es `pendiente_tiendas` o `ajuste_producto` (los únicos estados donde la tienda ya tiene el pedido antes de `confirmado_tiendas`, que ya no pasa por esta función — ver `PAST_FREE_CANCEL_WINDOW`), encola un aviso a la tienda usando el teléfono/id ya guardados en `snapshot.businessPhone`/`businessId` — mismo mecanismo de outbox (`cotizacion_tienda`/`negocio`) que el resto del flujo. Si el snapshot no tuviera el teléfono (no debería pasar a estas alturas del flujo), se registra el error y se deja pasar la cancelación igual — nunca bloquea el flujo del cliente por esto. Mismo hueco afectaba la rama nueva de `handleAjusteProducto` que cancela el pedido cuando el cliente quita su único producto — se resuelve con el mismo cambio, sin tocar ese archivo aparte.
+2. **El repartidor ya no recibe silencio (`courierCommandParser.ts`)** — `handleCourierConfirm`/`PickedUp`/`Delivered` (stateTransitionService.ts) exigen un estado previo específico y truenan si el pedido ya no está ahí; esa excepción nunca se atrapaba entre este archivo y el webhook, así que un repartidor con un comando tardío (pedido ya tomado por otro, ya cancelado, ya entregado, o un `#RECOGI`/`#ENTREGADO` repetido) no recibía ninguna respuesta, ni de éxito ni de error. Las tres transiciones ahora están en try/catch: si truenan, se relee el estado real del pedido y se arma un mensaje específico (`buildStaleOrderMessage`) según lo que pasó realmente, en vez de dejarlo sin saber si su mensaje llegó.
+
+**Pendiente:** probar ambos casos en vivo antes de la reunión de hoy — cancelar un pedido con la tienda ya cotizando, y mandar un `#CONFIRMO` tardío desde un segundo repartidor de prueba.
 
 ## ⚪ No construido todavía (fuera del punchlist del brief)
 
