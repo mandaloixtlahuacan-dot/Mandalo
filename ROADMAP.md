@@ -2,10 +2,9 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 25 de agosto de 2026, trabajo directo sobre `main`
+> Última actualización: 26 de agosto de 2026, trabajo directo sobre `main`
 > (decisión de Víctor desde el 2026-08-24 en adelante: sin rama aparte ni
-> Preview), commit `8e61e97` — Víctor presenta Mándalo a una tienda nueva
-> hoy, así que este bloque necesita probarse en vivo antes de esa reunión.
+> Preview), commit `7fe9973`.
 > `fix/zod-items-schema-mismatch` mergeada a `main` el 2026-08-24 (validada en
 > vivo antes de mergear) — `feature/mandalo-24-7-pedidos-programados` mergeada
 > el mismo día, commit `2f54558` — `fix/confirmacion-pregunta-vs-si` mergeada
@@ -178,6 +177,10 @@ Dos bugs reportados por Víctor, arreglados antes de presentar Mándalo a una ti
 2. **Comisiones desactualizadas ($20/$35 en vez de $10/$25)** — pedido de Víctor de una sesión anterior que nunca se aplicó. Causa raíz real: `mandaloFlow.ts` tenía sus **propias constantes duplicadas** (`MANDALO_SERVICE_FEE`/`MANDALO_DELIVERY_FEE`) además de las de `ordenes.ts` — cualquier cambio a un archivo dejaba al otro con los valores viejos, y de hecho el total (`calculateFinalPrice`, en `ordenes.ts`) y la columna `servicio_repartidor` guardada en BD (con la constante duplicada de `mandaloFlow.ts`) habrían quedado **inconsistentes entre sí** si solo se hubiera tocado un archivo. Se eliminaron las duplicadas — `mandaloFlow.ts` ahora importa de `ordenes.ts`, única fuente de verdad. Valores actualizados ahí y en CLAUDE.md Sección 5 regla 2: Mándalo $10, repartidor $25 (antes $20/$35) — $35 de cargos fijos en vez de $55.
 
 **Pendiente:** probar en vivo antes de la reunión de hoy — responder "No" a un precio final real y confirmar que cancela con el mensaje correcto (no más "procesando" infinito), y un pedido de prueba de punta a punta para confirmar que el total ya sale en $35 de cargos fijos.
+
+## ✅ Bloque de trabajo 2026-08-26 (commit `7fe9973`, directo sobre `main`)
+
+Víctor confirmó con una foto real del mensaje que recibe la tienda al pedir cotización: solo mostraba cómo responder el precio (`ORDEN #29 PRECIO 150`), sin ninguna mención de que también existe `#NO_DISPONIBLE` (construido en el bloque del 2026-08-24, pero nunca se avisó de su existencia en el mensaje real que ve la tienda). Agregada la instrucción en los dos mensajes que invitan a cotizar: el envío inicial (`storeDispatch.dispatchCotizacionToStore`) y el recordatorio de los 5 minutos (`orderTimeoutWorker.ts`). `scheduledDispatchWorker.ts` (pedidos programados que se disparan al abrir la tienda) ya queda cubierto porque reusa la misma función de dispatch.
 
 ## ⚪ No construido todavía (fuera del punchlist del brief)
 
