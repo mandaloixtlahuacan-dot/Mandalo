@@ -2,8 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { parseIncomingWhatsAppMessage, processMandaloWebhook } from "@/lib/mandaloFlow";
 import { normalizePhone } from "@/lib/roles";
 import { getEnv } from "@/lib/env";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
+// Sin esto, Vercel mata la función a los 10s por defecto — una llamada a
+// OpenAI más varias consultas a Supabase secuenciales pueden superar eso
+// fácilmente bajo mala red o carga, y Whapi reintenta la entrega del webhook
+// al no recibir respuesta a tiempo (causa probable de los reintentos vistos
+// en producción agosto 2026, además de la deduplicación de abajo). 60s es el
+// máximo permitido en el plan Hobby.
+export const maxDuration = 60;
 
 function extractWaapiMessageObject(payload: unknown): Record<string, unknown> {
   const body = (payload ?? {}) as Record<string, unknown>;
@@ -73,6 +81,39 @@ function extractWaapiLocation(payload: unknown): { latitude: number; longitude: 
     }
   }
   return null;
+}
+
+function extractWaapiMessageId(payload: unknown): string | null {
+  const body = (payload ?? {}) as Record<string, unknown>;
+  const data = (body.data ?? {}) as Record<string, unknown>;
+  const message = extractWaapiMessageObject(payload);
+
+  const candidates = [message.id, body.id, data.id];
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim() !== "") return candidate;
+  }
+  return null;
+}
+
+// Whapi reintenta la entrega del webhook si no le llega una respuesta rápido
+// (confirmado en producción agosto 2026: un mensaje real se procesó 16 veces
+// — el bot llamaba a la IA y escribía en la BD una y otra vez para el MISMO
+// mensaje, y las escrituras concurrentes sin ningún bloqueo terminaban
+// pisándose entre sí, perdiendo los productos ya capturados). Sin esto, el
+// webhook no tenía ninguna protección contra reprocesar un mensaje ya visto
+// — a diferencia del lado de salida (outboxRepository), que sí usa
+// idempotencyKey desde el principio. Claim atómico vía unique constraint:
+// si el insert choca (23505), ya se procesó, se ignora sin tocar nada más.
+async function claimInboundMessage(messageId: string, telefono: string): Promise<boolean> {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("whatsapp_mensajes_procesados").insert({ message_id: messageId, telefono });
+  if (!error) return true;
+  if (error.code === "23505") return false;
+  // Fail-open: un error de BD que no sea el conflicto esperado no debe
+  // bloquear el mensaje — mejor procesarlo de más que dejar al cliente sin
+  // respuesta por un problema ajeno a él.
+  console.error("[Webhook] no se pudo registrar dedupe de mensaje entrante", { messageId, message: error.message });
+  return true;
 }
 
 function extractWaapiChatId(payload: unknown): string | null {
@@ -145,6 +186,16 @@ export async function POST(req: NextRequest) {
     const numero = normalizePhone(String(numeroRaw));
     const textoMensaje =
       mensaje && String(mensaje).trim() !== "" ? String(mensaje) : "📍 (Cliente compartió su ubicación GPS)";
+
+    const messageId = extractWaapiMessageId(body);
+    if (messageId) {
+      const claimed = await claimInboundMessage(messageId, numero);
+      if (!claimed) {
+        console.log(`[Webhook] Mensaje ${messageId} ya se había procesado — ignorando reintento de Whapi.`);
+        return NextResponse.json({ ok: true, ignored: "DUPLICATE_MESSAGE" }, { status: 200 });
+      }
+    }
+
     console.log(
       `[Webhook] Procesando: ${textoMensaje} de ${numero}${ubicacion ? " [con ubicación GPS]" : ""}`,
     );
