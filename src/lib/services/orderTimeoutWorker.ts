@@ -67,7 +67,8 @@ const TIMEOUT_CONFIGS: TimeoutKindConfig[] = [
           `⏰ Recordatorio: el pedido #${pedido.id} sigue esperando tu precio.\n\n` +
           `Pedido:\n${formatPedidoItems(pedido.items)}\n\n` +
           `Tienes 5 minutos antes de que se cancele automáticamente.\n\n` +
-          `Responde así: ORDEN #${pedido.id} PRECIO 150`,
+          `Responde así: ORDEN #${pedido.id} PRECIO 150\n\n` +
+          `¿Te falta algún producto? Responde: ORDEN #${pedido.id} NO_DISPONIBLE nombre del producto`,
         tipoMensaje: "cotizacion_tienda",
         destinatarioTipo: "negocio",
         destinatarioId: pedido.tienda.tiendaId,

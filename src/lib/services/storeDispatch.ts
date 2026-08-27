@@ -79,7 +79,8 @@ export async function dispatchCotizacionToStore(
     `COTIZAR. ORDEN #${pedido.id}\n` +
     `${pedido.direccionEntrega ? `Dirección: ${pedido.direccionEntrega}\n` : ""}` +
     `Pedido:\n${formatItemsForDispatch(pedido.items)}\n\n` +
-    `Responde así: ORDEN #${pedido.id} PRECIO 150`;
+    `Responde así: ORDEN #${pedido.id} PRECIO 150\n\n` +
+    `¿Te falta algún producto? Responde: ORDEN #${pedido.id} NO_DISPONIBLE nombre del producto`;
 
   logStoreDispatch({
     orderId: pedido.id,
