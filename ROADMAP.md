@@ -4,7 +4,7 @@
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
 > Última actualización: 26 de agosto de 2026, trabajo directo sobre `main`
 > (decisión de Víctor desde el 2026-08-24 en adelante: sin rama aparte ni
-> Preview), commit `7fe9973`.
+> Preview), commit `bf04ccd` — todavía sin probar en vivo.
 > `fix/zod-items-schema-mismatch` mergeada a `main` el 2026-08-24 (validada en
 > vivo antes de mergear) — `feature/mandalo-24-7-pedidos-programados` mergeada
 > el mismo día, commit `2f54558` — `fix/confirmacion-pregunta-vs-si` mergeada
@@ -181,6 +181,20 @@ Dos bugs reportados por Víctor, arreglados antes de presentar Mándalo a una ti
 ## ✅ Bloque de trabajo 2026-08-26 (commit `7fe9973`, directo sobre `main`)
 
 Víctor confirmó con una foto real del mensaje que recibe la tienda al pedir cotización: solo mostraba cómo responder el precio (`ORDEN #29 PRECIO 150`), sin ninguna mención de que también existe `#NO_DISPONIBLE` (construido en el bloque del 2026-08-24, pero nunca se avisó de su existencia en el mensaje real que ve la tienda). Agregada la instrucción en los dos mensajes que invitan a cotizar: el envío inicial (`storeDispatch.dispatchCotizacionToStore`) y el recordatorio de los 5 minutos (`orderTimeoutWorker.ts`). `scheduledDispatchWorker.ts` (pedidos programados que se disparan al abrir la tienda) ya queda cubierto porque reusa la misma función de dispatch.
+
+## ✅ Bloque de trabajo 2026-08-26 (commit `bf04ccd`, directo sobre `main`)
+
+**Reintroducción de horario fijo, pero distinto al que se quitó en la fase 24/7:** Víctor pidió que Mándalo opere de 3pm a 8pm — la ventana real en la que el repartidor está disponible — y que fuera de eso NO se rechace el pedido, sino que se use el mismo mecanismo de "programar pedido" ya construido para tiendas cerradas (`esperando_apertura_tienda` + `scheduledDispatchWorker.ts`). El bot sigue platicando y armando pedidos 24/7 sin cambios — lo único que ahora tiene ventana es el despacho real.
+
+**Cómo quedó:** `businessHours.checkMandaloSchedule()` (nuevo, reusa `checkTiendaSchedule` con los valores fijos `MANDALO_HORA_APERTURA`/`MANDALO_HORA_CIERRE` = "15:00"/"20:00", sin duplicar la lógica de horario cruzando medianoche/fail-open). `handleEsperandoConfirmacionInicial` ahora calcula `puedeDespacharAhora = tienda abierta Y Mándalo dentro de su ventana` — si cualquiera de las dos falla, se programa igual que antes (mismo estado `esperando_apertura_tienda`, mismo aviso antes del SÍ, misma confirmación después). Nuevo helper `describeWhyWaiting` arma el mensaje correcto según cuál condición (o ambas) esté fallando — no intenta calcular una hora conjunta exacta cuando ambas fallan, ya que `scheduledDispatchWorker.ts` revisa las dos condiciones en cada tick de todos modos y despacha en cuanto se cumplen, sin importar qué tan preciso sea el texto mostrado. Mismo dual-check aplicado al mensaje de seguimiento mientras el pedido espera, y al worker (solo despacha si tienda Y Mándalo dan abierto; el límite de 48h sigue igual, ahora disparado por cualquiera de las dos sin resolverse).
+
+Prompt (`mandaloPrompt.ts`) ganó un contexto nuevo (`HORARIO DE REPARTO DE MÁNDALO`) y una regla en BLOQUE 4, para que la IA conteste bien si le preguntan directamente por el horario y no prometa una entrega inmediata fuera de la ventana.
+
+**CLAUDE.md actualizado:** Sección 5 regla 6 (ya no dice "24/7 sin ventana" — ahora distingue "el bot platica 24/7" de "el reparto tiene ventana fija 3pm-8pm"); Sección 7 (`esperando_apertura_tienda` ahora cubre dos condiciones, no solo horario de tienda); Sección 8 (tabla de casos límite, dos filas nuevas/actualizadas).
+
+**Alcance deliberado, no tocado:** la lista `NEGOCIOS DISPONIBLES AHORA`/`NEGOCIOS CERRADOS AHORA` que arma `getLLMResponse` sigue basada solo en el horario de cada tienda — no se mezcló con el horario de Mándalo en esa lista, para no complicar esa lógica con dos conceptos de horario distintos al mismo tiempo.
+
+**Pendiente:** probar en vivo antes de dar esto por cerrado — pedir fuera de 3pm-8pm con una tienda abierta (debe programar solo por Mándalo), pedir de una tienda cerrada dentro del horario de Mándalo (debe programar solo por la tienda, sin cambios), y confirmar que a las 3pm en punto se dispara automáticamente un pedido en espera.
 
 ## ⚪ No construido todavía (fuera del punchlist del brief)
 
