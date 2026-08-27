@@ -11,7 +11,13 @@ import * as validationEngine from "@/lib/services/validationEngine";
 import * as outboxRepository from "@/lib/repositories/outboxRepository";
 import { createCourierCommandParser } from "@/lib/services/courierCommandParser";
 import { buildOrderTimeoutMetadata, buildEsperandoAperturaMetadata } from "@/lib/services/orderTimeouts";
-import { checkTiendaSchedule } from "@/lib/services/businessHours";
+import {
+  checkMandaloSchedule,
+  checkTiendaSchedule,
+  MANDALO_HORA_APERTURA,
+  MANDALO_HORA_CIERRE,
+  type TiendaScheduleCheck,
+} from "@/lib/services/businessHours";
 import { dispatchCotizacionToStore } from "@/lib/services/storeDispatch";
 import {
   calculateFinalPrice,
@@ -263,6 +269,7 @@ export async function getLLMResponse(params: {
     zonasCobertura: zonasCobertura_text,
     historial: String(params.supabaseJson?.historial_text ?? ""),
     saludoInicial: buildSaludoInicial(),
+    horarioMandaloText: `de ${MANDALO_HORA_APERTURA} a ${MANDALO_HORA_CIERRE}`,
   });
 
   const messages: LlmMessage[] = [
@@ -577,6 +584,36 @@ function buildResumenPedido(pedido: PedidoV2Record): string {
   return `🧾 Pedido #${pedido.id}\n\nTienda: ${tienda}\n\n🛒 Productos:\n${items}\n\n🏠 Entrega:\n${direccion}`;
 }
 
+// Un pedido puede esperar por dos razones independientes (Mándalo cerrado,
+// tienda cerrada) — describe la que aplique, o ambas, para el resumen antes
+// del SÍ, la confirmación de que quedó programado, y el mensaje de
+// seguimiento mientras espera. No calcula una hora exacta de despacho conjunta
+// (si ambas están cerradas, no hay una sola hora limpia que dar) — el worker
+// (scheduledDispatchWorker.ts) ya revisa las dos condiciones en cada tick,
+// así que el despacho real ocurre en cuanto ambas se cumplen, sin importar
+// qué tan preciso sea este texto.
+function describeWhyWaiting(params: {
+  tiendaNombre: string;
+  tiendaSchedule: TiendaScheduleCheck;
+  mandaloSchedule: TiendaScheduleCheck;
+}): string {
+  const { tiendaNombre, tiendaSchedule, mandaloSchedule } = params;
+
+  if (!mandaloSchedule.withinSchedule && !tiendaSchedule.withinSchedule) {
+    return (
+      `Mándalo reparte de ${mandaloSchedule.horaApertura} a ${mandaloSchedule.horaCierre}, ` +
+      `y *${tiendaNombre}* también está cerrada ahora (abre a las ${tiendaSchedule.horaApertura})`
+    );
+  }
+  if (!mandaloSchedule.withinSchedule) {
+    return `Mándalo reparte de ${mandaloSchedule.horaApertura} a ${mandaloSchedule.horaCierre}, y ahorita está fuera de ese horario`;
+  }
+  if (!tiendaSchedule.withinSchedule) {
+    return `*${tiendaNombre}* está cerrada ahora, abre a las ${tiendaSchedule.horaApertura}`;
+  }
+  return `*${tiendaNombre}* y Mándalo ya deberían estar disponibles`;
+}
+
 async function handleEsperandoConfirmacionInicial(
   telefono: string,
   mensaje: string,
@@ -638,10 +675,12 @@ async function handleEsperandoConfirmacionInicial(
   }
 
   const schedule = checkTiendaSchedule({ horaApertura: full.tienda.horaApertura, horaCierre: full.tienda.horaCierre });
+  const mandaloSchedule = checkMandaloSchedule();
+  const puedeDespacharAhora = schedule.withinSchedule && mandaloSchedule.withinSchedule;
 
   if (!isYesConfirmation(mensaje)) {
-    const avisoCerrada = !schedule.withinSchedule
-      ? `\n\n⏰ Ojo: *${full.tienda.nombre}* está cerrada ahora. Se la voy a mandar en cuanto abra, a las ${schedule.horaApertura}.`
+    const avisoCerrada = !puedeDespacharAhora
+      ? `\n\n⏰ Ojo: ${describeWhyWaiting({ tiendaNombre: full.tienda.nombre ?? "la tienda", tiendaSchedule: schedule, mandaloSchedule })}. Te lo voy a mandar en cuanto se pueda.`
       : "";
     const msg = `${buildResumenPedido({ ...pedido, snapshot_json: snapshot })}${avisoCerrada}\n\n¿Es correcto? Responde *SÍ* para confirmar. ✅`;
     await sendWhatsApp(telefono, msg);
@@ -649,10 +688,12 @@ async function handleEsperandoConfirmacionInicial(
     return { ok: true, role: "cliente", stage: "confirmacion_cliente", pedidoId: pedido.id };
   }
 
-  // Tienda cerrada: no se despacha todavía — se programa. La tienda no se
-  // entera hasta que abra (decisión de Víctor); scheduledDispatchWorker.ts
-  // hace el disparo real cuando checkTiendaSchedule diga que ya abrió.
-  if (!schedule.withinSchedule) {
+  // Tienda cerrada y/o fuera del horario de despacho de Mándalo (3pm-8pm,
+  // CLAUDE.md Sección 5 regla 6): no se despacha todavía — se programa.
+  // Mismo mecanismo sin importar cuál de las dos condiciones falle; la
+  // tienda no se entera hasta que se pueda despachar de verdad (decisión de
+  // Víctor); scheduledDispatchWorker.ts revisa ambas condiciones en cada tick.
+  if (!puedeDespacharAhora) {
     try {
       await pedidoRepositoryV2.setPedidoEstado({
         pedidoId: full.id,
@@ -674,7 +715,7 @@ async function handleEsperandoConfirmacionInicial(
       return { ok: true, role: "cliente", stage: "confirmacion_cliente", pedidoId: pedido.id };
     }
 
-    const msgCliente = `✅ Pedido #${full.id} programado.\n\nSe lo voy a mandar a *${full.tienda.nombre}* en cuanto abra, a las ${schedule.horaApertura}. Te aviso apenas se lo mande. 📦`;
+    const msgCliente = `✅ Pedido #${full.id} programado.\n\n${describeWhyWaiting({ tiendaNombre: full.tienda.nombre ?? "la tienda", tiendaSchedule: schedule, mandaloSchedule })}. Te aviso apenas se mande. 📦`;
     await sendWhatsApp(telefono, msgCliente);
     await guardarMensajeChat({ telefono, texto: msgCliente, estado: "bot" }).catch(() => {});
     return { ok: true, role: "cliente", stage: "esperando_apertura_tienda", pedidoId: full.id };
@@ -1049,10 +1090,11 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
           const schedule = full?.tienda
             ? checkTiendaSchedule({ horaApertura: full.tienda.horaApertura, horaCierre: full.tienda.horaCierre })
             : null;
-          trackingBody =
-            schedule && !schedule.withinSchedule
-              ? `Sigue programado para *${tiendaNombre}*. Se lo voy a mandar en cuanto abra, a las ${schedule.horaApertura}. 🕗`
-              : `*${tiendaNombre}* ya debería estar abierta — en un momento te aviso que se mandó tu pedido. 📦`;
+          const mandaloSchedule = checkMandaloSchedule();
+          const sigueEsperando = (schedule && !schedule.withinSchedule) || !mandaloSchedule.withinSchedule;
+          trackingBody = sigueEsperando
+            ? `Sigue programado. ${describeWhyWaiting({ tiendaNombre, tiendaSchedule: schedule ?? { withinSchedule: true }, mandaloSchedule })}. Te lo mando en cuanto se pueda. 🕗`
+            : `*${tiendaNombre}* ya debería estar abierta — en un momento te aviso que se mandó tu pedido. 📦`;
         }
         const trackingMsg = `Pedido #${openPedido.id}: ${trackingBody}`;
         await sendWhatsApp(telefono, trackingMsg);

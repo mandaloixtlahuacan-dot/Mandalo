@@ -1,7 +1,11 @@
-// Validación de horario — Mándalo opera 24/7 (sin horario fijo general,
-// retirado agosto 2026 para poder atender pedidos a cualquier hora); cada
-// tienda tiene su propio horario en base de datos (tiendas.hora_apertura /
-// hora_cierre, columnas `text` libres — ver Fase 1). Los repartidores no
+// Validación de horario. El bot en sí sigue platicando y armando pedidos
+// 24/7 (eso no cambió) — lo que se restringe es el DESPACHO: Mándalo solo
+// reparte de 3pm a 8pm (horario real del repartidor, reintroducido agosto
+// 2026 tras la fase 24/7 — ver CLAUDE.md Sección 5 regla 6), y cada tienda
+// tiene además su propio horario en base de datos (tiendas.hora_apertura /
+// hora_cierre, columnas `text` libres — ver Fase 1). Un pedido fuera de
+// cualquiera de las dos ventanas se programa (mismo mecanismo,
+// esperando_apertura_tienda) en vez de rechazarse. Los repartidores no
 // tienen columnas de horario en el esquema (CLAUDE.md Sección 4): su
 // disponibilidad ya se gobierna por `disponible`/`activo`, que es lo que
 // findActiveCourier() ya filtra — no hace falta nada nuevo para ellos aquí.
@@ -64,4 +68,15 @@ export function checkTiendaSchedule(params: {
 
   if (within) return { withinSchedule: true };
   return { withinSchedule: false, horaApertura: String(params.horaApertura), horaCierre: String(params.horaCierre) };
+}
+
+// Ventana fija de despacho de Mándalo — reusa checkTiendaSchedule pasándole
+// estos valores en vez de duplicar la lógica de horario cruzando medianoche/
+// fail-open. Constantes exportadas (no solo usadas aquí) para que el prompt
+// y los mensajes al cliente muestren siempre el mismo valor.
+export const MANDALO_HORA_APERTURA = "15:00";
+export const MANDALO_HORA_CIERRE = "20:00";
+
+export function checkMandaloSchedule(now?: Date): TiendaScheduleCheck {
+  return checkTiendaSchedule({ horaApertura: MANDALO_HORA_APERTURA, horaCierre: MANDALO_HORA_CIERRE, now });
 }

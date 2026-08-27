@@ -3,18 +3,20 @@ import { ensureMxWhatsappIntl } from "@/lib/roles";
 import { getPedidoById, setPedidoEstado, type PedidoFullRecord } from "@/lib/repositories/pedidoRepositoryV2";
 import * as outboxRepository from "@/lib/repositories/outboxRepository";
 import { createStateTransitionService } from "@/lib/services/stateTransitionService";
-import { checkTiendaSchedule } from "@/lib/services/businessHours";
+import { checkMandaloSchedule, checkTiendaSchedule } from "@/lib/services/businessHours";
 import { dispatchCotizacionToStore } from "@/lib/services/storeDispatch";
 import { ESPERANDO_APERTURA_DEADLINE_FIELD } from "@/lib/services/orderTimeouts";
 
 // Dispara los pedidos programados (esperando_apertura_tienda, CLAUDE.md
-// Sección 5 regla 6 / Sección 8) en cuanto la tienda elegida abre, y cancela
-// los que llevan más de 48h sin que la tienda abra. Pensado para correr cada
-// minuto vía pg_cron + pg_net, mismo patrón que orderTimeoutWorker.ts — pero
-// es un worker aparte porque el chequeo es distinto en naturaleza: "¿está
-// abierta la tienda ahora mismo?" (horario recurrente, checkTiendaSchedule)
-// en vez de "¿ya pasó una fecha límite absoluta?" (los tres timeouts de 10
-// min de ese otro worker).
+// Sección 5 regla 6 / Sección 8) en cuanto se puede despachar de verdad —
+// la tienda elegida abierta Y Mándalo dentro de su ventana de reparto
+// (3pm-8pm, agosto 2026) — y cancela los que llevan más de 48h sin que se
+// cumplan ambas condiciones. Pensado para correr cada minuto vía pg_cron +
+// pg_net, mismo patrón que orderTimeoutWorker.ts — pero es un worker aparte
+// porque el chequeo es distinto en naturaleza: "¿está abierto ahora mismo?"
+// (horario recurrente, checkTiendaSchedule/checkMandaloSchedule) en vez de
+// "¿ya pasó una fecha límite absoluta?" (los tres timeouts de 10 min de ese
+// otro worker).
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -47,7 +49,7 @@ async function handleDispatch(pedido: PedidoFullRecord, summary: ScheduledDispat
       destinatarioId: null,
       telefonoDestino: ensureMxWhatsappIntl(pedido.clienteTelefono),
       payload: {
-        body: `📦 Tu pedido #${pedido.id} ya se envió a *${pedido.tienda?.nombre ?? "la tienda"}*, que acaba de abrir. Te aviso en cuanto confirme el precio.`,
+        body: `📦 Tu pedido #${pedido.id} ya se envió a *${pedido.tienda?.nombre ?? "la tienda"}*. Te aviso en cuanto confirme el precio.`,
       },
       idempotencyKey: `pedido:${pedido.id}:esperando_apertura:dispatched:v1`,
     });
@@ -137,8 +139,9 @@ export function createScheduledDispatchWorker() {
           const schedule = pedido.tienda
             ? checkTiendaSchedule({ horaApertura: pedido.tienda.horaApertura, horaCierre: pedido.tienda.horaCierre })
             : { withinSchedule: true as const };
+          const mandaloSchedule = checkMandaloSchedule();
 
-          if (schedule.withinSchedule) {
+          if (schedule.withinSchedule && mandaloSchedule.withinSchedule) {
             await handleDispatch(pedido, summary);
             continue;
           }
