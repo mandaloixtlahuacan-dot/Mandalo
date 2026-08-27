@@ -4,7 +4,9 @@
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
 > Última actualización: 26 de agosto de 2026, trabajo directo sobre `main`
 > (decisión de Víctor desde el 2026-08-24 en adelante: sin rama aparte ni
-> Preview), commit `bf04ccd` — todavía sin probar en vivo.
+> Preview), commit `fe40758` — **pendiente correr
+> `supabase/migrations/20260826_whatsapp_mensajes_procesados.sql`** antes de
+> que el fix de deduplicación tenga efecto real.
 > `fix/zod-items-schema-mismatch` mergeada a `main` el 2026-08-24 (validada en
 > vivo antes de mergear) — `feature/mandalo-24-7-pedidos-programados` mergeada
 > el mismo día, commit `2f54558` — `fix/confirmacion-pregunta-vs-si` mergeada
@@ -195,6 +197,22 @@ Prompt (`mandaloPrompt.ts`) ganó un contexto nuevo (`HORARIO DE REPARTO DE MÁN
 **Alcance deliberado, no tocado:** la lista `NEGOCIOS DISPONIBLES AHORA`/`NEGOCIOS CERRADOS AHORA` que arma `getLLMResponse` sigue basada solo en el horario de cada tienda — no se mezcló con el horario de Mándalo en esa lista, para no complicar esa lógica con dos conceptos de horario distintos al mismo tiempo.
 
 **Pendiente:** probar en vivo antes de dar esto por cerrado — pedir fuera de 3pm-8pm con una tienda abierta (debe programar solo por Mándalo), pedir de una tienda cerrada dentro del horario de Mándalo (debe programar solo por la tienda, sin cambios), y confirmar que a las 3pm en punto se dispara automáticamente un pedido en espera.
+
+## 🚧 Bloque de trabajo 2026-08-26 (commit `fe40758`, directo sobre `main`) — bug crítico de reintentos de Whapi
+
+Víctor probó un pedido (Agua Ciel + Takis Fuego, Abarrotes Agua Santa) dentro del horario de Mándalo y nunca llegó a la tienda — el bot conversó con normalidad turno a turno pero nunca mostró el recibo formal ni asignó folio. Investigado con `vercel logs` de la ventana exacta (26 ago 7:40-7:50pm):
+
+**Causa raíz confirmada, no especulada:** cada uno de los 7 mensajes reales de esa conversación se procesó **exactamente 16 veces** (112 llamadas totales a `processMandaloWebhook` para 7 turnos) — Whapi reintenta la entrega del webhook cuando no le llega respuesta a tiempo, y el bot no tenía ninguna protección contra reprocesar el mismo mensaje. Cada reprocesamiento volvía a leer el pedido, llamar a la IA y escribir el snapshot sin ningún bloqueo entre esas escrituras concurrentes — la última en llegar ganaba, y los productos ya capturados se perdían una y otra vez (confirmado en logs: `[captureEngine] pedido: { pedidoId: 31, itemCount: 0, ... }` se repitió así, sin nunca subir, durante toda la conversación). Por eso el pedido #31 nunca avanzó de `seleccion_productos` y nunca llegó a la tienda, aunque la IA sí generaba una respuesta conversacional coherente en cada intento — de ahí que la transcripción se viera "casi normal" pero sin el formato de recibo real (ese solo aparece al llegar a `confirmacion_cliente`, algo que nunca pasó).
+
+**Dos fixes:**
+1. **Deduplicación de mensajes entrantes** (`src/app/api/webhook/route.ts`) — mismo patrón que ya usa el lado de salida (`outboxRepository` con `idempotencyKey` desde el día uno), aplicado ahora también a la entrada: claim atómico por `message_id` de WhatsApp vía unique constraint antes de procesar; si choca, ya se procesó, se ignora sin tocar nada más. Nueva tabla `whatsapp_mensajes_procesados`.
+2. **`maxDuration=60`** en la ruta del webhook (antes sin configurar, corría con el límite de 10s por defecto de Vercel) — probable causa raíz de por qué Whapi reintentaba tanto: una llamada a OpenAI más varias consultas secuenciales a Supabase pueden superar 10s fácilmente bajo mala red o carga. 60s es el máximo permitido en el plan Hobby.
+
+**Pendiente antes de que el fix tenga efecto real:**
+- Correr `supabase/migrations/20260826_whatsapp_mensajes_procesados.sql` — sin esto, la deduplicación falla abierto (deja pasar todo) y el bug sigue exactamente igual.
+- **Limpiar el pedido #31**, que quedó atorado en `seleccion_productos` para siempre (no hay timeout en ese estado) y puede colarse como "pedido activo" en la próxima prueba desde ese mismo número. Verificación sugerida antes de borrar: `select id, estado, cliente_telefono from pedidos where id = 31;`
+- Probar en vivo el mismo pedido (Agua Ciel + Takis Fuego) de punta a punta para confirmar que ahora sí llega a la tienda con folio y recibo formal.
+- Vigilar si, con `maxDuration=60`, los reintentos de Whapi bajan a cero — si persisten aun con más tiempo disponible, valdría la pena revisar la latencia real de `getChatCompletion` (OpenAI) como siguiente sospechoso.
 
 ## ⚪ No construido todavía (fuera del punchlist del brief)
 
