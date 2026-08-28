@@ -306,6 +306,16 @@ export async function getLLMResponse(params: {
       const parsedJson = JSON.parse(candidate);
       const parsed = mandaloAgentResponseSchema.safeParse(parsedJson);
       if (parsed.success) {
+        // Log temporal de diagnóstico (agosto 2026): un pedido real mostró
+        // itemCount:0 en captureEngine turno tras turno aunque el
+        // customer_reply de la IA describía los productos correctamente y
+        // sin ningún error de validación de Zod — es decir, el JSON pasó el
+        // schema pero algo en order_state.items no traía lo que el texto
+        // sí describía. Este log muestra el order_state crudo tal como lo
+        // mandó la IA, antes de cualquier merge/normalización, para ver
+        // exactamente qué venía. Retirar en cuanto se confirme la causa.
+        const rawOrderState = (parsedJson as Record<string, unknown>).order_state;
+        console.log("[getLLMResponse] order_state crudo de la IA:", JSON.stringify(rawOrderState));
         // Si la IA omite la clave "customer_reply" (JSON válido pero
         // incompleto), el schema la rellena con un texto de relleno
         // ("¡Entendido! Dame un momento.") que no invita a nada — el cliente
