@@ -106,7 +106,22 @@ function extractWaapiMessageId(payload: unknown): string | null {
 // si el insert choca (23505), ya se procesó, se ignora sin tocar nada más.
 async function claimInboundMessage(messageId: string, telefono: string): Promise<boolean> {
   const supabase = getSupabaseAdmin();
-  const { error } = await supabase.from("whatsapp_mensajes_procesados").insert({ message_id: messageId, telefono });
+  // Log temporal de diagnóstico (agosto 2026): un mensaje real se insertó
+  // sin chocar 60 veces con el mismo message_id pese a que el primary key
+  // sí existe en la tabla — el error nunca se vio en logs porque nunca se
+  // registró el resultado crudo del insert. Este log se retira en cuanto se
+  // confirme la causa real.
+  console.log("[Webhook][dedupe] intentando reclamar mensaje", { messageId, telefono });
+  const { data, error, status } = await supabase
+    .from("whatsapp_mensajes_procesados")
+    .insert({ message_id: messageId, telefono })
+    .select();
+  console.log("[Webhook][dedupe] resultado del insert", {
+    messageId,
+    status,
+    data,
+    error: error ? { code: error.code, message: error.message, details: error.details, hint: error.hint } : null,
+  });
   if (!error) return true;
   if (error.code === "23505") return false;
   // Fail-open: un error de BD que no sea el conflicto esperado no debe
