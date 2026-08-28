@@ -4,11 +4,12 @@
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
 > Última actualización: 27 de agosto de 2026, trabajo directo sobre `main`
 > (decisión de Víctor desde el 2026-08-24 en adelante: sin rama aparte ni
-> Preview), commit `bc84ac4`. **Bug crítico abierto:** la deduplicación de
-> mensajes de WhatsApp (migración ya corrida, constraint confirmado en BD)
-> sigue sin bloquear reintentos de Whapi en producción — causa real todavía
-> sin confirmar, ver bloque del 2026-08-27 abajo antes de dar por resuelto
-> el flujo de captura de pedidos.
+> Preview), commit `87244bd`. **Deduplicación de WhatsApp confirmada
+> resuelta** (`NOTIFY pgrst, 'reload schema'` era la causa real). **Bug
+> crítico distinto sigue abierto:** los productos completamente
+> especificados por el cliente no siempre llegan a `order_state.items` sin
+> ningún error de validación — ver bloque del 2026-08-27 abajo antes de dar
+> por resuelto el flujo de captura de pedidos.
 > `fix/zod-items-schema-mismatch` mergeada a `main` el 2026-08-24 (validada en
 > vivo antes de mergear) — `feature/mandalo-24-7-pedidos-programados` mergeada
 > el mismo día, commit `2f54558` — `fix/confirmacion-pregunta-vs-si` mergeada
@@ -212,7 +213,7 @@ Víctor probó un pedido (Agua Ciel + Takis Fuego, Abarrotes Agua Santa) dentro 
 
 **Migración corrida por Víctor el 2026-08-27** — ver bloque de abajo, el bug persistió pese a la migración, investigación continúa ahí.
 
-## 🚧 Bloque de trabajo 2026-08-27 — la deduplicación no bloquea los reintentos pese a migración y constraint confirmados
+## ✅ Bloque de trabajo 2026-08-27 — la deduplicación no bloqueaba los reintentos pese a migración y constraint confirmados (resuelto)
 
 Víctor corrió la migración y repitió la prueba dentro de horario (Leche Lala + Conchas Bimbo, Abarrotes Agua Santa) — **mismo síntoma exacto**: nunca llegó a la tienda, sin recibo formal ni folio.
 
@@ -228,11 +229,23 @@ Víctor corrió la migración y repitió la prueba dentro de horario (Leche Lala
 
 **Instrumentación agregada mientras tanto** (commit `bae72f3`) — log temporal en `claimInboundMessage` que ahora captura `data`/`status`/`error` completo (`code`, `message`, `details`, `hint`) de cada intento de insert, para tener evidencia directa en la próxima prueba en vez de seguir descartando hipótesis a ciegas. **Retirar este log en cuanto se confirme la causa real.**
 
+**✅ Resuelto — confirmado con logs de una tercera prueba (27 ago 8:21-8:22pm):** `NOTIFY pgrst, 'reload schema';` era la causa real. El log de diagnóstico (`[Webhook][dedupe] resultado del insert`) mostró cada `message_id` insertado **exactamente una vez** (`status: 201`, `error: null`, sin ningún reintento) — la caché de esquema de PostgREST efectivamente estaba desactualizada tras crear la tabla/constraint fuera del flujo normal, tal como se sospechaba. El log temporal de `claimInboundMessage` se deja por ahora (bajo costo, útil si vuelve a fallar) — retirar en un futuro cleanup si ya no hace falta.
+
+**Pendiente de esta parte:** limpiar los pedidos atorados de pruebas anteriores (#31, #33 y el nuevo #34 de esta última prueba) — todos quedaron en `seleccion_productos` para siempre por el bug de items de abajo, no por reintentos.
+
+## 🚧 Bloque de trabajo 2026-08-27 (commit `87244bd`) — bug distinto: items no llegan a order_state sin ningún error
+
+Con la deduplicación ya confirmada resuelta, Víctor repitió la prueba una tercera vez (Leche Lala + Conchas Bimbo) y **el síntoma de fondo siguió exactamente igual**: sin recibo formal, sin folio, terminó en "Pedido confirmado: ... En breve te aviso cuando esté en camino." en vez del flujo real de confirmación.
+
+**Confirmado con logs de esta prueba (pedido #34):** en el turno donde el cliente especificó marca y cantidad completas ("leche Lala... conchas... Bimbo... paquete... dos piezas... vainilla"), la IA respondió conversacionalmente de forma correcta (su `customer_reply` describe los productos bien) — pero `[captureEngine] pedido:` siguió mostrando `itemCount: 0`, y esta vez **sin ningún error de validación de Zod** (a diferencia del bug del bucle infinito de hace unos días, donde sí había errores `invalid_type` visibles). El JSON de la IA pasa el schema, pero algo en `order_state.items` no coincide con lo que `captureEngine.extractCandidateItems` espera — sin ningún error que lo delate, porque `nombre_producto` es opcional en el schema desde el fix del bucle infinito (para evitar que un item mal formado tumbe todo el `order_state`), así que un item sin el campo correcto simplemente se descarta en silencio en vez de fallar visiblemente.
+
+**Hipótesis a confirmar:** la IA podría estar mandando los items con un nombre de campo distinto al esperado (`nombre_producto`/`name`), o con el campo vacío, en ese turno específico — posiblemente relacionado con la regla de normalización de productos agregada el 2026-08-25 (BLOQUE 4 del prompt, "separa correctamente nombre_producto, cantidad y unidad").
+
+**Instrumentación agregada** (commit `87244bd`): `getLLMResponse` ahora loguea el `order_state` crudo tal como lo manda la IA, antes de cualquier merge — `[getLLMResponse] order_state crudo de la IA: ...`. Retirar en cuanto se confirme la causa.
+
 **Pendiente:**
-- Confirmar si `NOTIFY pgrst, 'reload schema';` resuelve el problema.
-- Repetir la prueba y revisar los logs nuevos (`[Webhook][dedupe] resultado del insert`) para ver el error/estado real del insert en cada reintento.
-- Limpiar el pedido #33 (mismo problema que el #31: atorado en `seleccion_productos` para siempre, sin timeout en ese estado) — y también el #31 si seguía sin limpiarse.
-- Una vez confirmada la deduplicación funcionando, todavía falta probar de punta a punta que el pedido llega completo a la tienda.
+- Repetir la prueba una vez más y revisar el log nuevo para ver exactamente qué trae `order_state.items` en el turno donde se pierde la información.
+- Limpiar los pedidos de prueba atorados (#31, #33, #34).
 
 ## ✅ Bloque de trabajo 2026-08-27 (commit `bc84ac4`, directo sobre `main`)
 
