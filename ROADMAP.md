@@ -2,11 +2,13 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 26 de agosto de 2026, trabajo directo sobre `main`
+> Última actualización: 27 de agosto de 2026, trabajo directo sobre `main`
 > (decisión de Víctor desde el 2026-08-24 en adelante: sin rama aparte ni
-> Preview), commit `fe40758` — **pendiente correr
-> `supabase/migrations/20260826_whatsapp_mensajes_procesados.sql`** antes de
-> que el fix de deduplicación tenga efecto real.
+> Preview), commit `bc84ac4`. **Bug crítico abierto:** la deduplicación de
+> mensajes de WhatsApp (migración ya corrida, constraint confirmado en BD)
+> sigue sin bloquear reintentos de Whapi en producción — causa real todavía
+> sin confirmar, ver bloque del 2026-08-27 abajo antes de dar por resuelto
+> el flujo de captura de pedidos.
 > `fix/zod-items-schema-mismatch` mergeada a `main` el 2026-08-24 (validada en
 > vivo antes de mergear) — `feature/mandalo-24-7-pedidos-programados` mergeada
 > el mismo día, commit `2f54558` — `fix/confirmacion-pregunta-vs-si` mergeada
@@ -208,11 +210,35 @@ Víctor probó un pedido (Agua Ciel + Takis Fuego, Abarrotes Agua Santa) dentro 
 1. **Deduplicación de mensajes entrantes** (`src/app/api/webhook/route.ts`) — mismo patrón que ya usa el lado de salida (`outboxRepository` con `idempotencyKey` desde el día uno), aplicado ahora también a la entrada: claim atómico por `message_id` de WhatsApp vía unique constraint antes de procesar; si choca, ya se procesó, se ignora sin tocar nada más. Nueva tabla `whatsapp_mensajes_procesados`.
 2. **`maxDuration=60`** en la ruta del webhook (antes sin configurar, corría con el límite de 10s por defecto de Vercel) — probable causa raíz de por qué Whapi reintentaba tanto: una llamada a OpenAI más varias consultas secuenciales a Supabase pueden superar 10s fácilmente bajo mala red o carga. 60s es el máximo permitido en el plan Hobby.
 
-**Pendiente antes de que el fix tenga efecto real:**
-- Correr `supabase/migrations/20260826_whatsapp_mensajes_procesados.sql` — sin esto, la deduplicación falla abierto (deja pasar todo) y el bug sigue exactamente igual.
-- **Limpiar el pedido #31**, que quedó atorado en `seleccion_productos` para siempre (no hay timeout en ese estado) y puede colarse como "pedido activo" en la próxima prueba desde ese mismo número. Verificación sugerida antes de borrar: `select id, estado, cliente_telefono from pedidos where id = 31;`
-- Probar en vivo el mismo pedido (Agua Ciel + Takis Fuego) de punta a punta para confirmar que ahora sí llega a la tienda con folio y recibo formal.
-- Vigilar si, con `maxDuration=60`, los reintentos de Whapi bajan a cero — si persisten aun con más tiempo disponible, valdría la pena revisar la latencia real de `getChatCompletion` (OpenAI) como siguiente sospechoso.
+**Migración corrida por Víctor el 2026-08-27** — ver bloque de abajo, el bug persistió pese a la migración, investigación continúa ahí.
+
+## 🚧 Bloque de trabajo 2026-08-27 — la deduplicación no bloquea los reintentos pese a migración y constraint confirmados
+
+Víctor corrió la migración y repitió la prueba dentro de horario (Leche Lala + Conchas Bimbo, Abarrotes Agua Santa) — **mismo síntoma exacto**: nunca llegó a la tienda, sin recibo formal ni folio.
+
+**Confirmado con logs de esta segunda prueba** (`vercel logs`, ventana 27 ago 7:22-7:43pm): el mismo `message_id` de WhatsApp se procesó hasta **60 veces** (peor que las 16 de la vez pasada) — cero coincidencias de `"DUPLICATE_MESSAGE"` en toda la ventana, es decir, la deduplicación no bloqueó ni un solo reintento. Mismo síntoma de fondo: pedido #33 atorado en `itemCount: 0` toda la conversación.
+
+**Se descartó, con evidencia dura, que el problema fuera:**
+- Falta de constraint en BD — Víctor verificó `pg_constraint`: el primary key `whatsapp_mensajes_procesados_pkey` sí existe (`contype = 'p'`).
+- Código desplegado desactualizado — el deployment de producción (18:57:27 del 27 ago) es posterior al push de Víctor y anterior a su prueba (7:23pm).
+- `message_id` distinto entre reintentos — se compararon los 60 payloads completos byte por byte del mismo mensaje: idénticos.
+- Bug en el manejo del error 23505 en `claimInboundMessage` — revisado línea por línea, la lógica es correcta.
+
+**Hipótesis actual, sin confirmar todavía:** posible caché de esquema de PostgREST desactualizada tras crear la tabla/constraint fuera del flujo normal del SQL Editor (síntoma conocido de Supabase: el insert nunca reporta conflicto pese a que el constraint existe en Postgres). Se le pidió a Víctor correr `NOTIFY pgrst, 'reload schema';` como primer intento de fix, de bajo riesgo.
+
+**Instrumentación agregada mientras tanto** (commit `bae72f3`) — log temporal en `claimInboundMessage` que ahora captura `data`/`status`/`error` completo (`code`, `message`, `details`, `hint`) de cada intento de insert, para tener evidencia directa en la próxima prueba en vez de seguir descartando hipótesis a ciegas. **Retirar este log en cuanto se confirme la causa real.**
+
+**Pendiente:**
+- Confirmar si `NOTIFY pgrst, 'reload schema';` resuelve el problema.
+- Repetir la prueba y revisar los logs nuevos (`[Webhook][dedupe] resultado del insert`) para ver el error/estado real del insert en cada reintento.
+- Limpiar el pedido #33 (mismo problema que el #31: atorado en `seleccion_productos` para siempre, sin timeout en ese estado) — y también el #31 si seguía sin limpiarse.
+- Una vez confirmada la deduplicación funcionando, todavía falta probar de punta a punta que el pedido llega completo a la tienda.
+
+## ✅ Bloque de trabajo 2026-08-27 (commit `bc84ac4`, directo sobre `main`)
+
+Dos ajustes de Víctor a la ventana de reparto introducida el 2026-08-26:
+1. **Horario ampliado de 3pm-8pm a 3pm-9pm** — `MANDALO_HORA_CIERRE` en `businessHours.ts` de `"20:00"` a `"21:00"`.
+2. **Tono "por ahora"** — todos los mensajes que explican el horario al cliente (prompt BLOQUE 4, y los tres mensajes de `esperando_apertura_tienda` en `mandaloFlow.ts` vía `describeWhyWaiting`) cambiaron de "Mándalo reparte de X a Y" a "por ahora operamos de X a Y" — deja explícito que es el horario vigente, no una regla fija para siempre. `CLAUDE.md` Sección 5 regla 6 actualizada con el mismo tono y horario nuevo.
 
 ## ⚪ No construido todavía (fuera del punchlist del brief)
 
