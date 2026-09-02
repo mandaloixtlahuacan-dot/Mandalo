@@ -2,14 +2,14 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 27 de agosto de 2026, trabajo directo sobre `main`
+> Última actualización: 2 de septiembre de 2026, trabajo directo sobre `main`
 > (decisión de Víctor desde el 2026-08-24 en adelante: sin rama aparte ni
-> Preview), commit `87244bd`. **Deduplicación de WhatsApp confirmada
-> resuelta** (`NOTIFY pgrst, 'reload schema'` era la causa real). **Bug
-> crítico distinto sigue abierto:** los productos completamente
-> especificados por el cliente no siempre llegan a `order_state.items` sin
-> ningún error de validación — ver bloque del 2026-08-27 abajo antes de dar
-> por resuelto el flujo de captura de pedidos.
+> Preview), commit `51fd2fb`. **Deduplicación de WhatsApp confirmada
+> resuelta** (`NOTIFY pgrst, 'reload schema'` era la causa real). **Bug de
+> items perdidos (causa raíz: alias "nombre" no reconocido) también
+> resuelto** — ver bloque del 2026-09-02 abajo. Pendiente de una prueba en
+> vivo de punta a punta antes de dar el flujo de captura por completamente
+> sano.
 > `fix/zod-items-schema-mismatch` mergeada a `main` el 2026-08-24 (validada en
 > vivo antes de mergear) — `feature/mandalo-24-7-pedidos-programados` mergeada
 > el mismo día, commit `2f54558` — `fix/confirmacion-pregunta-vs-si` mergeada
@@ -233,7 +233,7 @@ Víctor corrió la migración y repitió la prueba dentro de horario (Leche Lala
 
 **Pendiente de esta parte:** limpiar los pedidos atorados de pruebas anteriores (#31, #33 y el nuevo #34 de esta última prueba) — todos quedaron en `seleccion_productos` para siempre por el bug de items de abajo, no por reintentos.
 
-## 🚧 Bloque de trabajo 2026-08-27 (commit `87244bd`) — bug distinto: items no llegan a order_state sin ningún error
+## ✅ Bloque de trabajo 2026-08-27 (commit `87244bd`) — bug distinto: items no llegan a order_state sin ningún error (resuelto, ver bloque 2026-09-02)
 
 Con la deduplicación ya confirmada resuelta, Víctor repitió la prueba una tercera vez (Leche Lala + Conchas Bimbo) y **el síntoma de fondo siguió exactamente igual**: sin recibo formal, sin folio, terminó en "Pedido confirmado: ... En breve te aviso cuando esté en camino." en vez del flujo real de confirmación.
 
@@ -243,9 +243,24 @@ Con la deduplicación ya confirmada resuelta, Víctor repitió la prueba una ter
 
 **Instrumentación agregada** (commit `87244bd`): `getLLMResponse` ahora loguea el `order_state` crudo tal como lo manda la IA, antes de cualquier merge — `[getLLMResponse] order_state crudo de la IA: ...`. Retirar en cuanto se confirme la causa.
 
+**✅ Causa raíz confirmada y resuelta el 2026-09-02** — ver bloque de abajo.
+
+## ✅ Bloque de trabajo 2026-09-02 (commit `51fd2fb`, directo sobre `main`) — causa raíz confirmada: alias "nombre" + IA alucinando envío de cotización
+
+Con el log de `order_state` crudo (`87244bd`) ya en producción, Víctor repitió la prueba (pedido #36, Coca-Cola + Leche Lala) y encontró algo revelador: el bot le mostró A ÉL (el cliente) un mensaje "COTIZAR. Pedido para Abarrotes Agua Santa: ..." — el formato que debería ir solo al número real de la tienda — y luego afirmó "Ya envié tu pedido para cotizar", pero la tienda nunca recibió nada.
+
+**Causa raíz confirmada con logs (no especulada):**
+1. La IA mandaba cada item con la clave `"nombre"` en vez de `"nombre_producto"`/`"name"` — confirmado en **las 360 apariciones** de items de toda la conversación, 0 veces con `nombre_producto`. `extractCandidateItems` no reconocía ese alias, así que cada item se descartaba en silencio (sin error de Zod, porque el campo es opcional desde el fix del bucle infinito de hace unos días). `itemCount` se quedó en 0 durante los ~30 turnos completos — el pedido #36 nunca salió de `seleccion_productos`.
+2. Sin items capturados, `readyForConfirmation` nunca fue `true`, así que el pedido nunca llegó a `confirmacion_cliente` ni disparó `handleEsperandoConfirmacionInicial`/`dispatchCotizacionToStore` (el mecanismo real de envío a tienda). Cada "Si"/"Ya cotízalo" del cliente seguía cayendo en el flujo genérico de captura, donde la IA — sin ninguna validación real de por medio — generó el texto "COTIZAR..." dentro de `customer_reply` (el campo que sí ve el cliente, en vez de `dispatch.business_message`, que nunca se usa en el código) y afirmó falsamente haberlo enviado. Confirmado con logs de Waapi: el mensaje se mandó al número del **cliente** (`5213310184790`), nunca al número real de la tienda (`5213326195371`) — ese número no aparece ni una sola vez como destinatario en toda la conversación.
+
+**Dos fixes:**
+1. `"nombre"` agregado como alias reconocido en `captureEngine.extractCandidateItems` y documentado explícitamente en el schema de Zod (`llmResponseSchema.ts`).
+2. `mandaloPrompt.ts`: BLOQUE 6 aclara que `dispatch.business_message` es un campo interno que el cliente nunca ve, prohibido copiarlo a `customer_reply`. BLOQUE 7 (regla de veracidad) prohíbe explícitamente escribir "COTIZAR." o afirmar un envío dentro de `customer_reply` — si el cliente pregunta si ya se mandó, debe responder neutral ("sigo armando tu pedido") en vez de inventar una confirmación.
+
 **Pendiente:**
-- Repetir la prueba una vez más y revisar el log nuevo para ver exactamente qué trae `order_state.items` en el turno donde se pierde la información.
-- Limpiar los pedidos de prueba atorados (#31, #33, #34).
+- Prueba en vivo de punta a punta (mismo tipo de pedido, marca+cantidad completas en un mensaje) para confirmar que el pedido ahora sí llega a `confirmacion_cliente` → dispatch real a la tienda.
+- Limpiar los pedidos de prueba atorados (#31, #33, #34, #36) — todos en `seleccion_productos`/estados intermedios sin timeout, van a seguir ahí hasta que se borren manualmente.
+- El log temporal `[getLLMResponse] order_state crudo de la IA:` (commit `87244bd`) sigue en el código — bajo costo, se puede dejar por ahora como red de diagnóstico para el próximo bug de este tipo, o retirarse en un cleanup futuro.
 
 ## ✅ Bloque de trabajo 2026-08-27 (commit `bc84ac4`, directo sobre `main`)
 
