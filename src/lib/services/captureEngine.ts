@@ -270,7 +270,13 @@ export function extractCandidateItems(llmOrderState?: JsonObject | null): Pedido
   return rawItems
     .map((raw) => {
       const row = asObject(raw);
-      const nombreProducto = cleanText(row.nombre_producto ?? row.name);
+      // "nombre" agregado como alias (agosto 2026): confirmado en logs de
+      // producción que la IA a veces manda items con esta clave en vez de
+      // nombre_producto/name — sin este alias, extractCandidateItems los
+      // descartaba en silencio (sin ningún error de Zod, porque el campo es
+      // opcional) y el pedido nunca salía de seleccion_productos aunque el
+      // cliente ya hubiera dado marca/cantidad completas.
+      const nombreProducto = cleanText(row.nombre_producto ?? row.nombre ?? row.name);
       if (!nombreProducto) return null;
 
       const marca = cleanText(row.marca);

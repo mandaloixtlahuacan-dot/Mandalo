@@ -25,6 +25,7 @@ export const mandaloAgentResponseSchema = z.object({
           z
             .object({
               name: z.string().optional(),
+              nombre: z.string().optional(),
               nombre_producto: z.string().optional(),
               qty: z.union([z.string(), z.number()]).optional().nullable(),
               cantidad: z.union([z.string(), z.number()]).optional().nullable(),
