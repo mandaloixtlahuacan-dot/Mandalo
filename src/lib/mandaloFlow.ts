@@ -830,7 +830,23 @@ async function handleConfirmadoTiendas(telefono: string, mensaje: string, pedido
   logCourierDispatch({ orderId: pedido.id, courierName: repartidorNombre, courierPhone: repartidorTelefono, customerPhone: telefono, mapsLink, body: msgRepartidor });
 
   try {
-    await pedidoRepositoryV2.setPedidoEstado({ pedidoId: pedido.id, estado: "dispatch_repartidor_pendiente" });
+    // El deadline se fija aquí, al encolar, no en handleDispatchAck (que
+    // depende de una ruta de dispatch-worker sin ningún cron/webhook real
+    // que la dispare — ver ROADMAP.md). Mismo patrón que storeDispatch.ts
+    // usa para "store_quote": el timeout empieza a correr desde que el
+    // pedido entra al estado de espera, no desde un ack de envío que puede
+    // no llegar nunca.
+    await pedidoRepositoryV2.setPedidoEstado({
+      pedidoId: pedido.id,
+      estado: "dispatch_repartidor_pendiente",
+      metadataPatch: {
+        ...buildOrderTimeoutMetadata("courier_confirmation"),
+        current_courier_id: typeof repartidor?.id === "number" ? repartidor.id : null,
+        current_courier_name: repartidorNombre,
+        current_courier_phone: repartidorTelefono,
+        courier_assignment_attempt: 1,
+      },
+    });
     await pedidoRepositoryV2.appendPedidoEvento({
       pedidoId: pedido.id,
       tipoEvento: "dispatch_repartidor",
