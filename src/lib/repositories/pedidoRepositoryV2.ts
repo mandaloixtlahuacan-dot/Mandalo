@@ -396,11 +396,15 @@ export async function removePedidoItem(itemId: number): Promise<void> {
 
 // Reemplaza el producto (el cliente lo cambió por otro) — vuelve a marcarlo
 // disponible=true, ya es un producto distinto que la tienda todavía no evaluó.
-export async function replacePedidoItemText(itemId: number, nuevoTexto: string): Promise<void> {
+// cantidad es opcional a propósito: undefined = no tocar la cantidad ya
+// guardada (el extractor de reemplazo no siempre encuentra una nueva).
+export async function replacePedidoItemText(itemId: number, nuevoTexto: string, cantidad?: number | null): Promise<void> {
   const supabase = getSupabaseAdmin();
+  const update: Record<string, unknown> = { nombre_producto: nuevoTexto, disponible: true };
+  if (cantidad !== undefined) update.cantidad = cantidad;
   const { error } = await supabase
     .from("pedido_items")
-    .update({ nombre_producto: nuevoTexto, disponible: true })
+    .update(update)
     .eq("id", itemId);
   if (error) throw error;
 }

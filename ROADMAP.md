@@ -2,14 +2,18 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 2 de septiembre de 2026, trabajo directo sobre `main`
+> Última actualización: 5 de septiembre de 2026, trabajo directo sobre `main`
 > (decisión de Víctor desde el 2026-08-24 en adelante: sin rama aparte ni
-> Preview), commit `51fd2fb`. **Deduplicación de WhatsApp confirmada
-> resuelta** (`NOTIFY pgrst, 'reload schema'` era la causa real). **Bug de
-> items perdidos (causa raíz: alias "nombre" no reconocido) también
-> resuelto** — ver bloque del 2026-09-02 abajo. Pendiente de una prueba en
-> vivo de punta a punta antes de dar el flujo de captura por completamente
-> sano.
+> Preview). **Timeout de repartidor (10 min sin #CONFIRMO) corregido** —
+> nunca se armaba porque dependía de una ruta (`dispatch-worker`) sin ningún
+> cron/webhook real que la disparara. **Producto de reemplazo en
+> `ajuste_producto` ya no se guarda como texto crudo del cliente** — ahora se
+> extrae con IA y se confirma antes de aplicarse; ver los dos bloques del
+> 2026-09-05 abajo. **Deduplicación de WhatsApp confirmada resuelta**
+> (`NOTIFY pgrst, 'reload schema'` era la causa real). **Bug de items
+> perdidos (causa raíz: alias "nombre" no reconocido) también resuelto** —
+> ver bloque del 2026-09-02 abajo. Pendiente de una prueba en vivo de punta a
+> punta antes de dar el flujo de captura por completamente sano.
 > `fix/zod-items-schema-mismatch` mergeada a `main` el 2026-08-24 (validada en
 > vivo antes de mergear) — `feature/mandalo-24-7-pedidos-programados` mergeada
 > el mismo día, commit `2f54558` — `fix/confirmacion-pregunta-vs-si` mergeada
@@ -267,6 +271,48 @@ Con el log de `order_state` crudo (`87244bd`) ya en producción, Víctor repiti�
 Dos ajustes de Víctor a la ventana de reparto introducida el 2026-08-26:
 1. **Horario ampliado de 3pm-8pm a 3pm-9pm** — `MANDALO_HORA_CIERRE` en `businessHours.ts` de `"20:00"` a `"21:00"`.
 2. **Tono "por ahora"** — todos los mensajes que explican el horario al cliente (prompt BLOQUE 4, y los tres mensajes de `esperando_apertura_tienda` en `mandaloFlow.ts` vía `describeWhyWaiting`) cambiaron de "Mándalo reparte de X a Y" a "por ahora operamos de X a Y" — deja explícito que es el horario vigente, no una regla fija para siempre. `CLAUDE.md` Sección 5 regla 6 actualizada con el mismo tono y horario nuevo.
+
+## ✅ Bloque de trabajo 2026-09-05 (directo sobre `main`) — timeout de repartidor nunca se armaba: dispatch-worker es código huérfano
+
+Confirmado con datos reales de producción (pedido #39, atorado en `dispatch_repartidor_pendiente` desde el 2 de septiembre a las 23:48, `repartidor_id` NULL, más de 3 días sin cancelarse pese al timeout de 10 min de CLAUDE.md Sección 8).
+
+**Causa raíz confirmada con 4 queries a Supabase (no logs de Vercel, no especulación):**
+1. `pedidos.metadata_json` del #39 traía `store_quote_deadline_at`, `final_confirmation_deadline_at`, `product_adjustment_deadline_at` — pero **nunca** `courier_confirmation_deadline_at`.
+2. `admin_notificaciones` confirma que el mensaje de dispatch al repartidor sí se mandó de verdad (23:52:30, `estado_envio = 'enviada'`, sin error).
+3. `pedido_eventos` no tiene ningún `dispatch_repartidor_ack` ni `dispatch_failed_final` — la secuencia se corta justo después del evento `dispatch_repartidor` que arma `mandaloFlow.ts` al transicionar el estado (no un ack de envío).
+4. `cron.job_run_details` confirma que `mandalo_order_timeout_worker` corrió sin fallas cada minuto durante toda la ventana — el cron nunca tuvo nada que encontrar.
+
+`courier_confirmation_deadline_at` solo se escribía dentro de `stateTransitionService.handleDispatchAck` (rama `dispatch_repartidor`), llamada únicamente desde `dispatchWorker.ts`, invocado únicamente por la ruta `/api/internal/dispatch-worker`. Esa ruta **no tiene ningún cron ni Database Webhook que la dispare** — ninguna de las 30+ migraciones de Supabase la referencia. El mensaje real al repartidor sale por otro camino: el trigger genérico `trg_admin_notificaciones_dispatch` (`20260806_fase2_admin_outbox_webhook.sql`, dispara en cada INSERT a `admin_notificaciones` sin filtrar por `tipo`) → `/api/internal/admin-outbox` → `adminOutboxWorker.processAdminOutboxBatch`, que manda el WhatsApp directo vía Waapi y nunca toca `stateTransitionService`. El deadline no se escribía nunca, para ningún pedido — no era una condición de carrera ni un caso raro del #39.
+
+**Fix aplicado** (`mandaloFlow.ts`, bloque de dispatch a repartidor, ~línea 833): el deadline y los campos `current_courier_id/name/phone` + `courier_assignment_attempt: 1` ahora se fijan directo en el mismo `setPedidoEstado` que transiciona a `dispatch_repartidor_pendiente` — mismo patrón que `storeDispatch.ts` ya usaba para `store_quote_deadline_at`. El timeout ya no depende de un ack de envío que nunca llega.
+
+**Efecto secundario descubierto de paso:** `courierCommandParser.ts` (validación de `#CONFIRMO`) también lee `current_courier_id`/`current_courier_phone` de metadata para verificar que el repartidor que confirma es el asignado — esos campos tampoco se escribían nunca por el mismo motivo, así que esa validación también estaba degradada para todo pedido. El fix de arriba corrige ambos huecos a la vez.
+
+**Código huérfano documentado, no retirado — pendiente de decisión de Víctor:**
+- `src/app/api/internal/dispatch-worker/route.ts`, `dispatchWorker.ts`, y la rama `dispatch_repartidor` de `handleDispatchAck`/`handleDispatchFailure` en `stateTransitionService.ts` — nunca se invocan en producción, ningún cron/webhook los conecta. Bien escritos, sin llamador real. Opciones para después: (a) retirarlos, (b) conectarlos con un Database Webhook real sobre `pedidos` — pero competirían con el trigger genérico de `admin_notificaciones` por la misma fila (mismo RPC de claim atómico), así que conectar el webhook por sí solo no resuelve nada sin además excluir `dispatch_repartidor` del claim genérico de `adminOutboxWorker`.
+- La misma pregunta aplica en teoría a `cotizacion_tienda` (también pasa por el trigger genérico) — pero ese caso no depende de un ack para su timeout (`storeDispatch.ts` ya fija `store_quote_deadline_at` al encolar), así que este hueco específico no lo afecta.
+
+**Pendiente:**
+- Decidir si se retira `dispatch-worker`/`handleDispatchAck` o se conecta de verdad (ver arriba).
+- El pedido #39 sigue atorado en producción — el fix no lo repara retroactivamente (su metadata ya existe sin el deadline). Preguntar a Víctor si se cancela manualmente o se espera a una futura reconciliación.
+- Prueba en vivo pendiente: confirmar que un pedido nuevo que llega a `dispatch_repartidor_pendiente` sí se cancela solo si el repartidor no confirma en 10 min.
+
+## ✅ Bloque de trabajo 2026-09-05 (directo sobre `main`) — producto de reemplazo en `ajuste_producto` se guardaba como texto crudo del cliente
+
+Confirmado con datos reales (pedido #39, mismo pedido del bloque de arriba): la tienda marcó "Coca-Cola litros x2" como `#NO_DISPONIBLE`, el cliente respondió *"ok no pasa nada, entonces nomás la pura coca"* (quería un reemplazo, no quitar el producto), y el item quedó guardado en `pedido_items` con `nombre_producto = "OK, no pasa nada, entonces la pura coca"` — la frase conversacional completa, tal cual, viajó a la re-cotización de la tienda y al mensaje de dispatch al repartidor como si fuera el nombre del producto.
+
+**Causa raíz (código, no requirió más datos):** `handleAjusteProducto` (`mandaloFlow.ts`) solo tenía dos caminos — `isDropProductIntent` (allowlist de frases tipo "sin él"/"quítalo") o, si no matcheaba, `const nuevoTexto = String(mensaje ?? "").trim()` guardado **directo** como `nombre_producto` vía `replacePedidoItemText`. Sin ningún paso de extracción ni de confirmación — viola CLAUDE.md Sección 5 regla 5 ("la IA siempre confirma el producto entendido antes de continuar"), regla que sí se respeta en la captura inicial pero no se reusaba aquí.
+
+**Fix aplicado:**
+1. `extractReplacementProduct` (nuevo, `mandaloFlow.ts`): llamada a OpenAI acotada solo al mensaje del cliente (no el prompt conversacional completo — evita reintroducir los bugs de alucinación ya vistos), pide extraer `nombre_producto`/`marca`/`presentacion`/`cantidad`/`unidad` ignorando muletillas. El resultado pasa por `extractCandidateItems` (`captureEngine.ts`) — el mismo normalizador que ya usa la captura inicial, así se heredan gratis sus alias de campo conocidos.
+2. El producto extraído ya no se aplica directo: se guarda como propuesta pendiente en `pedidos.metadata_json.product_adjustment_pending_replacement` (atado a `itemId`, para que una propuesta vieja sin confirmar nunca se aplique a un item distinto si el pedido vuelve a pasar por `ajuste_producto`) y se le pregunta al cliente "Entendí que quieres... ¿es correcto?". Solo con un `SÍ` (`isYesConfirmation`) se llama a `replacePedidoItemText`. Un `NO` limpia la propuesta y vuelve a preguntar; cualquier otro texto se toma como un nuevo intento de aclarar.
+3. `pedidoRepositoryV2.replacePedidoItemText` ahora acepta un tercer parámetro opcional `cantidad` — si la IA detectó una cantidad nueva, se actualiza junto con el nombre; si no, se conserva la que ya tenía el item.
+
+Compila limpio (`tsc --noEmit`, `eslint`, `next build`).
+
+**Pendiente:**
+- Prueba en vivo: marcar un producto `#NO_DISPONIBLE` y responder con una frase conversacional con relleno, confirmar que el bot propone el producto limpio y solo lo aplica tras el "SÍ".
+- El item 134 del pedido #39 (ya cancelado en el bloque de arriba) quedó con el nombre crudo — no se corrige retroactivamente, es un pedido cerrado.
 
 ## ⚪ No construido todavía (fuera del punchlist del brief)
 

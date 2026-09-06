@@ -1,9 +1,10 @@
+import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getChatCompletion, getOpenAIModel } from "@/lib/openaiClient";
 import { buildMandaloSystemPrompt } from "@/lib/mandaloPrompt";
 import { normalizeWhatsAppText, waapiSendText } from "@/lib/waapi";
 import { detectActorByPhone, ensureMxWhatsappIntl, normalizePhone } from "@/lib/roles";
-import { createCaptureEngine, formatItems as formatSnapshotItems } from "@/lib/services/captureEngine";
+import { createCaptureEngine, extractCandidateItems, formatItems as formatSnapshotItems, type PedidoItemInput } from "@/lib/services/captureEngine";
 import * as pedidoRepositoryV2 from "@/lib/repositories/pedidoRepositoryV2";
 import { getAdminPhone } from "@/lib/repositories/configRepository";
 import * as metricsRepository from "@/lib/repositories/metricsRepository";
@@ -879,11 +880,100 @@ async function handleConfirmadoTiendas(telefono: string, mensaje: string, pedido
   return { ok: true, role: "cliente", stage: "dispatch_repartidor_pendiente", pedidoId: pedido.id };
 }
 
+// Producto de reemplazo propuesto por la IA, esperando el "SÍ" del cliente
+// (CLAUDE.md Sección 5 regla 5) — atado a itemId a propósito: si el pedido
+// vuelve a pasar por ajuste_producto con OTRO item, una propuesta vieja sin
+// confirmar no debe aplicarse por error.
+type ProductAdjustmentPendingReplacement = {
+  itemId: number;
+  nombreProducto: string;
+  cantidad: number | null;
+};
+
+function parsePendingReplacement(metadata: JsonObject, itemId: number): ProductAdjustmentPendingReplacement | null {
+  const raw = metadata.product_adjustment_pending_replacement;
+  if (!raw || typeof raw !== "object") return null;
+  const row = raw as Record<string, unknown>;
+  const pendingItemId = Number(row.itemId);
+  const nombreProducto = String(row.nombreProducto ?? "").trim();
+  if (!Number.isFinite(pendingItemId) || pendingItemId !== itemId || !nombreProducto) return null;
+  const cantidad = typeof row.cantidad === "number" && Number.isFinite(row.cantidad) ? row.cantidad : null;
+  return { itemId: pendingItemId, nombreProducto, cantidad };
+}
+
+function formatCandidateProductText(candidate: PedidoItemInput): string {
+  return [candidate.nombre_producto, candidate.marca, candidate.presentacion, candidate.unidad]
+    .filter((part): part is string => Boolean(part && String(part).trim()))
+    .join(" ")
+    .trim();
+}
+
+const replacementExtractionSchema = z
+  .object({
+    nombre_producto: z.string().optional().nullable(),
+    marca: z.string().optional().nullable(),
+    presentacion: z.string().optional().nullable(),
+    cantidad: z.union([z.string(), z.number()]).optional().nullable(),
+    unidad: z.string().optional().nullable(),
+  })
+  .passthrough();
+
+// Extrae el producto real de la respuesta conversacional del cliente durante
+// ajuste_producto (CLAUDE.md Sección 5 regla 5: la IA siempre confirma el
+// producto entendido antes de continuar). Antes de este fix, el texto crudo
+// del cliente se guardaba tal cual como nombre_producto — bug real
+// confirmado en producción (pedido #39: nombre_producto quedó como "OK, no
+// pasa nada, entonces la pura coca"). Usa una llamada a OpenAI acotada solo
+// a este mensaje (no el prompt conversacional completo, que ya ha causado
+// bugs de alucinación — ver ROADMAP.md) y reusa extractCandidateItems, el
+// mismo normalizador que usa la captura inicial, para heredar sus alias de
+// campo ya conocidos ("nombre"/"name"/"qty", etc.).
+async function extractReplacementProduct(params: { itemNombre: string; mensaje: string }): Promise<PedidoItemInput | null> {
+  const system =
+    `Un cliente de Mándalo (delivery de tiendita) está diciendo por cuál producto quiere cambiar ` +
+    `"${params.itemNombre}", que no estaba disponible. Extrae SOLO el producto real que pide — ignora ` +
+    `saludos, muletillas y explicaciones ("ok", "no pasa nada", "entonces", "nomás", "mejor", "bueno").\n\n` +
+    `Responde ÚNICAMENTE un JSON, sin texto alrededor, con esta forma:\n` +
+    `{"nombre_producto": string|null, "marca": string|null, "presentacion": string|null, "cantidad": number|null, "unidad": string|null}\n\n` +
+    `Si el mensaje no menciona ningún producto reconocible, responde {"nombre_producto": null}.`;
+
+  let text: string;
+  try {
+    text = await getChatCompletion({
+      model: getOpenAIModel(),
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: params.mensaje },
+      ],
+      max_tokens: 150,
+      temperature: 0,
+    });
+  } catch (e: unknown) {
+    console.error("[mandalo] extractReplacementProduct: fallo la llamada a OpenAI", { message: getErrorMessage(e) });
+    return null;
+  }
+
+  const jsonMatch = text.trim().match(/\{[\s\S]*\}/);
+  if (!jsonMatch?.[0]) return null;
+
+  let parsedJson: unknown;
+  try {
+    parsedJson = JSON.parse(jsonMatch[0]);
+  } catch {
+    return null;
+  }
+
+  const parsed = replacementExtractionSchema.safeParse(parsedJson);
+  if (!parsed.success) return null;
+
+  const [candidate] = extractCandidateItems({ items: [parsed.data] });
+  return candidate ?? null;
+}
+
 // Contraparte del cliente para handleTiendaProductoNoDisponible: decide si
-// continúa sin el producto (isDropProductIntent) o lo cambia por otro
-// (cualquier otro texto se toma como la descripción del reemplazo — mismo
-// principio que "no inventes el nombre exacto" de BLOQUE 4 del prompt, aquí
-// aplicado a texto que ya viene directo del cliente, sin pasar por la IA).
+// continúa sin el producto (isDropProductIntent) o lo cambia por otro. Si es
+// un reemplazo, la IA extrae el producto (extractReplacementProduct) y se
+// confirma con el cliente antes de aplicarlo — no se guarda su texto crudo.
 // Reusa dispatchCotizacionToStore para volver a pendiente_tiendas y re-cotizar
 // con la tienda — mismo mecanismo que el dispatch inicial.
 async function handleAjusteProducto(telefono: string, mensaje: string, pedido: PedidoFullRecord): Promise<JsonObject> {
@@ -953,6 +1043,35 @@ async function handleAjusteProducto(telefono: string, mensaje: string, pedido: P
     return reDispatchTrasAjuste(`✅ Listo, quité "${itemNombre}" de tu pedido #${pedido.id}.`);
   }
 
+  // Si ya le habíamos propuesto un producto de reemplazo a este mismo item,
+  // este turno decide qué hacer con esa propuesta en vez de arrancar de cero.
+  const pending = parsePendingReplacement(pedido.metadata, itemId);
+  if (pending) {
+    if (isYesConfirmation(mensaje)) {
+      await pedidoRepositoryV2.replacePedidoItemText(itemId, pending.nombreProducto, pending.cantidad ?? undefined);
+      await pedidoRepositoryV2.setPedidoEstado({
+        pedidoId: pedido.id,
+        estado: pedido.estado,
+        metadataPatch: { product_adjustment_pending_replacement: null },
+      });
+      return reDispatchTrasAjuste(`✅ Listo, cambié "${itemNombre}" por "${pending.nombreProducto}" en tu pedido #${pedido.id}.`);
+    }
+
+    if (isNoConfirmation(mensaje)) {
+      await pedidoRepositoryV2.setPedidoEstado({
+        pedidoId: pedido.id,
+        estado: pedido.estado,
+        metadataPatch: { product_adjustment_pending_replacement: null },
+      });
+      const msg = `Ok, dime otra vez por cuál producto cambio "${itemNombre}".`;
+      await sendWhatsApp(telefono, msg);
+      await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+      return { ok: true, role: "cliente", stage: "ajuste_producto", pedidoId: pedido.id };
+    }
+    // Cualquier otro texto: el cliente está corrigiendo o aclarando —
+    // se trata como un intento nuevo y sigue al bloque de extracción de abajo.
+  }
+
   const nuevoTexto = String(mensaje ?? "").trim();
   if (!nuevoTexto) {
     const msg = `Dime "sin él" para quitar "${itemNombre}" de tu pedido, o el nombre del producto por el que lo cambio.`;
@@ -961,8 +1080,31 @@ async function handleAjusteProducto(telefono: string, mensaje: string, pedido: P
     return { ok: true, role: "cliente", stage: "ajuste_producto", pedidoId: pedido.id };
   }
 
-  await pedidoRepositoryV2.replacePedidoItemText(itemId, nuevoTexto);
-  return reDispatchTrasAjuste(`✅ Listo, cambié "${itemNombre}" por "${nuevoTexto}" en tu pedido #${pedido.id}.`);
+  const candidate = await extractReplacementProduct({ itemNombre, mensaje: nuevoTexto });
+  const candidateText = candidate ? formatCandidateProductText(candidate) : "";
+
+  if (!candidateText) {
+    const msg = `No logré identificar el producto en tu mensaje. Escríbeme solo el nombre del producto por el que cambio "${itemNombre}" (ej. "Coca-Cola 600ml"), o "sin él" para quitarlo.`;
+    await sendWhatsApp(telefono, msg);
+    await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+    return { ok: true, role: "cliente", stage: "ajuste_producto", pedidoId: pedido.id };
+  }
+
+  await pedidoRepositoryV2.setPedidoEstado({
+    pedidoId: pedido.id,
+    estado: pedido.estado,
+    metadataPatch: {
+      product_adjustment_pending_replacement: { itemId, nombreProducto: candidateText, cantidad: candidate?.cantidad ?? null },
+    },
+  });
+
+  const cantidadTexto = candidate?.cantidad != null ? ` x${candidate.cantidad}` : "";
+  const msg =
+    `Entendí que en vez de "${itemNombre}" quieres:\n\n*${candidateText}${cantidadTexto}*\n\n` +
+    `¿Es correcto? Responde *SÍ* para confirmarlo, o dime el producto correcto.`;
+  await sendWhatsApp(telefono, msg);
+  await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+  return { ok: true, role: "cliente", stage: "ajuste_producto", pedidoId: pedido.id };
 }
 
 const TRACKING_MESSAGES: Partial<Record<OrderState, string>> = {
