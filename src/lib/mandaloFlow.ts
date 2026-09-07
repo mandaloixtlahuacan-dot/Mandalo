@@ -41,6 +41,7 @@ import {
 import { MandaloAgentResponse, mandaloAgentResponseSchema } from "@/lib/llmResponseSchema";
 import {
   fetchRecentChatHistory as fetchHistorialReciente,
+  containsFalseConfirmationClaim,
   isCancelIntent,
   isComplaintMessage,
   isDropProductIntent,
@@ -1382,9 +1383,20 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
   // reserva para el resumen final de confirmación, donde sí necesitamos texto
   // exacto/estructurado (tienda, productos, dirección) y no una paráfrasis.
   const llmReplyClean = sanitizeCustomerReply(String(respuesta.customer_reply ?? ""));
+  // Respaldo determinista de BLOQUE 7 (mandaloPrompt.ts): si el pedido NO está
+  // listo de verdad (según el backend) pero la IA de todos modos sonó a que
+  // ya quedó confirmado ("tu pedido está confirmado", "pedido listo"...), no
+  // se manda ese texto — bug real confirmado en producción (pedido #40: la
+  // IA dijo "confirmado" dos veces la noche anterior sin que el pedido
+  // llegara nunca a confirmacion_cliente, y el cliente se quedó creyendo que
+  // ya estaba hecho).
+  const llmReplySafe =
+    !captureResult.readyForConfirmation && containsFalseConfirmationClaim(llmReplyClean)
+      ? "Voy anotando tu pedido. En cuanto tenga todo listo te paso el resumen para que lo confirmes. 🛒"
+      : llmReplyClean;
   const customerMessage = captureResult.readyForConfirmation
     ? captureResult.customerMessage
-    : llmReplyClean || captureResult.customerMessage;
+    : llmReplySafe || captureResult.customerMessage;
 
   await sendWhatsApp(telefono, customerMessage);
   await guardarMensajeChat({ telefono, texto: customerMessage, estado: "bot" }).catch((e: unknown) => {

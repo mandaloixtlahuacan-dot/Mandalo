@@ -2,18 +2,21 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 5 de septiembre de 2026, trabajo directo sobre `main`
+> Última actualización: 6 de septiembre de 2026, trabajo directo sobre `main`
 > (decisión de Víctor desde el 2026-08-24 en adelante: sin rama aparte ni
 > Preview). **Timeout de repartidor (10 min sin #CONFIRMO) corregido** —
 > nunca se armaba porque dependía de una ruta (`dispatch-worker`) sin ningún
 > cron/webhook real que la disparara. **Producto de reemplazo en
 > `ajuste_producto` ya no se guarda como texto crudo del cliente** — ahora se
-> extrae con IA y se confirma antes de aplicarse; ver los dos bloques del
-> 2026-09-05 abajo. **Deduplicación de WhatsApp confirmada resuelta**
-> (`NOTIFY pgrst, 'reload schema'` era la causa real). **Bug de items
-> perdidos (causa raíz: alias "nombre" no reconocido) también resuelto** —
-> ver bloque del 2026-09-02 abajo. Pendiente de una prueba en vivo de punta a
-> punta antes de dar el flujo de captura por completamente sano.
+> extrae con IA y se confirma antes de aplicarse. **Tercera "confirmación
+> fantasma" corregida** (pedido #40: la IA dijo "tu pedido está confirmado"
+> una noche entera sin que el pedido llegara nunca a `confirmacion_cliente`,
+> por un hueco en el match de zona de cobertura) — ver bloque del 2026-09-06
+> abajo. **Deduplicación de WhatsApp confirmada resuelta** (`NOTIFY pgrst,
+> 'reload schema'` era la causa real). **Bug de items perdidos (causa raíz:
+> alias "nombre" no reconocido) también resuelto** — ver bloque del
+> 2026-09-02 abajo. Pendiente de una prueba en vivo de punta a punta antes de
+> dar el flujo de captura por completamente sano.
 > `fix/zod-items-schema-mismatch` mergeada a `main` el 2026-08-24 (validada en
 > vivo antes de mergear) — `feature/mandalo-24-7-pedidos-programados` mergeada
 > el mismo día, commit `2f54558` — `fix/confirmacion-pregunta-vs-si` mergeada
@@ -313,6 +316,25 @@ Compila limpio (`tsc --noEmit`, `eslint`, `next build`).
 **Pendiente:**
 - Prueba en vivo: marcar un producto `#NO_DISPONIBLE` y responder con una frase conversacional con relleno, confirmar que el bot propone el producto limpio y solo lo aplica tras el "SÍ".
 - El item 134 del pedido #39 (ya cancelado en el bloque de arriba) quedó con el nombre crudo — no se corrige retroactivamente, es un pedido cerrado.
+
+## ✅ Bloque de trabajo 2026-09-06 (directo sobre `main`) — tercera "confirmación fantasma": zona de cobertura compuesta bloqueaba `readyForConfirmation` para siempre
+
+Reportado por Víctor con transcripción completa (pedido #40, WhatsApp real, 5-6 de septiembre). A las 11:20pm, tras dar tienda (Abarrotes Agua Santa, cerrada) + productos (queso, pan) + dirección por texto ("san jose pino 1 45260" → "casa color café al lado del kínder, número 3310184790"), el cliente confirmó con "sí" DOS VECES y el bot respondió ambas veces con lenguaje de confirmación total ("Pedido listo...", "Tu pedido está confirmado... En cuanto quede listo te aviso") — sin folio, sin el formato de recibo real. A la mañana siguiente, con un mensaje nuevo, el mismo pedido sí llegó al resumen real (`🧾 Este es tu pedido...`) y al `✅ Pedido #40 programado` con folio, combinando los productos de la noche anterior con uno nuevo.
+
+**Causa raíz confirmada sin necesitar logs — la propia transcripción ya lo prueba:** ninguna de las dos plantillas deterministas (`captureEngine.buildCustomerMessage` ni el mensaje final con folio) apareció en toda la conversación nocturna — todo lo que sonó a "confirmado" fue texto libre de la IA (`customer_reply`), nunca el mecanismo real. Es la misma familia del bug de items perdidos del 2026-09-02 (`51fd2fb`): la IA puede afirmar que el pedido quedó confirmado sin que el backend haya llegado de verdad a `confirmacion_cliente`.
+
+**Disparador técnico esta vez:** `validationEngine.validateAddress` — sin GPS, la única vía a `isValid` es `zoneMatch && hasMinimalDetail`, y `zoneMatch` exigía que `address_zone` (UN solo campo) coincidiera EXACTO con una sola fila de `zonas_cobertura`. El cliente mencionó dos zonas en el mismo mensaje ("san jose pino") — el propio bot lo reconoce ("Veo que mencionas San José y Pino, que son zonas que cubro") — así que ningún valor de un solo campo podía calzar exacto con una sola fila, y `readyForConfirmation` se quedó en `false` toda la noche sin importar cuántos detalles más diera el cliente.
+
+**Tres fixes aplicados (los tres pedidos por Víctor explícitamente):**
+1. **`validationEngine.ts` (`validateAddress`):** el match de zona ahora acepta que cualquier zona conocida aparezca DENTRO de lo capturado (`includes`, no igualdad exacta de cadena completa) — "San José y Pino" ahora sí calza porque contiene "Pino". Verificado con la dirección real del pedido #40 corriendo la función directo (sin BD): `isValid` pasa de `false` a `true`.
+2. **`mandaloPrompt.ts` (BLOQUE 7, regla de veracidad):** nueva regla explícita — la IA nunca decide que un pedido quedó confirmado; solo el backend lo hace, entregándole el resumen formal o el mensaje con folio. Aunque el cliente ya haya dicho "sí", sin ese texto exacto la IA debe seguir hablando en tono de "sigo armando tu pedido", nunca "confirmado"/"listo".
+3. **Respaldo determinista (`messages.ts` + `mandaloFlow.ts`):** confiar solo en que la IA obedezca el prompt ya falló dos veces antes. `containsFalseConfirmationClaim` (nuevo, `messages.ts`) detecta frases tipo "pedido está confirmado"/"pedido listo" en el texto libre de la IA; cuando `!readyForConfirmation` y la IA de todos modos sonó así, el mensaje completo se reemplaza por uno neutral real ("Voy anotando tu pedido...") en vez de mandarlo tal cual.
+
+Compila limpio (`tsc --noEmit`, `eslint`, `next build`).
+
+**Pendiente:**
+- Prueba en vivo: repetir un pedido con dirección de texto que mencione dos zonas conocidas a la vez, confirmar que ahora sí llega a `confirmacion_cliente` sin necesitar GPS.
+- El pedido #40 ya se resolvió solo (llegó a folio real la mañana siguiente) — no requiere intervención manual, a diferencia del #39.
 
 ## ⚪ No construido todavía (fuera del punchlist del brief)
 

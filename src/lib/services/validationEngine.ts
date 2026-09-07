@@ -92,9 +92,21 @@ export function validateAddress(
   // sin verificar nunca si de verdad caía dentro del radio de cobertura —
   // hueco real de Regla de oro #1 detectado en producción (agosto 2026).
   const knownZoneNames = zone?.knownZoneNames ?? [];
+  const normalizedAddressZone = zone?.addressZone ? normalizeZoneName(String(zone.addressZone)) : "";
+  // Un cliente puede mencionar más de una zona conocida en el mismo mensaje
+  // ("San José y Pino") — address_zone es un solo campo, así que exigir que
+  // coincidiera EXACTO con una sola fila descartaba direcciones válidas para
+  // siempre (sin GPS, la única otra vía a isValid), sin importar cuántos
+  // detalles más diera el cliente después — bug real confirmado en
+  // producción (pedido #40: nunca llegó a confirmacion_cliente esa noche).
+  // Ahora basta con que alguna zona conocida aparezca dentro de lo
+  // capturado, en vez de exigir coincidencia exacta de cadena completa.
   const zoneMatch =
-    Boolean(zone?.addressZone) &&
-    knownZoneNames.some((known) => normalizeZoneName(known) === normalizeZoneName(String(zone?.addressZone)));
+    normalizedAddressZone.length > 0 &&
+    knownZoneNames.some((known) => {
+      const normalizedKnown = normalizeZoneName(known);
+      return normalizedKnown.length > 0 && normalizedAddressZone.includes(normalizedKnown);
+    });
 
   // Con la zona ya confirmada, solo falta un dato mínimo para que el
   // repartidor ubique la casa exacta — un número o una referencia clara.

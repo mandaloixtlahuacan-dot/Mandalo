@@ -135,6 +135,22 @@ export async function fetchRecentChatHistory(
   return history.slice(-limit).reverse();
 }
 
+// Respaldo determinista de BLOQUE 7 del prompt (no basta con pedirle a la IA
+// que no lo haga — ya nos costó dos incidentes en producción confirmarlo: el
+// bug de "COTIZAR" en customer_reply de agosto 2026, y este, donde la IA le
+// dijo al cliente "Tu pedido está confirmado" dos noches antes de que el
+// pedido llegara de verdad a confirmacion_cliente). Se usa solo en la rama
+// donde ya sabemos que el backend NO considera el pedido listo
+// (!readyForConfirmation) — si la IA de todos modos suena a que ya se
+// confirmó, no se intenta arreglar el texto a medias, se reemplaza entero por
+// un mensaje neutral real.
+const FALSE_CONFIRMATION_REGEX =
+  /pedido\s+(ya\s+)?(está|esta|qued[oó])\s+(confirmado|list[oa]|hecho)|\bpedido\s+(confirmado|list[oa])\b|\bya\s+(qued[oó]|est[áa])\s+confirmado/i;
+
+export function containsFalseConfirmationClaim(text: string): boolean {
+  return FALSE_CONFIRMATION_REGEX.test(String(text ?? ""));
+}
+
 export function sanitizeCustomerReply(text: string): string {
   let t = String(text ?? "");
   // Quitar fences y bloques tipo JSON que se hayan colado
