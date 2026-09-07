@@ -2,9 +2,12 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 6 de septiembre de 2026, trabajo directo sobre `main`
-> (decisión de Víctor desde el 2026-08-24 en adelante: sin rama aparte ni
-> Preview). **Timeout de repartidor (10 min sin #CONFIRMO) corregido** —
+> Última actualización: 7 de septiembre de 2026. **Base de datos limpia**:
+> Víctor borró las 15 tablas huérfanas confirmadas sin uso (5 `*_legacy_20260805`
+> + 10 de un intento de arquitectura previo al de agosto) — quedan 13 tablas
+> reales en Supabase, ver bloque del 2026-09-07 abajo. Código: trabajo directo
+> sobre `main` (decisión de Víctor desde el 2026-08-24 en adelante: sin rama
+> aparte ni Preview). **Timeout de repartidor (10 min sin #CONFIRMO) corregido** —
 > nunca se armaba porque dependía de una ruta (`dispatch-worker`) sin ningún
 > cron/webhook real que la disparara. **Producto de reemplazo en
 > `ajuste_producto` ya no se guarda como texto crudo del cliente** — ahora se
@@ -336,11 +339,25 @@ Compila limpio (`tsc --noEmit`, `eslint`, `next build`).
 - Prueba en vivo: repetir un pedido con dirección de texto que mencione dos zonas conocidas a la vez, confirmar que ahora sí llega a `confirmacion_cliente` sin necesitar GPS.
 - El pedido #40 ya se resolvió solo (llegó a folio real la mañana siguiente) — no requiere intervención manual, a diferencia del #39.
 
+## ✅ Bloque de trabajo 2026-09-07 (Víctor, vía SQL Editor de Supabase) — limpieza de 15 tablas huérfanas
+
+Auditoría pedida por Víctor: comparar la lista completa de tablas de Supabase contra lo que el código realmente usa (grep de `.from("...")` en `src/` + rastreo de origen en `supabase/migrations/`). Resultado completo entregado antes de tocar nada (regla de oro de `mandalo-ops-safety`: primero diagnóstico/SELECT de verificación, Víctor corre el borrado él mismo).
+
+**15 tablas confirmadas sin ningún uso en código y borradas por Víctor:**
+- Las 5 renombradas en el corte de Fase 3 (`20260805_fase3_corte.sql`) como red de seguridad reversible: `pedidos_legacy_20260805`, `pedido_items_legacy_20260805`, `clientes_legacy_20260805`, `negocios_legacy_20260805`, `repartidores_legacy_20260805`. Más de 4 semanas de operación real sobre el esquema nuevo — la red de seguridad ya cumplió su función.
+- 10 tablas de un intento de arquitectura previo incluso a la migración de agosto (`20260609_bloque7_modelo_profesional.sql`, 9 de junio, abandonado antes de Fase 1-3): `catalogo_productos`, `cliente_direcciones`, `historial_clientes`, `negocio_productos` (la que `productos_tienda` reemplazó formalmente en Fase 1), `pedido_mensajes`, `pedido_pagos`, `pedidos_v2`, `reporte_movimientos`, `reportes_semanales`, `sugerencias_sustitucion`. La propia migración de Fase 3 ya marcaba `pedidos_v2` como huérfana "desde la Fase 2", pendiente de "limpieza final (Fase 6)" — esto fue esa limpieza.
+- Verificado antes de borrar: `pedido_eventos` y `admin_notificaciones` (tablas vivas) originalmente tenían FK hacia `pedidos_v2` (venían del mismo bloque de junio), pero ya habían sido repunteadas explícitamente a `pedidos` en migraciones posteriores (`20260805_fase2_pedidos_metadata.sql`, `20260805_fase2_outbox_general.sql`) — sin dependencia real al momento del borrado. Los únicos FK que quedaban eran internos entre las propias 15 candidatas.
+
+**No se tocó `productos_tienda`** — es la tabla definitiva de CLAUDE.md Sección 4 (con datos reales, backfill ya hecho en Fase 1), pero **no se usa en código todavía**: la feature de catálogo por tienda nunca se conectó al bot (hoy siempre usa inferencia genérica de IA). No es basura de una migración vieja, es esquema vigente al que le falta el código — ver "No construido todavía" abajo.
+
+**Tablas finales en Supabase tras el borrado (13):** `admin_notificaciones`, `clientes`, `configuracion`, `metricas_semanales`, `pedido_eventos`, `pedido_items`, `pedido_tiendas`, `pedidos`, `productos_tienda`, `repartidores`, `tiendas`, `whatsapp_mensajes_procesados`, `zonas_cobertura`.
+
 ## ⚪ No construido todavía (fuera del punchlist del brief)
 
 - **Comando explícito de "cambio de repartidor"** (nombre exacto pendiente de definir, CLAUDE.md Sección 14) — infraestructura reservada (ver nota arriba), falta el comando en sí.
 - **Multi-tienda real / recargo de `servicio_repartidor` por tienda adicional** — deliberadamente no construido, ver punto 14 arriba.
 - **Radio de cobertura definitivo** — el valor de 1.5km sigue provisional.
+- **Catálogo por tienda (`productos_tienda`)** — tabla definitiva ya creada y con datos (Fase 1), pero el bot nunca la consulta; siempre usa inferencia genérica de IA para productos (CLAUDE.md Sección 4). Confirmado en la auditoría de tablas del 2026-09-07.
 
 ## Cómo mantener esto al día
 
