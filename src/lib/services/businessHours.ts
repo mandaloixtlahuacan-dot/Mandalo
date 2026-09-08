@@ -48,6 +48,23 @@ export function parseHourToMinutes(raw: string | null | undefined): number | nul
   return hour * 60 + minute;
 }
 
+// Formato de 12 horas para mensajes al cliente sobre el horario de MÁNDALO
+// (CLAUDE.md Sección 5 regla 6 ya lo describe así, "3pm a 9pm" — el bot debe
+// hablar igual, no en 24h). Deliberadamente NO se usa para el horario de
+// cada tienda (tiendas.hora_apertura/hora_cierre) — eso queda en su formato
+// original, fuera de este ajuste.
+export function formatHour12(raw: string): string {
+  const match = String(raw ?? "").trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return raw;
+
+  let hour = Number(match[1]);
+  const minute = Number(match[2]);
+  const meridiem = hour >= 12 ? "pm" : "am";
+  hour = hour % 12 || 12;
+  const minuteText = minute > 0 ? `:${String(minute).padStart(2, "0")}` : "";
+  return `${hour}${minuteText}${meridiem}`;
+}
+
 export type TiendaScheduleCheck = { withinSchedule: true } | { withinSchedule: false; horaApertura: string; horaCierre: string };
 
 // Si la tienda no tiene horario cargado en BD, se trata como siempre abierta

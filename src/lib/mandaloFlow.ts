@@ -15,6 +15,7 @@ import { buildOrderTimeoutMetadata, buildEsperandoAperturaMetadata } from "@/lib
 import {
   checkMandaloSchedule,
   checkTiendaSchedule,
+  formatHour12,
   MANDALO_HORA_APERTURA,
   MANDALO_HORA_CIERRE,
   type TiendaScheduleCheck,
@@ -293,7 +294,7 @@ export async function getLLMResponse(params: {
     zonasCobertura: zonasCobertura_text,
     historial: String(params.supabaseJson?.historial_text ?? ""),
     saludoInicial: buildSaludoInicial(),
-    horarioMandaloText: `de ${MANDALO_HORA_APERTURA} a ${MANDALO_HORA_CIERRE}`,
+    horarioMandaloText: `de ${formatHour12(MANDALO_HORA_APERTURA)} a ${formatHour12(MANDALO_HORA_CIERRE)}`,
     menuTiendaCatalogo: menuTiendaCatalogo_text,
   });
 
@@ -636,12 +637,12 @@ function describeWhyWaiting(params: {
 
   if (!mandaloSchedule.withinSchedule && !tiendaSchedule.withinSchedule) {
     return (
-      `Por ahora operamos de ${mandaloSchedule.horaApertura} a ${mandaloSchedule.horaCierre}, y ahorita está fuera de ese horario — ` +
+      `Por ahora operamos de ${formatHour12(mandaloSchedule.horaApertura)} a ${formatHour12(mandaloSchedule.horaCierre)}, y ahorita está fuera de ese horario — ` +
       `*${tiendaNombre}* también está cerrada (abre a las ${tiendaSchedule.horaApertura})`
     );
   }
   if (!mandaloSchedule.withinSchedule) {
-    return `Por ahora operamos de ${mandaloSchedule.horaApertura} a ${mandaloSchedule.horaCierre}, y ahorita está fuera de ese horario`;
+    return `Por ahora operamos de ${formatHour12(mandaloSchedule.horaApertura)} a ${formatHour12(mandaloSchedule.horaCierre)}, y ahorita está fuera de ese horario`;
   }
   if (!tiendaSchedule.withinSchedule) {
     return `*${tiendaNombre}* está cerrada ahora, abre a las ${tiendaSchedule.horaApertura}`;
