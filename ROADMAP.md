@@ -2,7 +2,12 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 7 de septiembre de 2026. **Base de datos limpia**:
+> Última actualización: 7 de septiembre de 2026. **Tiendas con catálogo de
+> precios fijos** (nueva feature, `tiendas.usa_catalogo_fijo`) — el bot cotiza
+> automático contra `productos_tienda` y se salta la cotización manual; ver
+> bloque del 2026-09-07 más abajo. **Pendiente que Víctor corra la migración
+> y dé los datos de la primera tienda de este tipo (hot dogs/hamburguesas)
+> antes de probarlo en vivo.** **Base de datos limpia**:
 > Víctor borró las 15 tablas huérfanas confirmadas sin uso (5 `*_legacy_20260805`
 > + 10 de un intento de arquitectura previo al de agosto) — quedan 13 tablas
 > reales en Supabase, ver bloque del 2026-09-07 abajo. Código: trabajo directo
@@ -351,6 +356,26 @@ Auditoría pedida por Víctor: comparar la lista completa de tablas de Supabase 
 **No se tocó `productos_tienda`** — es la tabla definitiva de CLAUDE.md Sección 4 (con datos reales, backfill ya hecho en Fase 1), pero **no se usa en código todavía**: la feature de catálogo por tienda nunca se conectó al bot (hoy siempre usa inferencia genérica de IA). No es basura de una migración vieja, es esquema vigente al que le falta el código — ver "No construido todavía" abajo.
 
 **Tablas finales en Supabase tras el borrado (13):** `admin_notificaciones`, `clientes`, `configuracion`, `metricas_semanales`, `pedido_eventos`, `pedido_items`, `pedido_tiendas`, `pedidos`, `productos_tienda`, `repartidores`, `tiendas`, `whatsapp_mensajes_procesados`, `zonas_cobertura`.
+
+## 🚧 Bloque de trabajo 2026-09-07 (directo sobre `main`) — tiendas con catálogo de precios fijos (usa_catalogo_fijo)
+
+Pedido de Víctor: una tienda nueva (hot dogs/hamburguesas) con menú de precios fijos, para la que el bot calcule el subtotal directo sin pedirle cotización manual a la tienda — a diferencia de todas las tiendas actuales. Diseño discutido y acordado con Víctor antes de programar (tres decisiones explícitas: sí integrar el catálogo también en la captura, no solo al despachar; producto fuera del menú se trata como `#NO_DISPONIBLE` automático; `#NO_DISPONIBLE` después de la auto-confirmación queda fuera de alcance por ahora).
+
+**Diseño:**
+1. **Esquema** (`20260907_tiendas_catalogo_fijo.sql`): `tiendas.usa_catalogo_fijo boolean not null default false`. Flag explícito, no "detectar por si tiene filas en `productos_tienda`" — una tienda podría tener catálogo cargado sin estar lista para saltarse la revisión humana.
+2. **Captura** (`getLLMResponse`, `mandaloFlow.ts`): si la tienda ya elegida en el pedido (`currentOrderState.businessId`, persistido desde el turno anterior) tiene `usa_catalogo_fijo=true`, se inyecta su menú (`productos_tienda` activos) al prompt de la IA — nueva sección de contexto + regla nueva en BLOQUE 4 de `mandaloPrompt.ts` (usar los nombres exactos del menú, decir el precio real desde que lo piden, ofrecer las opciones reales si piden algo fuera del menú). Un turno de rezago inevitable: recién al turno siguiente de elegir la tienda se conoce `businessId` desde el snapshot persistido — no afecta el flujo real.
+3. **Despacho** (`storeDispatch.ts`): dos funciones nuevas compartidas, extraídas de lo que antes vivía inline en `mandaloFlow.ts` — `finalizeStoreQuote` (la transición `pendiente_tiendas → confirmado_tiendas`, usada tanto por el `#PRECIO` manual como por el camino automático) y `flagItemUnavailable` (la transición a `ajuste_producto`, usada tanto por `#NO_DISPONIBLE` manual como por un producto que no matchea contra el catálogo). `dispatchCotizacionToStore` ahora hace el claim atómico de siempre y luego bifurca: si `pedido.tienda.usaCatalogoFijo`, resuelve cada producto contra `productos_tienda` (exacto → difuso, mismo patrón que ya usaba `findPedidoItemByText`); si falta alguno, `flagItemUnavailable` (mismo resultado que si la tienda hubiera escrito `#NO_DISPONIBLE`, sin que la tienda tenga que escribir nada); si todos matchean, `subtotal = Σ precio × cantidad` → `finalizeStoreQuote`. La tienda igual recibe un WhatsApp informativo ("ya cobrado automático, prepáralo"), sin pedirle que responda nada.
+4. **`#NO_DISPONIBLE` manual**: sin cambios de código — sigue funcionando igual mientras `pendiente_tiendas`, que con catálogo fijo dura un instante (se entra y sale atómico en el mismo cálculo).
+5. **`orderStateMachine.ts`**: sin cambios — el camino de catálogo fijo pasa por los mismos estados/transiciones que el manual, nunca introduce un estado nuevo.
+
+Compila limpio (`tsc --noEmit`, `eslint`, `next build`).
+
+**Fuera de alcance para v1 (decisión de Víctor):** `#NO_DISPONIBLE` después de `confirmado_tiendas` (ej. "se me acabó la salchicha" tras la auto-confirmación) — si hace falta en la práctica, se agrega después.
+
+**Pendiente:**
+- Víctor corre `supabase/migrations/20260907_tiendas_catalogo_fijo.sql`.
+- Falta el `INSERT` de la tienda nueva (nombre, teléfono, dirección, horario, categoría) y su catálogo real (`productos_tienda`: nombre + precio) — pendiente de que Víctor dé los datos.
+- Prueba en vivo de punta a punta: pedir de la tienda de catálogo fijo, confirmar que el bot da el precio directo sin esperar a nadie, y que un producto fuera del menú dispara el flujo de `ajuste_producto` sin involucrar a la tienda.
 
 ## ⚪ No construido todavía (fuera del punchlist del brief)
 

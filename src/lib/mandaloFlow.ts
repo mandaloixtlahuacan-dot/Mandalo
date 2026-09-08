@@ -19,16 +19,8 @@ import {
   MANDALO_HORA_CIERRE,
   type TiendaScheduleCheck,
 } from "@/lib/services/businessHours";
-import { dispatchCotizacionToStore } from "@/lib/services/storeDispatch";
-import {
-  calculateFinalPrice,
-  extraerNoDisponible,
-  extraerOrdenId,
-  extraerPrecio,
-  formatMoney,
-  MANDALO_DELIVERY_FEE,
-  MANDALO_SERVICE_FEE,
-} from "@/lib/ordenes";
+import { dispatchCotizacionToStore, finalizeStoreQuote, flagItemUnavailable } from "@/lib/services/storeDispatch";
+import { extraerNoDisponible, extraerOrdenId, extraerPrecio, formatMoney } from "@/lib/ordenes";
 import { isTerminalState, type OrderState } from "@/lib/orderStateMachine";
 import {
   extractCoordsFromUbicacion,
@@ -263,6 +255,36 @@ export async function getLLMResponse(params: {
     ? zonasCoberturaNombres.map((z) => `- ${z}`).join("\n")
     : "(sin zonas confirmadas)";
 
+  // Menú de precios fijos (tiendas.usa_catalogo_fijo) de la tienda YA elegida
+  // en un turno anterior (currentOrderState.business_id, persistido en el
+  // snapshot) — si existe, se inyecta para que la IA capture los productos
+  // con el nombre exacto del catálogo en vez de inferir genérico, y pueda
+  // decir el precio real desde ya (CLAUDE.md Sección 5 regla 5). Solo se
+  // conoce a partir del turno SIGUIENTE a que se resolvió la tienda (este
+  // mismo turno, business_id todavía no está en el snapshot persistido) —
+  // aceptable, un turno de diferencia no afecta el flujo real.
+  let menuTiendaCatalogo_text = "";
+  const businessIdRaw = (params.currentOrderState as { business_id?: unknown; businessId?: unknown })?.business_id ??
+    (params.currentOrderState as { businessId?: unknown })?.businessId;
+  const businessId = Number(businessIdRaw);
+  if (Number.isFinite(businessId) && businessId > 0) {
+    try {
+      const { data: tiendaRow } = await supabase
+        .from("tiendas")
+        .select("usa_catalogo_fijo")
+        .eq("id", businessId)
+        .maybeSingle();
+      if (tiendaRow?.usa_catalogo_fijo) {
+        const productos = await pedidoRepositoryV2.getProductosTiendaActivos(businessId);
+        if (productos.length) {
+          menuTiendaCatalogo_text = productos.map((p) => `- ${p.nombreProducto} — ${formatMoney(p.precio)}`).join("\n");
+        }
+      }
+    } catch (e: unknown) {
+      console.error("[mandalo] getLLMResponse: error consultando catálogo de tienda", { message: getErrorMessage(e) });
+    }
+  }
+
   const model = getOpenAIModel();
   const system = buildMandaloSystemPrompt({
     negociosDisponibles: tiendas_text,
@@ -272,6 +294,7 @@ export async function getLLMResponse(params: {
     historial: String(params.supabaseJson?.historial_text ?? ""),
     saludoInicial: buildSaludoInicial(),
     horarioMandaloText: `de ${MANDALO_HORA_APERTURA} a ${MANDALO_HORA_CIERRE}`,
+    menuTiendaCatalogo: menuTiendaCatalogo_text,
   });
 
   const messages: LlmMessage[] = [
@@ -1456,39 +1479,7 @@ async function handleTiendaProductoNoDisponible(
     return { ok: true, role: "tienda", ordenId, error: "PRODUCTO_NO_ENCONTRADO" };
   }
 
-  await pedidoRepositoryV2.setPedidoItemDisponible(item.id, false);
-  await pedidoRepositoryV2.setPedidoTiendaEstado({ pedidoTiendaId: pedido.tienda.pedidoTiendaId, estadoTienda: "ajuste_producto" });
-  await pedidoRepositoryV2.setPedidoEstado({
-    pedidoId: ordenId,
-    estado: "ajuste_producto",
-    metadataPatch: {
-      ...buildOrderTimeoutMetadata("product_adjustment"),
-      product_adjustment_item_id: item.id,
-      product_adjustment_item_nombre: item.nombreProducto,
-    },
-  });
-  await pedidoRepositoryV2.appendPedidoEvento({
-    pedidoId: ordenId,
-    tipoEvento: "producto_no_disponible",
-    estadoOrigen: "pendiente_tiendas",
-    estadoDestino: "ajuste_producto",
-    actorTipo: "tienda",
-    payload: { itemId: item.id, itemNombre: item.nombreProducto },
-  });
-
-  const msgCliente =
-    `📦 *${pedido.tienda.nombre ?? "La tienda"}* no tiene disponible:\n"${item.nombreProducto}"\n\n` +
-    `¿Quieres continuar tu pedido sin este producto, o prefieres cambiarlo por otro?\n\n` +
-    `Responde "sin él" para quitarlo, o dime el producto por el que lo cambias. 🙏`;
-  await outboxRepository.enqueueOutboundMessage({
-    pedidoId: ordenId,
-    tipoMensaje: "notificacion_cliente",
-    destinatarioTipo: "cliente",
-    telefonoDestino: pedido.clienteTelefono,
-    payload: { body: msgCliente },
-    idempotencyKey: `pedido:${ordenId}:cliente:producto_no_disponible:${item.id}:v1`,
-  });
-  await guardarMensajeChat({ telefono: pedido.clienteTelefono, texto: msgCliente, estado: "bot" }).catch(() => {});
+  await flagItemUnavailable({ pedido, item, actorTipo: "tienda" });
 
   await sendWhatsApp(
     telefono,
@@ -1531,41 +1522,7 @@ async function handleTiendaMessage(telefono: string, mensaje: string, tiendaId: 
   }
 
   const subtotal = Number(precio);
-  const total = calculateFinalPrice(subtotal);
-
-  await pedidoRepositoryV2.setPedidoTiendaCotizacion({ pedidoTiendaId: pedido.tienda.pedidoTiendaId, subtotal });
-  await pedidoRepositoryV2.setPedidoTotales({ pedidoId: ordenId, servicioRepartidor: MANDALO_DELIVERY_FEE, totalCliente: total });
-  await pedidoRepositoryV2.setPedidoEstado({
-    pedidoId: ordenId,
-    estado: "confirmado_tiendas",
-    metadataPatch: buildOrderTimeoutMetadata("final_confirmation"),
-  });
-  await pedidoRepositoryV2.appendPedidoEvento({
-    pedidoId: ordenId,
-    tipoEvento: "cotizacion_recibida",
-    estadoOrigen: "pendiente_tiendas",
-    estadoDestino: "confirmado_tiendas",
-    actorTipo: "tienda",
-    payload: { subtotal, total },
-  });
-
-  const msg =
-    `*${pedido.tienda.nombre ?? "La tienda"}* ya respondió — este es tu total:\n\n` +
-    `Pedido #${ordenId}\n` +
-    `Subtotal: ${formatMoney(subtotal)}\n` +
-    `Servicio Mándalo: ${formatMoney(MANDALO_SERVICE_FEE)}\n` +
-    `Envío: ${formatMoney(MANDALO_DELIVERY_FEE)}\n` +
-    `*Total a pagar: ${formatMoney(total)}*\n\n` +
-    `¿Confirmas tu pedido? Responde *SÍ* ✅`;
-  await outboxRepository.enqueueOutboundMessage({
-    pedidoId: ordenId,
-    tipoMensaje: "notificacion_cliente",
-    destinatarioTipo: "cliente",
-    telefonoDestino: pedido.clienteTelefono,
-    payload: { body: msg },
-    idempotencyKey: `pedido:${ordenId}:cliente:cotizacion_recibida:v1`,
-  });
-  await guardarMensajeChat({ telefono: pedido.clienteTelefono, texto: msg, estado: "bot" }).catch(() => {});
+  const { total } = await finalizeStoreQuote({ pedido, subtotal, actorTipo: "tienda" });
 
   // Confirmación corta a la tienda misma — sin esto, el dueño manda el precio
   // y no vuelve a saber nada, no tiene forma de confirmar que su mensaje se

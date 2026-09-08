@@ -261,6 +261,7 @@ export type PedidoFullRecord = {
     horaCierre: string | null;
     subtotal: number | null;
     estadoTienda: string;
+    usaCatalogoFijo: boolean;
   } | null;
   items: Array<{ id: number; nombreProducto: string; cantidad: number | null; disponible: boolean }>;
 };
@@ -275,7 +276,7 @@ export async function getPedidoById(pedidoId: number): Promise<PedidoFullRecord 
     .select(
       "id, estado, cliente_telefono, repartidor_id, direccion_entrega, latitud, longitud, " +
         "servicio_mandalo, servicio_repartidor, total_cliente, metadata_json, " +
-        "pedido_tiendas(id, tienda_id, subtotal_tienda, estado_tienda, tiendas(nombre, telefono, direccion, hora_apertura, hora_cierre), pedido_items(id, nombre_producto, cantidad, disponible))",
+        "pedido_tiendas(id, tienda_id, subtotal_tienda, estado_tienda, tiendas(nombre, telefono, direccion, hora_apertura, hora_cierre, usa_catalogo_fijo), pedido_items(id, nombre_producto, cantidad, disponible))",
     )
     .eq("id", pedidoId)
     .maybeSingle();
@@ -315,6 +316,7 @@ export async function getPedidoById(pedidoId: number): Promise<PedidoFullRecord 
           horaCierre: tiendaInfo?.hora_cierre == null ? null : String(tiendaInfo.hora_cierre),
           subtotal: pt.subtotal_tienda == null ? null : Number(pt.subtotal_tienda),
           estadoTienda: String(pt.estado_tienda ?? "pendiente"),
+          usaCatalogoFijo: tiendaInfo?.usa_catalogo_fijo === true,
         }
       : null,
     items: itemsRaw.map((it) => ({
@@ -380,6 +382,47 @@ export async function findPedidoItemByText(
   if (partial) return { id: Number(partial.id), nombreProducto: String(partial.nombre_producto) };
 
   return null;
+}
+
+export type ProductoTiendaRow = { id: number; nombreProducto: string; precio: number };
+
+// Catálogo de precios fijos de una tienda (tiendas.usa_catalogo_fijo) — solo
+// los productos que la tienda marcó disponible. Usado tanto para inyectar el
+// menú en el prompt de la IA durante la captura (mandaloFlow.ts) como para
+// calcular el subtotal automático al despachar (storeDispatch.ts).
+export async function getProductosTiendaActivos(tiendaId: number): Promise<ProductoTiendaRow[]> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("productos_tienda")
+    .select("id, nombre_producto, precio")
+    .eq("tienda_id", tiendaId)
+    .eq("disponible", true);
+  if (error) throw error;
+
+  return (data ?? [])
+    .map((row) => ({
+      id: Number((row as { id: unknown }).id),
+      nombreProducto: String((row as { nombre_producto: unknown }).nombre_producto ?? "").trim(),
+      precio: Number((row as { precio: unknown }).precio ?? NaN),
+    }))
+    .filter((row) => row.nombreProducto.length > 0 && Number.isFinite(row.precio));
+}
+
+// Mismo patrón "exacto, luego parcial" que findPedidoItemByText, pero en
+// dirección contraria: busca el producto DEL PEDIDO dentro del catálogo de
+// precios fijos de la tienda, para resolver su precio sin intervención humana.
+export function matchProductoTienda(catalogo: ProductoTiendaRow[], nombreProducto: string): ProductoTiendaRow | null {
+  const needle = cleanText(nombreProducto)?.toLowerCase();
+  if (!needle) return null;
+
+  const exact = catalogo.find((p) => p.nombreProducto.toLowerCase() === needle);
+  if (exact) return exact;
+
+  const partial = catalogo.find((p) => {
+    const nombre = p.nombreProducto.toLowerCase();
+    return nombre.includes(needle) || needle.includes(nombre);
+  });
+  return partial ?? null;
 }
 
 export async function setPedidoItemDisponible(itemId: number, disponible: boolean): Promise<void> {
