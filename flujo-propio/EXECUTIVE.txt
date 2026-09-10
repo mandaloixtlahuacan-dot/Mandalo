@@ -1,9 +1,0 @@
-Víctor — resumen Flujo Propio (9 sep 2026)
-
-Mandalo es un bot Next.js en Vercel: Whapi entra por /api/webhook, clasifica rol por teléfono (cliente/tienda/repartidor), usa OpenAI con prompt de negocio y responde por Whapi; Supabase es la fuente de verdad (pedidos, chat, outbox, dedupe).
-Lo reutilizable para clientes es el esqueleto webhook→LLM→Whapi + env/Zod + dedupe + outbox opcional.
-Lo que NO se vende/copia: marca Mandalo, Ixtlahuacán, precios/horarios/delivery multi-rol, prompts, ROADMAP/briefs y cualquier teléfono o secreto real.
-Propuesta: starter config-driven (brief JSON) con loop mínimo en ~1 hora (Whapi, OpenAI, Supabase, admin WA, Vercel); multi-rol solo como módulo opcional.
-Docs locales en /workspace/flujo-propio/: ANALISIS, ONBOARDING, STARTER_SPEC, NO_COPIAR + este EXECUTIVE.
-Siguiente paso: generar el repo starter sanitizado y onboardear el primer cliente con el checklist de 1 hora.
-Starter mínimo publicado en flujo-propio-starter/ (rama flujo-propio/starter-code → PR a main).
