@@ -2,14 +2,17 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 9 de septiembre de 2026. **Cierre por día de la
-> semana** (nueva feature, `tiendas.dias_cerrado`) — una tienda puede cerrar
-> días fijos (ej. lunes); antes el horario era un rango diario idéntico
-> todos los días. Ver bloque del 2026-09-09. **Tiendas con catálogo de
-> precios fijos** (`tiendas.usa_catalogo_fijo`) — el bot cotiza automático
-> contra `productos_tienda` y se salta la cotización manual; ver bloque del
-> 2026-09-07. **Pendiente que Víctor corra las dos migraciones y dé los datos
-> de las tiendas nuevas antes de probar en vivo.** **Base de datos limpia**:
+> Última actualización: 9 de septiembre de 2026. **Catálogo de precios fijos
+> probado en vivo (Hamburguesas Hotdogs George)** — el menú no se inyectaba
+> cuando el cliente preguntaba "¿qué tienes?" (dependía de que la tienda ya
+> estuviera comprometida en el pedido, huevo-y-gallina). Corregido: ver
+> segundo bloque del 2026-09-09. **Cierre por día de la semana**
+> (`tiendas.dias_cerrado`) — una tienda puede cerrar días fijos (ej. lunes).
+> Ver primer bloque del 2026-09-09. **Tiendas con catálogo de precios fijos**
+> (`tiendas.usa_catalogo_fijo`) — el bot cotiza automático contra
+> `productos_tienda`; ver bloque del 2026-09-07. **Pendiente que Víctor corra
+> las dos migraciones y dé los datos de la tienda que cierra lunes antes de
+> probar esa feature en vivo.** **Base de datos limpia**:
 > Víctor borró las 15 tablas huérfanas confirmadas sin uso (5 `*_legacy_20260805`
 > + 10 de un intento de arquitectura previo al de agosto) — quedan 13 tablas
 > reales en Supabase, ver bloque del 2026-09-07 abajo. Código: trabajo directo
@@ -378,6 +381,22 @@ Compila limpio (`tsc --noEmit`, `eslint`, `next build`).
 - Víctor corre `supabase/migrations/20260907_tiendas_catalogo_fijo.sql`.
 - Falta el `INSERT` de la tienda nueva (nombre, teléfono, dirección, horario, categoría) y su catálogo real (`productos_tienda`: nombre + precio) — pendiente de que Víctor dé los datos.
 - Prueba en vivo de punta a punta: pedir de la tienda de catálogo fijo, confirmar que el bot da el precio directo sin esperar a nadie, y que un producto fuera del menú dispara el flujo de `ajuste_producto` sin involucrar a la tienda.
+
+## 🚧 Bloque de trabajo 2026-09-09 (directo sobre `main`) — fix: el menú de catálogo fijo no se inyectaba al preguntar "¿qué tienes?"
+
+Víctor probó la tienda de catálogo fijo en vivo (Hamburguesas Hotdogs George, `usa_catalogo_fijo=true`, 56 productos con `disponible=true`). Al preguntar "qué tienes" / "qué tiene George", el bot contestó genérico ("tiene hamburguesas y hotdogs") — sin productos ni precios reales, pese a que el diseño decía que el menú se inyecta al prompt.
+
+**Causa raíz:** la inyección del menú (`getLLMResponse`) dependía solo de `currentOrderState.businessId`, que se guarda en el snapshot **después** de que la IA compromete `business_name` en `order_state` — cosa que la IA hace cuando el cliente *elige* la tienda, no cuando solo *pregunta* qué hay. Huevo-y-gallina: el menú aparecía justo después del turno en que el cliente lo pedía. Y aunque se inyectara, la regla del prompt solo cubría "cotizar cuando el cliente pide algo", no "listar el menú al preguntar qué hay".
+
+**Fix:**
+1. `resolveMenuCandidatoTiendaId` (nueva, `mandaloFlow.ts`): el candidato para inyectar el menú ya no es solo `businessId` del snapshot — también resuelve por "hay una sola tienda abierta" (el caso de George) o "el cliente nombró una tienda abierta en el mensaje o los últimos 2 turnos".
+2. `mandaloPrompt.ts`: regla nueva — si el cliente pregunta qué hay/qué venden y hay MENÚ, responder con productos reales y precio, nunca categoría genérica. Si el menú es largo (>~6 ítems), dar 3–4 ejemplos con precio y preguntar qué se le antoja, no volcarlo entero. La sección de contexto se renombró de "DE LA TIENDA ELEGIDA" a "de la tienda de la que el cliente está por pedir".
+
+Compila limpio (`tsc`, `eslint`, `next build`). Verificado con casos directos de `resolveMenuCandidatoTiendaId` (una sola tienda → resuelve aunque la pregunta sea genérica; snapshot con businessId → lo usa; 2 tiendas nombrando una → matchea; 2 tiendas sin pista → null, sin menú).
+
+**Tradeoff conocido:** con George como única tienda abierta, su menú de 56 ítems se inyecta en casi todos los turnos de toda conversación (~600–800 tokens de overhead). Aceptable con 1 tienda de catálogo; si crecen, habrá que acotar (ej. inyectar solo en `seleccion_productos` sin items aún).
+
+**Pendiente:** re-probar en vivo el "¿qué tienes?" con George.
 
 ## 🚧 Bloque de trabajo 2026-09-09 (directo sobre `main`) — cierre por día de la semana (tiendas.dias_cerrado)
 

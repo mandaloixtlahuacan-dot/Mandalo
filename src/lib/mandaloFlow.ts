@@ -199,6 +199,42 @@ async function fetchZonasCobertura(): Promise<string[]> {
   }
 }
 
+// Qué tienda usar para inyectar su menú de precios fijos al prompt. Antes
+// solo se miraba currentOrderState.businessId — que se guarda DESPUÉS de que
+// la IA compromete la tienda en order_state, o sea justo después del momento
+// en que el cliente pregunta "¿qué tienes?". Ahora también: si hay una sola
+// tienda abierta, o si el cliente nombró una en el mensaje/últimos turnos.
+function resolveMenuCandidatoTiendaId(params: {
+  currentOrderState: JsonObject;
+  openTiendas: TiendaRow[];
+  userMessage: string;
+  historial: Array<{ role: "user" | "assistant"; content: string }>;
+}): number | null {
+  const snap = params.currentOrderState as { business_id?: unknown; businessId?: unknown };
+  const snapId = Number(snap?.business_id ?? snap?.businessId);
+  if (Number.isFinite(snapId) && snapId > 0) return snapId;
+
+  if (params.openTiendas.length === 1) {
+    const only = Number(params.openTiendas[0]?.id);
+    return Number.isFinite(only) && only > 0 ? only : null;
+  }
+
+  const textos = [
+    params.userMessage,
+    ...params.historial.filter((m) => m.role === "user").slice(-2).map((m) => m.content),
+  ]
+    .join(" ")
+    .toLowerCase();
+  for (const t of params.openTiendas) {
+    const nombre = String(t?.nombre ?? "").toLowerCase().trim();
+    if (!nombre) continue;
+    if (textos.includes(nombre)) return Number(t.id);
+    const palabras = nombre.split(/\s+/).filter((w) => w.length > 3);
+    if (palabras.some((w) => textos.includes(w))) return Number(t.id);
+  }
+  return null;
+}
+
 export async function getLLMResponse(params: {
   historialReciente: Array<{ role: "user" | "assistant"; content: string }>;
   supabaseJson: JsonObject;
@@ -260,27 +296,26 @@ export async function getLLMResponse(params: {
     ? zonasCoberturaNombres.map((z) => `- ${z}`).join("\n")
     : "(sin zonas confirmadas)";
 
-  // Menú de precios fijos (tiendas.usa_catalogo_fijo) de la tienda YA elegida
-  // en un turno anterior (currentOrderState.business_id, persistido en el
-  // snapshot) — si existe, se inyecta para que la IA capture los productos
-  // con el nombre exacto del catálogo en vez de inferir genérico, y pueda
-  // decir el precio real desde ya (CLAUDE.md Sección 5 regla 5). Solo se
-  // conoce a partir del turno SIGUIENTE a que se resolvió la tienda (este
-  // mismo turno, business_id todavía no está en el snapshot persistido) —
-  // aceptable, un turno de diferencia no afecta el flujo real.
+  // Menú de precios fijos (tiendas.usa_catalogo_fijo) de la tienda de la que
+  // el cliente está por pedir — se inyecta para que la IA responda "¿qué
+  // tienes?" con productos y precios reales, capture con el nombre exacto del
+  // catálogo, y cotice sola (CLAUDE.md Sección 5 regla 5).
   let menuTiendaCatalogo_text = "";
-  const businessIdRaw = (params.currentOrderState as { business_id?: unknown; businessId?: unknown })?.business_id ??
-    (params.currentOrderState as { businessId?: unknown })?.businessId;
-  const businessId = Number(businessIdRaw);
-  if (Number.isFinite(businessId) && businessId > 0) {
+  const menuCandidatoId = resolveMenuCandidatoTiendaId({
+    currentOrderState: params.currentOrderState,
+    openTiendas: tiendas,
+    userMessage: params.userMessage,
+    historial: params.historialReciente,
+  });
+  if (menuCandidatoId != null) {
     try {
       const { data: tiendaRow } = await supabase
         .from("tiendas")
         .select("usa_catalogo_fijo")
-        .eq("id", businessId)
+        .eq("id", menuCandidatoId)
         .maybeSingle();
       if (tiendaRow?.usa_catalogo_fijo) {
-        const productos = await pedidoRepositoryV2.getProductosTiendaActivos(businessId);
+        const productos = await pedidoRepositoryV2.getProductosTiendaActivos(menuCandidatoId);
         if (productos.length) {
           menuTiendaCatalogo_text = productos.map((p) => `- ${p.nombreProducto} — ${formatMoney(p.precio)}`).join("\n");
         }
