@@ -2,17 +2,20 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 9 de septiembre de 2026. **Catálogo de precios fijos
-> probado en vivo (Hamburguesas Hotdogs George)** — el menú no se inyectaba
-> cuando el cliente preguntaba "¿qué tienes?" (dependía de que la tienda ya
-> estuviera comprometida en el pedido, huevo-y-gallina). Corregido: ver
-> segundo bloque del 2026-09-09. **Cierre por día de la semana**
-> (`tiendas.dias_cerrado`) — una tienda puede cerrar días fijos (ej. lunes).
-> Ver primer bloque del 2026-09-09. **Tiendas con catálogo de precios fijos**
-> (`tiendas.usa_catalogo_fijo`) — el bot cotiza automático contra
-> `productos_tienda`; ver bloque del 2026-09-07. **Pendiente que Víctor corra
-> las dos migraciones y dé los datos de la tienda que cierra lunes antes de
-> probar esa feature en vivo.** **Base de datos limpia**:
+> Última actualización: 10 de septiembre de 2026. **El bot ya menciona
+> horario completo (apertura, cierre, días cerrados) y muestra el menú de
+> una tienda de catálogo aunque esté cerrada** — antes decía "no tiene
+> horario de cierre registrado" / "no tengo su menú". Ver bloque del
+> 2026-09-10. **Dato manual corrupto en George**: `hora_apertura`/`hora_cierre`
+> quedaron en formato 12h ("7:00pm"/"12:00am") en la BD — NO fue el código
+> (no hay ninguna escritura a `tiendas` en todo `src/`), fue una edición
+> manual. Pendiente que Víctor lo corrija a "19:00"/"00:00" (SQL abajo, el
+> sistema ya tolera ambos formatos igual). **Cierre por día de la semana**
+> (`tiendas.dias_cerrado`) — ver primer bloque del 2026-09-09. **Tiendas con
+> catálogo de precios fijos** (`tiendas.usa_catalogo_fijo`) — ver bloque del
+> 2026-09-07. **Pendiente que Víctor corra las dos migraciones y dé los
+> datos de la tienda que cierra lunes antes de probar esa feature en vivo.**
+> **Base de datos limpia**:
 > Víctor borró las 15 tablas huérfanas confirmadas sin uso (5 `*_legacy_20260805`
 > + 10 de un intento de arquitectura previo al de agosto) — quedan 13 tablas
 > reales en Supabase, ver bloque del 2026-09-07 abajo. Código: trabajo directo
@@ -381,6 +384,26 @@ Compila limpio (`tsc --noEmit`, `eslint`, `next build`).
 - Víctor corre `supabase/migrations/20260907_tiendas_catalogo_fijo.sql`.
 - Falta el `INSERT` de la tienda nueva (nombre, teléfono, dirección, horario, categoría) y su catálogo real (`productos_tienda`: nombre + precio) — pendiente de que Víctor dé los datos.
 - Prueba en vivo de punta a punta: pedir de la tienda de catálogo fijo, confirmar que el bot da el precio directo sin esperar a nadie, y que un producto fuera del menú dispara el flujo de `ajuste_producto` sin involucrar a la tienda.
+
+## 🚧 Bloque de trabajo 2026-09-10 (directo sobre `main`) — el bot no surfaceaba horario completo ni menú de tienda cerrada
+
+Víctor probó George en vivo un jueves 9:31am (cerrada, abre 7pm) y encontró: el bot decía "no tiene horario de cierre registrado", "no tengo su menú" (aunque hay 56 productos), "no tiene días cerrados registrados" (aunque `dias_cerrado=[1]`), y en general solo mencionaba la hora de apertura. También detectó que `hora_apertura`/`hora_cierre` de George en la BD quedaron en formato 12h ("7:00pm"/"12:00am") en vez de 24h.
+
+**(a) Sobre el dato corrupto:** revisé todo `src/` — **no hay ni una escritura (`update`/`insert`/`upsert`) a la tabla `tiendas`**, solo `select`. Ninguna migración escribe horas de tienda salvo el seed de Fase 1 (que no toca a George). El código **no pudo** haber escrito ese formato — fue una edición manual (al dar de alta la tienda, o un "arreglo" posterior copiando lo que mostraba el bot). El sistema ya tolera ambos formatos (`parseHourToMinutes` acepta "7:00pm" y "19:00" igual; `describeHorarioTienda` produce el mismo texto con cualquiera de los dos). Aun así conviene normalizarlo — SQL en la conversación.
+
+**(b) Los síntomas 1–4 NO los causaba el dato corrupto** — los causaba que la info no llegaba a la IA:
+- Para tiendas ABIERTAS, la lista que ve la IA era `"- Nombre (cat) [tel]"` — sin horas.
+- Para tiendas CERRADAS, solo `"cerrada ahora, abre hoy a las 7pm"` — sin cierre, sin días.
+- El menú (`resolveMenuCandidatoTiendaId`) solo miraba tiendas ABIERTAS — George cerrada nunca calificaba.
+
+**Fix:**
+- `businessHours.describeHorarioTienda(...)` (nueva): "todos los días menos el lunes, de 7pm a 12am" / "todos los días, de 8am a 8pm". Va en ambas listas de tiendas del prompt (abiertas y cerradas) como anotación "horario: ...".
+- `resolveMenuCandidatoTienda` (reemplaza a `...TiendaId`): ahora considera tiendas abiertas Y cerradas; matchea nombres contra los últimos 4 mensajes (incluidos los del bot — "Solo hay X para comida preparada" es señal); última opción = la única tienda de catálogo activa. Devuelve el `TiendaRow` (ya trae `usa_catalogo_fijo`, se quitó una query extra).
+- `mandaloPrompt.ts`: regla nueva de "preguntas de horario" (responder apertura + cierre + días desde la anotación "horario:", nunca "no tiene ... registrado"); la regla de "¿qué tienen?" y la de menú ahora dicen explícitamente que aplican aunque la tienda esté cerrada.
+
+Compila limpio (`tsc`, `eslint`, `next build`). Verificado con casos directos (`describeHorarioTienda` con datos 24h y 12h corruptos da el mismo texto; el schedule sigue OK con datos 12h).
+
+**Pendiente:** Víctor corrige el dato de George; re-probar en vivo las 4 preguntas.
 
 ## 🚧 Bloque de trabajo 2026-09-09 (directo sobre `main`) — fix: el menú de catálogo fijo no se inyectaba al preguntar "¿qué tienes?"
 

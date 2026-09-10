@@ -85,6 +85,36 @@ export function parseDiasCerrado(value: unknown): number[] {
   return value.map((d) => Number(d)).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6);
 }
 
+// Horario completo en una línea para que la IA pueda responder "a qué hora
+// abren/cierran", "qué días tienen servicio", etc. Ej: "todos los días menos
+// el lunes, de 7pm a 12am" / "todos los días, de 8am a 8pm". Vacío si no hay
+// horas usables cargadas.
+export function describeHorarioTienda(params: {
+  horaApertura: string | null;
+  horaCierre: string | null;
+  diasCerrado?: number[] | null;
+}): string {
+  const openMin = parseHourToMinutes(params.horaApertura);
+  const closeMin = parseHourToMinutes(params.horaCierre);
+  const rango =
+    openMin != null && closeMin != null
+      ? `de ${formatHour12(params.horaApertura ?? "")} a ${formatHour12(params.horaCierre ?? "")}`
+      : "";
+
+  const cerrados = [...new Set(parseDiasCerrado(params.diasCerrado))].sort((a, b) => a - b);
+  let dias = "";
+  if (cerrados.length === 0) {
+    dias = rango ? "todos los días" : "";
+  } else if (cerrados.length < 7) {
+    const nombres = cerrados.map((d) => `el ${DIAS_SEMANA[d]}`);
+    const lista =
+      nombres.length === 1 ? nombres[0] : `${nombres.slice(0, -1).join(", ")} y ${nombres[nombres.length - 1]}`;
+    dias = `todos los días menos ${lista}`;
+  }
+
+  return [dias, rango].filter(Boolean).join(", ");
+}
+
 // Texto "abre {hoy|mañana|el <día>} a las <hora 12h>" — el primer día de
 // operación (que no esté en diasCerrado) a partir de hoy, considerando si
 // hoy ya pasó la hora de apertura. Solo se llama cuando la tienda está
