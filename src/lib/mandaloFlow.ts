@@ -18,6 +18,7 @@ import {
   formatHour12,
   MANDALO_HORA_APERTURA,
   MANDALO_HORA_CIERRE,
+  parseDiasCerrado,
   type TiendaScheduleCheck,
 } from "@/lib/services/businessHours";
 import { dispatchCotizacionToStore, finalizeStoreQuote, flagItemUnavailable } from "@/lib/services/storeDispatch";
@@ -59,6 +60,7 @@ type TiendaRow = {
   telefono?: unknown;
   hora_apertura?: unknown;
   hora_cierre?: unknown;
+  dias_cerrado?: unknown;
 };
 type CourierRow = { id?: unknown; nombre?: unknown; telefono?: unknown; activo?: unknown; vehiculo?: unknown };
 type HistorialMessage = { texto: string; estado: "cliente" | "bot"; created_at: string };
@@ -204,12 +206,19 @@ export async function getLLMResponse(params: {
   userMessage: string;
 }): Promise<MandaloAgentResponse> {
   const supabase = getSupabaseAdmin();
+  const scheduleForTiendaRow = (row: TiendaRow): TiendaScheduleCheck =>
+    checkTiendaSchedule({
+      horaApertura: row.hora_apertura == null ? null : String(row.hora_apertura),
+      horaCierre: row.hora_cierre == null ? null : String(row.hora_cierre),
+      diasCerrado: parseDiasCerrado(row.dias_cerrado),
+    });
+
   let tiendas: TiendaRow[] = [];
   let tiendasCerradas: TiendaRow[] = [];
   try {
     const { data, error } = await supabase
       .from("tiendas")
-      .select("id, nombre, categoria, telefono, hora_apertura, hora_cierre")
+      .select("id, nombre, categoria, telefono, hora_apertura, hora_cierre, dias_cerrado")
       .eq("activa", true)
       .limit(500);
     if (error) throw error;
@@ -224,13 +233,7 @@ export async function getLLMResponse(params: {
     // (bug encontrado en producción agosto 2026: Agua Santa cerrada quedaba
     // invisible por completo, incluso nombrada de forma explícita). Por eso
     // se separan en dos listas en vez de filtrar la cerrada fuera del todo.
-    tiendas = activas.filter(
-      (row) =>
-        checkTiendaSchedule({
-          horaApertura: row.hora_apertura == null ? null : String(row.hora_apertura),
-          horaCierre: row.hora_cierre == null ? null : String(row.hora_cierre),
-        }).withinSchedule,
-    );
+    tiendas = activas.filter((row) => scheduleForTiendaRow(row).withinSchedule);
     tiendasCerradas = activas.filter((row) => !tiendas.includes(row));
   } catch (e: unknown) {
     console.error("[mandalo] getLLMResponse: error consultando tiendas", { message: getErrorMessage(e) });
@@ -244,10 +247,11 @@ export async function getLLMResponse(params: {
 
   const tiendasCerradas_text = tiendasCerradas.length
     ? tiendasCerradas
-        .map(
-          (n) =>
-            `- ${String(n.nombre ?? "")}${n.categoria ? ` (${String(n.categoria)})` : ""} — cerrada ahora, abre a las ${String(n.hora_apertura ?? "?")}`,
-        )
+        .map((n) => {
+          const check = scheduleForTiendaRow(n);
+          const abre = check.withinSchedule ? "" : `, ${check.abreTexto}`;
+          return `- ${String(n.nombre ?? "")}${n.categoria ? ` (${String(n.categoria)})` : ""} — cerrada ahora${abre}`;
+        })
         .join("\n")
     : "(ninguna)";
 
@@ -376,10 +380,10 @@ export async function getLLMResponse(params: {
 
 type TiendaResolution =
   | { status: "found"; id: number; nombre: string; telefono: string }
-  | { status: "closed"; id: number; nombre: string; telefono: string; horaApertura: string; horaCierre: string }
+  | { status: "closed"; id: number; nombre: string; telefono: string }
   | { status: "not_found" };
 
-const TIENDA_RESOLUTION_SELECT = "id, nombre, telefono, activa, hora_apertura, hora_cierre";
+const TIENDA_RESOLUTION_SELECT = "id, nombre, telefono, activa, hora_apertura, hora_cierre, dias_cerrado";
 
 function resolveTiendaRow(row: {
   id: unknown;
@@ -388,12 +392,14 @@ function resolveTiendaRow(row: {
   activa: unknown;
   hora_apertura: unknown;
   hora_cierre: unknown;
+  dias_cerrado: unknown;
 } | null | undefined, fallbackName: string): TiendaResolution {
   if (!row?.telefono || row.activa === false) return { status: "not_found" };
 
   const schedule = checkTiendaSchedule({
     horaApertura: row.hora_apertura == null ? null : String(row.hora_apertura),
     horaCierre: row.hora_cierre == null ? null : String(row.hora_cierre),
+    diasCerrado: parseDiasCerrado(row.dias_cerrado),
   });
   if (!schedule.withinSchedule) {
     return {
@@ -401,8 +407,6 @@ function resolveTiendaRow(row: {
       id: Number(row.id),
       nombre: String(row.nombre ?? fallbackName),
       telefono: ensureMxWhatsappIntl(String(row.telefono)),
-      horaApertura: schedule.horaApertura,
-      horaCierre: schedule.horaCierre,
     };
   }
 
@@ -638,14 +642,14 @@ function describeWhyWaiting(params: {
   if (!mandaloSchedule.withinSchedule && !tiendaSchedule.withinSchedule) {
     return (
       `Por ahora operamos de ${formatHour12(mandaloSchedule.horaApertura)} a ${formatHour12(mandaloSchedule.horaCierre)}, y ahorita está fuera de ese horario — ` +
-      `*${tiendaNombre}* también está cerrada (abre a las ${tiendaSchedule.horaApertura})`
+      `*${tiendaNombre}* también está cerrada (${tiendaSchedule.abreTexto})`
     );
   }
   if (!mandaloSchedule.withinSchedule) {
     return `Por ahora operamos de ${formatHour12(mandaloSchedule.horaApertura)} a ${formatHour12(mandaloSchedule.horaCierre)}, y ahorita está fuera de ese horario`;
   }
   if (!tiendaSchedule.withinSchedule) {
-    return `*${tiendaNombre}* está cerrada ahora, abre a las ${tiendaSchedule.horaApertura}`;
+    return `*${tiendaNombre}* está cerrada ahora, ${tiendaSchedule.abreTexto}`;
   }
   return `*${tiendaNombre}* y Mándalo ya deberían estar disponibles`;
 }
@@ -710,7 +714,11 @@ async function handleEsperandoConfirmacionInicial(
     return { ok: true, role: "cliente", stage: "seleccion_productos", pedidoId: pedido.id };
   }
 
-  const schedule = checkTiendaSchedule({ horaApertura: full.tienda.horaApertura, horaCierre: full.tienda.horaCierre });
+  const schedule = checkTiendaSchedule({
+    horaApertura: full.tienda.horaApertura,
+    horaCierre: full.tienda.horaCierre,
+    diasCerrado: full.tienda.diasCerrado,
+  });
   const mandaloSchedule = checkMandaloSchedule();
   const puedeDespacharAhora = schedule.withinSchedule && mandaloSchedule.withinSchedule;
 
@@ -1281,7 +1289,11 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
           const full = await pedidoRepositoryV2.getPedidoById(openPedido.id);
           const tiendaNombre = full?.tienda?.nombre ?? "la tienda";
           const schedule = full?.tienda
-            ? checkTiendaSchedule({ horaApertura: full.tienda.horaApertura, horaCierre: full.tienda.horaCierre })
+            ? checkTiendaSchedule({
+                horaApertura: full.tienda.horaApertura,
+                horaCierre: full.tienda.horaCierre,
+                diasCerrado: full.tienda.diasCerrado,
+              })
             : null;
           const mandaloSchedule = checkMandaloSchedule();
           const sigueEsperando = (schedule && !schedule.withinSchedule) || !mandaloSchedule.withinSchedule;

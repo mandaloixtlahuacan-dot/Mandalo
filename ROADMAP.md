@@ -2,12 +2,14 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 7 de septiembre de 2026. **Tiendas con catálogo de
-> precios fijos** (nueva feature, `tiendas.usa_catalogo_fijo`) — el bot cotiza
-> automático contra `productos_tienda` y se salta la cotización manual; ver
-> bloque del 2026-09-07 más abajo. **Pendiente que Víctor corra la migración
-> y dé los datos de la primera tienda de este tipo (hot dogs/hamburguesas)
-> antes de probarlo en vivo.** **Base de datos limpia**:
+> Última actualización: 9 de septiembre de 2026. **Cierre por día de la
+> semana** (nueva feature, `tiendas.dias_cerrado`) — una tienda puede cerrar
+> días fijos (ej. lunes); antes el horario era un rango diario idéntico
+> todos los días. Ver bloque del 2026-09-09. **Tiendas con catálogo de
+> precios fijos** (`tiendas.usa_catalogo_fijo`) — el bot cotiza automático
+> contra `productos_tienda` y se salta la cotización manual; ver bloque del
+> 2026-09-07. **Pendiente que Víctor corra las dos migraciones y dé los datos
+> de las tiendas nuevas antes de probar en vivo.** **Base de datos limpia**:
 > Víctor borró las 15 tablas huérfanas confirmadas sin uso (5 `*_legacy_20260805`
 > + 10 de un intento de arquitectura previo al de agosto) — quedan 13 tablas
 > reales en Supabase, ver bloque del 2026-09-07 abajo. Código: trabajo directo
@@ -376,6 +378,35 @@ Compila limpio (`tsc --noEmit`, `eslint`, `next build`).
 - Víctor corre `supabase/migrations/20260907_tiendas_catalogo_fijo.sql`.
 - Falta el `INSERT` de la tienda nueva (nombre, teléfono, dirección, horario, categoría) y su catálogo real (`productos_tienda`: nombre + precio) — pendiente de que Víctor dé los datos.
 - Prueba en vivo de punta a punta: pedir de la tienda de catálogo fijo, confirmar que el bot da el precio directo sin esperar a nadie, y que un producto fuera del menú dispara el flujo de `ajuste_producto` sin involucrar a la tienda.
+
+## 🚧 Bloque de trabajo 2026-09-09 (directo sobre `main`) — cierre por día de la semana (tiendas.dias_cerrado)
+
+Pedido de Víctor: una tienda nueva que cierra los lunes (abre martes a domingo, 7pm–12am). El sistema de horarios (`checkTiendaSchedule`) solo manejaba un rango de horas diario idéntico todos los días — nada de día de la semana. Diseño discutido y acordado con Víctor antes de programar (tres decisiones: calcular el próximo momento exacto de apertura en los mensajes; aprovechar para pasar también las horas de tienda a formato 12h; arreglar de paso el cierre a medianoche exacta).
+
+**Esquema** (`20260909_tiendas_dias_cerrado.sql`): `tiendas.dias_cerrado smallint[] not null default '{}'` + CHECK (valores 0–6, domingo=0). Vacío = abierta todos los días → cero cambios para las tiendas existentes.
+
+**`businessHours.ts`:**
+- `weekdayInMandalo(now)` — día 0–6 en zona horaria de México (ancla a mediodía UTC para no correrse de día).
+- `describeProximaApertura(...)` — texto "abre hoy a las 7pm" / "abre mañana a las 7pm" / "abre el martes a las 7pm": recorre los próximos 7 días buscando el primer día de operación, y para hoy checa si ya pasó la hora de apertura. Todo en 12h.
+- `checkTiendaSchedule` recibe `diasCerrado?: number[]`. El resultado "cerrada" ahora carga `closedReason: "hora" | "dia"`, `diasCerrado`, y un campo listo `abreTexto` (= `describeProximaApertura`), así los mensajes no recalculan.
+- Fix de medianoche: `"00:00"` como hora de cierre se interpreta como fin del día (1440), no como "cruza a las 12am" — antes el instante exacto de medianoche se comportaba raro.
+- `formatHour12` ahora se apoya en `parseHourToMinutes`, así tolera los mismos formatos de entrada ("8", "08:00", "20:00", "8 pm"…).
+
+**Mensajes** — los 4 lugares que decían "abre a las HH:MM" (lista de tiendas cerradas que ve la IA, las dos ramas de tienda en `describeWhyWaiting`, y la instrucción de BLOQUE 4 en `mandaloPrompt.ts`) pasan a usar `schedule.abreTexto`. **Cambio visible también en tiendas cerradas SIN día de descanso**: de `"abre a las 08:00"` (24h, ambiguo si ya cerró) a `"abre mañana a las 8am"` (12h, correcto). Las ramas de **Mándalo** en `describeWhyWaiting` no se tocaron (siguen con "Por ahora operamos de 3pm a 9pm…").
+
+**Types/selects** — `dias_cerrado` agregado a los 3 selects (`getLLMResponse`, `TIENDA_RESOLUTION_SELECT`, `getPedidoById`) y sus types. `TiendaResolution` cerrada se simplificó (ya no cargaba `horaApertura`/`horaCierre` — nadie los leía).
+
+**Worker** (`scheduledDispatchWorker.ts`): solo pasa `diasCerrado`. Sin cambios de lógica — un pedido hecho un lunes espera solo hasta el martes 7pm; el tope de 48h no cambia.
+
+Compila limpio (`tsc --noEmit`, `eslint`, `next build`). Verificado con casos de prueba directos (lunes cerrado → "abre mañana a las 7pm"; martes 8pm → abierta; medianoche exacta → cerrada; etc.).
+
+**Caso límite documentado, no bloquea:** una tienda con horario que cruce medianoche Y día cerrado (ej. hipotética "10pm–4am cerrada lunes") tiene ambigüedad en "¿la 1am del martes es la sesión del lunes?". Regla simple: el chequeo de día usa el día de pared actual. No aplica a la tienda real (7pm–12am no cruza con el fix de medianoche).
+
+**Pendiente:**
+- Víctor corre `supabase/migrations/20260909_tiendas_dias_cerrado.sql`.
+- Falta el `INSERT` de la tienda nueva (nombre, teléfono, dirección, `hora_apertura`/`hora_cierre`, categoría, `dias_cerrado = '{1}'`) — pendiente de que Víctor dé los datos.
+- Opcional: `CLAUDE.md` Sección 4 (`tiendas`) y Sección 8 ("Tienda fuera de horario") podrían mencionar `dias_cerrado` — decisión de Víctor, no lo toqué.
+- Prueba en vivo: pedir un lunes de la tienda que cierra lunes, confirmar que se programa para el martes.
 
 ## ⚪ No construido todavía (fuera del punchlist del brief)
 

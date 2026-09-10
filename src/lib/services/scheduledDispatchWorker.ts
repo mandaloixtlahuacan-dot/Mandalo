@@ -137,7 +137,11 @@ export function createScheduledDispatchWorker() {
           if (!pedido || pedido.estado !== WAITING_ESTADO) continue;
 
           const schedule = pedido.tienda
-            ? checkTiendaSchedule({ horaApertura: pedido.tienda.horaApertura, horaCierre: pedido.tienda.horaCierre })
+            ? checkTiendaSchedule({
+                horaApertura: pedido.tienda.horaApertura,
+                horaCierre: pedido.tienda.horaCierre,
+                diasCerrado: pedido.tienda.diasCerrado,
+              })
             : { withinSchedule: true as const };
           const mandaloSchedule = checkMandaloSchedule();
 

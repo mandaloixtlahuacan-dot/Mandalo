@@ -4,7 +4,8 @@
 // 2026 tras la fase 24/7, ajustado de 3pm-8pm a 3pm-9pm — ver CLAUDE.md
 // Sección 5 regla 6), y cada tienda
 // tiene además su propio horario en base de datos (tiendas.hora_apertura /
-// hora_cierre, columnas `text` libres — ver Fase 1). Un pedido fuera de
+// hora_cierre, columnas `text` libres — ver Fase 1; y tiendas.dias_cerrado,
+// días fijos de descuento — ver migración 20260909). Un pedido fuera de
 // cualquiera de las dos ventanas se programa (mismo mecanismo,
 // esperando_apertura_tienda) en vez de rechazarse. Los repartidores no
 // tienen columnas de horario en el esquema (CLAUDE.md Sección 4): su
@@ -12,6 +13,8 @@
 // findActiveCourier() ya filtra — no hace falta nada nuevo para ellos aquí.
 
 const MANDALO_TIMEZONE = "America/Mexico_City";
+
+const DIAS_SEMANA = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
 
 function nowInMandaloMinutes(now: Date): number {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -24,6 +27,20 @@ function nowInMandaloMinutes(now: Date): number {
   const hour = Number(parts.find((p) => p.type === "hour")?.value ?? "0");
   const minute = Number(parts.find((p) => p.type === "minute")?.value ?? "0");
   return hour * 60 + minute;
+}
+
+// Día de la semana (0=domingo … 6=sábado, misma convención que
+// Date.getDay() y Postgres EXTRACT(DOW)) en la zona horaria de México.
+// Se ancla a mediodía UTC de la fecha local para que getUTCDay no se
+// corra de día por el offset de zona horaria.
+export function weekdayInMandalo(now: Date): number {
+  const ymd = new Intl.DateTimeFormat("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: MANDALO_TIMEZONE,
+  }).format(now);
+  return new Date(`${ymd}T12:00:00Z`).getUTCDay();
 }
 
 // Tolera "8:00", "08:00", "8:00 am", "8:00 PM", "20:00". Si no puede
@@ -48,44 +65,116 @@ export function parseHourToMinutes(raw: string | null | undefined): number | nul
   return hour * 60 + minute;
 }
 
-// Formato de 12 horas para mensajes al cliente sobre el horario de MÁNDALO
-// (CLAUDE.md Sección 5 regla 6 ya lo describe así, "3pm a 9pm" — el bot debe
-// hablar igual, no en 24h). Deliberadamente NO se usa para el horario de
-// cada tienda (tiendas.hora_apertura/hora_cierre) — eso queda en su formato
-// original, fuera de este ajuste.
+// Formato de 12 horas para mensajes al cliente ("3pm", "8am", "7:30pm").
+// Se apoya en parseHourToMinutes para tolerar los mismos formatos de
+// entrada ("8", "08:00", "20:00", "8 pm", …).
 export function formatHour12(raw: string): string {
-  const match = String(raw ?? "").trim().match(/^(\d{1,2}):(\d{2})$/);
-  if (!match) return raw;
+  const total = parseHourToMinutes(raw);
+  if (total == null) return String(raw ?? "").trim();
 
-  let hour = Number(match[1]);
-  const minute = Number(match[2]);
-  const meridiem = hour >= 12 ? "pm" : "am";
-  hour = hour % 12 || 12;
+  const hour24 = Math.floor(total / 60) % 24;
+  const minute = total % 60;
+  const meridiem = hour24 >= 12 ? "pm" : "am";
+  const hour12 = hour24 % 12 || 12;
   const minuteText = minute > 0 ? `:${String(minute).padStart(2, "0")}` : "";
-  return `${hour}${minuteText}${meridiem}`;
+  return `${hour12}${minuteText}${meridiem}`;
 }
 
-export type TiendaScheduleCheck = { withinSchedule: true } | { withinSchedule: false; horaApertura: string; horaCierre: string };
+export function parseDiasCerrado(value: unknown): number[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((d) => Number(d)).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6);
+}
+
+// Texto "abre {hoy|mañana|el <día>} a las <hora 12h>" — el primer día de
+// operación (que no esté en diasCerrado) a partir de hoy, considerando si
+// hoy ya pasó la hora de apertura. Solo se llama cuando la tienda está
+// cerrada (checkTiendaSchedule devolvió withinSchedule:false).
+function describeProximaApertura(params: {
+  horaApertura: string | null;
+  diasCerrado: number[];
+  now: Date;
+}): string {
+  const openMin = parseHourToMinutes(params.horaApertura);
+  if (openMin == null) return "";
+  const aperturaTexto = formatHour12(params.horaApertura ?? "");
+
+  const nowMin = nowInMandaloMinutes(params.now);
+  const hoy = weekdayInMandalo(params.now);
+  const cerrado = new Set(params.diasCerrado);
+
+  for (let offset = 0; offset < 7; offset++) {
+    const dia = (hoy + offset) % 7;
+    if (cerrado.has(dia)) continue;
+
+    if (offset === 0) {
+      if (nowMin < openMin) return `abre hoy a las ${aperturaTexto}`;
+      continue; // hoy ya abrió y cerró — el siguiente día de operación
+    }
+    if (offset === 1) return `abre mañana a las ${aperturaTexto}`;
+    return `abre el ${DIAS_SEMANA[dia]} a las ${aperturaTexto}`;
+  }
+  return "";
+}
+
+export type TiendaScheduleCheck =
+  | { withinSchedule: true }
+  | {
+      withinSchedule: false;
+      closedReason: "hora" | "dia";
+      abreTexto: string;
+      horaApertura: string;
+      horaCierre: string;
+      diasCerrado: number[];
+    };
+
+function closedResult(
+  closedReason: "hora" | "dia",
+  horaApertura: string | null,
+  horaCierre: string | null,
+  diasCerrado: number[],
+  now: Date,
+): TiendaScheduleCheck {
+  return {
+    withinSchedule: false,
+    closedReason,
+    abreTexto: describeProximaApertura({ horaApertura, diasCerrado, now }) || "abre pronto",
+    horaApertura: String(horaApertura ?? ""),
+    horaCierre: String(horaCierre ?? ""),
+    diasCerrado,
+  };
+}
 
 // Si la tienda no tiene horario cargado en BD, se trata como siempre abierta
 // (fail-open) — no todas las tiendas van a tener el dato cargado de entrada.
 export function checkTiendaSchedule(params: {
   horaApertura: string | null;
   horaCierre: string | null;
+  diasCerrado?: number[] | null;
   now?: Date;
 }): TiendaScheduleCheck {
-  const openMin = parseHourToMinutes(params.horaApertura);
-  const closeMin = parseHourToMinutes(params.horaCierre);
-  if (openMin == null || closeMin == null) return { withinSchedule: true };
+  const now = params.now ?? new Date();
+  const diasCerrado = parseDiasCerrado(params.diasCerrado);
 
-  const nowMin = nowInMandaloMinutes(params.now ?? new Date());
+  const openMin = parseHourToMinutes(params.horaApertura);
+  const closeRaw = parseHourToMinutes(params.horaCierre);
+  if (openMin == null || closeRaw == null) return { withinSchedule: true };
+
+  // "00:00" como hora de cierre = fin del día (medianoche), no "cruza a las
+  // 12am" — sin esto, un cierre a medianoche exacta se comporta raro.
+  const closeMin = closeRaw === 0 ? 1440 : closeRaw;
+
+  if (diasCerrado.includes(weekdayInMandalo(now))) {
+    return closedResult("dia", params.horaApertura, params.horaCierre, diasCerrado, now);
+  }
+
+  const nowMin = nowInMandaloMinutes(now);
   const within =
     openMin <= closeMin
       ? nowMin >= openMin && nowMin < closeMin
       : nowMin >= openMin || nowMin < closeMin; // horario que cruza medianoche
 
   if (within) return { withinSchedule: true };
-  return { withinSchedule: false, horaApertura: String(params.horaApertura), horaCierre: String(params.horaCierre) };
+  return closedResult("hora", params.horaApertura, params.horaCierre, diasCerrado, now);
 }
 
 // Ventana fija de despacho de Mándalo — reusa checkTiendaSchedule pasándole

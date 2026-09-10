@@ -1,6 +1,7 @@
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { normalizePhone } from "@/lib/roles";
 import { resetChatHistory } from "@/lib/messages";
+import { parseDiasCerrado } from "@/lib/services/businessHours";
 import type { OrderState } from "@/lib/orderStateMachine";
 import type { PedidoItemInput, PedidoSnapshot, PedidoV2Record } from "@/lib/services/captureEngine";
 
@@ -262,6 +263,7 @@ export type PedidoFullRecord = {
     subtotal: number | null;
     estadoTienda: string;
     usaCatalogoFijo: boolean;
+    diasCerrado: number[];
   } | null;
   items: Array<{ id: number; nombreProducto: string; cantidad: number | null; disponible: boolean }>;
 };
@@ -276,7 +278,7 @@ export async function getPedidoById(pedidoId: number): Promise<PedidoFullRecord 
     .select(
       "id, estado, cliente_telefono, repartidor_id, direccion_entrega, latitud, longitud, " +
         "servicio_mandalo, servicio_repartidor, total_cliente, metadata_json, " +
-        "pedido_tiendas(id, tienda_id, subtotal_tienda, estado_tienda, tiendas(nombre, telefono, direccion, hora_apertura, hora_cierre, usa_catalogo_fijo), pedido_items(id, nombre_producto, cantidad, disponible))",
+        "pedido_tiendas(id, tienda_id, subtotal_tienda, estado_tienda, tiendas(nombre, telefono, direccion, hora_apertura, hora_cierre, usa_catalogo_fijo, dias_cerrado), pedido_items(id, nombre_producto, cantidad, disponible))",
     )
     .eq("id", pedidoId)
     .maybeSingle();
@@ -317,6 +319,7 @@ export async function getPedidoById(pedidoId: number): Promise<PedidoFullRecord 
           subtotal: pt.subtotal_tienda == null ? null : Number(pt.subtotal_tienda),
           estadoTienda: String(pt.estado_tienda ?? "pendiente"),
           usaCatalogoFijo: tiendaInfo?.usa_catalogo_fijo === true,
+          diasCerrado: parseDiasCerrado(tiendaInfo?.dias_cerrado),
         }
       : null,
     items: itemsRaw.map((it) => ({
