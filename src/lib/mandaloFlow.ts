@@ -1457,13 +1457,19 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
       }
     : ((respuesta.order_state ?? null) as Record<string, unknown> | null);
 
-  // La IA reconoce el nombre de la tienda a partir de la lista real que se le
-  // inyecta, pero no siempre echa de vuelta un business_id numérico válido.
-  // Sin un id real, pedidoRepositoryV2 nunca crea la fila de pedido_tiendas
-  // y el pedido se queda atorado — resolvemos por nombre contra la tabla real.
-  const llmBusinessId = Number(llmOrderState?.business_id ?? llmOrderState?.businessId);
+  // La IA puede alucinar un business_id numérico que no corresponde a
+  // ninguna fila real (bug confirmado en producción, 2026-09-12: la IA
+  // mandó businessId:2 para "Hamburguesas Hotdogs George" — ese id no
+  // existe en tiendas para NINGÚN negocio — y pedidoRepositoryV2 truena con
+  // una violación de foreign key al crear pedido_tiendas, sin ningún
+  // mensaje de vuelta al cliente, silencio total). Antes esto solo se
+  // resolvía por nombre cuando la IA NO mandaba ID — dejaba pasar sin
+  // validar cualquier número que sí mandara. Ahora SIEMPRE se revalida
+  // contra la tabla real en cuanto hay un nombre, sin importar qué id haya
+  // puesto la IA — el id de la IA nunca se usa directo para nada que toque
+  // la base de datos.
   const llmBusinessName = String(llmOrderState?.business_name ?? llmOrderState?.businessName ?? "").trim();
-  if (llmOrderState && !Number.isFinite(llmBusinessId) && llmBusinessName) {
+  if (llmOrderState && llmBusinessName) {
     const resolved = await resolveTiendaStrictByName(llmBusinessName).catch(
       (): TiendaResolution => ({ status: "not_found" }),
     );
@@ -1475,7 +1481,23 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
     // (handleEsperandoConfirmacionInicial), no aquí — ahí es donde Víctor
     // pidió que el cliente se entere, antes de decir SÍ.
     if (resolved.status === "found" || resolved.status === "closed") {
-      llmOrderState = { ...llmOrderState, business_id: resolved.id, business_name: resolved.nombre, business_phone: resolved.telefono };
+      // Se limpia también la variante camelCase (businessId) además de
+      // business_id — captureEngine.mergeSnapshot revisa ambas claves, y
+      // dejar viva la que no se sobreescribió reabriría el mismo hueco.
+      llmOrderState = {
+        ...llmOrderState,
+        business_id: resolved.id,
+        businessId: resolved.id,
+        business_name: resolved.nombre,
+        businessName: resolved.nombre,
+        business_phone: resolved.telefono,
+        businessPhone: resolved.telefono,
+      };
+    } else {
+      // No matchea ningún negocio real — nunca dejar pasar un business_id
+      // inventado por la IA (aunque el nombre tampoco haya resuelto, un
+      // número suelto sin nombre real detrás es igual de peligroso).
+      llmOrderState = { ...llmOrderState, business_id: null, businessId: null, business_phone: null, businessPhone: null };
     }
   }
 

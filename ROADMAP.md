@@ -2,7 +2,13 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 10 de septiembre de 2026. **Fix de alucinación de
+> Última actualización: 12 de septiembre de 2026. **Bug grave corregido: la
+> IA podía inventar un `business_id` que no existe, tumbando el pedido en
+> silencio total** — confirmado con logs reales de Vercel (violación de
+> foreign key al crear `pedido_tiendas`, sin ningún error visible para el
+> cliente). Ver último bloque del 2026-09-12; incluye también un respaldo
+> genérico en el webhook para que ningún error futuro deje al cliente sin
+> respuesta. **Fix de alucinación de
 > menú**: la IA inventaba productos/precios al responder "¿qué tienes?" en
 > una tienda de catálogo (con los 56 productos reales enfrente). Ahora el
 > contexto se escalona: categorías reales primero (`productos_tienda.categoria`,
@@ -390,6 +396,27 @@ Compila limpio (`tsc --noEmit`, `eslint`, `next build`).
 - Víctor corre `supabase/migrations/20260907_tiendas_catalogo_fijo.sql`.
 - Falta el `INSERT` de la tienda nueva (nombre, teléfono, dirección, horario, categoría) y su catálogo real (`productos_tienda`: nombre + precio) — pendiente de que Víctor dé los datos.
 - Prueba en vivo de punta a punta: pedir de la tienda de catálogo fijo, confirmar que el bot da el precio directo sin esperar a nadie, y que un producto fuera del menú dispara el flujo de `ajuste_producto` sin involucrar a la tienda.
+
+## 🚧 Bloque de trabajo 2026-09-12 (directo sobre `main`) — la IA alucinaba business_id y tumbaba el pedido en silencio total
+
+Víctor probó de nuevo y encontró dos síntomas: (1) tanto ZAGU como George respondían "no tiene categorías de catálogo definidas" al preguntar qué hay; (2) después de responder "Seguro", el bot dejó de contestar por completo. **Diagnosticado con logs reales de Vercel** (`vercel logs <deployment-url>`, no especulación) — ambos comparten la misma causa raíz.
+
+**Causa raíz confirmada en el log exacto del turno "Seguro":**
+```
+[getLLMResponse] order_state crudo de la IA: {"businessId":2,"businessName":"Hamburguesas Hotdogs George", ...}
+[Webhook Error] processMandaloWebhook: { code: '23503', details: 'Key (tienda_id)=(2) is not present in table "tiendas".', message: 'insert or update on table "pedido_tiendas" violates foreign key constraint "pedido_tiendas_tienda_id_fkey"' }
+```
+La IA mandó `businessId: 2` — un id que no existe para NINGÚN negocio real. `mandaloFlow.ts` (línea ~1464, antes de este fix) solo resolvía el id por nombre contra la tabla real cuando la IA **no** mandaba ningún número — si mandaba cualquier número, se confiaba ciegamente, aunque fuera inventado. El INSERT a `pedido_tiendas` con ese `tienda_id` falso truena por la foreign key, la excepción sube hasta el catch de `route.ts`, que **solo logueaba el error y nunca le contestaba nada al cliente** — silencio total, no un error visible.
+
+El síntoma (1) es un efecto secundario del mismo bug: el `business_id` alucinado quedó persistido en el snapshot de turnos anteriores, así que `getProductosTiendaActivos` buscaba el catálogo de un id equivocado (o inexistente) → categorías vacías → la IA, viendo "(no aplica)", verbalizó la etiqueta interna en vez de actuar como una tienda normal.
+
+**Fix (dos partes):**
+1. **`mandaloFlow.ts`**: la resolución por nombre contra `tiendas` (`resolveTiendaStrictByName`) ahora corre **siempre** que la IA mande un `business_name`, sin importar si también mandó un id — el id de la IA nunca se usa directo para nada que toque la base de datos. Si el nombre no resuelve contra ninguna fila real, se limpian explícitamente `business_id`/`businessId`/`business_phone`/`businessPhone` (las dos variantes de cada clave — `captureEngine.mergeSnapshot` revisa ambas, dejar viva la que no se tocó reabriría el mismo hueco). Mismo principio ya aplicado dos veces antes en esta sesión (confirmación fantasma, menú alucinado): no basta con que el prompt le pida a la IA que no invente, hay que dejar de confiar en el dato del todo.
+2. **`route.ts` (webhook)**: red de seguridad genérica — si `processMandaloWebhook` truena por cualquier motivo (este bug u otro futuro), el cliente ahora recibe un WhatsApp de disculpa ("tuve un problema, intenta de nuevo") en vez de silencio total. No sustituye arreglar la causa real de cada error, es el piso mínimo para que ningún bug futuro deje al cliente sin ninguna respuesta.
+
+Compila limpio (`tsc`, `eslint`, `next build`).
+
+**Pendiente:** prueba en vivo — pedir de George de nuevo de punta a punta, confirmar que el `business_id` que se persiste es el real y que "¿qué tienes?" ya muestra las categorías (asumiendo que la migración/backfill de `productos_tienda.categoria` del bloque anterior ya se corrió).
 
 ## 🚧 Bloque de trabajo 2026-09-10 (directo sobre `main`) — la IA inventaba productos/precios de George al preguntar "¿qué tienes?"
 

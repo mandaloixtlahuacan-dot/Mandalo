@@ -3,6 +3,7 @@ import { parseIncomingWhatsAppMessage, processMandaloWebhook } from "@/lib/manda
 import { normalizePhone } from "@/lib/roles";
 import { getEnv } from "@/lib/env";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { normalizeWhatsAppText, waapiSendText } from "@/lib/waapi";
 
 export const runtime = "nodejs";
 // Sin esto, Vercel mata la función a los 10s por defecto — una llamada a
@@ -235,6 +236,23 @@ export async function POST(req: NextRequest) {
       console.error("[Webhook Error] processMandaloWebhook:", err);
       const message = err instanceof Error ? err.message : "PROCESS_ERROR";
       result = { ok: false, error: message };
+
+      // Red de seguridad: hasta ahora, cualquier excepción aquí dejaba al
+      // cliente en silencio total (sin ningún WhatsApp de vuelta) — bug real
+      // confirmado en producción 2026-09-12 (violación de foreign key por un
+      // business_id alucinado por la IA). El error de fondo se corrige aparte;
+      // esto es el respaldo genérico para que NINGÚN error futuro deje al
+      // cliente sin respuesta, sea cual sea la causa.
+      try {
+        await waapiSendText({
+          to: numero,
+          body: normalizeWhatsAppText(
+            "⚠️ Tuve un problema procesando tu mensaje. Intenta escribirlo de nuevo en un momento — si sigue sin funcionar, ya le avisé a nuestro equipo. 🙏",
+          ),
+        });
+      } catch (notifyErr: unknown) {
+        console.error("[Webhook Error] no se pudo mandar el mensaje de respaldo al cliente:", notifyErr);
+      }
     }
 
     return NextResponse.json(result ?? { ok: false, error: "NO_RESULT" }, { status: 200 });
