@@ -2,11 +2,17 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 10 de septiembre de 2026. **El bot ya menciona
-> horario completo (apertura, cierre, días cerrados) y muestra el menú de
-> una tienda de catálogo aunque esté cerrada** — antes decía "no tiene
-> horario de cierre registrado" / "no tengo su menú". Ver bloque del
-> 2026-09-10. **Dato manual corrupto en George**: `hora_apertura`/`hora_cierre`
+> Última actualización: 10 de septiembre de 2026. **Fix de alucinación de
+> menú**: la IA inventaba productos/precios al responder "¿qué tienes?" en
+> una tienda de catálogo (con los 56 productos reales enfrente). Ahora el
+> contexto se escalona: categorías reales primero (`productos_tienda.categoria`,
+> nueva columna, sin precios), productos reales de la categoría solo cuando
+> el cliente la nombra. Ver último bloque del 2026-09-10, incluye el SQL de
+> backfill para George. **El bot ya menciona horario completo (apertura,
+> cierre, días cerrados) y muestra el menú de una tienda de catálogo aunque
+> esté cerrada** — antes decía "no tiene horario de cierre registrado" / "no
+> tengo su menú". Ver bloque anterior del 2026-09-10. **Dato manual corrupto
+> en George**: `hora_apertura`/`hora_cierre`
 > quedaron en formato 12h ("7:00pm"/"12:00am") en la BD — NO fue el código
 > (no hay ninguna escritura a `tiendas` en todo `src/`), fue una edición
 > manual. Pendiente que Víctor lo corrija a "19:00"/"00:00" (SQL abajo, el
@@ -384,6 +390,25 @@ Compila limpio (`tsc --noEmit`, `eslint`, `next build`).
 - Víctor corre `supabase/migrations/20260907_tiendas_catalogo_fijo.sql`.
 - Falta el `INSERT` de la tienda nueva (nombre, teléfono, dirección, horario, categoría) y su catálogo real (`productos_tienda`: nombre + precio) — pendiente de que Víctor dé los datos.
 - Prueba en vivo de punta a punta: pedir de la tienda de catálogo fijo, confirmar que el bot da el precio directo sin esperar a nadie, y que un producto fuera del menú dispara el flujo de `ajuste_producto` sin involucrar a la tienda.
+
+## 🚧 Bloque de trabajo 2026-09-10 (directo sobre `main`) — la IA inventaba productos/precios de George al preguntar "¿qué tienes?"
+
+Víctor probó George de nuevo y encontró algo más grave que el bug anterior: al preguntar "que tienes" con una tienda ya identificada, el bot mostró un "menú" con 4 productos y precios **completamente inventados** ("Hamburguesa sencilla $50", "Hotdog especial $60"...) que no existen en el catálogo real de 56. Confirmado que el catálogo real SÍ estaba en el contexto de la IA todo el tiempo — la resolución final de pedido ("un dogo de pollo" → $45 real; "hotdog especial de pollo" → rechazado correctamente) usa el mismo dato y funcionó bien. La IA tenía las 56 líneas reales enfrente y aun así, al pedirle "no lo vuelques entero, da 3-4 ejemplos" (regla agregada en el bloque anterior), inventó un menú "resumido" en vez de copiar líneas reales — misma familia de bug que la confirmación fantasma y el "COTIZAR" en `customer_reply`: pedirle a la IA que se contenga con una instrucción de prompt no basta.
+
+**Fix — controlar qué datos ve la IA, no confiar en que resuma bien:**
+1. **`productos_tienda.categoria text`** (migración nueva) — dato real cargado a mano por producto, NO derivado por keyword en el código (decisión explícita de Víctor: vienen más tiendas de catálogo con productos variados, prefiere categoría real desde el principio en vez de una tabla de keywords que mantener a mano).
+2. **Contexto escalonado en `getLLMResponse`**: sin categoría mencionada → solo se inyectan los NOMBRES de categoría (`categoriasTienda`, sin precios ni productos — nada que inventar). Con una categoría mencionada (matcheada contra el mensaje + últimos 4 turnos, incluidos los del bot) → se inyectan los productos reales de ESA categoría (`menuTiendaCatalogo`), no las 56 de golpe.
+3. **`mandaloPrompt.ts`**: se quitó la instrucción "da 3-4 ejemplos" que causó la alucinación. Reglas nuevas: "¿qué tienes?" genérico responde ÚNICAMENTE con los nombres de categoría reales, prohibido inventar; con categoría ya mencionada, usa EXACTAMENTE los productos/precios de `menuTiendaCatalogo`.
+4. `matchCategoriasEnTexto` (nuevo, `mandaloFlow.ts`): matching simple por substring/singular, sin tolerancia a typos — si no matchea (ej. "un dogo" en vez de "hotdogs"), el peor caso es mostrar solo categorías y preguntar cuál, nunca inventar. Trade-off aceptado explícitamente: no hay lista de sinónimos por categoría.
+
+La resolución final de pedido (`storeDispatch.ts`/`matchProductoTienda`) no se tocó — ya revalidaba contra el catálogo completo sin importar qué se mostró en el chat, y eso seguía funcionando bien.
+
+Compila limpio (`tsc`, `eslint`, `next build`). Verificado con datos de prueba: agrupado por categoría y detección de categoría mencionada funcionan; typos caen al fallback seguro (solo categorías) en vez de inventar.
+
+**Pendiente:**
+- Víctor corre la migración `20260910_productos_tienda_categoria.sql` y el backfill de los 56 productos de George (SQL entregado en la conversación — usa `ILIKE` por keyword una sola vez para no tipear categoría producto por producto, con `SELECT` de verificación para corregir a mano lo que caiga en "otros").
+- Cualquier tienda de catálogo futura debe cargar `categoria` en cada producto desde el alta — ya no hay derivación automática.
+- Prueba en vivo: "qué tienes" → debe listar categorías reales sin precios; "quiero hamburguesas" → debe listar hamburguesas reales con precio.
 
 ## 🚧 Bloque de trabajo 2026-09-10 (directo sobre `main`) — el bot no surfaceaba horario completo ni menú de tienda cerrada
 

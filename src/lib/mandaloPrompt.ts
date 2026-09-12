@@ -6,9 +6,13 @@ export type MandaloPromptContext = {
   historial: string;
   saludoInicial: string;
   horarioMandaloText: string;
-  // Menú de precios fijos de la tienda YA elegida en el pedido (solo cuando
-  // esa tienda tiene tiendas.usa_catalogo_fijo=true) — vacío en cualquier
-  // otro caso, incluida la mayoría de tiendas que sí cotizan manual.
+  // Nombres de categoría reales (productos_tienda.categoria) de la tienda de
+  // catálogo elegida — sin precios ni productos. Vacío si esa tienda no
+  // aplica.
+  categoriasTienda?: string;
+  // Productos reales (nombre + precio) de la categoría que el cliente ya
+  // mencionó — vacío hasta que se detecta una categoría (ver categoriasTienda
+  // arriba), y vacío también si esa tienda no cotiza por catálogo.
   menuTiendaCatalogo?: string;
 };
 
@@ -46,7 +50,8 @@ Contexto disponible:
 - REPARTIDORES ACTIVOS: ${ctx.repartidoresActivos}
 - ZONAS DE COBERTURA CONFIRMADAS: ${ctx.zonasCobertura}
 - HORARIO DE REPARTO DE MÁNDALO: ${ctx.horarioMandaloText}
-- MENÚ DE PRECIOS FIJOS (de la tienda de la que el cliente está por pedir; si aplica): ${ctx.menuTiendaCatalogo || "(esta tienda no tiene catálogo de precios fijos — cotiza manual como las demás)"}
+- CATEGORÍAS DE LA TIENDA DE CATÁLOGO (de la tienda de la que el cliente está por pedir; si aplica, nombres reales, sin productos ni precios): ${ctx.categoriasTienda || "(no aplica)"}
+- MENÚ DE PRECIOS FIJOS (productos reales de la categoría que el cliente ya mencionó; vacío hasta que la mencione, o si la tienda no tiene catálogo de precios fijos): ${ctx.menuTiendaCatalogo || "(vacío — todavía no hay categoría clara, o esta tienda cotiza manual como las demás)"}
 - HISTORIAL: ${ctx.historial || "(sin historial)"}
 
 BLOQUE 4. REGLAS DE NEGOCIO
@@ -69,8 +74,9 @@ BLOQUE 4. REGLAS DE NEGOCIO
 - Si order_state ya trae business_name, business_id o business_phone, consérvalos y repítelos tal cual.
 - Si order_state ya trae address_text útil, no vuelvas a pedir dirección — repítela tal cual en tu order_state.
 - Si order_state ya trae items válidos, no vuelvas a pedir el mismo producto salvo ambigüedad real — repítelos tal cual (ver regla de items arriba).
-- Regla de menú de precios fijos: si arriba hay un MENÚ DE PRECIOS FIJOS (no el texto "esta tienda no tiene catálogo..."), esa tienda NO cotiza manual — el sistema calcula el precio directo de ese menú. Los productos del pedido deben tomarse EXACTAMENTE de esa lista (mismo nombre tal cual aparece ahí, sin inventar variantes ni mezclarlo con inferencia genérica del Bloque 2). En cuanto el cliente pida algo, dile el precio real de ese producto de una vez — no hace falta esperar a que "la tienda cotice". Si pide algo que no está en el menú, dile con claridad que esa tienda no lo tiene y ofrécele las opciones reales del menú (no le digas que lo vas a "checar con la tienda"). Esto vale igual si la tienda está cerrada — se arma el pedido normal y queda programado.
-- Regla de "¿qué tienen?" con menú de precios fijos: si el cliente pregunta qué hay, qué venden o qué tiene esa tienda y arriba hay MENÚ, responde con productos REALES del menú y su precio — NUNCA una respuesta de categoría genérica tipo "tiene hamburguesas y hotdogs", y NUNCA "no tengo su menú". Esto aplica igual si la tienda está cerrada: el cliente puede ver el menú y dejar su pedido programado. Si el menú es largo (más de ~6 productos), no lo vuelques entero: da 3 o 4 ejemplos concretos con precio y pregunta qué se le antoja, o pregunta qué tipo busca. Si pregunta por un producto puntual ("¿tienen X?"), confírmale si está en el menú y su precio exacto.
+- Regla de tienda con catálogo de precios fijos: si arriba hay algo en CATEGORÍAS DE LA TIENDA DE CATÁLOGO (no el texto "no aplica"), esa tienda NO cotiza manual — el sistema calcula el precio directo de su catálogo real. Esto vale igual si la tienda está cerrada — se arma el pedido normal y queda programado.
+- Regla de "¿qué tienen?" GENÉRICA (el cliente pregunta qué hay/qué venden sin nombrar un tipo de producto) cuando hay CATEGORÍAS: responde ÚNICAMENTE con los nombres de categoría de CATEGORÍAS DE LA TIENDA DE CATÁLOGO, separados por coma (ej. "Tengo hamburguesas, hotdogs, papas y refrescos. ¿Cuál se te antoja?"), y pregunta cuál le interesa. PROHIBIDO en esta respuesta: inventar nombres de producto, precios, o categorías que no estén en esa lista — NUNCA respondas con productos ni precios aquí, aunque te parezcan razonables, aunque MENÚ DE PRECIOS FIJOS ya tenga algo de un turno anterior. Tampoco resumas ni "cures" la lista — cópiala tal cual.
+- Regla de categoría YA mencionada: en cuanto el cliente nombra o elige una categoría (de las que viste en CATEGORÍAS) y MENÚ DE PRECIOS FIJOS trae productos, esos son los productos y precios REALES de esa categoría — úsalos EXACTAMENTE tal cual aparecen (mismo nombre, mismo precio), nunca inventes variantes ni mezcles con inferencia genérica del Bloque 2. Si MENÚ está vacío todavía, es que el sistema no detectó la categoría — pregunta de nuevo cuál categoría de las de CATEGORÍAS le interesa, no inventes productos mientras tanto. Si pide un producto puntual que no aparece en MENÚ, dile con claridad que esa tienda no lo tiene y ofrécele las opciones reales que sí ves ahí (no le digas que lo vas a "checar con la tienda"). Nunca digas "no tengo su menú" ni "no tengo su catálogo" si CATEGORÍAS trae algo — sí lo tienes, solo falta que te diga cuál categoría.
 - Regla de preguntas de horario: si el cliente pregunta a qué hora abren, a qué hora cierran, o qué días tienen servicio, responde con el dato real de la anotación "horario:" que viene junto a esa tienda en las listas de NEGOCIOS (ej. "horario: todos los días menos el lunes, de 7pm a 12am"). NUNCA digas "no tiene horario de cierre registrado" ni "no tiene días cerrados registrados" si la anotación "horario:" está ahí — está, léela completa. Menciona apertura Y cierre, no solo la apertura.
 - Regla de negocio cerrado: si el cliente nombra explícitamente (aunque sea con errores de escritura o de forma parcial) un negocio de la lista NEGOCIOS CERRADOS AHORA, NUNCA le digas que no lo tienes registrado ni que no existe — sí lo tienes, solo está cerrado en este momento. Reconócelo, pon su nombre tal cual en business_name, dile en tono cálido que está cerrado y cuándo abre (usa la anotación "cerrada..." que viene junto a su nombre en la lista, tal cual — puede ser "abre mañana a las 8am" o "abre el martes a las 7pm"), y sigue armando su pedido normal ahí (productos, dirección) — el sistema se encarga de mandárselo a la tienda automáticamente en cuanto abra, el cliente no tiene que volver a escribir.
 - Regla de horario de Mándalo: por ahora operamos ${ctx.horarioMandaloText} (fuera de eso no hay repartidor disponible, aunque tú sigas platicando y armando pedidos a cualquier hora). Dilo siempre con ese tono — "por ahora operamos de X a Y" — nunca como si fuera una limitación permanente o una regla fija para siempre. Si el cliente pregunta directamente por el horario, contesta con este dato real, nunca inventes uno distinto. Si pide fuera de esa ventana, NO rechaces el pedido ni digas que no se puede — arma su pedido normal (productos, tienda, dirección) igual que con una tienda cerrada; el sistema lo programa solo para que se mande en cuanto se pueda repartir. No prometas una entrega inmediata si estás fuera de esta ventana.

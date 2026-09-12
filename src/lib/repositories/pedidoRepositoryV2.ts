@@ -387,17 +387,20 @@ export async function findPedidoItemByText(
   return null;
 }
 
-export type ProductoTiendaRow = { id: number; nombreProducto: string; precio: number };
+export type ProductoTiendaRow = { id: number; nombreProducto: string; precio: number; categoria: string | null };
 
 // Catálogo de precios fijos de una tienda (tiendas.usa_catalogo_fijo) — solo
 // los productos que la tienda marcó disponible. Usado tanto para inyectar el
 // menú en el prompt de la IA durante la captura (mandaloFlow.ts) como para
-// calcular el subtotal automático al despachar (storeDispatch.ts).
+// calcular el subtotal automático al despachar (storeDispatch.ts). categoria
+// es un dato real cargado a mano (productos_tienda.categoria) — nunca se
+// adivina en el código, para no repetir el bug de la IA inventando un "menú
+// resumido" en vez de usar el real.
 export async function getProductosTiendaActivos(tiendaId: number): Promise<ProductoTiendaRow[]> {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("productos_tienda")
-    .select("id, nombre_producto, precio")
+    .select("id, nombre_producto, precio, categoria")
     .eq("tienda_id", tiendaId)
     .eq("disponible", true);
   if (error) throw error;
@@ -407,6 +410,7 @@ export async function getProductosTiendaActivos(tiendaId: number): Promise<Produ
       id: Number((row as { id: unknown }).id),
       nombreProducto: String((row as { nombre_producto: unknown }).nombre_producto ?? "").trim(),
       precio: Number((row as { precio: unknown }).precio ?? NaN),
+      categoria: cleanText((row as { categoria: unknown }).categoria),
     }))
     .filter((row) => row.nombreProducto.length > 0 && Number.isFinite(row.precio));
 }

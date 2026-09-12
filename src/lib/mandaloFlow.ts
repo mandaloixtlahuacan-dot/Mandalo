@@ -237,6 +237,23 @@ function resolveMenuCandidatoTienda(params: {
   return null;
 }
 
+// Coincide categorías reales (productos_tienda.categoria) contra texto libre
+// (mensaje actual + últimos turnos) — sin tolerancia a typos elaborada: si no
+// matchea, el peor caso es mostrar solo las categorías y preguntar cuál,
+// nunca inventar productos. También compara la forma singular (quita una
+// "s" final) para que "quiero una hamburguesa" matchee la categoría
+// "hamburguesas".
+function matchCategoriasEnTexto(categorias: string[], texto: string): string[] {
+  const t = texto.toLowerCase();
+  return categorias.filter((cat) => {
+    const c = cat.toLowerCase();
+    if (!c || c === "otros") return false;
+    if (t.includes(c)) return true;
+    const singular = c.endsWith("s") ? c.slice(0, -1) : c;
+    return singular.length > 3 && t.includes(singular);
+  });
+}
+
 export async function getLLMResponse(params: {
   historialReciente: Array<{ role: "user" | "assistant"; content: string }>;
   supabaseJson: JsonObject;
@@ -310,10 +327,22 @@ export async function getLLMResponse(params: {
     : "(sin zonas confirmadas)";
 
   // Menú de precios fijos (tiendas.usa_catalogo_fijo) de la tienda de la que
-  // el cliente está por pedir — se inyecta para que la IA responda "¿qué
-  // tienes?" con productos y precios reales, capture con el nombre exacto del
-  // catálogo, y cotice sola (CLAUDE.md Sección 5 regla 5).
+  // el cliente está por pedir. Escalonado en dos niveles para que la IA no
+  // vuelva a "resumir" un catálogo largo con productos/precios inventados
+  // (bug real en producción con George: "Hamburguesa sencilla $50" no
+  // existía — la IA tenía las 56 reales enfrente y aun así inventó 4):
+  // - Sin categoría mencionada: solo se inyectan los NOMBRES de categoría
+  //   reales (categoriasTienda) — sin precios ni productos, nada que inventar.
+  // - Con una categoría mencionada (mensaje o últimos turnos): se inyectan
+  //   los productos reales de ESA categoría (menuTiendaCatalogo), no las 56
+  //   de golpe. categoria es dato real (productos_tienda.categoria, cargado a
+  //   mano), nunca derivado por keyword en este código.
+  // La resolución final de precio (storeDispatch.ts) sigue revalidando
+  // contra el catálogo completo sin importar qué se haya mostrado en el
+  // chat — eso ya funcionaba bien, este cambio es solo sobre qué ve la IA
+  // para conversar.
   let menuTiendaCatalogo_text = "";
+  let categoriasTienda_text = "";
   const menuCandidato = resolveMenuCandidatoTienda({
     currentOrderState: params.currentOrderState,
     activeTiendas: [...tiendas, ...tiendasCerradas],
@@ -325,7 +354,19 @@ export async function getLLMResponse(params: {
     try {
       const productos = await pedidoRepositoryV2.getProductosTiendaActivos(menuCandidatoId);
       if (productos.length) {
-        menuTiendaCatalogo_text = productos.map((p) => `- ${p.nombreProducto} — ${formatMoney(p.precio)}`).join("\n");
+        const categorias = [...new Set(productos.map((p) => p.categoria?.trim() || "otros"))].sort();
+        categoriasTienda_text = categorias.join(", ");
+
+        const textoBusqueda = [params.userMessage, ...params.historialReciente.slice(-4).map((m) => m.content)].join(" ");
+        const categoriasMencionadas = matchCategoriasEnTexto(categorias, textoBusqueda);
+
+        if (categoriasMencionadas.length) {
+          const mencionadas = new Set(categoriasMencionadas);
+          menuTiendaCatalogo_text = productos
+            .filter((p) => mencionadas.has(p.categoria?.trim() || "otros"))
+            .map((p) => `- ${p.nombreProducto} — ${formatMoney(p.precio)}`)
+            .join("\n");
+        }
       }
     } catch (e: unknown) {
       console.error("[mandalo] getLLMResponse: error consultando catálogo de tienda", { message: getErrorMessage(e) });
@@ -342,6 +383,7 @@ export async function getLLMResponse(params: {
     saludoInicial: buildSaludoInicial(),
     horarioMandaloText: `de ${formatHour12(MANDALO_HORA_APERTURA)} a ${formatHour12(MANDALO_HORA_CIERRE)}`,
     menuTiendaCatalogo: menuTiendaCatalogo_text,
+    categoriasTienda: categoriasTienda_text,
   });
 
   const messages: LlmMessage[] = [
