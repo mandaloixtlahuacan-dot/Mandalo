@@ -85,6 +85,14 @@ export async function waapiSendText({ to, body }: WaapiSendTextArgs) {
 }
 
 export function normalizeWhatsAppText(text: string) {
-  // Normalizamos saltos/espacios antes de enviar al proveedor de WhatsApp.
-  return text.replace(/[\r\n]+/g, " ").replace(/\s+/g, " ").trim();
+  // Conserva saltos de línea reales (listas de filtros, tiendas y menú).
+  // Solo aplana espacios horizontales y recorta líneas en blanco de más.
+  return String(text ?? "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+/g, " ").trim())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }

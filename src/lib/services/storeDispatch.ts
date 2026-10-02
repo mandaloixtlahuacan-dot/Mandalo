@@ -13,7 +13,8 @@ import {
   type PedidoFullRecord,
 } from "@/lib/repositories/pedidoRepositoryV2";
 import { buildOrderTimeoutMetadata } from "@/lib/services/orderTimeouts";
-import { calculateFinalPrice, formatMoney, MANDALO_DELIVERY_FEE, MANDALO_SERVICE_FEE } from "@/lib/ordenes";
+import { formatCustomerQuoteMessage } from "@/lib/customerUx";
+import { calculateFinalPrice, MANDALO_DELIVERY_FEE } from "@/lib/ordenes";
 import { saveChatMessage as guardarMensajeChat } from "@/lib/messages";
 import type { OrderState } from "@/lib/orderStateMachine";
 
@@ -82,14 +83,12 @@ export async function finalizeStoreQuote(params: {
     payload: { subtotal, total },
   });
 
-  const msg =
-    `Este es el total de tu pedido en *${pedido.tienda.nombre ?? "la tienda"}*:\n\n` +
-    `Pedido #${pedido.id}\n` +
-    `Subtotal: ${formatMoney(subtotal)}\n` +
-    `Servicio Mándalo: ${formatMoney(MANDALO_SERVICE_FEE)}\n` +
-    `Envío: ${formatMoney(MANDALO_DELIVERY_FEE)}\n` +
-    `*Total a pagar: ${formatMoney(total)}*\n\n` +
-    `¿Confirmas tu pedido? Responde *SÍ* ✅`;
+  const msg = formatCustomerQuoteMessage({
+    tiendaNombre: pedido.tienda.nombre ?? "la tienda",
+    pedidoId: pedido.id,
+    subtotal,
+    total,
+  });
   await outboxRepository.enqueueOutboundMessage({
     pedidoId: pedido.id,
     tipoMensaje: "notificacion_cliente",
