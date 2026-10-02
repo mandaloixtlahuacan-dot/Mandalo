@@ -70,6 +70,62 @@ export async function waapiSendTextRequest({ to, body }: WaapiSendTextArgs): Pro
   };
 }
 
+export type WaapiSendImageArgs = {
+  to: string;
+  caption: string;
+  png: Buffer;
+  filename?: string;
+};
+
+export async function waapiSendImage({ to, caption, png, filename }: WaapiSendImageArgs): Promise<WaapiSendTextResponse> {
+  const env = getEnv();
+  const url = `${String(env.WAAPI_API_BASE).replace(/\/+$/, "")}/messages/image`;
+  const waapiTo = toWaapiChatId(to);
+  const form = new FormData();
+  form.append("to", waapiTo);
+  form.append("caption", caption);
+  form.append("media", new Blob([new Uint8Array(png)], { type: "image/png" }), filename || "menu.png");
+
+  console.log("[mandalo] waapi -> sendImage to:", waapiTo, "bytes:", png.length);
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.WAAPI_TOKEN}`,
+    },
+    body: form,
+  });
+
+  const text = await res.text().catch(() => "");
+  let parsed: unknown = null;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    parsed = null;
+  }
+
+  console.log("[DEBUG] Respuesta Waapi imagen:", {
+    to: waapiTo,
+    ok: res.ok,
+    status: res.status,
+    statusText: res.statusText,
+    json: parsed,
+    rawTextPreview: parsed ? undefined : text.slice(0, 2000),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Waapi image error ${res.status}: ${text.slice(0, 500)}`);
+  }
+
+  return {
+    ok: res.ok,
+    status: res.status,
+    statusText: res.statusText,
+    data: parsed ?? { ok: true, raw: text },
+    rawText: text,
+  };
+}
+
 export async function waapiSendText({ to, body }: WaapiSendTextArgs) {
   const result = await waapiSendTextRequest({ to, body });
   if (!result.ok) {
