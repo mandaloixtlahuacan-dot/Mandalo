@@ -1,4 +1,5 @@
 import type { OrderState } from "@/lib/orderStateMachine";
+import { isGuidedQuoteItem, prepareQuoteItems, quoteItemNeedsDetail, quoteQuestionForItems } from "@/lib/quoteProductClarity";
 import type {
   PedidoItemInput,
   PedidoSnapshot,
@@ -122,10 +123,17 @@ export function validateAddress(
   };
 }
 
-export function validateItems(items: PedidoItemInput[]): ValidationResult["validatedItems"] {
+export function validateItems(
+  items: PedidoItemInput[],
+  options?: { quoteStore?: boolean; userMessage?: string | null; ignoreText?: string | null },
+): ValidationResult["validatedItems"] {
   const issues: ValidationIssue[] = [];
+  const quoteStore = options?.quoteStore === true;
+  const source = quoteStore ? prepareQuoteItems(items, options?.userMessage, options?.ignoreText) : items;
+  const quoteQuestion = quoteStore ? quoteQuestionForItems(source) : null;
+  let quoteQuestionUsed = false;
 
-  const normalizedItems = items
+  const normalizedItems = source
     .map((item, itemIndex) => {
       const nombre = cleanText(item.nombre_producto);
       const marca = cleanText(item.marca);
@@ -144,7 +152,27 @@ export function validateItems(items: PedidoItemInput[]): ValidationResult["valid
         return null;
       }
 
-      if (isGenericProductName(nombre) && !marca && !presentacion && !notas) {
+      const normalizedItem = {
+        nombre_producto: nombre,
+        ...(marca ? { marca } : {}),
+        ...(presentacion ? { presentacion } : {}),
+        ...(cantidad != null ? { cantidad } : {}),
+        ...(unidad ? { unidad } : {}),
+        ...(notas ? { notas } : {}),
+      } satisfies PedidoItemInput;
+
+      if (quoteStore && isGuidedQuoteItem(normalizedItem) && quoteItemNeedsDetail(normalizedItem)) {
+        const customerQuestion = !quoteQuestionUsed ? quoteQuestion ?? undefined : undefined;
+        if (customerQuestion) quoteQuestionUsed = true;
+        issues.push({
+          code: "GENERIC_ITEM_NEEDS_SPEC",
+          field: "especificacion_producto",
+          message: `El producto "${nombre}" necesita más detalle para que la tienda lo cotice.`,
+          itemIndex,
+          itemName: nombre,
+          ...(customerQuestion ? { customerQuestion } : {}),
+        });
+      } else if (isGenericProductName(nombre) && !marca && !presentacion && !notas) {
         issues.push({
           code: "GENERIC_ITEM_NEEDS_SPEC",
           field: "especificacion_producto",
@@ -154,14 +182,7 @@ export function validateItems(items: PedidoItemInput[]): ValidationResult["valid
         });
       }
 
-      return {
-        nombre_producto: nombre,
-        ...(marca ? { marca } : {}),
-        ...(presentacion ? { presentacion } : {}),
-        ...(cantidad != null ? { cantidad } : {}),
-        ...(unidad ? { unidad } : {}),
-        ...(notas ? { notas } : {}),
-      } satisfies PedidoItemInput;
+      return normalizedItem;
     })
     .filter((item) => item !== null) as PedidoItemInput[];
 
@@ -196,6 +217,8 @@ export function validateCaptureForConfirmation(params: {
   snapshot: PedidoSnapshot;
   items: PedidoItemInput[];
   knownZoneNames?: string[];
+  quoteStore?: boolean;
+  userMessage?: string | null;
 }): ValidationResult {
   const validatedBusiness = validateBusiness(params.snapshot);
   const validatedAddress = validateAddress(
@@ -203,7 +226,11 @@ export function validateCaptureForConfirmation(params: {
     { latitud: params.snapshot.latitud, longitud: params.snapshot.longitud },
     { addressZone: params.snapshot.addressZone, knownZoneNames: params.knownZoneNames },
   );
-  const validatedItems = validateItems(params.items);
+  const validatedItems = validateItems(params.items, {
+    quoteStore: params.quoteStore === true,
+    userMessage: params.userMessage,
+    ignoreText: params.snapshot.businessName,
+  });
 
   // Orden de prioridad de issues/missingFields: tienda -> dirección -> producto,
   // igual que la regla de decisión del prompt (mandaloPrompt.ts, BLOQUE 5). Los issues de producto

@@ -1853,6 +1853,7 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
     feeNote: formatPreConfirmFeeNote(usaCatalogoFijo ? "catalogo" : "cotiza_tienda"),
     forceBusiness,
     forceReplaceItems,
+    quoteStore: !usaCatalogoFijo,
   });
 
   console.log("[captureEngine] pedido:", {
@@ -1880,9 +1881,14 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
     !captureResult.readyForConfirmation && containsFalseConfirmationClaim(llmReplyClean)
       ? "Voy anotando tu pedido. En cuanto tenga todo listo te paso el resumen para que lo confirmes. 🛒"
       : llmReplyClean;
-  let customerMessage = captureResult.readyForConfirmation
-    ? captureResult.customerMessage
-    : llmReplySafe || captureResult.customerMessage;
+  // En tienda que cotiza, una línea vaga no se cierra con el texto de la IA:
+  // se pregunta marca/tipo/tamaño con ejemplos. El catálogo (George) no entra aquí.
+  const quoteQuestion = captureResult.validation.issues.find((issue) => issue.customerQuestion)?.customerQuestion;
+  const missingStore = captureResult.validation.missingFields.includes("negocio");
+  let customerMessage =
+    captureResult.readyForConfirmation || (Boolean(quoteQuestion) && !missingStore)
+      ? captureResult.customerMessage
+      : llmReplySafe || captureResult.customerMessage;
 
   if (captureResult.readyForConfirmation && usaCatalogoFijo && captureResult.snapshot.businessId) {
     const priced = await catalogPriceLines(captureResult.snapshot.businessId, captureResult.items).catch(() => null);

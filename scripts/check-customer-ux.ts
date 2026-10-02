@@ -3,6 +3,7 @@
  * Correr: npx tsx scripts/check-customer-ux.ts
  */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { buildMandaloSystemPrompt } from "../src/lib/mandaloPrompt";
 import { buildCustomerMessage, mergeSnapshot } from "../src/lib/services/captureEngine";
 import { validateCaptureForConfirmation } from "../src/lib/services/validationEngine";
 import { normalizeWhatsAppText } from "../src/lib/waapi";
@@ -269,6 +270,7 @@ const receipt = buildCustomerMessage({
     snapshot: abarrotesSnapshot,
     items: abarrotesSnapshot.items,
     knownZoneNames: ["Calle Hidalgo"],
+    quoteStore: true,
   }),
   snapshot: abarrotesSnapshot,
   items: abarrotesSnapshot.items,
@@ -299,6 +301,166 @@ const catalogReceipt = buildCustomerMessage({
 assert(catalogReceipt.includes("Envío y servicio: $35"), "recibo de catálogo con $35");
 assert(catalogReceipt.includes("Hamburguesa sencilla — $60"), "el recibo trae el precio del producto");
 assert(catalogReceipt.includes("Total: $95"), "el recibo suma producto + envío");
+
+const quoteBase = {
+  businessId: 1,
+  businessName: "ZAGU",
+  addressText: "Calle Hidalgo 12, frente a la tortillería",
+  addressZone: "Calle Hidalgo",
+};
+const zones = ["Calle Hidalgo"];
+
+function quoteCheck(
+  items: Array<{ nombre_producto: string; marca?: string; presentacion?: string; cantidad?: number; unidad?: string; notas?: string }>,
+  userMessage: string,
+) {
+  return validateCaptureForConfirmation({
+    snapshot: { ...quoteBase, items },
+    items,
+    knownZoneNames: zones,
+    quoteStore: true,
+    userMessage,
+  });
+}
+
+function questionOf(userMessage: string, items: Array<{ nombre_producto: string; marca?: string; presentacion?: string; cantidad?: number; unidad?: string; notas?: string }> = []) {
+  const result = quoteCheck(items, userMessage);
+  const question = result.issues.find((issue) => issue.customerQuestion)?.customerQuestion ?? "";
+  return { result, question };
+}
+
+const leche = questionOf("dos litros de leche");
+assert(!leche.result.readyForConfirmation, "dos litros de leche no se cierra");
+assert(leche.question.includes("Lala") && leche.question.includes("Alpura") && leche.question.includes("Santa Clara"), "la leche ofrece marcas de ejemplo");
+assert(leche.question.includes("entera") && leche.question.includes("deslactosada") && leche.question.includes("light"), "la leche pide el tipo");
+assert(!leche.question.includes("cuántos litros"), "si ya dijo los litros, no se vuelven a pedir");
+assert(leche.question.includes("mandado"), "la pregunta sigue el mandado");
+assert(!leche.question.includes("Tiendas de abarrotes") && !leche.question.toLowerCase().includes("menú"), "no reenvía menú ni filtros");
+assert((leche.question.match(/\p{Extended_Pictographic}/gu) ?? []).length <= 2, "la pregunta no se llena de emojis");
+assert(leche.result.validatedItems.items[0]?.nombre_producto === "Leche", "guarda la leche parcial");
+assert(leche.result.validatedItems.items[0]?.marca == null, "todavía no inventa marca");
+
+const zaguNoEsMarca = questionOf("de zagu dos litros de leche");
+assert(zaguNoEsMarca.question.includes("Lala"), "el nombre de la tienda no cuenta como marca");
+assert(zaguNoEsMarca.result.validatedItems.items[0]?.marca == null, "ZAGU no se guarda como marca");
+
+const lecheLista = quoteCheck([{ nombre_producto: "Leche", cantidad: 2, unidad: "litros" }], "Lala entera");
+assert(lecheLista.validatedItems.allItemsSpecific, "Lala entera completa la leche");
+assert(lecheLista.readyForConfirmation, "con tienda y dirección, la leche lista pasa a confirmar");
+assert(/lala/i.test(String(lecheLista.validatedItems.items[0]?.marca)), "guarda la marca que dijo");
+assert(/entera/i.test(String(lecheLista.validatedItems.items[0]?.presentacion)), "guarda el tipo");
+
+const santaClara = quoteCheck([], "dos litros de leche Santa Clara deslactosada");
+assert(santaClara.validatedItems.allItemsSpecific, "Santa Clara deslactosada no es lista cerrada: vale");
+assert(/santa clara/i.test(String(santaClara.validatedItems.items[0]?.marca)), "junta la marca de dos palabras");
+
+const cualquierLeche = quoteCheck([{ nombre_producto: "Leche", cantidad: 2, unidad: "litros" }], "del que sea");
+assert(cualquierLeche.readyForConfirmation, "del que sea no sigue preguntando");
+assert(cualquierLeche.validatedItems.items[0]?.notas === "la que sea", "anota que la tienda escoge");
+assert(cualquierLeche.validatedItems.items[0]?.cantidad === 2, "del que sea conserva los litros que ya dijo");
+const lecheDelQueSea = quoteCheck([], "dos litros de leche del que sea");
+assert(lecheDelQueSea.readyForConfirmation, "leche del que sea no sigue preguntando");
+assert(lecheDelQueSea.validatedItems.items[0]?.cantidad === 2, "del que sea no tira el tamaño");
+assert(lecheDelQueSea.validatedItems.items[0]?.notas === "la que sea", "del que sea queda en la nota");
+assert(!cualquierLeche.issues.some((issue) => issue.customerQuestion), "del que sea no trae otra pregunta");
+
+const laQueSea = quoteCheck([{ nombre_producto: "Leche", cantidad: 2, unidad: "litros" }], "la que sea");
+assert(laQueSea.validatedItems.items[0]?.notas === "la que sea", "la que sea se anota");
+const cualquiera = quoteCheck([{ nombre_producto: "Leche", cantidad: 2, unidad: "litros" }], "cualquiera");
+assert(cualquiera.validatedItems.items[0]?.notas === "la que sea", "cualquiera se anota como la que sea");
+const barata = quoteCheck([{ nombre_producto: "Leche", cantidad: 2, unidad: "litros" }], "la más barata");
+assert(barata.readyForConfirmation, "la más barata cierra la línea");
+assert(barata.validatedItems.items[0]?.notas === "la más barata", "la más barata se anota tal cual");
+
+const papel = questionOf("un paquete de papel higiénico");
+assert(!papel.result.readyForConfirmation, "un paquete de papel no alcanza");
+assert(papel.question.includes("Pétalo") && papel.question.includes("12") && papel.question.includes("32"), "el papel pide marca y rollos");
+assert(papel.question.includes("4") && papel.question.includes("18"), "el papel da los cortes de rollos");
+
+const papelMarca = questionOf("Pétalo de 18", [{ nombre_producto: "Papel higiénico", cantidad: 1, unidad: "paquete" }]);
+assert(papelMarca.result.validatedItems.allItemsSpecific, "Pétalo de 18 cierra el papel");
+assert(/18 rollos/i.test(String(papelMarca.result.validatedItems.items[0]?.presentacion)), "guarda los rollos");
+
+const agua = questionOf("un agua natural de litro");
+assert(!agua.result.readyForConfirmation, "el agua de litro pide marca");
+assert(agua.question.includes("Ciel") && agua.question.includes("Bonafont") && agua.question.includes("Epura"), "el agua ofrece marcas de ejemplo");
+assert(!agua.question.includes("garrafón"), "si ya dijo litro, no pregunta garrafón");
+assert(!agua.question.includes("entera"), "el agua no pide tipo de leche");
+
+const aguaLista = quoteCheck([{ nombre_producto: "Agua", presentacion: "natural", cantidad: 1, unidad: "litro" }], "Ciel");
+assert(aguaLista.validatedItems.allItemsSpecific, "Ciel cierra el agua");
+
+const coca = questionOf("una coca");
+assert(coca.question.includes("lata") && coca.question.includes("litros"), "la coca pide tamaño");
+assert(!coca.question.includes("de qué marca"), "si ya dijo Coca, no pide otra marca");
+const cocaLista = quoteCheck([], "una coca de 600");
+assert(cocaLista.validatedItems.allItemsSpecific, "coca de 600 ya se puede cotizar");
+
+const juntos = quoteCheck([], "dos litros de leche y un paquete de papel higiénico");
+assert(juntos.validatedItems.items.length === 2, "leche y papel se anotan los dos");
+assert(juntos.validatedItems.items[0]?.cantidad === 2, "los dos litros no se vuelven uno");
+assert(juntos.validatedItems.items[0]?.nombre_producto === "Leche", "pregunta primero la leche");
+const preguntaJuntos = juntos.issues.find((issue) => issue.customerQuestion)?.customerQuestion ?? "";
+assert(preguntaJuntos.includes("Lala") && !preguntaJuntos.includes("Pétalo"), "un mensaje pregunta solo el primer producto");
+
+const aceiteCinco = quoteCheck([], "aceite 1-2-3 de 5 litros");
+assert(aceiteCinco.validatedItems.allItemsSpecific, "aceite 1-2-3 de 5 litros ya se cotiza");
+assert(aceiteCinco.validatedItems.items[0]?.cantidad === 5, "el 1 de 1-2-3 no se come los litros");
+assert(aceiteCinco.validatedItems.items[0]?.marca === "1-2-3", "guarda la marca 1-2-3");
+
+const frijol = quoteCheck([], "un kilo de frijol negro");
+assert(frijol.validatedItems.allItemsSpecific, "kilo de frijol negro ya se puede cotizar");
+assert(/negro/i.test(String(frijol.validatedItems.items[0]?.presentacion)), "guarda el tipo de frijol");
+
+const corona = questionOf("una corona");
+assert(corona.question.includes("caguama") && corona.question.includes("lata"), "una corona pide la presentación");
+assert(!corona.question.includes("de qué marca"), "corona ya es la marca");
+const marlboro = quoteCheck([], "un marlboro");
+assert(marlboro.validatedItems.allItemsSpecific, "un marlboro se anota como cajetilla");
+assert(/marlboro/i.test(String(marlboro.validatedItems.items[0]?.marca)), "guarda Marlboro");
+
+const suelta = quoteCheck([], "huevo, pan, tortillas, aceite, arroz, frijol, detergente, jabón, cerveza y cigarros");
+assert(!suelta.readyForConfirmation, "la lista vaga de abarrotes no se cierra de un jalón");
+assert(suelta.issues.filter((issue) => issue.code === "GENERIC_ITEM_NEEDS_SPEC").length >= 8, "cada categoría vaga se queda pendiente");
+const primera = suelta.issues.find((issue) => issue.customerQuestion)?.customerQuestion ?? "";
+assert(primera.includes("huevo") || primera.includes("blanco"), "pregunta uno por uno, empezando por el primero");
+assert(!primera.includes("Marlboro") && !primera.includes("Nutrioli"), "un solo mensaje no revuelve todas las categorías");
+
+const catalogoSuelto = validateCaptureForConfirmation({
+  snapshot: { ...quoteBase, businessId: 7, businessName: "Hamburguesas Hotdogs George", items: [{ nombre_producto: "Leche", presentacion: "2 litros", cantidad: 2 }] },
+  items: [{ nombre_producto: "Leche", presentacion: "2 litros", cantidad: 2 }],
+  knownZoneNames: zones,
+  quoteStore: false,
+  userMessage: "dos litros de leche",
+});
+assert(catalogoSuelto.validatedItems.allItemsSpecific, "en catálogo no se aprieta la regla de abarrotes");
+assert(!catalogoSuelto.issues.some((issue) => issue.customerQuestion), "George no recibe la pregunta de marca de tiendita");
+
+const waivableReceipt = buildCustomerMessage({
+  validation: cualquierLeche,
+  snapshot: { ...quoteBase, items: cualquierLeche.validatedItems.items },
+  items: cualquierLeche.validatedItems.items,
+  feeNote: formatPreConfirmFeeNote("cotiza_tienda"),
+});
+assert(waivableReceipt.includes("la que sea"), "el recibo lleva la nota de que la tienda escoge");
+assert(waivableReceipt.includes("$35"), "el recibo de cotización sigue en $35");
+assert(!waivableReceipt.includes("$10") && !waivableReceipt.includes("$25"), "el recibo no parte el cargo");
+
+const prompt = buildMandaloSystemPrompt({
+  negociosDisponibles: "ZAGU",
+  negociosCerrados: "(ninguno)",
+  repartidoresActivos: "(ninguno)",
+  zonasCobertura: "Calle Hidalgo",
+  historial: "",
+  saludoInicial: "Hola",
+  horarioMandaloText: "de 3pm a 9pm",
+  categoriasTienda: "(no aplica)",
+});
+assert(prompt.includes("del que sea") && prompt.includes("la más barata") && prompt.includes("cualquiera"), "el prompt acepta que el cliente deje la elección");
+assert(prompt.includes("Lala") && prompt.includes("Pétalo") && prompt.includes("Ciel"), "el prompt trae ejemplos, no un catálogo cerrado");
+assert(prompt.includes("no reenvíes") || prompt.includes("No reenvíes"), "el prompt no manda a reenviar menús");
+assert(prompt.includes("foto del menú"), "el flujo de foto de George sigue en el prompt");
+assert(prompt.includes("$35"), "el prompt no cambia el cargo de $35");
 
 console.log("\n--- Transcripción de ejemplo ---\n");
 console.log("CLIENTE: hola\n");

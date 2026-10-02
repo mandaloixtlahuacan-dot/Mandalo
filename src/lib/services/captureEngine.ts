@@ -61,6 +61,9 @@ export type ValidationIssue = {
   message: string;
   itemIndex?: number;
   itemName?: string;
+  // Pregunta corta para el cliente cuando falta marca/tipo/tamaño en una
+  // tienda que cotiza. Vacío en tiendas de catálogo.
+  customerQuestion?: string;
 };
 
 export type ValidationResult = {
@@ -110,6 +113,8 @@ export type CaptureInput = {
   forceBusiness?: boolean;
   // true = los items del turno reemplazan la lista, aunque vengan vacíos.
   forceReplaceItems?: boolean;
+  // true = tienda sin menú fijo. Ahí no se cierra una línea vaga.
+  quoteStore?: boolean;
 };
 
 export type CaptureOutput = {
@@ -156,6 +161,8 @@ export type ValidationEngineDeps = {
     snapshot: PedidoSnapshot;
     items: PedidoItemInput[];
     knownZoneNames?: string[];
+    quoteStore?: boolean;
+    userMessage?: string | null;
   }): ValidationResult;
 };
 
@@ -337,6 +344,7 @@ export function formatItems(items: PedidoItemInput[]): string {
         item.presentacion,
         item.cantidad != null ? `x${item.cantidad}` : null,
         item.unidad,
+        item.notas,
       ].filter(Boolean);
 
       return `- ${parts.join(" ")}`;
@@ -362,6 +370,9 @@ export function buildCustomerMessage(params: {
         "Escríbeme el nombre exacto de la tienda."
       );
     }
+
+    const quoteQuestion = validation.issues.find((issue) => issue.customerQuestion)?.customerQuestion;
+    if (quoteQuestion) return quoteQuestion;
 
     if (first?.field === "especificacion_producto" || first?.field === "productos") {
       return (
@@ -426,6 +437,8 @@ export function createCaptureEngine(deps: CaptureEngineDeps) {
         snapshot: mergedSnapshot,
         items: mergedSnapshot.items ?? [],
         knownZoneNames: input.knownZoneNames ?? [],
+        quoteStore: input.quoteStore === true,
+        userMessage: input.userMessage,
       });
 
       const nextSnapshot: PedidoSnapshot = {
