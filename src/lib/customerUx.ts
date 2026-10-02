@@ -75,6 +75,8 @@ export const CUSTOMER_STORE_NICHES: StoreNiche[] = [
 export const UX_STORE_LIST_MARKER = "¿De cuál te hago el mandado?";
 export const UX_CATEGORY_MARKER = "¿Cuál categoría te late?";
 export const UX_MENU_MARKER = "¿Cuál te encargo?";
+/** Pie de la foto del menú. El siguiente turno lo usa para no volver a filtrar categorías. */
+export const UX_MENU_IMAGE_MARKER = "Te dejo el menú de";
 
 export type UxStore = {
   id: number;
@@ -93,6 +95,7 @@ export type CustomerTurn =
   | { type: "pick_store"; store: UxStore }
   | { type: "ask_menu"; store: UxStore | null }
   | { type: "ask_category"; store: UxStore | null; hint: string }
+  | { type: "running_total"; store: UxStore | null }
   | { type: "continue" };
 
 export function normalizeUxText(text: string): string {
@@ -152,7 +155,7 @@ export function buildGreeting(now = new Date()): string {
     `${franja} Soy Mándalo, yo te hago el mandado. 🛵\n\n` +
     `¿Qué se te antoja?\n\n` +
     `${options}\n\n` +
-    `Responde con el número o el nombre.`
+    `Pícale al número o al nombre.`
   );
 }
 
@@ -234,6 +237,58 @@ export function formatCatalogCategories(store: UxStore, categories: string[]): s
   );
 }
 
+export function formatCatalogMenuCaption(store: UxStore): string {
+  const closed = store.abierta
+    ? ""
+    : `\n\nOjo: está cerrada ahora${store.abreTexto ? ` (${store.abreTexto})` : ""}. Lo armamos y se manda en cuanto abra.`;
+  return (
+    `${UX_MENU_IMAGE_MARKER} ${store.nombre} 🍔\n\n` +
+    `Mira qué chido. Pídeme lo que se te antoje, como sale en la foto.${closed}\n\n` +
+    `${formatCustomerFeeLine()}, aparte. 🔥`
+  );
+}
+
+/** Foto de menú lista en el repo. Hoy solo George (tienda 5). */
+export function catalogUsesMenuImage(store: UxStore): boolean {
+  if (!store.usaCatalogoFijo) return false;
+  return store.id === 5 || normalizeUxText(store.nombre).includes("george");
+}
+
+export function formatCatalogReceiptFee(subtotal: number | null): string {
+  const base = formatCustomerFeeLine();
+  if (subtotal == null) return base;
+  return `${base}\nTotal: ${formatMoney(subtotal + CUSTOMER_FACING_FEE)}`;
+}
+
+export function isRunningTotalQuestion(message: string): boolean {
+  const text = normalizeUxText(message);
+  if (!text || text.length > 48) return false;
+  return /^(y )?(la cuenta|el total|total|cuenta|cuanto (es|va|llevo|seria|sale)|cuanto es el total|me dices (el total|la cuenta))( porfa| por favor)?$/.test(
+    text,
+  );
+}
+
+export function formatRunningTotal(params: {
+  storeName: string;
+  lines: string[];
+  subtotal: number | null;
+  catalog: boolean;
+}): string {
+  if (!params.catalog) {
+    return `De ${params.storeName} la tienda cotiza los productos.\n\n${formatCustomerFeeLine()}\n\nEl total te lo paso cuando ella responda.`;
+  }
+  if (!params.lines.length) {
+    return `Todavía no anoto nada de ${params.storeName}. Dime qué se te antoja y te armo la cuenta. 🍔`;
+  }
+  const total =
+    params.subtotal == null ? "" : `\nTotal por ahora: ${formatMoney(params.subtotal + CUSTOMER_FACING_FEE)}`;
+  return `Llevas de ${params.storeName}:\n${params.lines.join("\n")}\n\n${formatCustomerFeeLine()}${total}`;
+}
+
+export function storeMentionedInMessage(message: string, stores: UxStore[]): UxStore | null {
+  return singleStoreMentioned(message, stores);
+}
+
 export function formatCatalogMenu(storeName: string, category: string, items: Array<{ nombre: string; precio: number }>): string {
   const lines = items.map((item) => `- ${item.nombre} — ${formatMoney(item.precio)}`).join("\n");
   return `${category} en ${storeName}:\n\n${lines}\n\n${formatCustomerFeeLine()}, aparte.\n\n${UX_MENU_MARKER}`;
@@ -256,6 +311,8 @@ export function replyClaimsMissingMenu(text: string): boolean {
     /todavia no (tengo|cargo) (el |su )?(menu|catalogo)/.test(t) ||
     t.includes("no tiene categorias de catalogo") ||
     t.includes("no tiene categorias") ||
+    t.includes("no me diste") ||
+    t.includes("no veo el menu") ||
     t.includes("menu no cargado") ||
     t.includes("catalogo no cargado")
   );
@@ -303,7 +360,9 @@ export function matchNicheChoice(message: string): StoreNiche | null {
 }
 
 export function lastBotAskedForNiche(lastBot: string): boolean {
-  return CUSTOMER_STORE_NICHES.every((niche) => lastBot.includes(niche.label)) && lastBot.includes("Responde con el número o el nombre.");
+  const asked =
+    lastBot.includes("Pícale al número o al nombre.") || lastBot.includes("Responde con el número o el nombre.");
+  return CUSTOMER_STORE_NICHES.every((niche) => lastBot.includes(niche.label)) && asked;
 }
 
 export function nicheListedInLastBot(lastBot: string): StoreNiche | null {
@@ -399,6 +458,14 @@ export function classifyCustomerTurn(params: {
   const storeFromMessage = singleStoreMentioned(message, stores);
   const storeFromId = businessId != null ? (stores.find((store) => store.id === businessId) ?? null) : null;
   const storeFromLastBot = singleStoreMentioned(lastBotText, stores);
+  // La foto o el "Va, de X" del último mensaje ganan sobre un businessId viejo
+  // (bug en vivo: ZAGU seguía pegado después de pasar a George).
+  const lastBotPinnedStore =
+    storeFromLastBot &&
+    (lastBotText.includes(UX_MENU_IMAGE_MARKER) || lastBotText.includes("Va, de "))
+      ? storeFromLastBot
+      : null;
+  const menuFocus = storeFromMessage ?? lastBotPinnedStore ?? storeFromId;
   const focusedStore = storeFromMessage ?? storeFromId ?? storeFromLastBot;
 
   const listedNiche = nicheListedInLastBot(lastBotText);
@@ -413,24 +480,34 @@ export function classifyCustomerTurn(params: {
     }
   }
 
+  // "George" a secas cambia de tienda aunque el pedido todavía diga ZAGU.
+  if (storeFromMessage && messageIsStorePickOnly(message, storeFromMessage)) {
+    return { type: "pick_store", store: storeFromMessage };
+  }
+
   const numberedCategory = categoryChosenFromLastBot(lastBotText, message);
   if (numberedCategory) {
-    return { type: "ask_category", store: focusedStore, hint: numberedCategory };
+    return { type: "ask_menu", store: menuFocus };
   }
 
   const hint = categoryHintIn(message);
   const restaurantContext =
+    menuFocus?.usaCatalogoFijo === true ||
     focusedStore?.usaCatalogoFijo === true ||
     listedNiche?.id === "restaurantes" ||
     (!hasBusiness && !hasItems);
-  // Si ya le mostramos el menú con precios, lo que sigue es el producto, no otra lista.
-  const alreadyShowingMenu = lastBotText.includes(UX_MENU_MARKER);
+  const alreadyShowingMenu =
+    lastBotText.includes(UX_MENU_IMAGE_MARKER) || lastBotText.includes(UX_MENU_MARKER);
   if (hint && restaurantContext && !alreadyShowingMenu) {
-    return { type: "ask_category", store: focusedStore, hint };
+    return { type: "ask_menu", store: menuFocus };
   }
 
   if (isMenuQuestion(message)) {
-    return { type: "ask_menu", store: focusedStore };
+    return { type: "ask_menu", store: menuFocus };
+  }
+
+  if (isRunningTotalQuestion(message) && (hasBusiness || hasItems)) {
+    return { type: "running_total", store: menuFocus };
   }
 
   if (!hasItems && !hasBusiness && lastBotAskedForNiche(lastBotText)) {

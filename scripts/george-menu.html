@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<title>Menú George</title>
+<style>
+  @font-face { font-family: "DejaVu"; src: url("file:///usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"); }
+  @font-face { font-family: "DejaVu"; src: url("file:///usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"); font-weight: 700; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #3a2212; }
+  body {
+    width: 900px;
+    font-family: DejaVu, "DejaVu Sans", sans-serif;
+    color: #2a160c;
+  }
+  .board {
+    width: 900px;
+    padding: 28px 28px 36px;
+    background:
+      repeating-linear-gradient(90deg, rgba(255,220,160,.05) 0 2px, transparent 2px 14px),
+      linear-gradient(180deg, #8a5428 0%, #5c3418 40%, #4a2a12 100%);
+  }
+  .sheet {
+    background: linear-gradient(180deg, #fff8ea 0%, #f3e0bc 100%);
+    border-radius: 22px;
+    overflow: hidden;
+    box-shadow: 0 10px 0 rgba(0,0,0,.18);
+    border: 3px solid #2a1208;
+  }
+  .hero {
+    background: #111;
+    color: #fff;
+    text-align: center;
+    padding: 22px 18px 18px;
+  }
+  .banner {
+    display: inline-block;
+    background: #e10600;
+    color: #fff;
+    font-weight: 700;
+    letter-spacing: 3px;
+    font-size: 28px;
+    padding: 6px 22px 8px;
+    border-radius: 8px;
+    border: 3px solid #fff;
+    text-shadow: 0 2px 0 #7a0000;
+  }
+  .logo-row { display: flex; justify-content: center; align-items: center; gap: 8px; margin-top: 8px; }
+  .hotdogs {
+    margin-top: -6px;
+    font-size: 42px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: #fff;
+    -webkit-text-stroke: 2px #e10600;
+    text-shadow: 3px 3px 0 #e10600;
+  }
+  .george {
+    margin-top: 2px;
+    font-size: 54px;
+    font-weight: 700;
+    letter-spacing: 6px;
+    color: #e10600;
+    -webkit-text-stroke: 1px #fff;
+    text-shadow: 0 3px 0 #fff, 0 6px 0 #111;
+  }
+  .sub {
+    margin-top: 4px;
+    color: #ffd000;
+    letter-spacing: 3px;
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .body { padding: 8px 22px 20px; }
+  h2 {
+    margin: 16px 0 8px;
+    background: #e10600;
+    color: #fff;
+    display: inline-block;
+    padding: 4px 14px 6px;
+    border-radius: 8px;
+    font-size: 20px;
+    letter-spacing: 1px;
+    border: 2px solid #2a1208;
+  }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 5px 0; vertical-align: top; border-bottom: 1px dashed rgba(90,40,10,.25); }
+  .name { font-weight: 700; font-size: 16px; }
+  .ing { display: block; font-weight: 400; font-size: 12px; color: #6a4030; margin-top: 1px; }
+  .p { text-align: right; font-weight: 700; font-size: 16px; white-space: nowrap; width: 78px; color: #9a1b00; }
+  .heads td { border: 0; font-size: 12px; color: #9a1b00; font-weight: 700; text-align: right; padding-bottom: 0; }
+  .heads .name { text-align: left; color: #6a4030; }
+  .foot {
+    margin-top: 16px;
+    text-align: center;
+    font-size: 13px;
+    color: #6a4030;
+    font-weight: 700;
+    letter-spacing: .4px;
+  }
+</style>
+</head>
+<body>
+  <div class="board">
+    <div class="sheet">
+      <div class="hero">
+        <div class="banner">HAMBURGUESAS</div>
+        <div class="logo-row">
+          <svg width="210" height="132" viewBox="0 0 210 132" aria-hidden="true">
+            <ellipse cx="105" cy="28" rx="78" ry="22" fill="#ffd000" stroke="#111" stroke-width="3"/>
+            <path d="M36 48 Q105 78 174 48" fill="#7dce3a" stroke="#111" stroke-width="3"/>
+            <rect x="34" y="58" width="142" height="16" rx="6" fill="#e10600" stroke="#111" stroke-width="3"/>
+            <rect x="34" y="76" width="142" height="12" rx="4" fill="#ffd000" stroke="#111" stroke-width="3"/>
+            <ellipse cx="105" cy="104" rx="78" ry="20" fill="#f0b429" stroke="#111" stroke-width="3"/>
+            <path d="M18 70 q-16 -8 -8 -22 q14 6 18 16z" fill="#fff" stroke="#e10600" stroke-width="2"/>
+            <path d="M192 70 q16 -8 8 -22 q-14 6 -18 16z" fill="#fff" stroke="#e10600" stroke-width="2"/>
+          </svg>
+        </div>
+        <div class="hotdogs">HOTDOGS</div>
+        <div class="george">GEORGE</div>
+        <div class="sub">SERVICIO A DOMICILIO · IXTLAHUACÁN DEL RÍO</div>
+      </div>
+      <div class="body">
+        <h2>HAMBURGUESAS</h2>
+        <table>
+          <tr class="heads"><td class="name">Sabor</td><td class="p">Chica</td><td class="p">Grande</td></tr>
+          <tr><td><span class="name">Res</span><span class="ing">Queso amarillo y tocino</span></td><td class="p">$60</td><td class="p">$100</td></tr>
+          <tr><td><span class="name">Pollo</span><span class="ing">Queso blanco</span></td><td class="p">$70</td><td class="p">$110</td></tr>
+          <tr><td><span class="name">Camarón</span><span class="ing">Camarón, queso blanco, tocino y queso amarillo</span></td><td class="p">$90</td><td class="p">$130</td></tr>
+          <tr><td><span class="name">Hawaiana</span><span class="ing">Piña, queso blanco, jamón y tocino</span></td><td class="p">$90</td><td class="p">$120</td></tr>
+          <tr><td><span class="name">Cubana</span><span class="ing">Jamón, salchicha, queso blanco y amarillo, pierna y tocino</span></td><td class="p">$90</td><td class="p">$120</td></tr>
+          <tr><td><span class="name">Mar y tierra</span><span class="ing">Res, camarón, pierna, queso blanco, queso amarillo y tocino</span></td><td class="p">$90</td><td class="p">$140</td></tr>
+          <tr><td><span class="name">Arrachera</span><span class="ing">Queso blanco, tocino y queso amarillo</span></td><td class="p">$70</td><td class="p">$100</td></tr>
+        </table>
+
+        <h2>BOTANAS</h2>
+        <table>
+          <tr><td><span class="name">Papas a la francesa</span><span class="ing">300 g</span></td><td class="p">$70</td></tr>
+          <tr><td><span class="name">Papas gajo</span><span class="ing">315 g</span></td><td class="p">$70</td></tr>
+          <tr><td><span class="name">Salchilokos</span><span class="ing">310 g · salchipulpos bañados en salsas al gusto</span></td><td class="p">$70</td></tr>
+          <tr><td><span class="name">Dedos de queso</span><span class="ing">6 oz</span></td><td class="p">$85</td></tr>
+          <tr><td><span class="name">Boneless</span><span class="ing">10 piezas · trozos de pechuga empanizada en salsa al gusto</span></td><td class="p">$130</td></tr>
+          <tr><td><span class="name">Botana</span><span class="ing">Lleva de todo</span></td><td class="p">$100</td></tr>
+        </table>
+
+        <h2>DOGOS</h2>
+        <table>
+          <tr><td><span class="name">Clásico</span><span class="ing">Con tocino</span></td><td class="p">$35</td></tr>
+          <tr><td><span class="name">Pollo</span><span class="ing">Pollo y tocino</span></td><td class="p">$45</td></tr>
+          <tr><td><span class="name">Cubano</span><span class="ing">Salchicha, jamón, pierna, queso blanco y amarillo, tocino</span></td><td class="p">$60</td></tr>
+          <tr><td><span class="name">Hawaiano</span><span class="ing">Piña, queso blanco, jamón y tocino</span></td><td class="p">$60</td></tr>
+          <tr><td><span class="name">Camarón</span><span class="ing">Camarón, tocino y queso blanco</span></td><td class="p">$60</td></tr>
+          <tr><td><span class="name">Dogoburguer</span><span class="ing">Res, tocino y queso amarillo</span></td><td class="p">$50</td></tr>
+          <tr><td><span class="name">Doridogo</span><span class="ing">Salchicha, tocino y rancheritos o doritos</span></td><td class="p">$45</td></tr>
+          <tr><td><span class="name">Dogo arrachera</span><span class="ing">Tocino, queso blanco y queso amarillo</span></td><td class="p">$45</td></tr>
+          <tr><td><span class="name">Pizzadogo</span><span class="ing">Queso blanco, pepperoni y salsa</span></td><td class="p">$45</td></tr>
+        </table>
+
+        <h2>BEBIDAS</h2>
+        <table>
+          <tr><td><span class="name">Refresco</span><span class="ing">Pepsi, Seven, Coca, Mirinda o manzana</span></td><td class="p">$20</td></tr>
+        </table>
+        <div class="foot">Pide por WhatsApp · Mándalo te lo lleva</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

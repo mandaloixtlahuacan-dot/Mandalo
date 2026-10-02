@@ -1,10 +1,12 @@
+import { readdir, readFile } from "node:fs/promises";
+import path from "node:path";
 import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getChatCompletion, getOpenAIModel } from "@/lib/openaiClient";
 import { buildMandaloSystemPrompt } from "@/lib/mandaloPrompt";
-import { normalizeWhatsAppText, waapiSendText } from "@/lib/waapi";
+import { normalizeWhatsAppText, waapiSendImage, waapiSendText } from "@/lib/waapi";
 import { detectActorByPhone, ensureMxWhatsappIntl, normalizePhone } from "@/lib/roles";
-import { createCaptureEngine, extractCandidateItems, formatItems as formatSnapshotItems, type PedidoItemInput } from "@/lib/services/captureEngine";
+import { buildCustomerMessage, createCaptureEngine, extractCandidateItems, formatItems as formatSnapshotItems, type PedidoItemInput } from "@/lib/services/captureEngine";
 import * as pedidoRepositoryV2 from "@/lib/repositories/pedidoRepositoryV2";
 import { getAdminPhone } from "@/lib/repositories/configRepository";
 import * as metricsRepository from "@/lib/repositories/metricsRepository";
@@ -25,20 +27,22 @@ import {
 import { dispatchCotizacionToStore, finalizeStoreQuote, flagItemUnavailable } from "@/lib/services/storeDispatch";
 import {
   buildGreeting,
+  catalogUsesMenuImage,
   classifyCustomerTurn,
   formatAbarrotesStoreAck,
-  formatCatalogCategories,
-  formatCatalogMenu,
+  formatCatalogMenuCaption,
+  formatCatalogReceiptFee,
   formatNicheStoreList,
   formatNoFixedMenu,
   formatPreConfirmFeeNote,
+  formatRunningTotal,
   matchCategoriasEnTexto,
   nicheById,
   nicheListedInLastBot,
   normalizeUxText,
   replyClaimsMissingMenu,
+  storeMentionedInMessage,
   storesInNiche,
-  uniqueCatalogCategories,
   type CustomerTurn,
   type UxStore,
 } from "@/lib/customerUx";
@@ -627,6 +631,66 @@ async function sendWhatsApp(to: string, body: string): Promise<void> {
   await waapiSendText({ to, body: normalizeWhatsAppText(body) });
 }
 
+const GEORGE_MENU_PATH = path.join(process.cwd(), "public/menus/george.png");
+const GEORGE_MENU_B64_PATH = path.join(process.cwd(), "public/menus/george.png.b64");
+
+async function readGeorgeMenuPng(): Promise<Buffer> {
+  try {
+    return await readFile(GEORGE_MENU_PATH);
+  } catch {
+    // El PNG a veces no entra en el despliegue. El mismo archivo en base64,
+    // entero o partido, sí.
+    let encoded = "";
+    try {
+      encoded = await readFile(GEORGE_MENU_B64_PATH, "utf8");
+    } catch {
+      const names = (await readdir(path.dirname(GEORGE_MENU_B64_PATH)))
+        .filter((name) => /^george\.b64\.\d{2}$/.test(name))
+        .sort();
+      if (!names.length) throw new Error("no está la foto del menú de George");
+      for (const name of names) {
+        encoded += await readFile(path.join(path.dirname(GEORGE_MENU_B64_PATH), name), "utf8");
+      }
+    }
+    return Buffer.from(encoded.replace(/\s+/g, ""), "base64");
+  }
+}
+
+async function sendCatalogMenu(to: string, store: UxStore, caption: string): Promise<void> {
+  const text = normalizeWhatsAppText(caption);
+  if (catalogUsesMenuImage(store)) {
+    try {
+      const png = await readGeorgeMenuPng();
+      await waapiSendImage({ to, caption: text, png, filename: "george.png" });
+      return;
+    } catch (e: unknown) {
+      console.error("[mandalo] no se pudo enviar la foto del menú", { message: getErrorMessage(e) });
+    }
+  }
+  await sendWhatsApp(to, text);
+}
+
+async function catalogPriceLines(
+  businessId: number,
+  items: PedidoItemInput[],
+): Promise<{ lines: string[]; subtotal: number | null }> {
+  const catalog = await pedidoRepositoryV2.getProductosTiendaActivos(businessId);
+  let subtotal = 0;
+  let complete = items.length > 0;
+  const lines = items.map((item) => {
+    const nombre = String(item.nombre_producto ?? "").trim();
+    const qty = item.cantidad ?? 1;
+    const match = pedidoRepositoryV2.matchProductoTienda(catalog, nombre);
+    if (!match) {
+      complete = false;
+      return `- ${nombre}${qty > 1 ? ` x${qty}` : ""}`;
+    }
+    subtotal += match.precio * (qty > 0 ? qty : 1);
+    return `- ${nombre} — ${formatMoney(match.precio)}${qty > 1 ? ` x${qty}` : ""}`;
+  });
+  return { lines, subtotal: complete ? subtotal : null };
+}
+
 // --- Cliente ---
 
 // Estados donde la tienda ya tiene el pedido y espera algo (cotizar, decidir
@@ -695,7 +759,7 @@ async function cancelOpenPedido(pedido: PedidoV2Record, telefono: string, reason
 // Folio corto y visible (brief sección 3): el id numérico del pedido hace de
 // folio ("pedido #12") en todo mensaje de seguimiento al cliente, para que
 // tenga una referencia rápida a mano si necesita escribir por una queja.
-function buildResumenPedido(pedido: PedidoV2Record, feeNote?: string): string {
+function buildResumenPedido(pedido: PedidoV2Record, feeNote?: string, pricedLines?: string | null): string {
   const snapshot = pedido.snapshot_json;
   const tienda = String(snapshot.businessName ?? "").trim() || "(sin tienda)";
   const direccionBase = String(snapshot.addressText ?? "").trim() || "(sin dirección)";
@@ -705,7 +769,7 @@ function buildResumenPedido(pedido: PedidoV2Record, feeNote?: string): string {
   // por GPS (bug reportado en producción agosto 2026).
   const mapsLink = resolveMapsLink({ latitud: snapshot.latitud ?? null, longitud: snapshot.longitud ?? null });
   const direccion = mapsLink ? `${direccionBase}\n${mapsLink}` : direccionBase;
-  const items = formatSnapshotItems(snapshot.items ?? []);
+  const items = pricedLines?.trim() || formatSnapshotItems(snapshot.items ?? []);
   const fee = feeNote?.trim() || formatPreConfirmFeeNote("cotiza_tienda");
   return `🧾 Pedido #${pedido.id}\n\nTienda: ${tienda}\n\n🛒 Productos:\n${items}\n\n${fee}\n\n🏠 Entrega:\n${direccion}`;
 }
@@ -812,8 +876,16 @@ async function handleEsperandoConfirmacionInicial(
     const avisoCerrada = !puedeDespacharAhora
       ? `\n\n⏰ Ojo: ${describeWhyWaiting({ tiendaNombre: full.tienda.nombre ?? "la tienda", tiendaSchedule: schedule, mandaloSchedule })}. Te lo voy a mandar en cuanto se pueda.`
       : "";
-    const feeNote = formatPreConfirmFeeNote(full.tienda.usaCatalogoFijo ? "catalogo" : "cotiza_tienda");
-    const msg = `${buildResumenPedido({ ...pedido, snapshot_json: snapshot }, feeNote)}${avisoCerrada}\n\n¿Es correcto? Responde *SÍ* para confirmar. ✅`;
+    let feeNote = formatPreConfirmFeeNote(full.tienda.usaCatalogoFijo ? "catalogo" : "cotiza_tienda");
+    let pricedLines: string | null = null;
+    if (full.tienda.usaCatalogoFijo && full.tienda.tiendaId) {
+      const priced = await catalogPriceLines(full.tienda.tiendaId, snapshot.items ?? []).catch(() => null);
+      if (priced) {
+        pricedLines = priced.lines.join("\n");
+        feeNote = formatCatalogReceiptFee(priced.subtotal);
+      }
+    }
+    const msg = `${buildResumenPedido({ ...pedido, snapshot_json: snapshot }, feeNote, pricedLines)}${avisoCerrada}\n\n¿Es correcto? Responde *SÍ* para confirmar. ✅`;
     await sendWhatsApp(telefono, msg);
     await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
     return { ok: true, role: "cliente", stage: "confirmacion_cliente", pedidoId: pedido.id };
@@ -1267,45 +1339,11 @@ async function loadUxStores(): Promise<UxStore[]> {
   return stores;
 }
 
-function messageNamesCatalogProduct(message: string, nombres: string[]): boolean {
-  const text = normalizeUxText(message);
-  return nombres.some((nombre) => {
-    const needle = normalizeUxText(nombre);
-    return needle.length >= 8 && text.includes(needle);
-  });
-}
+type UxBody = string | { kind: "menu_image"; store: UxStore; caption: string } | null;
 
-async function buildCatalogStoreReply(store: UxStore, hint: string | null, message: string): Promise<string | "passthrough" | null> {
-  const productos = await pedidoRepositoryV2.getProductosTiendaActivos(store.id);
-  if (!productos.length) return null;
-  if (hint && messageNamesCatalogProduct(message, productos.map((p) => p.nombreProducto))) return "passthrough";
-
-  const categories = uniqueCatalogCategories(productos.map((p) => p.categoria));
-  if (!hint) {
-    if (categories.length) return formatCatalogCategories(store, categories);
-    return formatCatalogMenu(
-      store.nombre,
-      "Menú",
-      productos.map((p) => ({ nombre: p.nombreProducto, precio: p.precio })),
-    );
-  }
-
-  const matched = matchCategoriasEnTexto(categories, `${hint} ${message}`);
-  const matchedNorm = new Set(matched.map((cat) => normalizeUxText(cat)));
-  const items = productos.filter((p) => matchedNorm.has(normalizeUxText(p.categoria ?? "")));
-  if (items.length) {
-    return formatCatalogMenu(
-      store.nombre,
-      matched[0] ?? hint,
-      items.map((p) => ({ nombre: p.nombreProducto, precio: p.precio })),
-    );
-  }
-  if (categories.length) return formatCatalogCategories(store, categories);
-  return formatCatalogMenu(
-    store.nombre,
-    "Menú",
-    productos.map((p) => ({ nombre: p.nombreProducto, precio: p.precio })),
-  );
+function menuImageBody(store: UxStore): UxBody {
+  if (!store.usaCatalogoFijo) return formatNoFixedMenu(store.nombre);
+  return { kind: "menu_image", store, caption: formatCatalogMenuCaption(store) };
 }
 
 function restaurantCatalogStore(stores: UxStore[], preferred: UxStore | null): UxStore | "list" | null {
@@ -1321,9 +1359,8 @@ function restaurantCatalogStore(stores: UxStore[], preferred: UxStore | null): U
 async function bodyForCustomerTurn(
   turn: CustomerTurn,
   stores: UxStore[],
-  message: string,
   lastBotText: string,
-): Promise<string | "passthrough" | null> {
+): Promise<UxBody> {
   if (turn.type === "greeting") return buildGreeting();
   if (turn.type === "show_niche") {
     const niche = nicheById(turn.nicheId);
@@ -1331,35 +1368,36 @@ async function bodyForCustomerTurn(
   }
   if (turn.type === "pick_store") {
     if (!turn.store.usaCatalogoFijo) return formatAbarrotesStoreAck(turn.store);
-    return (await buildCatalogStoreReply(turn.store, null, message)) ?? formatAbarrotesStoreAck(turn.store);
+    return menuImageBody(turn.store);
   }
-  if (turn.type === "ask_menu") {
-    const store = turn.store;
+  if (turn.type === "ask_menu" || turn.type === "ask_category") {
+    const preferred = turn.type === "ask_menu" ? turn.store : turn.store;
+    const store = preferred ?? (() => {
+      const resolved = restaurantCatalogStore(stores, null);
+      return resolved && resolved !== "list" ? resolved : null;
+    })();
     if (!store) {
       const listed = nicheListedInLastBot(lastBotText);
       if (listed) return formatNicheStoreList(listed, stores);
       return buildGreeting();
     }
-    if (!store.usaCatalogoFijo) return formatNoFixedMenu(store.nombre);
-    return buildCatalogStoreReply(store, null, message);
-  }
-  if (turn.type === "ask_category") {
-    const resolved = restaurantCatalogStore(stores, turn.store);
-    if (resolved === "list") {
-      const niche = nicheById("restaurantes");
-      return niche ? formatNicheStoreList(niche, stores) : null;
-    }
-    if (!resolved) return null;
-    return buildCatalogStoreReply(resolved, turn.hint, message);
+    return menuImageBody(store);
   }
   return null;
 }
 
-async function rememberStoreChoice(telefono: string, mensaje: string, store: UxStore): Promise<void> {
+async function rememberStoreChoice(
+  telefono: string,
+  mensaje: string,
+  store: UxStore,
+  replaceItems: boolean,
+): Promise<void> {
   await captureEngine.processCustomerCapture({
     customerPhone: telefono,
     userMessage: mensaje,
     currentSnapshot: null,
+    forceBusiness: true,
+    forceReplaceItems: replaceItems,
     llmOrderState: {
       stage: "collecting",
       business_id: store.id,
@@ -1375,7 +1413,7 @@ async function catalogReplyReplacingMissingMenu(params: {
   telefono: string;
   mensaje: string;
   openPedido: PedidoV2Record | null;
-}): Promise<string | null> {
+}): Promise<{ store: UxStore; caption: string } | null> {
   const stores = await loadUxStores();
   const snapshot = params.openPedido?.snapshot_json;
   const businessId = typeof snapshot?.businessId === "number" ? snapshot.businessId : null;
@@ -1391,14 +1429,7 @@ async function catalogReplyReplacingMissingMenu(params: {
   });
 
   let store: UxStore | null = null;
-  let hint: string | null = null;
-  if (turn.type === "ask_category") {
-    const resolved = restaurantCatalogStore(stores, turn.store);
-    if (resolved && resolved !== "list") {
-      store = resolved;
-      hint = turn.hint;
-    }
-  } else if ((turn.type === "ask_menu" || turn.type === "pick_store") && turn.store?.usaCatalogoFijo) {
+  if ((turn.type === "ask_menu" || turn.type === "ask_category" || turn.type === "pick_store") && turn.store?.usaCatalogoFijo) {
     store = turn.store;
   } else if (businessId) {
     store = stores.find((item) => item.id === businessId && item.usaCatalogoFijo) ?? null;
@@ -1408,12 +1439,8 @@ async function catalogReplyReplacingMissingMenu(params: {
     const only = restaurantCatalogStore(stores, null);
     if (only && only !== "list") store = only;
   }
-  if (!store) return null;
-
-  const body = await buildCatalogStoreReply(store, hint, params.mensaje);
-  if (body && body !== "passthrough") return body;
-  const categories = await buildCatalogStoreReply(store, null, "menu");
-  return categories && categories !== "passthrough" ? categories : null;
+  if (!store?.usaCatalogoFijo) return null;
+  return { store, caption: formatCatalogMenuCaption(store) };
 }
 
 async function tryDeterministicCustomerUx(params: {
@@ -1437,8 +1464,28 @@ async function tryDeterministicCustomerUx(params: {
   });
   if (turn.type === "continue") return null;
 
-  const body = await bodyForCustomerTurn(turn, stores, params.mensaje, lastBotText);
-  if (!body || body === "passthrough") return null;
+  if (turn.type === "running_total") {
+    const store = turn.store;
+    let body = "Dime de qué tienda es el pedido y te saco la cuenta.";
+    if (store && !store.usaCatalogoFijo) {
+      body = formatRunningTotal({ storeName: store.nombre, lines: [], subtotal: null, catalog: false });
+    } else if (store) {
+      const priced = await catalogPriceLines(store.id, snapshot?.items ?? []);
+      body = formatRunningTotal({
+        storeName: store.nombre,
+        lines: priced.lines,
+        subtotal: priced.subtotal,
+        catalog: true,
+      });
+    }
+    await guardarMensajeChat({ telefono: params.telefono, texto: String(params.mensaje ?? ""), estado: "cliente" }).catch(() => {});
+    await sendWhatsApp(params.telefono, body);
+    await guardarMensajeChat({ telefono: params.telefono, texto: body, estado: "bot" }).catch(() => {});
+    return { ok: true, role: "cliente", accion: "ux_running_total" };
+  }
+
+  const body = await bodyForCustomerTurn(turn, stores, lastBotText);
+  if (!body) return null;
 
   const storeToRemember =
     turn.type === "pick_store"
@@ -1447,16 +1494,21 @@ async function tryDeterministicCustomerUx(params: {
         ? turn.store
         : turn.type === "ask_category"
           ? restaurantCatalogStore(stores, turn.store)
-          : null;
+          : typeof body === "object"
+            ? body.store
+            : null;
   if (storeToRemember && storeToRemember !== "list") {
-    await rememberStoreChoice(params.telefono, params.mensaje, storeToRemember).catch((e: unknown) => {
+    const switching = businessId != null && storeToRemember.id !== businessId;
+    await rememberStoreChoice(params.telefono, params.mensaje, storeToRemember, switching).catch((e: unknown) => {
       console.error("[mandalo] no se pudo recordar la tienda elegida", { message: getErrorMessage(e) });
     });
   }
 
+  const outgoing = typeof body === "string" ? body : body.caption;
   await guardarMensajeChat({ telefono: params.telefono, texto: String(params.mensaje ?? ""), estado: "cliente" }).catch(() => {});
-  await sendWhatsApp(params.telefono, body);
-  await guardarMensajeChat({ telefono: params.telefono, texto: body, estado: "bot" }).catch(() => {});
+  if (typeof body === "object") await sendCatalogMenu(params.telefono, body.store, body.caption);
+  else await sendWhatsApp(params.telefono, body);
+  await guardarMensajeChat({ telefono: params.telefono, texto: outgoing, estado: "bot" }).catch(() => {});
   return { ok: true, role: "cliente", accion: `ux_${turn.type}` };
 }
 
@@ -1755,6 +1807,41 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
     }
   }
 
+  let forceBusiness = false;
+  let forceReplaceItems = false;
+  try {
+    const uxStores = await loadUxStores();
+    const mentioned = storeMentionedInMessage(mensaje, uxStores);
+    const currentId = Number((currentOrderState as { businessId?: unknown }).businessId);
+    if (mentioned && (!Number.isFinite(currentId) || currentId <= 0 || mentioned.id !== currentId)) {
+      const text = normalizeUxText(mensaje);
+      const rawItems = Array.isArray((llmOrderState as { items?: unknown } | null)?.items)
+        ? (llmOrderState as { items: unknown[] }).items
+        : [];
+      const kept = rawItems.filter((item) => {
+        const row = item as { nombre_producto?: unknown; nombre?: unknown; name?: unknown };
+        const nombre = normalizeUxText(String(row.nombre_producto ?? row.nombre ?? row.name ?? ""));
+        const probe = nombre.slice(0, Math.min(12, nombre.length));
+        return probe.length >= 4 && text.includes(probe);
+      });
+      llmOrderState = {
+        ...(llmOrderState ?? {}),
+        business_id: mentioned.id,
+        businessId: mentioned.id,
+        business_name: mentioned.nombre,
+        businessName: mentioned.nombre,
+        business_phone: mentioned.telefono,
+        businessPhone: mentioned.telefono,
+        items: kept,
+      };
+      usaCatalogoFijo = mentioned.usaCatalogoFijo;
+      forceBusiness = true;
+      forceReplaceItems = true;
+    }
+  } catch (e: unknown) {
+    console.error("[mandalo] no se pudo cambiar de tienda en la captura", { message: getErrorMessage(e) });
+  }
+
   const knownZoneNames = await fetchZonasCobertura();
   const captureResult = await captureEngine.processCustomerCapture({
     customerPhone: telefono,
@@ -1764,6 +1851,8 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
     llmOrderState: llmOrderState as Record<string, unknown> | null,
     knownZoneNames,
     feeNote: formatPreConfirmFeeNote(usaCatalogoFijo ? "catalogo" : "cotiza_tienda"),
+    forceBusiness,
+    forceReplaceItems,
   });
 
   console.log("[captureEngine] pedido:", {
@@ -1795,12 +1884,42 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
     ? captureResult.customerMessage
     : llmReplySafe || captureResult.customerMessage;
 
+  if (captureResult.readyForConfirmation && usaCatalogoFijo && captureResult.snapshot.businessId) {
+    const priced = await catalogPriceLines(captureResult.snapshot.businessId, captureResult.items).catch(() => null);
+    if (priced) {
+      customerMessage = buildCustomerMessage({
+        validation: captureResult.validation,
+        snapshot: captureResult.snapshot,
+        items: captureResult.items,
+        pricedLines: priced.lines.join("\n"),
+        feeNote: formatCatalogReceiptFee(priced.subtotal),
+      });
+    }
+  }
+
   if (!captureResult.readyForConfirmation && replyClaimsMissingMenu(customerMessage)) {
     const replacement = await catalogReplyReplacingMissingMenu({ telefono, mensaje, openPedido }).catch((e: unknown) => {
       console.error("[mandalo] respaldo de menú falló", { message: getErrorMessage(e) });
       return null;
     });
-    if (replacement) customerMessage = replacement;
+    if (replacement) {
+      const currentId = Number(captureResult.snapshot.businessId);
+      await rememberStoreChoice(
+        telefono,
+        mensaje,
+        replacement.store,
+        !Number.isFinite(currentId) || currentId !== replacement.store.id,
+      ).catch(() => {});
+      await sendCatalogMenu(telefono, replacement.store, replacement.caption);
+      await guardarMensajeChat({ telefono, texto: replacement.caption, estado: "bot" }).catch(() => {});
+      return {
+        ok: true,
+        role: "cliente",
+        pedidoId: captureResult.pedidoId,
+        stage: captureResult.nextState,
+        readyForConfirmation: false,
+      };
+    }
   }
 
   await sendWhatsApp(telefono, customerMessage);
@@ -1982,7 +2101,7 @@ async function handleRepartidorMessage(telefono: string, mensaje: string): Promi
 
   // delivered
   if (telefonoCliente) {
-    const msgCliente = `✅ Pedido #${parseResult.pedidoId} entregado. ¡Gracias por tu compra y por confiar en nosotros! 🙌`;
+    const msgCliente = `✅ Pedido #${parseResult.pedidoId} entregado. ¡Gracias por tu compra y por confiar en nosotros! Buen provecho. 🙌`;
     await outboxRepository.enqueueOutboundMessage({
       pedidoId: parseResult.pedidoId,
       tipoMensaje: "notificacion_cliente",

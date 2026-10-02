@@ -2,7 +2,11 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 12 de septiembre de 2026. **Bug grave corregido: la
+> Última actualización: 2 de octubre de 2026. El menú de George se manda como foto
+> (`public/menus/george.png`) al elegirlo o al pedir el menú; ya no hay filtro de
+> categoría. Cambiar de ZAGU a George suelta la tienda anterior. El recibo antes
+> del SÍ trae el precio de cada producto de catálogo más el envío de $35.
+> Última actualización anterior: 12 de septiembre de 2026. **Bug grave corregido: la
 > IA podía inventar un `business_id` que no existe, tumbando el pedido en
 > silencio total** — confirmado con logs reales de Vercel (violación de
 > foreign key al crear `pedido_tiendas`, sin ningún error visible para el
