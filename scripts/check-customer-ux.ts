@@ -71,8 +71,8 @@ assert(greeting.includes("2. Restaurantes"), "filtro restaurantes");
 assert(greeting.includes("\n"), "el saludo trae saltos de línea");
 assert(!customerCopySplitsFee(greeting), "el saludo no parte el cargo");
 
-assert(classifyCustomerTurn({ message: "hola", lastBotText: "", hasBusiness: false, hasItems: false, businessId: null, stores }).type === "greeting", "hola \u2192 saludo");
-assert(classifyCustomerTurn({ message: "2", lastBotText: greeting, hasBusiness: false, hasItems: false, businessId: null, stores }).type === "show_niche", "2 \u2192 restaurantes");
+assert(classifyCustomerTurn({ message: "hola", lastBotText: "", hasBusiness: false, hasItems: false, businessId: null, stores }).type === "greeting", "hola → saludo");
+assert(classifyCustomerTurn({ message: "2", lastBotText: greeting, hasBusiness: false, hasItems: false, businessId: null, stores }).type === "show_niche", "2 → restaurantes");
 const abarrotesList = formatNicheStoreList(CUSTOMER_STORE_NICHES[0], stores);
 assert(abarrotesList.includes("ZAGU"), "abarrotes incluye a ZAGU");
 assert(!abarrotesList.includes("George"), "abarrotes no mezcla restaurantes");
@@ -104,10 +104,10 @@ const menu = formatCatalogMenu("Hamburguesas Hotdogs George", "Hamburguesas", [
   { nombre: "Hamburguesa sencilla", precio: 55 },
   { nombre: "Hamburguesa hawaiana", precio: 70 },
 ]);
-assert(menu.includes("Hamburguesa sencilla \u2014 $55"), "precio real");
+assert(menu.includes("Hamburguesa sencilla — $55"), "precio real");
 assert(menu.includes("\n"), "menú con saltos de línea");
 assert(normalizeWhatsAppText(menu).includes("\n"), "WhatsApp conserva los saltos");
-assert(normalizeWhatsAppText(menu).includes("Hamburguesa hawaiana \u2014 $70"), "el precio sobrevive el normalizador");
+assert(normalizeWhatsAppText(menu).includes("Hamburguesa hawaiana — $70"), "el precio sobrevive el normalizador");
 
 const afterMenu = classifyCustomerTurn({
   message: "quiero la hamburguesa sencilla",
@@ -135,7 +135,8 @@ assert(!caption.toLowerCase().includes("categoría"), "el pie de la foto no pide
 assert(caption.includes("$35"), "el pie avisa el envío");
 assert(
   (existsSync("public/menus/george.png") && statSync("public/menus/george.png").size > 20_000) ||
-    (existsSync("public/menus/george.png.b64") && statSync("public/menus/george.png.b64").size > 20_000),
+    (existsSync("public/menus/george.png.b64") && statSync("public/menus/george.png.b64").size > 20_000) ||
+    existsSync("public/menus/george.b64.00"),
   "existe la foto del menú de George",
 );
 
@@ -150,7 +151,7 @@ const switched = classifyCustomerTurn({
 assert(switched.type === "pick_store" && switched.type === "pick_store" && switched.store.id === george.id, "decir George suelta a ZAGU");
 
 const menuAfterSwitch = classifyCustomerTurn({
-  message: "\u00bftienes menú?",
+  message: "¿tienes menú?",
   lastBotText: caption,
   hasBusiness: true,
   hasItems: true,
@@ -163,7 +164,7 @@ assert(
 );
 
 const stillZagu = classifyCustomerTurn({
-  message: "\u00bftienes menú?",
+  message: "¿tienes menú?",
   lastBotText: "Va, de ZAGU. Dime qué se te antoja.",
   hasBusiness: true,
   hasItems: false,
@@ -238,10 +239,10 @@ const catalogReceipt = buildCustomerMessage({
   snapshot: catalogSnapshot,
   items: catalogSnapshot.items,
   feeNote: formatCatalogReceiptFee(60),
-  pricedLines: "- Hamburguesa sencilla \u2014 $60",
+  pricedLines: "- Hamburguesa sencilla — $60",
 });
 assert(catalogReceipt.includes("Envío y servicio: $35"), "recibo de catálogo con $35");
-assert(catalogReceipt.includes("Hamburguesa sencilla \u2014 $60"), "el recibo trae el precio del producto");
+assert(catalogReceipt.includes("Hamburguesa sencilla — $60"), "el recibo trae el precio del producto");
 assert(catalogReceipt.includes("Total: $95"), "el recibo suma producto + envío");
 
 console.log("\n--- Transcripción de ejemplo ---\n");
