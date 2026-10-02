@@ -23,6 +23,25 @@ import {
   type TiendaScheduleCheck,
 } from "@/lib/services/businessHours";
 import { dispatchCotizacionToStore, finalizeStoreQuote, flagItemUnavailable } from "@/lib/services/storeDispatch";
+import {
+  buildGreeting,
+  classifyCustomerTurn,
+  formatAbarrotesStoreAck,
+  formatCatalogCategories,
+  formatCatalogMenu,
+  formatNicheStoreList,
+  formatNoFixedMenu,
+  formatPreConfirmFeeNote,
+  matchCategoriasEnTexto,
+  nicheById,
+  nicheListedInLastBot,
+  normalizeUxText,
+  replyClaimsMissingMenu,
+  storesInNiche,
+  uniqueCatalogCategories,
+  type CustomerTurn,
+  type UxStore,
+} from "@/lib/customerUx";
 import { extraerNoDisponible, extraerOrdenId, extraerPrecio, formatMoney } from "@/lib/ordenes";
 import { isTerminalState, type OrderState } from "@/lib/orderStateMachine";
 import {
@@ -99,13 +118,7 @@ function formatEstimatedArrival(minutesToAdd = 20): string {
 }
 
 function buildSaludoInicial(): string {
-  const hour = Number(
-    new Intl.DateTimeFormat("en-US", { hour: "numeric", hour12: false, timeZone: "America/Mexico_City" }).format(
-      new Date(),
-    ),
-  );
-  const franja = hour >= 6 && hour < 12 ? "¡Buenos días!" : hour >= 12 && hour < 19 ? "¡Buenas tardes!" : "¡Buenas noches!";
-  return `${franja} Bienvenido a Mándalo. ¿Qué se te antoja hoy? ¿Buscas algo de la tienda o tienes antojo de comida preparada?`;
+  return buildGreeting(new Date());
 }
 
 function ensureSafeLlmOrderState(value: unknown, fallbackStage = "collecting"): MandaloAgentResponse["order_state"] {
@@ -235,23 +248,6 @@ function resolveMenuCandidatoTienda(params: {
   if (catalogo.length === 1) return catalogo[0];
 
   return null;
-}
-
-// Coincide categorías reales (productos_tienda.categoria) contra texto libre
-// (mensaje actual + últimos turnos) — sin tolerancia a typos elaborada: si no
-// matchea, el peor caso es mostrar solo las categorías y preguntar cuál,
-// nunca inventar productos. También compara la forma singular (quita una
-// "s" final) para que "quiero una hamburguesa" matchee la categoría
-// "hamburguesas".
-function matchCategoriasEnTexto(categorias: string[], texto: string): string[] {
-  const t = texto.toLowerCase();
-  return categorias.filter((cat) => {
-    const c = cat.toLowerCase();
-    if (!c || c === "otros") return false;
-    if (t.includes(c)) return true;
-    const singular = c.endsWith("s") ? c.slice(0, -1) : c;
-    return singular.length > 3 && t.includes(singular);
-  });
 }
 
 export async function getLLMResponse(params: {
@@ -463,11 +459,12 @@ export async function getLLMResponse(params: {
 // --- Resolución de tiendas / repartidores ---
 
 type TiendaResolution =
-  | { status: "found"; id: number; nombre: string; telefono: string }
-  | { status: "closed"; id: number; nombre: string; telefono: string }
+  | { status: "found"; id: number; nombre: string; telefono: string; usaCatalogoFijo: boolean }
+  | { status: "closed"; id: number; nombre: string; telefono: string; usaCatalogoFijo: boolean }
   | { status: "not_found" };
 
-const TIENDA_RESOLUTION_SELECT = "id, nombre, telefono, activa, hora_apertura, hora_cierre, dias_cerrado";
+const TIENDA_RESOLUTION_SELECT =
+  "id, nombre, telefono, activa, hora_apertura, hora_cierre, dias_cerrado, usa_catalogo_fijo";
 
 function resolveTiendaRow(row: {
   id: unknown;
@@ -477,9 +474,11 @@ function resolveTiendaRow(row: {
   hora_apertura: unknown;
   hora_cierre: unknown;
   dias_cerrado: unknown;
+  usa_catalogo_fijo?: unknown;
 } | null | undefined, fallbackName: string): TiendaResolution {
   if (!row?.telefono || row.activa === false) return { status: "not_found" };
 
+  const usaCatalogoFijo = row.usa_catalogo_fijo === true;
   const schedule = checkTiendaSchedule({
     horaApertura: row.hora_apertura == null ? null : String(row.hora_apertura),
     horaCierre: row.hora_cierre == null ? null : String(row.hora_cierre),
@@ -491,6 +490,7 @@ function resolveTiendaRow(row: {
       id: Number(row.id),
       nombre: String(row.nombre ?? fallbackName),
       telefono: ensureMxWhatsappIntl(String(row.telefono)),
+      usaCatalogoFijo,
     };
   }
 
@@ -498,6 +498,7 @@ function resolveTiendaRow(row: {
     id: Number(row.id),
     nombre: String(row.nombre ?? fallbackName),
     telefono: ensureMxWhatsappIntl(String(row.telefono)),
+    usaCatalogoFijo,
     status: "found",
   };
 }
@@ -694,7 +695,7 @@ async function cancelOpenPedido(pedido: PedidoV2Record, telefono: string, reason
 // Folio corto y visible (brief sección 3): el id numérico del pedido hace de
 // folio ("pedido #12") en todo mensaje de seguimiento al cliente, para que
 // tenga una referencia rápida a mano si necesita escribir por una queja.
-function buildResumenPedido(pedido: PedidoV2Record): string {
+function buildResumenPedido(pedido: PedidoV2Record, feeNote?: string): string {
   const snapshot = pedido.snapshot_json;
   const tienda = String(snapshot.businessName ?? "").trim() || "(sin tienda)";
   const direccionBase = String(snapshot.addressText ?? "").trim() || "(sin dirección)";
@@ -705,7 +706,8 @@ function buildResumenPedido(pedido: PedidoV2Record): string {
   const mapsLink = resolveMapsLink({ latitud: snapshot.latitud ?? null, longitud: snapshot.longitud ?? null });
   const direccion = mapsLink ? `${direccionBase}\n${mapsLink}` : direccionBase;
   const items = formatSnapshotItems(snapshot.items ?? []);
-  return `🧾 Pedido #${pedido.id}\n\nTienda: ${tienda}\n\n🛒 Productos:\n${items}\n\n🏠 Entrega:\n${direccion}`;
+  const fee = feeNote?.trim() || formatPreConfirmFeeNote("cotiza_tienda");
+  return `🧾 Pedido #${pedido.id}\n\nTienda: ${tienda}\n\n🛒 Productos:\n${items}\n\n${fee}\n\n🏠 Entrega:\n${direccion}`;
 }
 
 // Un pedido puede esperar por dos razones independientes (Mándalo cerrado,
@@ -810,7 +812,8 @@ async function handleEsperandoConfirmacionInicial(
     const avisoCerrada = !puedeDespacharAhora
       ? `\n\n⏰ Ojo: ${describeWhyWaiting({ tiendaNombre: full.tienda.nombre ?? "la tienda", tiendaSchedule: schedule, mandaloSchedule })}. Te lo voy a mandar en cuanto se pueda.`
       : "";
-    const msg = `${buildResumenPedido({ ...pedido, snapshot_json: snapshot })}${avisoCerrada}\n\n¿Es correcto? Responde *SÍ* para confirmar. ✅`;
+    const feeNote = formatPreConfirmFeeNote(full.tienda.usaCatalogoFijo ? "catalogo" : "cotiza_tienda");
+    const msg = `${buildResumenPedido({ ...pedido, snapshot_json: snapshot }, feeNote)}${avisoCerrada}\n\n¿Es correcto? Responde *SÍ* para confirmar. ✅`;
     await sendWhatsApp(telefono, msg);
     await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
     return { ok: true, role: "cliente", stage: "confirmacion_cliente", pedidoId: pedido.id };
@@ -1232,6 +1235,231 @@ const TRACKING_MESSAGES: Partial<Record<OrderState, string>> = {
   en_camino_cliente: "Tu pedido ya va con el repartidor. En cuanto haya una actualización, te aviso. 🛵",
 };
 
+async function loadUxStores(): Promise<UxStore[]> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("tiendas")
+    .select("id, nombre, categoria, telefono, hora_apertura, hora_cierre, dias_cerrado, usa_catalogo_fijo, activa")
+    .eq("activa", true)
+    .limit(500);
+  if (error) throw error;
+
+  const stores: UxStore[] = [];
+  for (const row of data ?? []) {
+    const nombre = String((row as { nombre?: unknown }).nombre ?? "").trim();
+    const telefono = String((row as { telefono?: unknown }).telefono ?? "").trim();
+    if (!nombre || !telefono) continue;
+    const schedule = checkTiendaSchedule({
+      horaApertura: (row as { hora_apertura?: unknown }).hora_apertura == null ? null : String((row as { hora_apertura?: unknown }).hora_apertura),
+      horaCierre: (row as { hora_cierre?: unknown }).hora_cierre == null ? null : String((row as { hora_cierre?: unknown }).hora_cierre),
+      diasCerrado: parseDiasCerrado((row as { dias_cerrado?: unknown }).dias_cerrado),
+    });
+    stores.push({
+      id: Number((row as { id?: unknown }).id),
+      nombre,
+      categoria: (row as { categoria?: unknown }).categoria == null ? null : String((row as { categoria?: unknown }).categoria),
+      telefono: ensureMxWhatsappIntl(telefono),
+      abierta: schedule.withinSchedule,
+      abreTexto: schedule.withinSchedule ? "" : schedule.abreTexto,
+      usaCatalogoFijo: (row as { usa_catalogo_fijo?: unknown }).usa_catalogo_fijo === true,
+    });
+  }
+  return stores;
+}
+
+function messageNamesCatalogProduct(message: string, nombres: string[]): boolean {
+  const text = normalizeUxText(message);
+  return nombres.some((nombre) => {
+    const needle = normalizeUxText(nombre);
+    return needle.length >= 8 && text.includes(needle);
+  });
+}
+
+async function buildCatalogStoreReply(store: UxStore, hint: string | null, message: string): Promise<string | "passthrough" | null> {
+  const productos = await pedidoRepositoryV2.getProductosTiendaActivos(store.id);
+  if (!productos.length) return null;
+  if (hint && messageNamesCatalogProduct(message, productos.map((p) => p.nombreProducto))) return "passthrough";
+
+  const categories = uniqueCatalogCategories(productos.map((p) => p.categoria));
+  if (!hint) {
+    if (categories.length) return formatCatalogCategories(store, categories);
+    return formatCatalogMenu(
+      store.nombre,
+      "Menú",
+      productos.map((p) => ({ nombre: p.nombreProducto, precio: p.precio })),
+    );
+  }
+
+  const matched = matchCategoriasEnTexto(categories, `${hint} ${message}`);
+  const matchedNorm = new Set(matched.map((cat) => normalizeUxText(cat)));
+  const items = productos.filter((p) => matchedNorm.has(normalizeUxText(p.categoria ?? "")));
+  if (items.length) {
+    return formatCatalogMenu(
+      store.nombre,
+      matched[0] ?? hint,
+      items.map((p) => ({ nombre: p.nombreProducto, precio: p.precio })),
+    );
+  }
+  if (categories.length) return formatCatalogCategories(store, categories);
+  return formatCatalogMenu(
+    store.nombre,
+    "Menú",
+    productos.map((p) => ({ nombre: p.nombreProducto, precio: p.precio })),
+  );
+}
+
+function restaurantCatalogStore(stores: UxStore[], preferred: UxStore | null): UxStore | "list" | null {
+  if (preferred?.usaCatalogoFijo) return preferred;
+  const inNiche = storesInNiche(stores, "restaurantes").filter((store) => store.usaCatalogoFijo);
+  if (inNiche.length === 1) return inNiche[0];
+  if (inNiche.length > 1) return "list";
+  const anyCatalog = stores.filter((store) => store.usaCatalogoFijo);
+  if (anyCatalog.length === 1) return anyCatalog[0];
+  return null;
+}
+
+async function bodyForCustomerTurn(
+  turn: CustomerTurn,
+  stores: UxStore[],
+  message: string,
+  lastBotText: string,
+): Promise<string | "passthrough" | null> {
+  if (turn.type === "greeting") return buildGreeting();
+  if (turn.type === "show_niche") {
+    const niche = nicheById(turn.nicheId);
+    return niche ? formatNicheStoreList(niche, stores) : buildGreeting();
+  }
+  if (turn.type === "pick_store") {
+    if (!turn.store.usaCatalogoFijo) return formatAbarrotesStoreAck(turn.store);
+    return (await buildCatalogStoreReply(turn.store, null, message)) ?? formatAbarrotesStoreAck(turn.store);
+  }
+  if (turn.type === "ask_menu") {
+    const store = turn.store;
+    if (!store) {
+      const listed = nicheListedInLastBot(lastBotText);
+      if (listed) return formatNicheStoreList(listed, stores);
+      return buildGreeting();
+    }
+    if (!store.usaCatalogoFijo) return formatNoFixedMenu(store.nombre);
+    return buildCatalogStoreReply(store, null, message);
+  }
+  if (turn.type === "ask_category") {
+    const resolved = restaurantCatalogStore(stores, turn.store);
+    if (resolved === "list") {
+      const niche = nicheById("restaurantes");
+      return niche ? formatNicheStoreList(niche, stores) : null;
+    }
+    if (!resolved) return null;
+    return buildCatalogStoreReply(resolved, turn.hint, message);
+  }
+  return null;
+}
+
+async function rememberStoreChoice(telefono: string, mensaje: string, store: UxStore): Promise<void> {
+  await captureEngine.processCustomerCapture({
+    customerPhone: telefono,
+    userMessage: mensaje,
+    currentSnapshot: null,
+    llmOrderState: {
+      stage: "collecting",
+      business_id: store.id,
+      business_name: store.nombre,
+      business_phone: store.telefono,
+      items: [],
+    },
+    feeNote: formatPreConfirmFeeNote(store.usaCatalogoFijo ? "catalogo" : "cotiza_tienda"),
+  });
+}
+
+async function catalogReplyReplacingMissingMenu(params: {
+  telefono: string;
+  mensaje: string;
+  openPedido: PedidoV2Record | null;
+}): Promise<string | null> {
+  const stores = await loadUxStores();
+  const snapshot = params.openPedido?.snapshot_json;
+  const businessId = typeof snapshot?.businessId === "number" ? snapshot.businessId : null;
+  const historial = await fetchHistorialReciente(params.telefono, 6).catch(() => []);
+  const lastBotText = historial.find((item) => item.estado === "bot")?.texto ?? "";
+  const turn = classifyCustomerTurn({
+    message: params.mensaje,
+    lastBotText,
+    hasBusiness: businessId != null && businessId > 0,
+    hasItems: Array.isArray(snapshot?.items) && snapshot.items.length > 0,
+    businessId,
+    stores,
+  });
+
+  let store: UxStore | null = null;
+  let hint: string | null = null;
+  if (turn.type === "ask_category") {
+    const resolved = restaurantCatalogStore(stores, turn.store);
+    if (resolved && resolved !== "list") {
+      store = resolved;
+      hint = turn.hint;
+    }
+  } else if ((turn.type === "ask_menu" || turn.type === "pick_store") && turn.store?.usaCatalogoFijo) {
+    store = turn.store;
+  } else if (businessId) {
+    store = stores.find((item) => item.id === businessId && item.usaCatalogoFijo) ?? null;
+  }
+
+  if (!store) {
+    const only = restaurantCatalogStore(stores, null);
+    if (only && only !== "list") store = only;
+  }
+  if (!store) return null;
+
+  const body = await buildCatalogStoreReply(store, hint, params.mensaje);
+  if (body && body !== "passthrough") return body;
+  const categories = await buildCatalogStoreReply(store, null, "menu");
+  return categories && categories !== "passthrough" ? categories : null;
+}
+
+async function tryDeterministicCustomerUx(params: {
+  telefono: string;
+  mensaje: string;
+  openPedido: PedidoV2Record | null;
+}): Promise<JsonObject | null> {
+  const snapshot = params.openPedido?.snapshot_json;
+  const businessId = typeof snapshot?.businessId === "number" ? snapshot.businessId : null;
+  const hasItems = Array.isArray(snapshot?.items) && snapshot.items.some((item) => String(item?.nombre_producto ?? "").trim());
+  const historial = await fetchHistorialReciente(params.telefono, 6).catch(() => []);
+  const lastBotText = historial.find((item) => item.estado === "bot")?.texto ?? "";
+  const stores = await loadUxStores();
+  const turn = classifyCustomerTurn({
+    message: params.mensaje,
+    lastBotText,
+    hasBusiness: businessId != null && businessId > 0,
+    hasItems,
+    businessId,
+    stores,
+  });
+  if (turn.type === "continue") return null;
+
+  const body = await bodyForCustomerTurn(turn, stores, params.mensaje, lastBotText);
+  if (!body || body === "passthrough") return null;
+
+  const storeToRemember =
+    turn.type === "pick_store"
+      ? turn.store
+      : turn.type === "ask_menu" && turn.store
+        ? turn.store
+        : turn.type === "ask_category"
+          ? restaurantCatalogStore(stores, turn.store)
+          : null;
+  if (storeToRemember && storeToRemember !== "list") {
+    await rememberStoreChoice(params.telefono, params.mensaje, storeToRemember).catch((e: unknown) => {
+      console.error("[mandalo] no se pudo recordar la tienda elegida", { message: getErrorMessage(e) });
+    });
+  }
+
+  await guardarMensajeChat({ telefono: params.telefono, texto: String(params.mensaje ?? ""), estado: "cliente" }).catch(() => {});
+  await sendWhatsApp(params.telefono, body);
+  await guardarMensajeChat({ telefono: params.telefono, texto: body, estado: "bot" }).catch(() => {});
+  return { ok: true, role: "cliente", accion: `ux_${turn.type}` };
+}
+
 async function handleClienteMessage(telefono: string, mensaje: string, ubicacion?: unknown): Promise<JsonObject> {
   const ubicacionCoords = extractCoordsFromUbicacion(ubicacion);
 
@@ -1330,7 +1558,7 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
     }
     setSessionFlag(telefono, { pedido_en_proceso: true });
     const msg = wantsNewOrder
-      ? "¡Entendido! Pedido anterior cancelado. ¿Qué te gustaría pedir hoy? 🛒"
+      ? `¡Entendido! Pedido anterior cancelado.\n\n${buildGreeting()}`
       : "✅ Listo, cancelé tu pedido.\n\nCuando quieras hacer uno nuevo, aquí estoy. 🛒";
     await sendWhatsApp(telefono, msg);
     await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
@@ -1392,6 +1620,15 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
       }
     }
     // estado === "seleccion_productos": seguimos abajo con el flujo de captura.
+  }
+
+  const inCapture = !openPedido || openPedido.estado === "seleccion_productos";
+  if (inCapture && !ubicacionCoords && String(mensaje ?? "").trim()) {
+    const early = await tryDeterministicCustomerUx({ telefono, mensaje, openPedido }).catch((e: unknown) => {
+      console.error("[mandalo] UX determinista falló, sigo con la IA", { message: getErrorMessage(e) });
+      return null;
+    });
+    if (early) return early;
   }
 
   // Modo conversación: si el usuario está charlando o expresando emociones,
@@ -1468,6 +1705,7 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
   // contra la tabla real en cuanto hay un nombre, sin importar qué id haya
   // puesto la IA — el id de la IA nunca se usa directo para nada que toque
   // la base de datos.
+  let usaCatalogoFijo = false;
   const llmBusinessName = String(llmOrderState?.business_name ?? llmOrderState?.businessName ?? "").trim();
   if (llmOrderState && llmBusinessName) {
     const resolved = await resolveTiendaStrictByName(llmBusinessName).catch(
@@ -1481,6 +1719,7 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
     // (handleEsperandoConfirmacionInicial), no aquí — ahí es donde Víctor
     // pidió que el cliente se entere, antes de decir SÍ.
     if (resolved.status === "found" || resolved.status === "closed") {
+      usaCatalogoFijo = resolved.usaCatalogoFijo;
       // Se limpia también la variante camelCase (businessId) además de
       // business_id — captureEngine.mergeSnapshot revisa ambas claves, y
       // dejar viva la que no se sobreescribió reabriría el mismo hueco.
@@ -1501,6 +1740,21 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
     }
   }
 
+  if (!usaCatalogoFijo) {
+    const snapId = Number(
+      (llmOrderState as { business_id?: unknown } | null)?.business_id ??
+        (currentOrderState as { businessId?: unknown }).businessId,
+    );
+    if (Number.isFinite(snapId) && snapId > 0) {
+      const { data, error } = await getSupabaseAdmin()
+        .from("tiendas")
+        .select("usa_catalogo_fijo")
+        .eq("id", snapId)
+        .maybeSingle();
+      if (!error) usaCatalogoFijo = (data as { usa_catalogo_fijo?: unknown } | null)?.usa_catalogo_fijo === true;
+    }
+  }
+
   const knownZoneNames = await fetchZonasCobertura();
   const captureResult = await captureEngine.processCustomerCapture({
     customerPhone: telefono,
@@ -1509,6 +1763,7 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
     currentSnapshot: null,
     llmOrderState: llmOrderState as Record<string, unknown> | null,
     knownZoneNames,
+    feeNote: formatPreConfirmFeeNote(usaCatalogoFijo ? "catalogo" : "cotiza_tienda"),
   });
 
   console.log("[captureEngine] pedido:", {
@@ -1536,9 +1791,17 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
     !captureResult.readyForConfirmation && containsFalseConfirmationClaim(llmReplyClean)
       ? "Voy anotando tu pedido. En cuanto tenga todo listo te paso el resumen para que lo confirmes. 🛒"
       : llmReplyClean;
-  const customerMessage = captureResult.readyForConfirmation
+  let customerMessage = captureResult.readyForConfirmation
     ? captureResult.customerMessage
     : llmReplySafe || captureResult.customerMessage;
+
+  if (!captureResult.readyForConfirmation && replyClaimsMissingMenu(customerMessage)) {
+    const replacement = await catalogReplyReplacingMissingMenu({ telefono, mensaje, openPedido }).catch((e: unknown) => {
+      console.error("[mandalo] respaldo de menú falló", { message: getErrorMessage(e) });
+      return null;
+    });
+    if (replacement) customerMessage = replacement;
+  }
 
   await sendWhatsApp(telefono, customerMessage);
   await guardarMensajeChat({ telefono, texto: customerMessage, estado: "bot" }).catch((e: unknown) => {

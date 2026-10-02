@@ -53,6 +53,17 @@
 > `fix/cotizacion-tienda-y-pendientes` mergeada desde el 2026-08-20, commit
 > `fa1de26`, también validada en vivo.
 
+## 🚧 Bloque 2026-10-02 — UX de WhatsApp (filtros, $35 junto, menú de catálogo)
+
+Código en rama, **sin merge y sin deploy**. Decisiones de Víctor aplicadas en copy y plantillas deterministas (`src/lib/customerUx.ts`):
+
+- Al cliente el cargo fijo es una sola línea de **$35 de envío y servicio**. Internamente siguen `MANDALO_SERVICE_FEE = 10` y `MANDALO_DELIVERY_FEE = 25`.
+- Después del saludo: filtro **Tiendas de abarrotes** / **Restaurantes**, luego la lista de ese nicho (abiertas y cerradas, para no romper `esperando_apertura_tienda`). Nichos nuevos se agregan en `CUSTOMER_STORE_NICHES` y con `tiendas.categoria` (alias o `nicho:<id>`). Una tienda con categoría que no mapea (hoy, por ejemplo, `taqueria`) **no sale en esos dos filtros** hasta que se agregue el nicho o se le cambie la categoría.
+- George (o cualquier tienda con `usa_catalogo_fijo` y productos) responde categorías y menú con precios reales desde la base, sin esperar a que la IA “vea” el catálogo al turno siguiente. Si la IA dice que el menú no está cargado y sí hay productos, ese texto se reemplaza.
+- Los saltos de línea de WhatsApp ya no se aplastan en `normalizeWhatsAppText` / `sanitizeCustomerReply`.
+
+**Pendiente de Víctor antes de darlo por cerrado en vivo:** confirmar que `tiendas.categoria` de ZAGU cae en abarrotes y la de George en restaurantes (o `nicho:abarrotes` / `nicho:restaurantes`). No hace falta migración nueva: la columna ya existe.
+
 ## ✅ Completo y confirmado en producción
 
 - **Fase 1 — esquema aditivo** (2026-08-04): tablas definitivas (`tiendas`, `clientes`, `repartidores`, `productos_tienda`, `pedidos`, `pedido_tiendas`, `pedido_items`) creadas en paralelo al esquema legacy, con backfill de datos maestros. `supabase/migrations/20260804_fase1_esquema_definitivo.sql`.

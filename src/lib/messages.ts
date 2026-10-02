@@ -158,9 +158,15 @@ export function sanitizeCustomerReply(text: string): string {
   t = t.replace(/\{[\s\S]*\}/g, " ");
   // Quitar la palabra "json" si se coló
   t = t.replace(/\bjson\b/gi, " ");
-  // Normalizar espacios
-  t = t.replace(/\s+/g, " ").trim();
-  return t;
+  // Conserva saltos de línea (listas). Solo aplana espacios dentro de cada línea.
+  return t
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+/g, " ").trim())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 // Una pregunta nunca es una confirmación, aunque de paso mencione una
@@ -303,9 +309,6 @@ export function isConversationModeMessage(text: string): boolean {
   return (
     t.includes("estoy triste") ||
     t.includes("me siento") ||
-    t.includes("que tienes") ||
-    t.includes("que vendes") ||
-    t.includes("que hay") ||
     t.includes("como estas") ||
     t === "hola" ||
     t.startsWith("hola ") ||

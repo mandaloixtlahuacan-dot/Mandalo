@@ -1,3 +1,4 @@
+import { formatPreConfirmFeeNote } from "@/lib/customerUx";
 import type { OrderState } from "@/lib/orderStateMachine";
 import { normalizePhone } from "@/lib/roles";
 import { resolveMapsLink } from "@/lib/services/geo";
@@ -99,6 +100,9 @@ export type CaptureInput = {
   // cual a validationEngine para verificar la zona que sugiera la IA contra
   // la lista real (mismo patrón que resolveTiendaStrictByName con tiendas).
   knownZoneNames?: string[];
+  // Nota de cobro ya redactada para el cliente (un solo $35). Si falta,
+  // el recibo usa el texto de tienda que cotiza.
+  feeNote?: string | null;
 };
 
 export type CaptureOutput = {
@@ -334,6 +338,7 @@ export function buildCustomerMessage(params: {
   validation: ValidationResult;
   snapshot: PedidoSnapshot;
   items: PedidoItemInput[];
+  feeNote?: string | null;
 }): string {
   const { validation, snapshot, items } = params;
 
@@ -368,11 +373,14 @@ export function buildCustomerMessage(params: {
     return "🧾 Todavía me falta información para continuar con tu pedido.";
   }
 
+  const fee = params.feeNote?.trim() || formatPreConfirmFeeNote("cotiza_tienda");
+
   return (
     "🧾 Este es tu pedido:\n\n" +
     `Tienda: ${formatBusiness(snapshot)}\n\n` +
     "🛒 Productos:\n" +
     `${formatItems(items)}\n\n` +
+    `${fee}\n\n` +
     "🏠 Entrega:\n" +
     `${formatAddress(snapshot)}\n\n` +
     "Si todo está correcto, responde: SÍ"
@@ -461,6 +469,7 @@ export function createCaptureEngine(deps: CaptureEngineDeps) {
           validation,
           snapshot: nextSnapshot,
           items: validation.validatedItems.items,
+          feeNote: input.feeNote,
         }),
         readyForConfirmation: validation.readyForConfirmation,
       };
