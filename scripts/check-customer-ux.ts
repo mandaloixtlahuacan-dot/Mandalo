@@ -2,7 +2,7 @@
  * Chequeo local de copy y del ruteo de filtros/menú. No toca Supabase ni WhatsApp.
  * Correr: npx tsx scripts/check-customer-ux.ts
  */
-import { existsSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { buildCustomerMessage, mergeSnapshot } from "../src/lib/services/captureEngine";
 import { validateCaptureForConfirmation } from "../src/lib/services/validationEngine";
 import { normalizeWhatsAppText } from "../src/lib/waapi";
@@ -129,6 +129,49 @@ const hamburguesa = classifyCustomerTurn({
 });
 assert(hamburguesa.type === "ask_menu", "hamburguesa ya no pide categoría: manda el menú");
 
+const locationAsk =
+  "🏠 ¿Me compartes tu ubicación por GPS? Es lo más fácil y rápido.\n\n" +
+  "Si prefieres, también puedes escribirme tu dirección: calle y número, colonia o una referencia clara.";
+const dogosExtra = classifyCustomerTurn({
+  message: "Y también dos dogos clásicos",
+  lastBotText: locationAsk,
+  hasBusiness: true,
+  hasItems: true,
+  businessId: george.id,
+  stores,
+});
+assert(dogosExtra.type === "continue", "con productos en el carrito, dos dogos no reenvían el menú");
+
+const pideMenu = classifyCustomerTurn({
+  message: "pásame el menú",
+  lastBotText: locationAsk,
+  hasBusiness: true,
+  hasItems: true,
+  businessId: george.id,
+  stores,
+});
+assert(pideMenu.type === "ask_menu", "pásame el menú sigue mandando la foto aunque ya haya productos");
+
+const queVenden = classifyCustomerTurn({
+  message: "qué venden",
+  lastBotText: locationAsk,
+  hasBusiness: true,
+  hasItems: true,
+  businessId: george.id,
+  stores,
+});
+assert(queVenden.type === "ask_menu", "qué venden sigue mandando la foto aunque ya haya productos");
+
+const dogosSinCarrito = classifyCustomerTurn({
+  message: "dos dogos",
+  lastBotText: listed,
+  hasBusiness: false,
+  hasItems: false,
+  businessId: null,
+  stores,
+});
+assert(dogosSinCarrito.type === "ask_menu", "sin productos, dogos sigue abriendo el menú");
+
 const caption = formatCatalogMenuCaption(george);
 assert(caption.includes("Te dejo el menú de"), "la foto se anuncia, no se lista");
 assert(!caption.toLowerCase().includes("categoría"), "el pie de la foto no pide categoría");
@@ -139,6 +182,18 @@ assert(
     existsSync("public/menus/george.b64.00"),
   "existe la foto del menú de George",
 );
+const georgeChunks = readdirSync("public/menus")
+  .filter((name) => /^george\.b64\.\d{2}$/.test(name))
+  .sort();
+if (georgeChunks.length) {
+  const encoded = georgeChunks.map((name) => readFileSync(`public/menus/${name}`, "utf8")).join("");
+  const png = Buffer.from(encoded.replace(/\s+/g, ""), "base64");
+  assert(
+    png.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
+    "los trozos del menú de George arman un PNG",
+  );
+  assert(png.length > 100_000, "la foto del menú de George no está vacía");
+}
 
 const switched = classifyCustomerTurn({
   message: "George",
