@@ -498,7 +498,9 @@ export function classifyCustomerTurn(params: {
     (!hasBusiness && !hasItems);
   const alreadyShowingMenu =
     lastBotText.includes(UX_MENU_IMAGE_MARKER) || lastBotText.includes(UX_MENU_MARKER);
-  if (hint && restaurantContext && !alreadyShowingMenu) {
+  // "y dos dogos" con el carrito ya armado es un producto más, no un pedido de menú.
+  // "pásame el menú" / "qué venden" siguen en isMenuQuestion, aunque ya haya productos.
+  if (hint && restaurantContext && !alreadyShowingMenu && !hasItems) {
     return { type: "ask_menu", store: menuFocus };
   }
 

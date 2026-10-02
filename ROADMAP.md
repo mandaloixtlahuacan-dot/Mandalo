@@ -2,10 +2,14 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 2 de octubre de 2026. El menú de George se manda como foto
-> (`public/menus/george.png`) al elegirlo o al pedir el menú; ya no hay filtro de
-> categoría. Cambiar de ZAGU a George suelta la tienda anterior. El recibo antes
-> del SÍ trae el precio de cada producto de catálogo más el envío de $35.
+> Última actualización: 2 de octubre de 2026. La foto del menú de George que sale
+> en WhatsApp es la nueva (trozos `public/menus/george.b64.NN`; el PNG suelto a
+> veces no entra al despliegue). Si el cliente ya trae productos y agrega otro
+> ("y también dos dogos"), el bot no vuelve a mandar la foto; "pásame el menú" /
+> "qué venden" sí la mandan. El menú se manda al elegirlo o al pedirlo; ya no hay
+> filtro de categoría. Cambiar de ZAGU a George suelta la tienda anterior. El
+> recibo antes del SÍ trae el precio de cada producto de catálogo más el envío
+> de $35.
 > Última actualización anterior: 12 de septiembre de 2026. **Bug grave corregido: la
 > IA podía inventar un `business_id` que no existe, tumbando el pedido en
 > silencio total** — confirmado con logs reales de Vercel (violación de
