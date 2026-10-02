@@ -246,14 +246,14 @@ assert(catalogReceipt.includes("Total: $95"), "el recibo suma producto + envío"
 
 console.log("\n--- Transcripción de ejemplo ---\n");
 console.log("CLIENTE: hola\n");
-console.log("M\u00c1NDALO:\n" + greeting + "\n");
+console.log("MÁNDALO:\n" + greeting + "\n");
 console.log("CLIENTE: 2\n");
-console.log("M\u00c1NDALO:\n" + listed + "\n");
+console.log("MÁNDALO:\n" + listed + "\n");
 console.log("CLIENTE: George\n");
-console.log("M\u00c1NDALO: [foto public/menus/george.png]\n" + caption + "\n");
+console.log("MÁNDALO: [foto public/menus/george.png]\n" + caption + "\n");
 console.log("CLIENTE: una de res chica\n");
-console.log("M\u00c1NDALO:\n" + catalogReceipt + "\n");
-console.log("CLIENTE: (despu\u00e9s de cotizar)\n");
-console.log("M\u00c1NDALO:\n" + quote + "\n");
-console.log("RECIBO ANTES DEL PRIMER S\u00cd:\n" + receipt + "\n");
+console.log("MÁNDALO:\n" + catalogReceipt + "\n");
+console.log("CLIENTE: (después de cotizar)\n");
+console.log("MÁNDALO:\n" + quote + "\n");
+console.log("RECIBO ANTES DEL PRIMER SÍ:\n" + receipt + "\n");
 console.log("check-customer-ux: ok");
