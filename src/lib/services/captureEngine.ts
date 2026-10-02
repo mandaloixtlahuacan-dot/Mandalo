@@ -103,6 +103,13 @@ export type CaptureInput = {
   // Nota de cobro ya redactada para el cliente (un solo $35). Si falta,
   // el recibo usa el texto de tienda que cotiza.
   feeNote?: string | null;
+  // Precios ya armados (nombre — $precio). Si vienen, el recibo los usa
+  // en vez de la lista sin precio.
+  pricedLines?: string | null;
+  // La tienda de este turno reemplaza la anterior (cambio ZAGU → George).
+  forceBusiness?: boolean;
+  // true = los items del turno reemplazan la lista, aunque vengan vacíos.
+  forceReplaceItems?: boolean;
 };
 
 export type CaptureOutput = {
@@ -201,6 +208,8 @@ export function mergeSnapshot(params: {
   currentSnapshot?: PedidoSnapshot | null;
   llmOrderState?: JsonObject | null;
   customerName?: string | null;
+  forceBusiness?: boolean;
+  forceReplaceItems?: boolean;
 }): PedidoSnapshot {
   const current = params.currentSnapshot ?? {};
   const llm = asObject(params.llmOrderState);
@@ -211,15 +220,15 @@ export function mergeSnapshot(params: {
     current.businessId ??
     null;
 
-  const businessName = chooseMoreCompleteText(
-    cleanText(current.businessName),
-    cleanText(llm.business_name ?? llm.businessName),
-  );
+  const incomingName = cleanText(llm.business_name ?? llm.businessName);
+  const businessName = params.forceBusiness
+    ? (incomingName ?? cleanText(current.businessName))
+    : chooseMoreCompleteText(cleanText(current.businessName), incomingName);
 
-  const businessPhone = mergeBusinessPhone(
-    cleanText(current.businessPhone),
-    cleanText(llm.business_phone ?? llm.businessPhone),
-  );
+  const incomingPhone = cleanText(llm.business_phone ?? llm.businessPhone);
+  const businessPhone = params.forceBusiness && incomingPhone
+    ? normalizePhone(incomingPhone) || mergeBusinessPhone(cleanText(current.businessPhone), incomingPhone)
+    : mergeBusinessPhone(cleanText(current.businessPhone), incomingPhone);
 
   // Coordenadas GPS: si vienen en este turno, ganan siempre sobre cualquier
   // dirección de texto anterior — son la fuente de verdad más precisa
@@ -247,7 +256,8 @@ export function mergeSnapshot(params: {
     cleanText(params.customerName),
   );
 
-  const items = mergeItems(current.items, extractCandidateItems(llm));
+  const incomingItems = extractCandidateItems(llm);
+  const items = params.forceReplaceItems ? incomingItems : mergeItems(current.items, incomingItems);
 
   return {
     ...current,
@@ -339,6 +349,7 @@ export function buildCustomerMessage(params: {
   snapshot: PedidoSnapshot;
   items: PedidoItemInput[];
   feeNote?: string | null;
+  pricedLines?: string | null;
 }): string {
   const { validation, snapshot, items } = params;
 
@@ -379,7 +390,7 @@ export function buildCustomerMessage(params: {
     "🧾 Este es tu pedido:\n\n" +
     `Tienda: ${formatBusiness(snapshot)}\n\n` +
     "🛒 Productos:\n" +
-    `${formatItems(items)}\n\n` +
+    `${params.pricedLines?.trim() || formatItems(items)}\n\n` +
     `${fee}\n\n` +
     "🏠 Entrega:\n" +
     `${formatAddress(snapshot)}\n\n` +
@@ -405,6 +416,8 @@ export function createCaptureEngine(deps: CaptureEngineDeps) {
         currentSnapshot: input.currentSnapshot ?? existingPedido?.snapshot_json ?? null,
         llmOrderState: input.llmOrderState ?? null,
         customerName: input.customerName ?? null,
+        forceBusiness: input.forceBusiness === true,
+        forceReplaceItems: input.forceReplaceItems === true,
       });
 
       // mergedSnapshot.items ya viene fusionado (turno actual + lo ya capturado
@@ -470,6 +483,7 @@ export function createCaptureEngine(deps: CaptureEngineDeps) {
           snapshot: nextSnapshot,
           items: validation.validatedItems.items,
           feeNote: input.feeNote,
+          pricedLines: input.pricedLines,
         }),
         readyForConfirmation: validation.readyForConfirmation,
       };
