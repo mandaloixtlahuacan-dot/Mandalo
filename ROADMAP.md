@@ -2,7 +2,11 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 2 de octubre de 2026. La foto del menú de George que sale
+> Última actualización: 2 de octubre de 2026. En tiendas que cotizan (sin menú
+> fijo) una línea vaga ya no se cierra: el bot pregunta solo lo que falta
+> (marca, tipo o presentación) con ejemplos, en un mensaje. "Del que sea",
+> "la que sea", "cualquiera" y "la más barata" se anotan y no se vuelven a
+> preguntar. George y el cargo de $35 siguen igual. La foto del menú de George que sale
 > en WhatsApp es la nueva (trozos `public/menus/george.b64.NN`; el PNG suelto a
 > veces no entra al despliegue). Si el cliente ya trae productos y agrega otro
 > ("y también dos dogos"), el bot no vuelve a mandar la foto; "pásame el menú" /

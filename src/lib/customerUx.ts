@@ -219,7 +219,7 @@ export function formatAbarrotesStoreAck(store: UxStore): string {
     ? ""
     : `\n\nOjo: está cerrada ahora${store.abreTexto ? ` (${store.abreTexto})` : ""}. Lo armamos igual y se manda en cuanto abra.`;
   return (
-    `Va, de ${store.nombre}. Dime qué se te antoja, con marca y tamaño si puedes.${closed}\n\n` +
+    `Va, de ${store.nombre}. Dime qué se te antoja. Si falta marca o presentación, te pregunto con un ejemplo.${closed}\n\n` +
     `La tienda cotiza y se suman ${formatMoney(CUSTOMER_FACING_FEE)} de envío y servicio.`
   );
 }
@@ -296,7 +296,7 @@ export function formatCatalogMenu(storeName: string, category: string, items: Ar
 
 export function formatNoFixedMenu(storeName: string): string {
   return (
-    `${storeName} no trae menú fijo. Dime el producto, la marca y el tamaño, y la tienda lo cotiza.\n\n` +
+    `${storeName} no trae menú fijo. Dime el producto; si falta marca o presentación, te pregunto antes de cotizarlo.\n\n` +
     `${formatCustomerFeeLine()}.`
   );
 }
