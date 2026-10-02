@@ -2,7 +2,8 @@
  * Chequeo local de copy y del ruteo de filtros/menú. No toca Supabase ni WhatsApp.
  * Correr: npx tsx scripts/check-customer-ux.ts
  */
-import { buildCustomerMessage } from "../src/lib/services/captureEngine";
+import { existsSync, statSync } from "node:fs";
+import { buildCustomerMessage, mergeSnapshot } from "../src/lib/services/captureEngine";
 import { validateCaptureForConfirmation } from "../src/lib/services/validationEngine";
 import { normalizeWhatsAppText } from "../src/lib/waapi";
 import {
@@ -11,6 +12,8 @@ import {
   customerCopySplitsFee,
   formatCatalogCategories,
   formatCatalogMenu,
+  formatCatalogMenuCaption,
+  formatCatalogReceiptFee,
   formatCustomerQuoteMessage,
   formatNicheStoreList,
   formatPreConfirmFeeNote,
@@ -68,8 +71,8 @@ assert(greeting.includes("2. Restaurantes"), "filtro restaurantes");
 assert(greeting.includes("\n"), "el saludo trae saltos de línea");
 assert(!customerCopySplitsFee(greeting), "el saludo no parte el cargo");
 
-assert(classifyCustomerTurn({ message: "hola", lastBotText: "", hasBusiness: false, hasItems: false, businessId: null, stores }).type === "greeting", "hola → saludo");
-assert(classifyCustomerTurn({ message: "2", lastBotText: greeting, hasBusiness: false, hasItems: false, businessId: null, stores }).type === "show_niche", "2 → restaurantes");
+assert(classifyCustomerTurn({ message: "hola", lastBotText: "", hasBusiness: false, hasItems: false, businessId: null, stores }).type === "greeting", "hola \u2192 saludo");
+assert(classifyCustomerTurn({ message: "2", lastBotText: greeting, hasBusiness: false, hasItems: false, businessId: null, stores }).type === "show_niche", "2 \u2192 restaurantes");
 const abarrotesList = formatNicheStoreList(CUSTOMER_STORE_NICHES[0], stores);
 assert(abarrotesList.includes("ZAGU"), "abarrotes incluye a ZAGU");
 assert(!abarrotesList.includes("George"), "abarrotes no mezcla restaurantes");
@@ -101,10 +104,10 @@ const menu = formatCatalogMenu("Hamburguesas Hotdogs George", "Hamburguesas", [
   { nombre: "Hamburguesa sencilla", precio: 55 },
   { nombre: "Hamburguesa hawaiana", precio: 70 },
 ]);
-assert(menu.includes("Hamburguesa sencilla — $55"), "precio real");
+assert(menu.includes("Hamburguesa sencilla \u2014 $55"), "precio real");
 assert(menu.includes("\n"), "menú con saltos de línea");
 assert(normalizeWhatsAppText(menu).includes("\n"), "WhatsApp conserva los saltos");
-assert(normalizeWhatsAppText(menu).includes("Hamburguesa hawaiana — $70"), "el precio sobrevive el normalizador");
+assert(normalizeWhatsAppText(menu).includes("Hamburguesa hawaiana \u2014 $70"), "el precio sobrevive el normalizador");
 
 const afterMenu = classifyCustomerTurn({
   message: "quiero la hamburguesa sencilla",
@@ -124,7 +127,72 @@ const hamburguesa = classifyCustomerTurn({
   businessId: null,
   stores,
 });
-assert(hamburguesa.type === "ask_category", "hamburguesa en restaurantes pide el menú de esa categoría");
+assert(hamburguesa.type === "ask_menu", "hamburguesa ya no pide categoría: manda el menú");
+
+const caption = formatCatalogMenuCaption(george);
+assert(caption.includes("Te dejo el menú de"), "la foto se anuncia, no se lista");
+assert(!caption.toLowerCase().includes("categoría"), "el pie de la foto no pide categoría");
+assert(caption.includes("$35"), "el pie avisa el envío");
+assert(
+  (existsSync("public/menus/george.png") && statSync("public/menus/george.png").size > 20_000) ||
+    (existsSync("public/menus/george.png.b64") && statSync("public/menus/george.png.b64").size > 20_000),
+  "existe la foto del menú de George",
+);
+
+const switched = classifyCustomerTurn({
+  message: "George",
+  lastBotText: "Va, de ZAGU. Dime qué se te antoja.",
+  hasBusiness: true,
+  hasItems: true,
+  businessId: zagu.id,
+  stores,
+});
+assert(switched.type === "pick_store" && switched.type === "pick_store" && switched.store.id === george.id, "decir George suelta a ZAGU");
+
+const menuAfterSwitch = classifyCustomerTurn({
+  message: "\u00bftienes menú?",
+  lastBotText: caption,
+  hasBusiness: true,
+  hasItems: true,
+  businessId: zagu.id,
+  stores,
+});
+assert(
+  menuAfterSwitch.type === "ask_menu" && menuAfterSwitch.type === "ask_menu" && menuAfterSwitch.store?.id === george.id,
+  "después de la foto, el menú es de George aunque el pedido viejo diga ZAGU",
+);
+
+const stillZagu = classifyCustomerTurn({
+  message: "\u00bftienes menú?",
+  lastBotText: "Va, de ZAGU. Dime qué se te antoja.",
+  hasBusiness: true,
+  hasItems: false,
+  businessId: zagu.id,
+  stores,
+});
+assert(stillZagu.type === "ask_menu" && stillZagu.type === "ask_menu" && stillZagu.store?.id === zagu.id, "sin cambio de tienda, el menú sigue en ZAGU");
+assert(replyClaimsMissingMenu("No veo el menú de hamburguesas cargado"), "detecta el menú que la IA dice no ver");
+assert(replyClaimsMissingMenu("el menú fijo pero no me diste categoría"), "detecta el filtro de categoría");
+
+const switchedSnapshot = mergeSnapshot({
+  currentSnapshot: {
+    businessId: zagu.id,
+    businessName: "ZAGU",
+    businessPhone: "5213311111111",
+    items: [{ nombre_producto: "Takis Fuego", cantidad: 1 }],
+  },
+  llmOrderState: {
+    business_id: george.id,
+    business_name: george.nombre,
+    business_phone: george.telefono,
+    items: [],
+  },
+  forceBusiness: true,
+  forceReplaceItems: true,
+});
+assert(switchedSnapshot.businessId === george.id, "el snapshot cambia a George");
+assert(String(switchedSnapshot.businessName).includes("George"), "el nombre largo de George gana");
+assert((switchedSnapshot.items ?? []).length === 0, "los productos de ZAGU no se quedan");
 
 const quote = formatCustomerQuoteMessage({ tiendaNombre: "ZAGU", pedidoId: 12, subtotal: 80, total: 115 });
 assert(quote.includes("Envío y servicio: $35"), "cotización con $35 junto");
@@ -169,21 +237,23 @@ const catalogReceipt = buildCustomerMessage({
   }),
   snapshot: catalogSnapshot,
   items: catalogSnapshot.items,
-  feeNote: formatPreConfirmFeeNote("catalogo"),
+  feeNote: formatCatalogReceiptFee(60),
+  pricedLines: "- Hamburguesa sencilla \u2014 $60",
 });
 assert(catalogReceipt.includes("Envío y servicio: $35"), "recibo de catálogo con $35");
-assert(catalogReceipt.includes("Hamburguesa sencilla"), "el recibo trae el producto");
+assert(catalogReceipt.includes("Hamburguesa sencilla \u2014 $60"), "el recibo trae el precio del producto");
+assert(catalogReceipt.includes("Total: $95"), "el recibo suma producto + envío");
 
 console.log("\n--- Transcripción de ejemplo ---\n");
 console.log("CLIENTE: hola\n");
-console.log("MÁNDALO:\n" + greeting + "\n");
+console.log("M\u00c1NDALO:\n" + greeting + "\n");
 console.log("CLIENTE: 2\n");
-console.log("MÁNDALO:\n" + listed + "\n");
+console.log("M\u00c1NDALO:\n" + listed + "\n");
 console.log("CLIENTE: George\n");
-console.log("MÁNDALO:\n" + categories + "\n");
-console.log("CLIENTE: hamburguesas\n");
-console.log("MÁNDALO:\n" + menu + "\n");
-console.log("CLIENTE: (después de cotizar)\n");
-console.log("MÁNDALO:\n" + quote + "\n");
-console.log("RECIBO ANTES DEL PRIMER SÍ:\n" + receipt + "\n");
+console.log("M\u00c1NDALO: [foto public/menus/george.png]\n" + caption + "\n");
+console.log("CLIENTE: una de res chica\n");
+console.log("M\u00c1NDALO:\n" + catalogReceipt + "\n");
+console.log("CLIENTE: (despu\u00e9s de cotizar)\n");
+console.log("M\u00c1NDALO:\n" + quote + "\n");
+console.log("RECIBO ANTES DEL PRIMER S\u00cd:\n" + receipt + "\n");
 console.log("check-customer-ux: ok");
