@@ -1019,30 +1019,96 @@ function alignedWords(message: string): string[] {
   return aligned;
 }
 
-function windowsFor(message: string): Array<{ category: Category; text: string }> {
+const LEADING_UNITS = new Set([
+  "kilo", "kilos", "kg", "litro", "litros", "pieza", "piezas", "paquete", "paquetes",
+  "bolsa", "bolsas", "frasco", "frascos", "lata", "latas", "botella", "botellas",
+  "caja", "cajas", "docena", "docenas", "rollo", "rollos",
+]);
+
+function isLeadingQty(token: string): boolean {
+  const qty = wordToQty(token);
+  if (qty == null || qty <= 0) return false;
+  if (QTY_WORDS[token] != null) return true;
+  return qty <= 40;
+}
+
+// "2 kilos de jitomate" lleva la cantidad ANTES del nombre. El corte de cada
+// producto empieza en esa cantidad, no en la palabra de producto más cercana:
+// si no, "un kilo" cae en la mayonesa y el "2" del jitomate cae en las papas.
+function segmentStart(words: string[], hitIndex: number): number {
+  let index = hitIndex;
+  while (index > 0) {
+    const prev = words[index - 1];
+    if (prev === "de" || prev === "del") {
+      index -= 1;
+      continue;
+    }
+    if (LEADING_UNITS.has(prev)) {
+      index -= 1;
+      continue;
+    }
+    if (isLeadingQty(prev)) {
+      index -= 1;
+      break;
+    }
+    break;
+  }
+  return index;
+}
+
+function splitProductClauses(message: string): string[] {
+  const text = dropAddressTail(message);
+  const parts = text
+    .split(/\s*(?:,|;|\by\b)\s*/)
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+  return parts.length ? parts : [text];
+}
+
+function windowsInClause(message: string): Array<{ category: Category; text: string }> {
   const words = alignedWords(message);
   const hits = hitsIn(message);
   if (!words.length || !hits.length) return [];
-  const buckets = new Map<string, { category: Category; words: string[] }>();
-  words.forEach((word, index) => {
-    let best = hits[0];
-    let bestDistance = Math.abs(index - best.wordIndex);
-    for (const hit of hits.slice(1)) {
-      const distance = Math.abs(index - hit.wordIndex);
-      if (distance < bestDistance) {
-        best = hit;
-        bestDistance = distance;
+  const normWords = norm(dropAddressTail(message)).split(" ").filter(Boolean);
+  if (hits.length === 1 || words.length !== normWords.length) {
+    if (hits.length === 1) return [{ category: hits[0].category, text: words.join(" ") }];
+    const buckets = new Map<string, { category: Category; words: string[] }>();
+    words.forEach((word, index) => {
+      let best = hits[0];
+      let bestDistance = Math.abs(index - best.wordIndex);
+      for (const hit of hits.slice(1)) {
+        const distance = Math.abs(index - hit.wordIndex);
+        if (distance < bestDistance) {
+          best = hit;
+          bestDistance = distance;
+        }
       }
-    }
-    const key = `${best.category.id}:${best.wordIndex}`;
-    const bucket = buckets.get(key) ?? { category: best.category, words: [] };
-    bucket.words.push(word);
-    buckets.set(key, bucket);
+      const key = `${best.category.id}:${best.wordIndex}`;
+      const bucket = buckets.get(key) ?? { category: best.category, words: [] };
+      bucket.words.push(word);
+      buckets.set(key, bucket);
+    });
+    return [...buckets.values()].map((bucket) => ({
+      category: bucket.category,
+      text: bucket.words.join(" "),
+    }));
+  }
+
+  let previousHit = -1;
+  const starts = hits.map((hit) => {
+    const start = Math.max(segmentStart(normWords, hit.wordIndex), previousHit + 1);
+    previousHit = hit.wordIndex;
+    return start;
   });
-  return [...buckets.values()].map((bucket) => ({
-    category: bucket.category,
-    text: bucket.words.join(" "),
-  }));
+  return hits.map((hit, index) => {
+    const from = starts[index];
+    const to = index + 1 < starts.length ? starts[index + 1] : words.length;
+    return { category: hit.category, text: words.slice(from, to).join(" ") };
+  });
+}
+
+function windowsFor(message: string): Array<{ category: Category; text: string }> {
+  return splitProductClauses(message).flatMap((clause) => windowsInClause(clause));
 }
 
 function missingSlots(category: Category, item: PedidoItemInput, extra = ""): SlotId[] {
@@ -1072,7 +1138,20 @@ function scrubItem(item: PedidoItemInput, ignore: Set<string>): PedidoItemInput 
   };
 }
 
-function applyDetail(item: PedidoItemInput, extraRaw: string, ignore: Set<string>): PedidoItemInput {
+function presentationBelongsToWindow(presentacion: string | null | undefined, extra: string): boolean {
+  const text = norm(presentacion ?? "");
+  if (!text) return true;
+  const blob = norm(extra);
+  const tokens = text.split(" ").filter((token) => token.length > 1 && token !== "de" && token !== "del");
+  return tokens.every((token) => blob.includes(token));
+}
+
+function applyDetail(
+  item: PedidoItemInput,
+  extraRaw: string,
+  ignore: Set<string>,
+  boundWindow = false,
+): PedidoItemInput {
   const extra = norm(extraRaw)
     .split(" ")
     .filter((token) => !ignore.has(token))
@@ -1085,6 +1164,7 @@ function applyDetail(item: PedidoItemInput, extraRaw: string, ignore: Set<string
   }
 
   const next: PedidoItemInput = { ...item };
+  if (boundWindow && !presentationBelongsToWindow(next.presentacion, extra)) next.presentacion = null;
   const productTokens = new Set(norm(next.nombre_producto).split(" ").filter((token) => token.length >= 3));
   const tokens = brandTokens(extra, ignore).filter((token) => !productTokens.has(token));
   if (category.kind !== "produce" && !clean(next.marca) && tokens.length) next.marca = displayBrand(extraRaw, tokens);
@@ -1114,18 +1194,16 @@ function applyDetail(item: PedidoItemInput, extraRaw: string, ignore: Set<string
       next.presentacion = mergeText(next.presentacion, size);
     } else {
       if (!clean(next.unidad)) next.unidad = norm(size).includes("docena") ? "docena" : "kilo";
-      const qty = parseQty(extra);
-      if (next.cantidad == null && qty != null) next.cantidad = qty;
+      const qty = qtyBeforeUnit(extra, /kilos?|kg|docenas?/) ?? parseQty(extra);
+      if (qty != null && (next.cantidad == null || boundWindow)) next.cantidad = qty;
     }
   } else if (size) {
     next.presentacion = mergeText(next.presentacion, size);
   }
 
   if (category.countSeparate) {
-    if (next.cantidad == null) {
-      const count = parsePackageCount(extra);
-      if (count != null) next.cantidad = count;
-    }
+    const count = parsePackageCount(extra);
+    if (count != null && (next.cantidad == null || boundWindow)) next.cantidad = count;
     if (!clean(next.unidad)) {
       const unit = countUnit(extra);
       if (unit) next.unidad = unit;
@@ -1138,9 +1216,10 @@ function applyDetail(item: PedidoItemInput, extraRaw: string, ignore: Set<string
       (/\d/.test(extra) && !bareMl);
     if (qty != null && mentionsCount) next.cantidad = qty;
   }
-  if (category.kind === "produce" && /\b(kilo|kilos|kg)\b/.test(extra) && next.cantidad == null) {
+  if (category.kind === "produce" && /\b(kilo|kilos|kg)\b/.test(extra)) {
     const qty = qtyBeforeUnit(extra, /kilos?|kg/) ?? parseQty(extra);
-    next.cantidad = qty ?? 1;
+    if (qty != null && (next.cantidad == null || boundWindow)) next.cantidad = qty;
+    else if (next.cantidad == null) next.cantidad = 1;
     if (!clean(next.unidad)) next.unidad = "kilo";
   }
   if (!clean(next.unidad) && !category.countSeparate) {
@@ -1231,19 +1310,29 @@ export function prepareQuoteItems(
   }
 
   if (windows.length) {
+    const boundWindow = windows.length > 1;
     for (const window of windows) {
       const index = next.findIndex((item) => {
         const current = itemCategory(item);
-        if (!current || current.id !== window.category.id) return false;
-        if (current.id !== "verdura") return true;
         const wanted = window.category.label?.(window.text) ?? window.category.nombre;
-        return norm(item.nombre_producto) === norm(wanted);
+        if (current?.id === window.category.id) {
+          if (current.id !== "verdura") return true;
+          return norm(item.nombre_producto) === norm(wanted);
+        }
+        // "Papa" a secas cae en papas de bolsa. "un kilo de papas" es la verdura.
+        const stem = (value: string) => {
+          const token = norm(value).split(" ").find((part) => part.length >= 4) ?? "";
+          return token.endsWith("s") ? token.slice(0, -1) : token;
+        };
+        const left = stem(item.nombre_producto);
+        const right = stem(wanted);
+        return left.length >= 4 && left === right;
       });
       if (index === -1) {
         const label = window.category.label?.(window.text) ?? window.category.nombre;
-        next.push(applyDetail({ nombre_producto: label }, window.text, ignore));
+        next.push(applyDetail({ nombre_producto: label }, window.text, ignore, boundWindow));
       } else {
-        next[index] = applyDetail(next[index], window.text, ignore);
+        next[index] = applyDetail(next[index], window.text, ignore, boundWindow);
       }
     }
   } else if (!flavoredWater && message && !looksLikeAddress(message) && (norm(message).split(" ").length <= 14 || waiverNote(message))) {

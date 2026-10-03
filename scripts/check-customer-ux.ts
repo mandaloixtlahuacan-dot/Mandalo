@@ -528,6 +528,67 @@ const mayoReceipt = buildCustomerMessage({
   items: mayoLista.validatedItems.items,
   feeNote: formatPreConfirmFeeNote("cotiza_tienda"),
 });
+const listaMezclada = "dos mayonesas, un kilo de papas y 2 kilos de jitomate";
+const mezclada = quoteCheck([], listaMezclada);
+const mayoMezcla = mezclada.validatedItems.items.find((item) => /mayonesa/i.test(item.nombre_producto));
+const papaMezcla = mezclada.validatedItems.items.find((item) => /^papas?$/i.test(item.nombre_producto));
+const jitomateMezcla = mezclada.validatedItems.items.find((item) => /jitomate/i.test(item.nombre_producto));
+assert(mezclada.validatedItems.items.length === 3, "un mensaje con tres productos anota tres");
+assert(mayoMezcla?.cantidad === 2, "las dos mayonesas no se quedan en otra cantidad");
+assert(mayoMezcla?.marca == null && mayoMezcla?.presentacion == null, "la mayonesa no hereda el kilo de las papas");
+assert(!mezclada.readyForConfirmation, "la mayonesa sin marca ni frasco no cierra el pedido");
+const preguntaMezcla = mezclada.issues.find((issue) => issue.customerQuestion)?.customerQuestion ?? "";
+assert(/marca/i.test(preguntaMezcla) && /frasco|190/i.test(preguntaMezcla), "solo se pregunta marca y frasco de la mayonesa");
+assert(!/cuánt/i.test(preguntaMezcla), "la cantidad de la mayonesa ya está");
+assert(!/sabritas|barcel|pringles/i.test(preguntaMezcla), "las papas por kilo no piden marca de bolsa");
+assert(papaMezcla?.cantidad === 1 && /kilo/i.test(String(papaMezcla?.unidad)), "las papas quedan en 1 kilo");
+assert(papaMezcla?.marca == null, "la papa por kilo no guarda marca");
+assert(jitomateMezcla?.cantidad === 2 && /kilo/i.test(String(jitomateMezcla?.unidad)), "el jitomate queda en 2 kilos");
+assert(jitomateMezcla?.marca == null, "el jitomate no pide marca");
+
+const listaCompleta = "dos mayonesas McCormick frasco de 190 g, un kilo de papas y 2 kilos de jitomate";
+const completa = quoteCheck([], listaCompleta);
+assert(completa.readyForConfirmation, "mayonesa con frasco, papas y jitomate ya se pueden confirmar");
+const mayoCompleta = completa.validatedItems.items.find((item) => /mayonesa/i.test(item.nombre_producto));
+const papaCompleta = completa.validatedItems.items.find((item) => /^papas?$/i.test(item.nombre_producto));
+const jitomateCompleta = completa.validatedItems.items.find((item) => /jitomate/i.test(item.nombre_producto));
+assert(mayoCompleta?.cantidad === 2, "la mayonesa completa sigue en 2");
+assert(/mccormick/i.test(String(mayoCompleta?.marca)), "guarda McCormick en el mensaje junto");
+assert(/190/.test(String(mayoCompleta?.presentacion)), "no se pierde el frasco de 190 g");
+assert(/frasco/i.test(`${mayoCompleta?.presentacion ?? ""} ${mayoCompleta?.unidad ?? ""}`), "el frasco sigue en la mayonesa");
+assert(papaCompleta?.cantidad === 1, "las papas del mensaje junto siguen en 1 kilo");
+assert(jitomateCompleta?.cantidad === 2, "el jitomate del mensaje junto sigue en 2 kilos");
+const ticketJunto = buildCustomerMessage({
+  validation: completa,
+  snapshot: { ...quoteBase, items: completa.validatedItems.items },
+  items: completa.validatedItems.items,
+  feeNote: formatPreConfirmFeeNote("cotiza_tienda"),
+});
+const lineaMayo = formatSpecificItemLine(mayoCompleta ?? { nombre_producto: "Mayonesa" });
+const lineaPapa = formatSpecificItemLine(papaCompleta ?? { nombre_producto: "Papa" });
+const lineaJitomate = formatSpecificItemLine(jitomateCompleta ?? { nombre_producto: "Jitomate" });
+assert(ticketJunto.includes(lineaMayo) && /190/.test(lineaMayo) && /McCormick/.test(ticketJunto), "el ticket junto muestra la mayonesa de 190 g");
+assert(ticketJunto.includes(lineaPapa) && /1 kilo/i.test(lineaPapa), "el ticket junto muestra 1 kilo de papa");
+assert(ticketJunto.includes(lineaJitomate) && /2 kilos/i.test(lineaJitomate), "el ticket junto muestra 2 kilos de jitomate");
+assert(ticketJunto.includes("$35") && !ticketJunto.includes("$10") && !ticketJunto.includes("$25"), "el ticket junto sigue en un solo $35");
+assert(!/sabritas|barcel|pringles/i.test(ticketJunto), "el ticket junto no pide bolsa de papas");
+
+const sucio = quoteCheck(
+  [
+    { nombre_producto: "Mayonesa", presentacion: "1 kilo", cantidad: 2 },
+    { nombre_producto: "Papa", cantidad: 2 },
+    { nombre_producto: "Jitomate", cantidad: 1, unidad: "kilo" },
+  ],
+  listaMezclada,
+);
+const mayoSucia = sucio.validatedItems.items.find((item) => /mayonesa/i.test(item.nombre_producto));
+const papaSucia = sucio.validatedItems.items.find((item) => /^papas?$/i.test(item.nombre_producto));
+const jitomateSucio = sucio.validatedItems.items.find((item) => /jitomate/i.test(item.nombre_producto));
+assert(sucio.validatedItems.items.length === 3, "no se duplica la papa cuando la IA ya la mandó");
+assert(mayoSucia?.presentacion == null && mayoSucia?.cantidad === 2, "se le quita a la mayonesa el kilo que no es suyo");
+assert(papaSucia?.cantidad === 1, "la papa que la IA dejó en 2 vuelve a 1 kilo");
+assert(jitomateSucio?.cantidad === 2, "el jitomate que la IA dejó en 1 vuelve a 2 kilos");
+
 assert(mayoReceipt.includes("McCormick") && mayoReceipt.includes("190"), "el cliente ve marca y presentación antes del SÍ");
 assert(mayoReceipt.includes("SÍ"), "el cierre sigue pidiendo SÍ");
 assert(mayoReceipt.includes("$35") && !mayoReceipt.includes("$10") && !mayoReceipt.includes("$25"), "abarrotes siguen en un solo $35");

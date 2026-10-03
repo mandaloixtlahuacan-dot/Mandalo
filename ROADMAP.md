@@ -2,7 +2,10 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 3 de octubre de 2026. En el menú fijo (George) "dos
+> Última actualización: 3 de octubre de 2026. En un solo mensaje de abarrotes
+> ("dos mayonesas, un kilo de papas y 2 kilos de jitomate") cada cantidad se
+> queda en su producto: la mayonesa pide marca y frasco, la papa queda en 1
+> kilo y el jitomate en 2. En el menú fijo (George) "dos
 > hamburguesas" ya no se cobra como una: el ticket de después de la ubicación
 > muestra la cantidad y el precio de las dos, más el mismo $35. Agregar "dos
 > dogos" no aplasta lo que ya estaba. En tiendas que cotizan (sin menú fijo,
