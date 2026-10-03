@@ -1,5 +1,6 @@
 import { formatPreConfirmFeeNote } from "@/lib/customerUx";
-import { reconcileCatalogQuantities } from "@/lib/catalogQuantities";
+import { reconcileCatalogQuantities, type CatalogPriceRow } from "@/lib/catalogQuantities";
+import { applyCatalogSpeech } from "@/lib/catalogOrderSpeech";
 import type { OrderState } from "@/lib/orderStateMachine";
 import { normalizePhone } from "@/lib/roles";
 import { resolveMapsLink } from "@/lib/services/geo";
@@ -62,8 +63,7 @@ export type ValidationIssue = {
   message: string;
   itemIndex?: number;
   itemName?: string;
-  // Pregunta corta para el cliente cuando falta marca/tipo/tamaño en una
-  // tienda que cotiza. Vacío en tiendas de catálogo.
+  // Pregunta corta para el cliente cuando falta marca, tamaño o cantidad.
   customerQuestion?: string;
 };
 
@@ -118,6 +118,9 @@ export type CaptureInput = {
   clearBusiness?: boolean;
   // true = tienda sin menú fijo. Ahí no se cierra una línea vaga.
   quoteStore?: boolean;
+  // Menú real de la tienda de precios fijos. Sirve para no anotar un tamaño
+  // que el cliente no dijo y para sumar lo que sí nombró.
+  catalog?: CatalogPriceRow[] | null;
 };
 
 export type CaptureOutput = {
@@ -482,9 +485,18 @@ export function createCaptureEngine(deps: CaptureEngineDeps) {
       // cuando el cliente manda la ubicación o agrega otro. La cantidad dicha
       // y la que ya estaba anotada se conservan. Las tiendas que cotizan no
       // pasan por aquí: ahí "cuántos" sigue siendo una pregunta.
-      const itemsForValidation = input.quoteStore
+      const reconciledItems = input.quoteStore
         ? mergedSnapshot.items ?? []
         : reconcileCatalogQuantities(priorSnapshot?.items ?? [], mergedSnapshot.items ?? [], input.userMessage);
+      const spoken =
+        !input.quoteStore && input.catalog?.length
+          ? applyCatalogSpeech({
+              base: reconciledItems,
+              userMessage: input.userMessage,
+              catalog: input.catalog,
+            })
+          : null;
+      const itemsForValidation = spoken?.applied ? spoken.items : reconciledItems;
       const snapshotForValidation: PedidoSnapshot = { ...mergedSnapshot, items: itemsForValidation };
 
       // itemsForValidation ya viene fusionado (turno actual + lo ya capturado
@@ -496,6 +508,33 @@ export function createCaptureEngine(deps: CaptureEngineDeps) {
         quoteStore: input.quoteStore === true,
         userMessage: input.userMessage,
       });
+
+      if (spoken?.applied) {
+        validation.validatedItems = { ...validation.validatedItems, items: spoken.items };
+        if (!validation.readyForConfirmation && spoken.reply) {
+          const reply =
+            !spoken.missing && !validation.validatedAddress?.isValid
+              ? `${spoken.reply}\n\n🏠 ¿Me compartes tu ubicación por GPS? Es lo más fácil y rápido.\n\nSi prefieres, también puedes escribirme tu dirección: calle y número, colonia o una referencia clara (ej. "frente a la tortillería", "casa azul").`
+              : spoken.reply;
+          validation.issues.push({
+            code: "GENERIC_ITEM_NEEDS_SPEC",
+            field: "especificacion_producto",
+            message: spoken.missing
+              ? "Falta un dato del menú para anotar el producto."
+              : "El menú ya tiene lo que el cliente dijo.",
+            customerQuestion: reply,
+          });
+        }
+        if (spoken.missing) {
+          validation.ok = false;
+          validation.readyForConfirmation = false;
+          validation.nextState = "seleccion_productos";
+          validation.validatedItems = { ...validation.validatedItems, items: spoken.items, allItemsSpecific: false };
+          if (!validation.missingFields.includes("especificacion_producto")) {
+            validation.missingFields.push("especificacion_producto");
+          }
+        }
+      }
 
       const nextSnapshot: PedidoSnapshot = {
         ...snapshotForValidation,
