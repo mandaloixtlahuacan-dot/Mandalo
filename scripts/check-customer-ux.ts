@@ -73,7 +73,10 @@ assert(nicheIdForCategoria("taqueria") === null, "taquería queda fuera hasta qu
 const greeting = buildGreeting(new Date("2026-10-02T20:00:00Z"));
 assert(
   greeting ===
-    `¡Hola! Soy Mándalo, tu mandadero de Ixtlahuacán. Pido en la tienda o el restaurante que me digas y te lo llevo. ¿De dónde quieres?
+    `¡Hola! Soy Mándalo, tu mandadero en Ixtlahuacán del Río.
+Con gusto pido en la tienda o el restaurante que me digas y te lo llevo a la puerta.
+
+¿De dónde quieres?
 1. Abarrotes
 2. Restaurantes`,
   "el saludo es el texto aprobado",

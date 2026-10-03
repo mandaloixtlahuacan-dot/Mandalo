@@ -159,7 +159,10 @@ export function customerCopySplitsFee(text: string): boolean {
   return mentionsServiceSlice && mentionsDeliverySlice;
 }
 
-const GREETING_BODY = `¡Hola! Soy Mándalo, tu mandadero de Ixtlahuacán. Pido en la tienda o el restaurante que me digas y te lo llevo. ¿De dónde quieres?
+const GREETING_BODY = `¡Hola! Soy Mándalo, tu mandadero en Ixtlahuacán del Río.
+Con gusto pido en la tienda o el restaurante que me digas y te lo llevo a la puerta.
+
+¿De dónde quieres?
 1. Abarrotes
 2. Restaurantes`;
 
