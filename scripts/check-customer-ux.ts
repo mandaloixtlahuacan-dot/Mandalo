@@ -11,6 +11,7 @@ import { normalizeWhatsAppText } from "../src/lib/waapi";
 import {
   buildGreeting,
   classifyCustomerTurn,
+  formatAbarrotesStoreAck,
   customerCopySplitsFee,
   formatCatalogCategories,
   formatCatalogMenu,
@@ -23,6 +24,8 @@ import {
   formatNicheStoreList,
   formatPreConfirmFeeNote,
   nicheIdForCategoria,
+  renderCustomerTurn,
+  replyBlamesStoreForMissingMenu,
   replyClaimsMissingMenu,
   type UxStore,
 } from "../src/lib/customerUx";
@@ -71,34 +74,21 @@ assert(nicheIdForCategoria("nicho:restaurantes") === "restaurantes", "categoria 
 assert(nicheIdForCategoria("taqueria") === null, "taquería queda fuera hasta que exista el nicho");
 
 const greeting = buildGreeting(new Date("2026-10-02T20:00:00Z"));
-assert(
-  greeting ===
-    `¡Hola! Soy Mándalo, tu mandadero en Ixtlahuacán del Río.
-Con gusto pido en la tienda o el restaurante que me digas y te lo llevo a la puerta.
-
-¿De dónde quieres?
-1. Abarrotes
-2. Restaurantes`,
-  "el saludo es el texto aprobado",
-);
-assert(buildGreeting(new Date("2026-10-02T15:00:00Z")) === greeting, "de mañana el saludo no cambia");
-assert(buildGreeting(new Date("2026-10-03T05:00:00Z")) === greeting, "de noche el saludo no cambia");
-assert(!greeting.includes("$35") && !greeting.includes("$10") && !greeting.includes("$25"), "el saludo no habla del cargo");
-assert(!greeting.includes("Abro de 3") && !greeting.includes("efectivo") && !greeting.includes("envío y servicio"), "el saludo no trae horario, pago ni el párrafo de envío");
-assert(!greeting.includes("Pícale al número o al nombre."), "ya no pide picarle al número");
+assert(greeting.startsWith("¡Buenas tardes! Soy Mándalo, tu mandadero. Tú dime el antojo y yo lo consigo."), "el saludo de la tarde es el texto aprobado");
+assert(buildGreeting(new Date("2026-10-02T15:00:00Z")).startsWith("¡Buenos días!"), "de mañana sigue siendo buenos días");
+assert(buildGreeting(new Date("2026-10-03T05:00:00Z")).startsWith("¡Buenas noches!"), "de noche sigue siendo buenas noches");
+assert(greeting.includes("1. Tiendas de abarrotes"), "filtro abarrotes");
+assert(greeting.includes("2. Restaurantes"), "filtro restaurantes");
 assert(greeting.trimEnd().endsWith("2. Restaurantes"), "el saludo termina en las dos opciones");
+assert(!greeting.includes("Pícale al número o al nombre."), "ya no pide picarle al número");
+assert(!greeting.includes("¿Qué se te antoja?"), "el antojo va en la primera línea");
+assert(greeting.includes("\n"), "el saludo trae saltos de línea");
 assert(!customerCopySplitsFee(greeting), "el saludo no parte el cargo");
 
-function nicheFromGreeting(message: string) {
-  const turn = classifyCustomerTurn({ message, lastBotText: greeting, hasBusiness: false, hasItems: false, businessId: null, stores });
-  return turn.type === "show_niche" ? turn.nicheId : "";
-}
-
 assert(classifyCustomerTurn({ message: "hola", lastBotText: "", hasBusiness: false, hasItems: false, businessId: null, stores }).type === "greeting", "hola → saludo");
-assert(nicheFromGreeting("1") === "abarrotes", "1 → abarrotes");
-assert(nicheFromGreeting("2") === "restaurantes", "2 → restaurantes");
-assert(nicheFromGreeting("Abarrotes") === "abarrotes", "Abarrotes elige el nicho de abarrotes");
-assert(nicheFromGreeting("Restaurantes") === "restaurantes", "Restaurantes elige el nicho de restaurantes");
+assert(classifyCustomerTurn({ message: "2", lastBotText: greeting, hasBusiness: false, hasItems: false, businessId: null, stores }).type === "show_niche", "2 → restaurantes");
+assert(classifyCustomerTurn({ message: "1", lastBotText: greeting, hasBusiness: false, hasItems: false, businessId: null, stores }).type === "show_niche", "1 → abarrotes");
+assert(classifyCustomerTurn({ message: "abarrotes", lastBotText: greeting, hasBusiness: false, hasItems: false, businessId: null, stores }).type === "show_niche", "el nombre del nicho sigue eligiendo");
 const oldGreeting =
   "¡Buenas tardes! Soy Mándalo, yo te hago el mandado. 🛵\n\n¿Qué se te antoja?\n\n1. Tiendas de abarrotes\n2. Restaurantes\n\nPícale al número o al nombre.";
 assert(classifyCustomerTurn({ message: "1", lastBotText: oldGreeting, hasBusiness: false, hasItems: false, businessId: null, stores }).type === "show_niche", "un saludo viejo todavía acepta el 1");
@@ -202,7 +192,9 @@ const dogosSinCarrito = classifyCustomerTurn({
 assert(dogosSinCarrito.type === "ask_menu", "sin productos, dogos sigue abriendo el menú");
 
 const caption = formatCatalogMenuCaption(george);
-assert(caption.includes("Te dejo el menú de"), "la foto se anuncia, no se lista");
+assert(/te paso el menú/i.test(caption), "al elegir el restaurante se avisa que va el menú");
+assert(caption.includes("Te paso el menú de"), "la foto se anuncia, no se lista");
+assert(!/quieres que te pase el menú/i.test(caption), "no pregunta antes de mandar el menú");
 assert(!caption.toLowerCase().includes("categoría"), "el pie de la foto no pide categoría");
 assert(caption.includes("$35"), "el pie avisa el envío");
 assert(
@@ -256,6 +248,175 @@ const stillZagu = classifyCustomerTurn({
   stores,
 });
 assert(stillZagu.type === "ask_menu" && stillZagu.type === "ask_menu" && stillZagu.store?.id === zagu.id, "sin cambio de tienda, el menú sigue en ZAGU");
+
+function emojiCount(text: string): number {
+  return (text.match(/\p{Extended_Pictographic}/gu) ?? []).length;
+}
+function blamesZagu(text: string): boolean {
+  return replyBlamesStoreForMissingMenu(text, "ZAGU") || /zagu no tiene men/i.test(text) || /la tienda zagu no tiene men/i.test(text);
+}
+
+const zaguAck = formatAbarrotesStoreAck(zagu);
+assert(zaguAck.includes("Va, de ZAGU"), "el aviso de abarrotes sigue anclando la tienda");
+assert(emojiCount(zaguAck) <= 2 && emojiCount(greeting) === 0, "el saludo no lleva emoji y el aviso no se satura");
+assert(emojiCount(listed) <= 2 && emojiCount(caption) >= 1 && emojiCount(caption) <= 2, "la lista y el menú llevan pocos emojis");
+
+const pickedMenu = renderCustomerTurn(picked, stores, listed);
+assert(pickedMenu?.kind === "menu" && pickedMenu.store.id === george.id, "elegir el restaurante de la lista manda el menú al momento");
+assert(pickedMenu?.kind === "menu" && /te paso el menú/i.test(pickedMenu.text), "al elegirlo dice que pasa el menú");
+assert(pickedMenu?.kind === "menu" && !/quieres que te pase/i.test(pickedMenu.text), "elegirlo no pregunta si quiere el menú");
+
+const namedFromZagu = classifyCustomerTurn({
+  message: "quiero de George",
+  lastBotText: zaguAck,
+  hasBusiness: true,
+  hasItems: true,
+  businessId: zagu.id,
+  stores,
+});
+assert(namedFromZagu.type === "pick_store" && namedFromZagu.store.id === george.id, "nombrar a George suelta a ZAGU");
+const namedMenu = renderCustomerTurn(namedFromZagu, stores, zaguAck);
+assert(namedMenu?.kind === "menu" && namedMenu.store.id === george.id, "nombrar el restaurante manda su menú al momento");
+assert(namedMenu?.kind === "menu" && /te paso el menú/i.test(namedMenu.text), "al nombrarlo dice que pasa el menú");
+assert(namedMenu?.kind === "menu" && !blamesZagu(namedMenu.text), "nombrar a George no contesta que Zagu no tiene menú");
+const namedSnapshot = mergeSnapshot({
+  currentSnapshot: {
+    businessId: zagu.id,
+    businessName: "ZAGU",
+    businessPhone: zagu.telefono,
+    items: [{ nombre_producto: "Takis Fuego", cantidad: 1 }],
+  },
+  llmOrderState: {
+    business_id: namedFromZagu.type === "pick_store" ? namedFromZagu.store.id : 0,
+    business_name: namedFromZagu.type === "pick_store" ? namedFromZagu.store.nombre : "",
+    business_phone: namedFromZagu.type === "pick_store" ? namedFromZagu.store.telefono : "",
+    items: [],
+  },
+  forceBusiness: true,
+  forceReplaceItems: true,
+});
+assert(namedSnapshot.businessId === george.id, "la tienda activa pasa de ZAGU a George");
+assert((namedSnapshot.items ?? []).length === 0, "los productos de ZAGU no se quedan al nombrar el restaurante");
+
+const antojoGeorge = classifyCustomerTurn({
+  message: "una hamburguesa en George",
+  lastBotText: zaguAck,
+  hasBusiness: true,
+  hasItems: true,
+  businessId: zagu.id,
+  stores,
+});
+assert(antojoGeorge.type === "pick_store" && antojoGeorge.store.id === george.id, "nombrar a George con el antojo también cambia la tienda");
+const antojoMenu = renderCustomerTurn(antojoGeorge, stores, zaguAck);
+assert(antojoMenu?.kind === "menu" && !blamesZagu(antojoMenu.text), "el antojo con nombre de restaurante manda el menú y no culpa a Zagu");
+
+const acceptedRestaurant = classifyCustomerTurn({
+  message: "quiero un restaurante",
+  lastBotText: zaguAck,
+  hasBusiness: true,
+  hasItems: true,
+  businessId: zagu.id,
+  stores,
+});
+assert(
+  acceptedRestaurant.type === "pick_store" && acceptedRestaurant.store.id === george.id,
+  "si solo hay un restaurante, aceptar la categoría lo elige sin escribir el nombre",
+);
+const acceptedMenu = renderCustomerTurn(acceptedRestaurant, stores, zaguAck);
+assert(acceptedMenu?.kind === "menu" && acceptedMenu.rememberStore.id === george.id, "aceptar restaurantes con una sola tienda manda ese menú");
+assert(acceptedMenu?.kind === "menu" && !blamesZagu(acceptedMenu.text), "el cambio de categoría no contesta que Zagu no tiene menú");
+const acceptedSnapshot = mergeSnapshot({
+  currentSnapshot: {
+    businessId: zagu.id,
+    businessName: "ZAGU",
+    businessPhone: zagu.telefono,
+    items: [{ nombre_producto: "Mayonesa", cantidad: 1 }],
+  },
+  llmOrderState: {
+    business_id: george.id,
+    business_name: george.nombre,
+    business_phone: george.telefono,
+    items: [],
+  },
+  forceBusiness: true,
+  forceReplaceItems: true,
+});
+assert(acceptedSnapshot.businessId === george.id, "aceptar la categoría reemplaza la tienda activa");
+assert((acceptedSnapshot.items ?? []).length === 0, "aceptar la categoría limpia el carrito de ZAGU");
+
+const bareNumber = classifyCustomerTurn({
+  message: "2",
+  lastBotText: zaguAck,
+  hasBusiness: true,
+  hasItems: false,
+  businessId: zagu.id,
+  stores,
+});
+assert(bareNumber.type === "continue", "un 2 suelto en ZAGU no cambia de categoría");
+
+const pizza: UxStore = {
+  id: 8,
+  nombre: "Pizza Lucía",
+  categoria: "Restaurante",
+  telefono: "5213344444444",
+  abierta: true,
+  abreTexto: "",
+  usaCatalogoFijo: true,
+};
+const several = [zagu, george, pizza];
+const toSeveral = classifyCustomerTurn({
+  message: "restaurantes",
+  lastBotText: zaguAck,
+  hasBusiness: true,
+  hasItems: true,
+  businessId: zagu.id,
+  stores: several,
+});
+assert(toSeveral.type === "switch_niche" && toSeveral.nicheId === "restaurantes", "con varios restaurantes se ofrece la lista");
+const severalReply = renderCustomerTurn(toSeveral, several, zaguAck);
+assert(severalReply?.kind === "text" && severalReply.clearActiveStore, "la lista suelta la tienda anterior");
+assert(severalReply?.kind === "text" && severalReply.text.includes("Pizza Lucía") && severalReply.text.includes("George"), "la lista trae los restaurantes");
+assert(severalReply?.kind === "text" && !blamesZagu(severalReply.text) && !severalReply.text.includes("ZAGU"), "la lista no contesta como si siguieran en ZAGU");
+const cleared = mergeSnapshot({
+  currentSnapshot: {
+    businessId: zagu.id,
+    businessName: "ZAGU",
+    businessPhone: zagu.telefono,
+    items: [{ nombre_producto: "Takis Fuego", cantidad: 1 }],
+    raw: { businessId: zagu.id, business_name: "ZAGU" },
+  },
+  llmOrderState: { items: [] },
+  clearBusiness: true,
+  forceReplaceItems: true,
+});
+assert(cleared.businessId == null && cleared.businessName == null, "soltar la categoría deja la tienda activa vacía");
+assert((cleared.items ?? []).length === 0, "soltar la categoría no conserva productos de ZAGU");
+assert(cleared.raw?.businessId == null, "el raw tampoco sigue diciendo ZAGU");
+
+const pickFromSeveral = classifyCustomerTurn({
+  message: "1",
+  lastBotText: severalReply?.kind === "text" ? severalReply.text : "",
+  hasBusiness: true,
+  hasItems: true,
+  businessId: zagu.id,
+  stores: several,
+});
+assert(pickFromSeveral.type === "pick_store" && pickFromSeveral.store.id === pizza.id, "el número de la lista nueva elige ese restaurante");
+const pickSeveralMenu = renderCustomerTurn(pickFromSeveral, several, severalReply?.kind === "text" ? severalReply.text : "");
+assert(pickSeveralMenu?.kind === "menu" && pickSeveralMenu.store.id === pizza.id, "elegir de la lista manda ese menú al momento");
+assert(pickSeveralMenu?.kind === "menu" && /te paso el menú/i.test(pickSeveralMenu.text) && !blamesZagu(pickSeveralMenu.text), "ese menú no habla de ZAGU");
+const pickedSnapshot = mergeSnapshot({
+  currentSnapshot: cleared,
+  llmOrderState: {
+    business_id: pizza.id,
+    business_name: pizza.nombre,
+    business_phone: pizza.telefono,
+    items: [],
+  },
+  forceBusiness: true,
+  forceReplaceItems: true,
+});
+assert(pickedSnapshot.businessId === pizza.id, "al elegir el restaurante la tienda activa ya no es ZAGU");
 assert(replyClaimsMissingMenu("No veo el menú de hamburguesas cargado"), "detecta el menú que la IA dice no ver");
 assert(replyClaimsMissingMenu("el menú fijo pero no me diste categoría"), "detecta el filtro de categoría");
 
@@ -746,6 +907,8 @@ assert(prompt.includes("del que sea") && prompt.includes("la más barata") && pr
 assert(prompt.includes("Lala") && prompt.includes("Pétalo") && prompt.includes("Ciel"), "el prompt trae ejemplos, no un catálogo cerrado");
 assert(prompt.includes("no reenvíes") || prompt.includes("No reenvíes"), "el prompt no manda a reenviar menús");
 assert(prompt.includes("foto del menú"), "el flujo de foto de George sigue en el prompt");
+assert(prompt.includes("pasa el menú"), "el prompt manda el menú al nombrar o elegir el restaurante");
+assert(prompt.includes("suelta la tienda anterior"), "el prompt suelta la tienda al cambiar de categoría");
 assert(prompt.includes("dos hamburguesas = 2"), "el prompt no deja caer la cantidad del menú");
 assert(prompt.includes("$35"), "el prompt no cambia el cargo de $35");
 

@@ -2,12 +2,18 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 3 de octubre de 2026. En un solo mensaje de abarrotes
+> Última actualización: 3 de octubre de 2026. Si el cliente ya iba en un abarrotes
+> (ZAGU) y acepta restaurantes, se suelta esa tienda: con un solo restaurante
+> se cambia solo y se le pasa el menú; con varios, se ofrece la lista y el
+> menú sale al elegir o al nombrar el restaurante. Ya no se queda contestando
+> que ZAGU no tiene menú. El menú no espera un "¿quieres que te lo pase?".
+> Código en rama, sin merge y sin deploy.
+> Actualización anterior del mismo día: en un solo mensaje de abarrotes
 > ("dos mayonesas, un kilo de papas y 2 kilos de jitomate") cada cantidad se
 > queda en su producto: la mayonesa pide marca y frasco, la papa queda en 1
 > kilo y el jitomate en 2. En el menú fijo (George) "dos
 > hamburguesas" ya no se cobra como una: el ticket de después de la ubicación
-> muestra la cantidad y el precio de las dos, más el mismo $35. Agregar "dos
+> muestra la cantidad y el precio de las dos, más el mismo cargo de $35 de envío y servicio ($25 para el repartidor y $10 para Mándalo). Agregar "dos
 > dogos" no aplasta lo que ya estaba. En tiendas que cotizan (sin menú fijo,
 > por ejemplo ZAGU) cualquier producto pide solo lo que falta: marca,
 > presentación que cambia lo que se baja del anaquel, y cantidad. La verdura
@@ -15,21 +21,21 @@
 > el producto. "Del que sea" / "la que sea" / "cualquiera" / "la más barata"
 > cierran ese hueco y no se vuelven a preguntar. Antes del primer SÍ el cliente
 > ve la línea concreta; la tienda recibe la misma (marca, tamaño, cantidad).
-> Abarrotes siguen sin precio en ese paso y el cargo al cliente es un solo $35.
+> Abarrotes siguen sin precio en ese paso y el cargo al cliente es un solo $35 de envío y servicio ($25 para el repartidor y $10 para Mándalo). Víctor confirmó ese desglose en una prueba en vivo el 2026-10-03; reemplaza el servicio fijo de $20.
 > George (tienda 5) y su foto de menú no entran en estas preguntas. Código en
 > rama, sin merge y sin deploy.
 > Actualización anterior: 2 de octubre de 2026. En tiendas que cotizan (sin menú
 > fijo) una línea vaga ya no se cierra: el bot pregunta solo lo que falta
 > (marca, tipo o presentación) con ejemplos, en un mensaje. "Del que sea",
 > "la que sea", "cualquiera" y "la más barata" se anotan y no se vuelven a
-> preguntar. George y el cargo de $35 siguen igual. La foto del menú de George que sale
+> preguntar. George y el cargo de $35 de envío y servicio ($25 para el repartidor y $10 para Mándalo) siguen igual. La foto del menú de George que sale
 > en WhatsApp es la nueva (trozos `public/menus/george.b64.NN`; el PNG suelto a
 > veces no entra al despliegue). Si el cliente ya trae productos y agrega otro
 > ("y también dos dogos"), el bot no vuelve a mandar la foto; "pásame el menú" /
 > "qué venden" sí la mandan. El menú se manda al elegirlo o al pedirlo; ya no hay
 > filtro de categoría. Cambiar de ZAGU a George suelta la tienda anterior. El
 > recibo antes del SÍ trae el precio de cada producto de catálogo más el envío
-> de $35.
+> y servicio de $35 ($25 para el repartidor y $10 para Mándalo).
 > Última actualización anterior: 12 de septiembre de 2026. **Bug grave corregido: la
 > IA podía inventar un `business_id` que no existe, tumbando el pedido en
 > silencio total** — confirmado con logs reales de Vercel (violación de
@@ -93,7 +99,7 @@ El saludo sigue la hora (buenos días, buenas tardes, buenas noches) y termina e
 
 Código en rama, **sin merge y sin deploy**. Decisiones de Víctor aplicadas en copy y plantillas deterministas (`src/lib/customerUx.ts`):
 
-- Al cliente el cargo fijo es una sola línea de **$35 de envío y servicio**. Internamente siguen `MANDALO_SERVICE_FEE = 10` y `MANDALO_DELIVERY_FEE = 25`.
+- Al cliente el cargo es una sola línea de **$35 de envío y servicio**. De esos $35, **$25** son para el repartidor y **$10** para Mándalo (Víctor). Víctor lo confirmó en una prueba en vivo el 2026-10-03; reemplaza el servicio fijo de $20. Internamente siguen `MANDALO_SERVICE_FEE = 10` y `MANDALO_DELIVERY_FEE = 25`.
 - Después del saludo: filtro **Tiendas de abarrotes** / **Restaurantes**, luego la lista de ese nicho (abiertas y cerradas, para no romper `esperando_apertura_tienda`). Nichos nuevos se agregan en `CUSTOMER_STORE_NICHES` y con `tiendas.categoria` (alias o `nicho:<id>`). Una tienda con categoría que no mapea (hoy, por ejemplo, `taqueria`) **no sale en esos dos filtros** hasta que se agregue el nicho o se le cambie la categoría.
 - George (o cualquier tienda con `usa_catalogo_fijo` y productos) responde categorías y menú con precios reales desde la base, sin esperar a que la IA “vea” el catálogo al turno siguiente. Si la IA dice que el menú no está cargado y sí hay productos, ese texto se reemplaza.
 - Los saltos de línea de WhatsApp ya no se aplastan en `normalizeWhatsAppText` / `sanitizeCustomerReply`.
@@ -261,9 +267,9 @@ Dos bugs reportados por Víctor, arreglados antes de presentar Mándalo a una ti
 
 1. **(Crítico) Cliente atorado al rechazar el precio final** — responder cualquier cosa que no fuera "SÍ" en `confirmado_tiendas` (incluyendo un "No" clarísimo) repetía "Procesando tu pedido..." para siempre, sin cancelar ni avanzar. Nueva función `messages.isNoConfirmation` (simétrica a `isYesConfirmation`, excluye frases de duda como "no sé"/"dame un momento" para no cancelar de más) distingue un rechazo claro de una respuesta ambigua: rechazo → cancela gratis y avisa; ambiguo → repite el total y pide de nuevo en vez de un filler vacío.
    - **Corrección de regla de negocio de paso:** el corte de la cancelación gratuita estaba mal puesto en el código — se ponía en cuanto la TIENDA cotizaba (`confirmado_tiendas` ya estaba en `PAST_FREE_CANCEL_WINDOW`, escalando al admin), no en cuanto el CLIENTE confirmaba, que es la regla real. Se corrigió: `confirmado_tiendas` sale de `PAST_FREE_CANCEL_WINDOW` (ya no escala al admin) y entra a `TIENDA_NOTIFIABLE_CANCEL_STATES` en `cancelOpenPedido` (la tienda se entera si el cliente rechaza el precio después de ya haber cotizado). **CLAUDE.md Sección 5 ganó una regla nueva (#7, "Cancelación gratuita")** — antes se citaba como si ya existiera ahí desde varios bloques de trabajo atrás (ver notas de agosto 22), pero nunca se había escrito realmente; ahora sí queda explícita.
-2. **Comisiones desactualizadas ($20/$35 en vez de $10/$25)** — pedido de Víctor de una sesión anterior que nunca se aplicó. Causa raíz real: `mandaloFlow.ts` tenía sus **propias constantes duplicadas** (`MANDALO_SERVICE_FEE`/`MANDALO_DELIVERY_FEE`) además de las de `ordenes.ts` — cualquier cambio a un archivo dejaba al otro con los valores viejos, y de hecho el total (`calculateFinalPrice`, en `ordenes.ts`) y la columna `servicio_repartidor` guardada en BD (con la constante duplicada de `mandaloFlow.ts`) habrían quedado **inconsistentes entre sí** si solo se hubiera tocado un archivo. Se eliminaron las duplicadas — `mandaloFlow.ts` ahora importa de `ordenes.ts`, única fuente de verdad. Valores actualizados ahí y en CLAUDE.md Sección 5 regla 2: Mándalo $10, repartidor $25 (antes $20/$35) — $35 de cargos fijos en vez de $55.
+2. **Comisiones: el desglose vigente es $35 ($25 repartidor + $10 Mándalo)** — pedido de Víctor de una sesión anterior que nunca se aplicó. Causa raíz real: `mandaloFlow.ts` tenía sus **propias constantes duplicadas** (`MANDALO_SERVICE_FEE`/`MANDALO_DELIVERY_FEE`) además de las de `ordenes.ts` — cualquier cambio a un archivo dejaba al otro con los valores viejos, y de hecho el total (`calculateFinalPrice`, en `ordenes.ts`) y la columna `servicio_repartidor` guardada en BD (con la constante duplicada de `mandaloFlow.ts`) habrían quedado **inconsistentes entre sí** si solo se hubiera tocado un archivo. Se eliminaron las duplicadas — `mandaloFlow.ts` ahora importa de `ordenes.ts`, única fuente de verdad. El cargo al cliente quedó en **$35 de envío y servicio**: **$25** para el repartidor y **$10** para Mándalo. Víctor confirmó ese desglose en vivo el 2026-10-03. Se reemplazó la mención anterior de un servicio fijo de $20.
 
-**Pendiente:** probar en vivo antes de la reunión de hoy — responder "No" a un precio final real y confirmar que cancela con el mensaje correcto (no más "procesando" infinito), y un pedido de prueba de punta a punta para confirmar que el total ya sale en $35 de cargos fijos.
+**Pendiente:** probar en vivo antes de la reunión de hoy — responder "No" a un precio final real y confirmar que cancela con el mensaje correcto (no más "procesando" infinito), y un pedido de prueba de punta a punta para confirmar que el cargo al cliente ya sale en $35 de envío y servicio ($25 para el repartidor y $10 para Mándalo). Ese desglose lo confirmó Víctor en vivo el 2026-10-03.
 
 ## ✅ Bloque de trabajo 2026-08-26 (commit `7fe9973`, directo sobre `main`)
 

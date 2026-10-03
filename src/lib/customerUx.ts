@@ -76,7 +76,9 @@ export const UX_STORE_LIST_MARKER = "¿De cuál te hago el mandado?";
 export const UX_CATEGORY_MARKER = "¿Cuál categoría te late?";
 export const UX_MENU_MARKER = "¿Cuál te encargo?";
 /** Pie de la foto del menú. El siguiente turno lo usa para no volver a filtrar categorías. */
-export const UX_MENU_IMAGE_MARKER = "Te dejo el menú de";
+export const UX_MENU_IMAGE_MARKER = "Te paso el menú de";
+/** Pies de foto ya mandados. El viejo sigue anclando la tienda en chats a medias. */
+const MENU_IMAGE_MARKERS = [UX_MENU_IMAGE_MARKER, "Te dejo el menú de"];
 
 export type UxStore = {
   id: number;
@@ -92,6 +94,7 @@ export type UxStore = {
 export type CustomerTurn =
   | { type: "greeting" }
   | { type: "show_niche"; nicheId: StoreNicheId }
+  | { type: "switch_niche"; nicheId: StoreNicheId }
   | { type: "pick_store"; store: UxStore }
   | { type: "ask_menu"; store: UxStore | null }
   | { type: "ask_category"; store: UxStore | null; hint: string }
@@ -119,12 +122,12 @@ export function formatPreConfirmFeeNote(mode: "catalogo" | "cotiza_tienda"): str
 
 export function formatCatalogOrderRegistered(pedidoId: number, tiendaNombre: string): string {
   const tienda = tiendaNombre.trim() || "la tienda";
-  return `📩 Pedido #${pedidoId} quedó registrado con *${tienda}*.\n\nTe mando el total para que lo confirmes con un SÍ.`;
+  return `📩 Pedido #${pedidoId} ya quedó con *${tienda}*.\n\nTe mando el total para que lo confirmes con un SÍ.`;
 }
 
 export function formatQuoteOrderRegistered(pedidoId: number, tiendaNombre: string): string {
   const tienda = tiendaNombre.trim() || "la tienda";
-  return `📩 Pedido #${pedidoId} quedó registrado para envío a *${tienda}*.\n\nTe avisaré en cuanto la tienda confirme el precio.`;
+  return `📩 Pedido #${pedidoId} ya va para *${tienda}*.\n\nTe aviso en cuanto la tienda confirme el precio.`;
 }
 
 export function formatCourierCancelNotice(pedidoId: number): string {
@@ -159,16 +162,17 @@ export function customerCopySplitsFee(text: string): boolean {
   return mentionsServiceSlice && mentionsDeliverySlice;
 }
 
-const GREETING_BODY = `¡Hola! Soy Mándalo, tu mandadero en Ixtlahuacán del Río.
-Con gusto pido en la tienda o el restaurante que me digas y te lo llevo a la puerta.
-
-¿De dónde quieres?
-1. Abarrotes
-2. Restaurantes`;
+function hourInMexico(now: Date): number {
+  return Number(
+    new Intl.DateTimeFormat("en-US", { hour: "numeric", hour12: false, timeZone: "America/Mexico_City" }).format(now),
+  );
+}
 
 export function buildGreeting(now = new Date()): string {
-  void now;
-  return GREETING_BODY;
+  const hour = hourInMexico(now);
+  const franja = hour >= 6 && hour < 12 ? "¡Buenos días!" : hour >= 12 && hour < 19 ? "¡Buenas tardes!" : "¡Buenas noches!";
+  const options = CUSTOMER_STORE_NICHES.map((niche, index) => `${index + 1}. ${niche.label}`).join("\n");
+  return `${franja} Soy Mándalo, tu mandadero. Tú dime el antojo y yo lo consigo.\n\n${options}`;
 }
 
 export function nicheById(id: string): StoreNiche | null {
@@ -223,7 +227,11 @@ export function formatNicheStoreList(niche: StoreNiche, stores: UxStore[]): stri
       ? `La tienda cotiza tus productos, más ${formatMoney(CUSTOMER_FACING_FEE)} de envío y servicio.`
       : `El menú trae precio, más ${formatMoney(CUSTOMER_FACING_FEE)} de envío y servicio.`;
 
-  return `${niche.label}:\n\n${lines.join("\n")}\n\n${fee}\n\n${UX_STORE_LIST_MARKER}`;
+  return `${niche.label}:\n\n${lines.join("\n")}\n\n${fee}\n\n${UX_STORE_LIST_MARKER} 👀`;
+}
+
+export function formatNicheSwitchList(niche: StoreNiche, stores: UxStore[]): string {
+  return `Va, soltamos la tienda anterior. 🛵\n\n${formatNicheStoreList(niche, stores)}`;
 }
 
 export function formatAbarrotesStoreAck(store: UxStore): string {
@@ -231,8 +239,8 @@ export function formatAbarrotesStoreAck(store: UxStore): string {
     ? ""
     : `\n\nOjo: está cerrada ahora${store.abreTexto ? ` (${store.abreTexto})` : ""}. Lo armamos igual y se manda en cuanto abra.`;
   return (
-    `Va, de ${store.nombre}. Dime qué se te antoja. Si falta marca, presentación o cuántos, te pregunto con un ejemplo.${closed}\n\n` +
-    `La tienda cotiza y se suman ${formatMoney(CUSTOMER_FACING_FEE)} de envío y servicio.`
+    `Va, de ${store.nombre}. Dime qué se te antoja y yo lo consigo. Si falta marca, presentación o cuántos, te pregunto con un ejemplo.${closed}\n\n` +
+    `La tienda cotiza y se suman ${formatMoney(CUSTOMER_FACING_FEE)} de envío y servicio. 🛒`
   );
 }
 
@@ -255,8 +263,8 @@ export function formatCatalogMenuCaption(store: UxStore): string {
     : `\n\nOjo: está cerrada ahora${store.abreTexto ? ` (${store.abreTexto})` : ""}. Lo armamos y se manda en cuanto abra.`;
   return (
     `${UX_MENU_IMAGE_MARKER} ${store.nombre} 🍔\n\n` +
-    `Mira qué chido. Pídeme lo que se te antoje, como sale en la foto.${closed}\n\n` +
-    `${formatCustomerFeeLine()}, aparte. 🔥`
+    `Pídeme lo que se te antoje, como sale en la foto.${closed}\n\n` +
+    `${formatCustomerFeeLine()}, aparte.`
   );
 }
 
@@ -287,7 +295,7 @@ export function formatRunningTotal(params: {
   catalog: boolean;
 }): string {
   if (!params.catalog) {
-    return `De ${params.storeName} la tienda cotiza los productos.\n\n${formatCustomerFeeLine()}\n\nEl total te lo paso cuando ella responda.`;
+    return `De ${params.storeName} la tienda cotiza los productos.\n\n${formatCustomerFeeLine()}\n\nEl total te lo paso cuando ella responda. 🙌`;
   }
   if (!params.lines.length) {
     return `Todavía no anoto nada de ${params.storeName}. Dime qué se te antoja y te armo la cuenta. 🍔`;
@@ -308,9 +316,16 @@ export function formatCatalogMenu(storeName: string, category: string, items: Ar
 
 export function formatNoFixedMenu(storeName: string): string {
   return (
-    `${storeName} no trae menú fijo. Dime el producto; si falta marca, presentación o cuántos, te pregunto antes de cotizarlo.\n\n` +
-    `${formatCustomerFeeLine()}.`
+    `${storeName} es de abarrotes. Dime el producto y yo lo consigo; si falta marca, presentación o cuántos, te pregunto.\n\n` +
+    `${formatCustomerFeeLine()}. 🛒`
   );
+}
+
+export function replyBlamesStoreForMissingMenu(text: string, storeName: string): boolean {
+  const t = normalizeUxText(text);
+  const name = normalizeUxText(storeName);
+  if (!t || !name || !t.includes(name)) return false;
+  return t.includes("no tiene menu") || t.includes("no trae menu") || t.includes("sin menu");
 }
 
 export function replyClaimsMissingMenu(text: string): boolean {
@@ -351,19 +366,15 @@ function parseLeadingNumber(message: string): number | null {
   return Number.isInteger(n) && n > 0 ? n : null;
 }
 
-export function matchNicheChoice(message: string): StoreNiche | null {
+function matchNichePhrase(message: string): StoreNiche | null {
   const text = normalizeUxText(message);
-  if (!text) return null;
-
-  const asNumber = parseLeadingNumber(message);
-  if (asNumber != null) return CUSTOMER_STORE_NICHES[asNumber - 1] ?? null;
-
-  if (text.length > 48) return null;
+  if (!text || text.length > 48) return null;
   const ranked = CUSTOMER_STORE_NICHES.flatMap((niche) =>
     niche.choicePhrases.map((phrase) => ({ niche, phrase: normalizeUxText(phrase) })),
   ).sort((a, b) => b.phrase.length - a.phrase.length);
 
   for (const { niche, phrase } of ranked) {
+    if (!phrase) continue;
     if (text === phrase || text.endsWith(` ${phrase}`) || text.startsWith(`${phrase} `) || text.includes(phrase)) {
       return niche;
     }
@@ -371,10 +382,77 @@ export function matchNicheChoice(message: string): StoreNiche | null {
   return null;
 }
 
-export function lastBotAskedForNiche(lastBot: string): boolean {
-  if (lastBot.includes("¿De dónde quieres?") && lastBot.includes("1. Abarrotes") && lastBot.includes("2. Restaurantes")) {
-    return true;
+export function matchNicheChoice(message: string): StoreNiche | null {
+  const text = normalizeUxText(message);
+  if (!text) return null;
+
+  const asNumber = parseLeadingNumber(message);
+  if (asNumber != null) return CUSTOMER_STORE_NICHES[asNumber - 1] ?? null;
+
+  return matchNichePhrase(message);
+}
+
+function nicheSwitchPhrase(message: string): StoreNiche | null {
+  const text = normalizeUxText(message);
+  if (!text || text.length > 60) return null;
+  const niche = matchNichePhrase(message);
+  if (!niche) return null;
+  let rest = text;
+  const phrases = [...niche.choicePhrases].sort((a, b) => normalizeUxText(b).length - normalizeUxText(a).length);
+  for (const phrase of phrases) {
+    const normalized = normalizeUxText(phrase);
+    if (normalized) rest = rest.split(normalized).join(" ");
   }
+  rest = rest
+    .replace(
+      /\b(quiero|quiere|queremos|mejor|cambia|cambiar|pasame|pasa|de|del|la|el|un|una|en|porfa|por favor|ahora|algo|mandado|se|me|antoja|antojo|vamos|ir)\b/g,
+      " ",
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+  return rest.length < 3 ? niche : null;
+}
+
+function nicheAcceptedInMessage(message: string, lastBotText: string): StoreNiche | null {
+  const phrase = nicheSwitchPhrase(message);
+  if (phrase) return phrase;
+  if (lastBotAskedForNiche(lastBotText)) return matchNicheChoice(message);
+  return null;
+}
+
+function lastBotShowsMenuPhoto(lastBotText: string): boolean {
+  return MENU_IMAGE_MARKERS.some((marker) => lastBotText.includes(marker));
+}
+
+function isRestaurantStore(store: UxStore): boolean {
+  return nicheIdForCategoria(store.categoria) === "restaurantes";
+}
+
+const GENERIC_RESTAURANT_TOKENS = new Set([
+  "hamburguesas",
+  "hamburguesa",
+  "hotdogs",
+  "hotdog",
+  "tacos",
+  "pizza",
+  "pizzas",
+  "restaurante",
+  "restaurantes",
+]);
+
+function messageNamesRestaurant(message: string, store: UxStore): boolean {
+  if (!isRestaurantStore(store)) return false;
+  const text = normalizeUxText(message);
+  const nombre = normalizeUxText(store.nombre);
+  if (!text || !nombre) return false;
+  if (text.includes(nombre)) return true;
+  const tokens = nombre.split(" ").filter((word) => word.length >= 4);
+  const proper = tokens.filter((word) => !GENERIC_RESTAURANT_TOKENS.has(word));
+  const needles = proper.length ? proper : tokens;
+  return needles.some((word) => new RegExp(`(?:^|\\s)${word}(?:\\s|$)`).test(text));
+}
+
+export function lastBotAskedForNiche(lastBot: string): boolean {
   const asked =
     lastBot.includes("Tú dime el antojo y yo lo consigo.") ||
     lastBot.includes("Pícale al número o al nombre.") ||
@@ -479,27 +557,46 @@ export function classifyCustomerTurn(params: {
   // (bug en vivo: ZAGU seguía pegado después de pasar a George).
   const lastBotPinnedStore =
     storeFromLastBot &&
-    (lastBotText.includes(UX_MENU_IMAGE_MARKER) || lastBotText.includes("Va, de "))
+    (lastBotShowsMenuPhoto(lastBotText) || lastBotText.includes("Va, de "))
       ? storeFromLastBot
       : null;
   const menuFocus = storeFromMessage ?? lastBotPinnedStore ?? storeFromId;
   const focusedStore = storeFromMessage ?? storeFromId ?? storeFromLastBot;
 
   const listedNiche = nicheListedInLastBot(lastBotText);
-  if (!hasItems && listedNiche) {
-    const asNumber = parseLeadingNumber(message);
-    if (asNumber != null) {
-      const picked = storesInNiche(stores, listedNiche.id)[asNumber - 1];
-      if (picked) return { type: "pick_store", store: picked };
-    }
-    if (storeFromMessage && messageIsStorePickOnly(message, storeFromMessage)) {
-      return { type: "pick_store", store: storeFromMessage };
+  if (listedNiche) {
+    const currentNiche = storeFromId ? nicheIdForCategoria(storeFromId.categoria) : null;
+    const leavingStore = hasBusiness && currentNiche != null && currentNiche !== listedNiche.id;
+    if (!hasItems || leavingStore) {
+      const asNumber = parseLeadingNumber(message);
+      if (asNumber != null) {
+        const picked = storesInNiche(stores, listedNiche.id)[asNumber - 1];
+        if (picked) return { type: "pick_store", store: picked };
+      }
+      if (storeFromMessage && messageIsStorePickOnly(message, storeFromMessage)) {
+        return { type: "pick_store", store: storeFromMessage };
+      }
     }
   }
 
   // "George" a secas cambia de tienda aunque el pedido todavía diga ZAGU.
   if (storeFromMessage && messageIsStorePickOnly(message, storeFromMessage)) {
     return { type: "pick_store", store: storeFromMessage };
+  }
+
+  // Nombrar un restaurante, aunque el mensaje traiga el antojo, suelta la tienda anterior.
+  if (storeFromMessage && messageNamesRestaurant(message, storeFromMessage) && storeFromMessage.id !== businessId) {
+    return { type: "pick_store", store: storeFromMessage };
+  }
+
+  if (hasBusiness) {
+    const accepted = nicheAcceptedInMessage(message, lastBotText);
+    const currentNiche = storeFromId ? nicheIdForCategoria(storeFromId.categoria) : null;
+    if (accepted && (!currentNiche || accepted.id !== currentNiche)) {
+      const mine = storesInNiche(stores, accepted.id);
+      if (mine.length === 1) return { type: "pick_store", store: mine[0] };
+      return { type: "switch_niche", nicheId: accepted.id };
+    }
   }
 
   const numberedCategory = categoryChosenFromLastBot(lastBotText, message);
@@ -513,8 +610,7 @@ export function classifyCustomerTurn(params: {
     focusedStore?.usaCatalogoFijo === true ||
     listedNiche?.id === "restaurantes" ||
     (!hasBusiness && !hasItems);
-  const alreadyShowingMenu =
-    lastBotText.includes(UX_MENU_IMAGE_MARKER) || lastBotText.includes(UX_MENU_MARKER);
+  const alreadyShowingMenu = lastBotShowsMenuPhoto(lastBotText) || lastBotText.includes(UX_MENU_MARKER);
   // "y dos dogos" con el carrito ya armado es un producto más, no un pedido de menú.
   // "pásame el menú" / "qué venden" siguen en isMenuQuestion, aunque ya haya productos.
   if (hint && restaurantContext && !alreadyShowingMenu && !hasItems) {
@@ -551,6 +647,86 @@ export function classifyCustomerTurn(params: {
   }
 
   return { type: "continue" };
+}
+
+export function restaurantCatalogStore(stores: UxStore[], preferred: UxStore | null): UxStore | "list" | null {
+  if (preferred?.usaCatalogoFijo) return preferred;
+  const inNiche = storesInNiche(stores, "restaurantes").filter((store) => store.usaCatalogoFijo);
+  if (inNiche.length === 1) return inNiche[0];
+  if (inNiche.length > 1) return "list";
+  const anyCatalog = stores.filter((store) => store.usaCatalogoFijo);
+  if (anyCatalog.length === 1) return anyCatalog[0];
+  return null;
+}
+
+export type CustomerUxRender =
+  | { kind: "text"; text: string; rememberStore: UxStore | null; clearActiveStore: boolean }
+  | { kind: "menu"; store: UxStore; text: string; rememberStore: UxStore; clearActiveStore: false };
+
+function renderPickedStore(store: UxStore): CustomerUxRender {
+  if (!store.usaCatalogoFijo) {
+    return { kind: "text", text: formatAbarrotesStoreAck(store), rememberStore: store, clearActiveStore: false };
+  }
+  return {
+    kind: "menu",
+    store,
+    text: formatCatalogMenuCaption(store),
+    rememberStore: store,
+    clearActiveStore: false,
+  };
+}
+
+export function renderCustomerTurn(turn: CustomerTurn, stores: UxStore[], lastBotText: string): CustomerUxRender | null {
+  if (turn.type === "continue" || turn.type === "running_total") return null;
+  if (turn.type === "greeting") {
+    return { kind: "text", text: buildGreeting(), rememberStore: null, clearActiveStore: false };
+  }
+  if (turn.type === "show_niche") {
+    const niche = nicheById(turn.nicheId);
+    return {
+      kind: "text",
+      text: niche ? formatNicheStoreList(niche, stores) : buildGreeting(),
+      rememberStore: null,
+      clearActiveStore: false,
+    };
+  }
+  if (turn.type === "switch_niche") {
+    const niche = nicheById(turn.nicheId);
+    const mine = storesInNiche(stores, turn.nicheId);
+    if (mine.length === 1) return renderPickedStore(mine[0]);
+    return {
+      kind: "text",
+      text: niche ? formatNicheSwitchList(niche, stores) : buildGreeting(),
+      rememberStore: null,
+      clearActiveStore: true,
+    };
+  }
+  if (turn.type === "pick_store") return renderPickedStore(turn.store);
+  if (turn.type === "ask_menu" || turn.type === "ask_category") {
+    const preferred = turn.store;
+    const resolved = preferred ?? restaurantCatalogStore(stores, null);
+    const store = resolved && resolved !== "list" ? resolved : null;
+    if (!store) {
+      const listed = nicheListedInLastBot(lastBotText);
+      return {
+        kind: "text",
+        text: listed ? formatNicheStoreList(listed, stores) : buildGreeting(),
+        rememberStore: null,
+        clearActiveStore: false,
+      };
+    }
+    if (!store.usaCatalogoFijo) {
+      return { kind: "text", text: formatNoFixedMenu(store.nombre), rememberStore: store, clearActiveStore: false };
+    }
+    return {
+      kind: "menu",
+      store,
+      text: formatCatalogMenuCaption(store),
+      rememberStore: store,
+      clearActiveStore: false,
+    };
+  }
+  return null;
 }
 
 export function uniqueCatalogCategories(categorias: Array<string | null | undefined>): string[] {

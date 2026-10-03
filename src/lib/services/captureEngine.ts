@@ -114,6 +114,8 @@ export type CaptureInput = {
   forceBusiness?: boolean;
   // true = los items del turno reemplazan la lista, aunque vengan vacíos.
   forceReplaceItems?: boolean;
+  // true = suelta la tienda activa (cambio de categoría sin tienda nueva todavía).
+  clearBusiness?: boolean;
   // true = tienda sin menú fijo. Ahí no se cierra una línea vaga.
   quoteStore?: boolean;
 };
@@ -218,25 +220,28 @@ export function mergeSnapshot(params: {
   customerName?: string | null;
   forceBusiness?: boolean;
   forceReplaceItems?: boolean;
+  clearBusiness?: boolean;
 }): PedidoSnapshot {
   const current = params.currentSnapshot ?? {};
   const llm = asObject(params.llmOrderState);
 
-  const businessId =
-    toNullableNumber(llm.business_id) ??
-    toNullableNumber(llm.businessId) ??
-    current.businessId ??
-    null;
+  const businessId = params.clearBusiness
+    ? null
+    : toNullableNumber(llm.business_id) ?? toNullableNumber(llm.businessId) ?? current.businessId ?? null;
 
   const incomingName = cleanText(llm.business_name ?? llm.businessName);
-  const businessName = params.forceBusiness
-    ? (incomingName ?? cleanText(current.businessName))
-    : chooseMoreCompleteText(cleanText(current.businessName), incomingName);
+  const businessName = params.clearBusiness
+    ? null
+    : params.forceBusiness
+      ? (incomingName ?? cleanText(current.businessName))
+      : chooseMoreCompleteText(cleanText(current.businessName), incomingName);
 
   const incomingPhone = cleanText(llm.business_phone ?? llm.businessPhone);
-  const businessPhone = params.forceBusiness && incomingPhone
-    ? normalizePhone(incomingPhone) || mergeBusinessPhone(cleanText(current.businessPhone), incomingPhone)
-    : mergeBusinessPhone(cleanText(current.businessPhone), incomingPhone);
+  const businessPhone = params.clearBusiness
+    ? null
+    : params.forceBusiness && incomingPhone
+      ? normalizePhone(incomingPhone) || mergeBusinessPhone(cleanText(current.businessPhone), incomingPhone)
+      : mergeBusinessPhone(cleanText(current.businessPhone), incomingPhone);
 
   // Coordenadas GPS: si vienen en este turno, ganan siempre sobre cualquier
   // dirección de texto anterior — son la fuente de verdad más precisa
@@ -265,7 +270,20 @@ export function mergeSnapshot(params: {
   );
 
   const incomingItems = extractCandidateItems(llm);
-  const items = params.forceReplaceItems ? incomingItems : mergeItems(current.items, incomingItems);
+  const items = params.forceReplaceItems || params.clearBusiness ? incomingItems : mergeItems(current.items, incomingItems);
+  const raw = {
+    ...(asObject(current.raw)),
+    ...llm,
+  };
+  if (params.clearBusiness) {
+    raw.business_id = null;
+    raw.businessId = null;
+    raw.business_name = null;
+    raw.businessName = null;
+    raw.business_phone = null;
+    raw.businessPhone = null;
+    raw.items = [];
+  }
 
   return {
     ...current,
@@ -278,10 +296,7 @@ export function mergeSnapshot(params: {
     latitud,
     longitud,
     items,
-    raw: {
-      ...(asObject(current.raw)),
-      ...llm,
-    },
+    raw,
   };
 }
 
@@ -398,10 +413,7 @@ export function buildCustomerMessage(params: {
     const first = validation.issues[0];
 
     if (first?.field === "negocio") {
-      return (
-        "🛒 Para continuar, dime de qué negocio quieres pedir.\n\n" +
-        "Escríbeme el nombre exacto de la tienda."
-      );
+      return "🛒 Dime de qué tienda y yo lo consigo.\n\nCon el nombre como lo conoces basta.";
     }
 
     const quoteQuestion = validation.issues.find((issue) => issue.customerQuestion)?.customerQuestion;
@@ -463,6 +475,7 @@ export function createCaptureEngine(deps: CaptureEngineDeps) {
         customerName: input.customerName ?? null,
         forceBusiness: input.forceBusiness === true,
         forceReplaceItems: input.forceReplaceItems === true,
+        clearBusiness: input.clearBusiness === true,
       });
 
       // En menú fijo la IA a veces reenvía el producto sin cantidad (o en 1)
