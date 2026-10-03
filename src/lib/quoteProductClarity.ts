@@ -3,22 +3,30 @@ import type { PedidoItemInput } from "@/lib/services/captureEngine";
 /**
  * Precisión de productos en tiendas que cotizan (sin menú fijo).
  * No es un catálogo: la marca que diga el cliente vale, aunque no esté
- * en los ejemplos. Aquí solo vive qué hay que preguntar por categoría
- * y el texto corto con el que se le explica.
+ * en los ejemplos. Aquí solo vive qué hay que preguntar (marca, presentación
+ * que cambia lo que se baja del anaquel, y cantidad) y el texto corto.
+ * Verdura y granel suelto no inventan marca: piden kilos y, si cambia el
+ * producto, el tipo (cebolla blanca vs morada). Jitomate es solo kilos.
  */
 
-type SlotId = "marca" | "tipo" | "tamano";
+type SlotId = "marca" | "tipo" | "tamano" | "cantidad";
 
 type Category = {
   id: string;
   nombre: string;
   match: RegExp;
   exclude?: RegExp;
+  /** Verdura a granel: no se inventa marca. Empaquetado: marca, presentación y cantidad van aparte. */
+  kind?: "produce" | "packaged";
+  /** El número de litros/ml/gramos es el tamaño del empaque, no cuántos llevar. */
+  countSeparate?: boolean;
+  skip?: (blob: string) => boolean;
   slots: SlotId[];
   filled: (slot: SlotId, blob: string, item: PedidoItemInput) => boolean;
   ask: (missing: SlotId[], item: PedidoItemInput, blob: string) => string;
   typePhrase?: (blob: string) => string | null;
   sizePhrase?: (blob: string) => string | null;
+  label?: (blob: string) => string;
 };
 
 const FOLLOW_LA = "Con eso ya la anoto y seguimos el mandado.";
@@ -55,6 +63,21 @@ const STOP = new Set([
   "birote", "birotes", "vegetal", "oliva", "liquido", "liquida", "polvo",
   "familiar", "vidrio", "dulce", "gas", "barata", "barato", "economica",
   "economico", "cualquiera", "haya", "tengas", "igual", "sea",
+  "chico", "chica", "chicos", "chicas", "mediano", "mediana", "medianos", "medianas", "grande", "grandes", "bolsaza", "jumbo",
+  "individual", "frasco", "frascos", "sobre", "sobres", "tubo",
+  "mayonesa", "mayonesas", "mayo", "crema", "gomita", "gomitas",
+  "papa", "papas", "galleta", "galletas", "queso", "quesos",
+  "jitomate", "jitomates", "tomate", "tomates", "cebolla", "cebollas",
+  "cilantro", "perejil", "limon", "limones", "chile", "chiles",
+  "zanahoria", "zanahorias", "pepino", "pepinos", "lechuga", "lechugas",
+  "aguacate", "aguacates", "platano", "platanos", "manzana", "manzanas",
+  "naranja", "naranjas", "ajo", "ajos", "calabaza", "calabazas",
+  "elote", "elotes", "repollo", "col", "brocoli", "chayote", "chayotes",
+  "ejote", "ejotes",   "nopal", "nopales", "sandia", "melon", "pina",
+  "mango", "mangos", "papaya", "papayas", "cebollin", "rabano",
+  "betabel", "camote", "camotes", "jicama", "apio", "espinaca",
+  "verduraga", "verdolaga", "epazote", "hierbabuena", "guayaba",
+  "mandarina", "pera", "uvas", "uva", "lima", "saladet", "saladette",
 ]);
 
 const ROLL_COUNTS = "(?:4|6|8|12|16|18|24|32|40)";
@@ -150,6 +173,8 @@ const QTY_WORDS: Record<string, number> = {
   un: 1,
   una: 1,
   uno: 1,
+  unos: 1,
+  unas: 1,
   dos: 2,
   tres: 3,
   cuatro: 4,
@@ -213,6 +238,231 @@ function litrosPhrase(blob: string): string | null {
 function rollPhrase(blob: string): string | null {
   const match = blob.match(new RegExp(`\\b(${ROLL_COUNTS})\\b`));
   return match ? `${match[1]} rollos` : null;
+}
+
+const SIZE_UNITS = new Set([
+  "litro", "litros", "ml", "g", "gr", "gramo", "gramos", "kg", "kilo", "kilos", "rollo", "rollos",
+]);
+
+function parsePackageCount(blob: string): number | null {
+  const tokens = blob.split(" ").filter(Boolean);
+  for (let index = 0; index < tokens.length; index += 1) {
+    const qty = wordToQty(tokens[index]);
+    if (qty == null) continue;
+    const next = tokens[index + 1] ?? "";
+    if (SIZE_UNITS.has(next)) continue;
+    if (/^\d{2,4}$/.test(tokens[index]) && !/^(paquete|paquetes|pieza|piezas|lata|latas|botella|botellas|frasco|frascos|caja|cajas|bolsa|bolsas)$/.test(next)) {
+      continue;
+    }
+    return qty;
+  }
+  return null;
+}
+
+function sizeNumber(blob: string): number | null {
+  const sized = blob.match(/\b(\d+(?:\.\d+)?)\s*(?:ml|g|gr|gramos|kg|kilos?|litros?)\b/);
+  if (sized) return Number(sized[1]);
+  const bare = blob.match(/\bde\s+(\d{2,4})\b/);
+  if (bare) return Number(bare[1]);
+  return null;
+}
+
+function hasPackageCount(blob: string, item: PedidoItemInput): boolean {
+  if (parsePackageCount(blob) != null) return true;
+  if (typeof item.cantidad === "number" && Number.isFinite(item.cantidad) && item.cantidad > 0) {
+    const sized = sizeNumber(blob);
+    if (sized != null && item.cantidad === sized) return false;
+    return true;
+  }
+  return false;
+}
+
+function foldSizeWords(blob: string): string {
+  return blob
+    .replace(/\bgrandes\b/g, "grande")
+    .replace(/\bchicos\b/g, "chico")
+    .replace(/\bchicas\b/g, "chica")
+    .replace(/\bmedianos\b/g, "mediano")
+    .replace(/\bmedianas\b/g, "mediana");
+}
+
+function hasShelfPresentation(blob: string): boolean {
+  const text = foldSizeWords(blob);
+  if (/\b(chico|chica|mediano|mediana|grande|familiar|jumbo|bolsaza|individual)\b/.test(text)) return true;
+  if (/\b\d+(?:\.\d+)?\s*(g|gr|gramos|ml|kg|kilos?|litros?)\b/.test(text)) return true;
+  if (/\b(litro|litros|ml|gramos|garrafon|bolsaza)\b/.test(text)) return true;
+  if (/\bde\s+\d{2,4}\b/.test(text)) return true;
+  if (/\b(frasco|sobre|lata|botella|caja|bolsa|tubo)\b/.test(text) && /\b(chico|chica|mediano|mediana|grande|familiar|kilo|litros?|\d+)\b/.test(text)) {
+    return true;
+  }
+  return false;
+}
+
+function shelfPhrase(blob: string): string | null {
+  const text = foldSizeWords(blob);
+  const grams = text.match(/\b(\d+(?:\.\d+)?)\s*(?:g|gr|gramos)\b/);
+  if (grams) return `${grams[1]} g`;
+  const ml = text.match(/\b(\d+)\s*ml\b/);
+  if (ml) return `${ml[1]} ml`;
+  if (/\bbolsaza\b/.test(text)) return "bolsaza";
+  if (/\bjumbo\b/.test(text)) return "jumbo";
+  if (/\bfamiliar\b/.test(text)) return "familiar";
+  const litros = litrosPhrase(text);
+  if (litros) return litros;
+  if (/\b(kilo|kilos|kg)\b/.test(text)) return "1 kilo";
+  if (/\bgarrafon(?:es)?\b/.test(text)) return "garrafón";
+  const sizeWord = text.match(/\b(chica|chico|mediana|mediano|grande|individual)\b/);
+  const container = text.match(/\b(frasco|sobre|lata|botella|caja|bolsa|tubo)\b/);
+  if (container && sizeWord) return `${container[1]} ${sizeWord[1]}`;
+  if (sizeWord) return sizeWord[1];
+  if (container && /\b\d+\b/.test(text)) return container[1];
+  const bare = text.match(/\bde\s+(\d{2,4})\b/);
+  if (bare) return `${bare[1]} g`;
+  return null;
+}
+
+function joinSpanish(bits: string[]): string {
+  const cleanBits = bits.filter(Boolean);
+  if (cleanBits.length <= 1) return cleanBits[0] ?? "";
+  if (cleanBits.length === 2) return `${cleanBits[0]} y ${cleanBits[1]}`;
+  return `${cleanBits.slice(0, -1).join(", ")} y ${cleanBits[cleanBits.length - 1]}`;
+}
+
+function countUnit(blob: string): string | null {
+  const unit = blob.match(/\b(paquetes|paquete|piezas|pieza|frascos|frasco|latas|lata|botellas|botella|cajas|caja|bolsas|bolsa)\b/);
+  if (!unit) return null;
+  const mapped: Record<string, string> = {
+    paquetes: "paquete",
+    piezas: "pieza",
+    frascos: "frasco",
+    latas: "lata",
+    botellas: "botella",
+    cajas: "caja",
+    bolsas: "bolsa",
+  };
+  return mapped[unit[1]] ?? unit[1];
+}
+
+const PRODUCE_LABELS: Array<[RegExp, string, "el" | "la"]> = [
+  [/\bjitomates?\b/, "Jitomate", "el"],
+  [/\btomates?\b/, "Tomate", "el"],
+  [/\bcebollas?\b/, "Cebolla", "la"],
+  [/\bcilantro\b/, "Cilantro", "el"],
+  [/\bperejil\b/, "Perejil", "el"],
+  [/\blimones?\b/, "Limón", "el"],
+  [/\bchiles?\b/, "Chile", "el"],
+  [/\bzanahorias?\b/, "Zanahoria", "la"],
+  [/\bpepinos?\b/, "Pepino", "el"],
+  [/\blechugas?\b/, "Lechuga", "la"],
+  [/\baguacates?\b/, "Aguacate", "el"],
+  [/\bplatanos?\b/, "Plátano", "el"],
+  [/\bmanzanas?\b/, "Manzana", "la"],
+  [/\bnaranjas?\b/, "Naranja", "la"],
+  [/\bajos?\b/, "Ajo", "el"],
+  [/\bcalabazas?\b/, "Calabaza", "la"],
+  [/\belotes?\b/, "Elote", "el"],
+  [/\brepollo\b|\bcoles?\b/, "Repollo", "el"],
+  [/\bbrocoli\b/, "Brócoli", "el"],
+  [/\bchayotes?\b/, "Chayote", "el"],
+  [/\bejotes?\b/, "Ejote", "el"],
+  [/\bnopales?\b/, "Nopal", "el"],
+  [/\bsandia\b/, "Sandía", "la"],
+  [/\bmelon\b/, "Melón", "el"],
+  [/\bpina\b/, "Piña", "la"],
+  [/\bmangos?\b/, "Mango", "el"],
+  [/\bpapayas?\b/, "Papaya", "la"],
+  [/\bcebollin\b/, "Cebollín", "el"],
+  [/\brabanos?\b/, "Rábano", "el"],
+  [/\bbetabel\b/, "Betabel", "el"],
+  [/\bcamotes?\b/, "Camote", "el"],
+  [/\bjicama\b/, "Jícama", "la"],
+  [/\bapio\b/, "Apio", "el"],
+  [/\bespinaca\b/, "Espinaca", "la"],
+  [/\bverdolaga\b/, "Verdolaga", "la"],
+  [/\bepazote\b/, "Epazote", "el"],
+  [/\bhierbabuena\b/, "Hierbabuena", "la"],
+  [/\bguayaba\b/, "Guayaba", "la"],
+  [/\bmandarina\b/, "Mandarina", "la"],
+  [/\bperas?\b/, "Pera", "la"],
+  [/\buvas?\b/, "Uva", "la"],
+  [/\blimas?\b/, "Lima", "la"],
+];
+
+function produceHit(blob: string): { nombre: string; article: "el" | "la" } | null {
+  for (const [re, nombre, article] of PRODUCE_LABELS) {
+    if (re.test(blob)) return { nombre, article };
+  }
+  return null;
+}
+
+function produceType(blob: string): string | null {
+  if (/\bcebollas?\b/.test(blob)) {
+    if (/\bcambray\b/.test(blob)) return "cambray";
+    if (/\bmorad[ao]\b/.test(blob)) return "morada";
+    if (/\bblanc[ao]\b/.test(blob)) return "blanca";
+    return null;
+  }
+  if (/\bchiles?\b/.test(blob)) {
+    if (/\bjalapeno\b/.test(blob)) return "jalapeño";
+    if (/\bserrano\b/.test(blob)) return "serrano";
+    if (/\bhabanero\b/.test(blob)) return "habanero";
+    if (/\bpoblano\b/.test(blob)) return "poblano";
+    if (/\bguero\b/.test(blob)) return "güero";
+    if (/\barbol\b/.test(blob)) return "de árbol";
+    if (/\bchipotle\b/.test(blob)) return "chipotle";
+    if (/\bmorron\b/.test(blob)) return "morrón";
+    return null;
+  }
+  return null;
+}
+
+function produceNeedsType(blob: string): boolean {
+  return /\bcebollas?\b/.test(blob) || /\bchiles?\b/.test(blob);
+}
+
+const PRODUCE_WORDS =
+  /\b(jitomates?|tomates?|cebollas?|cilantro|perejil|limones?|chiles?|zanahorias?|pepinos?|lechugas?|aguacates?|platanos?|manzanas?|naranjas?|ajos?|calabazas?|elotes?|repollo|coles?|brocoli|chayotes?|ejotes?|nopales?|sandia|melon|pina|mangos?|papayas?|cebollin|rabanos?|betabel|camotes?|jicama|apio|espinaca|verdolaga|epazote|hierbabuena|guayaba|mandarina|peras?|uvas?|limas?)\b/;
+
+function packagedFamily(opts: {
+  id: string;
+  nombre: string;
+  match: RegExp;
+  exclude?: RegExp;
+  skip?: (blob: string) => boolean;
+  article: string;
+  example: string;
+  shelfAsk: string;
+  follow: string;
+  emoji: string;
+}): Category {
+  return {
+    id: opts.id,
+    nombre: opts.nombre,
+    match: opts.match,
+    exclude: opts.exclude,
+    skip: opts.skip,
+    kind: "packaged",
+    countSeparate: true,
+    slots: ["marca", "tamano", "cantidad"],
+    sizePhrase: shelfPhrase,
+    filled: (slot, blob, item) => {
+      if (slot === "marca") return hasBrand(blob, new Set());
+      if (slot === "tamano") return hasShelfPresentation(blob);
+      if (slot === "cantidad") return hasPackageCount(blob, item);
+      return true;
+    },
+    ask: (missing, item, blob) => {
+      const brand = clean(item.marca) || (hasBrand(blob, new Set()) ? displayBrand(blob, brandTokens(blob, new Set())) : null);
+      const brandArticle = brand && /\b(emperador|principe|oreo|red bull)\b/.test(norm(brand)) ? "El" : opts.article;
+      const who = brand ? `${brandArticle} ${brand}` : `${opts.article} ${opts.nombre.toLocaleLowerCase("es-MX")}`;
+      const bits: string[] = [];
+      if (missing.includes("marca")) bits.push("de qué marca");
+      if (missing.includes("tamano")) bits.push(opts.shelfAsk);
+      if (missing.includes("cantidad")) bits.push("cuántos");
+      const example = missing.includes("marca") ? `Por ejemplo ${opts.example}.` : "";
+      return `Va. ${who}, ¿${joinSpanish(bits)}? ${example} ${opts.follow} ${opts.emoji}`.replace(/\s+/g, " ").trim();
+    },
+  };
 }
 
 const CATEGORIES: Category[] = [
@@ -303,8 +553,9 @@ const CATEGORIES: Category[] = [
   {
     id: "refresco",
     nombre: "Refresco",
-    match: /\b(refrescos?|refa|coca|pepsi|sprite|fanta|sidral|manzanita|squirt|seven|mirinda)\b/,
-    slots: ["marca", "tamano"],
+    match: /\b(refrescos?|refa|coca|pepsi|sprite|fanta|sidral|manzanita|squirt|seven|mirinda|redbull|red bull|monster)\b/,
+    countSeparate: true,
+    slots: ["marca", "tamano", "cantidad"],
     sizePhrase: (blob) => {
       if (/\blata\b/.test(blob)) return "lata";
       const ml = blob.match(/\b(\d{2,4})\s*ml\b/);
@@ -315,19 +566,33 @@ const CATEGORIES: Category[] = [
       if (/\bvidrio\b/.test(blob)) return "vidrio";
       return litrosPhrase(blob);
     },
-    filled: (slot, blob) => {
+    filled: (slot, blob, item) => {
       if (slot === "marca") return hasBrand(blob, new Set());
+      if (slot === "cantidad") return hasPackageCount(blob, item);
       return /\b(lata|latas|ml|litro|litros|familiar|vidrio|medio)\b/.test(blob);
     },
     ask: (missing, item, blob) => {
-      const brand = clean(item.marca) || (/\bcoca\b/.test(blob) ? "Coca" : null);
+      const brand = clean(item.marca) || (/\bcoca\b/.test(blob) ? "Coca" : /\bred bull\b|\bredbull\b/.test(blob) ? "Red Bull" : null);
+      const sizeLabel = clean(item.presentacion);
+      const who = !brand ? "El refresco" : /^coca/i.test(brand) ? `La ${brand}` : brand;
+      const whoSized = sizeLabel && !missing.includes("tamano") ? `${who} ${sizeLabel}` : who;
+      const qty = missing.includes("cantidad");
+      if (missing.includes("marca") && missing.includes("tamano") && qty) {
+        return `Va. El refresco, ¿de qué marca, de qué tamaño (lata, 600 ml o de 2 litros) y cuántos? Por ejemplo Coca, Pepsi o Sprite. ${FOLLOW_LO} 🥤`;
+      }
       if (missing.includes("marca") && missing.includes("tamano")) {
         return `Va. El refresco, ¿de qué marca y de qué tamaño? Por ejemplo Coca, Pepsi o Sprite, lata, 600 ml o de 2 litros. ${FOLLOW_LO} 🥤`;
+      }
+      if (missing.includes("marca") && qty) {
+        return `Va. ¿El refresco de qué marca y cuántos? Por ejemplo Coca, Pepsi o Sprite. ${FOLLOW_LO} 🥤`;
       }
       if (missing.includes("marca")) {
         return `Va. ¿El refresco de qué marca? Por ejemplo Coca, Pepsi o Sprite. ${FOLLOW_LO} 🥤`;
       }
-      const who = brand ? `La ${brand}` : "El refresco";
+      if (missing.includes("tamano") && qty) {
+        return `Va. ${who}, ¿de qué tamaño (lata, 600 ml o de 2 litros) y cuántas? ${FOLLOW_LA} 🥤`;
+      }
+      if (qty) return `Va. ${whoSized}, ¿cuántas? ${FOLLOW_LA} 🥤`;
       return `Va. ${who}, ¿de qué tamaño: lata, 600 ml, de 2 litros o de 3? ${FOLLOW_LA} 🥤`;
     },
   },
@@ -504,7 +769,8 @@ const CATEGORIES: Category[] = [
     id: "cerveza",
     nombre: "Cerveza",
     match: /\bcervezas?\b|\bcaguamas?\b|\bsix\b|\b(?:corona|modelo|victoria|pacifico|tecate|indio)\b/,
-    slots: ["marca", "tamano"],
+    countSeparate: true,
+    slots: ["marca", "tamano", "cantidad"],
     sizePhrase: (blob) => {
       if (/\bsix\b/.test(blob)) return "six";
       if (/\bcaguama\b/.test(blob)) return "caguama";
@@ -514,19 +780,27 @@ const CATEGORIES: Category[] = [
       if (/\bbotella\b/.test(blob)) return "botella";
       return null;
     },
-    filled: (slot, blob) => {
+    filled: (slot, blob, item) => {
       if (slot === "marca") return hasBrand(blob, new Set());
+      if (slot === "cantidad") return hasPackageCount(blob, item);
       return /\b(six|caguama|media|lata|familiar|botella|cuarto|ml)\b/.test(blob);
     },
     ask: (missing, item) => {
+      const brand = clean(item.marca);
+      const who = brand ? `La ${brand}` : "La cerveza";
       if (missing.includes("marca") && missing.includes("tamano")) {
         return `Va. La cerveza, ¿de qué marca y de cuál presentación (lata, media, caguama o six)? Por ejemplo Corona, Victoria o Modelo. ${FOLLOW_LA} 🍺`;
+      }
+      if (missing.includes("marca") && missing.includes("cantidad")) {
+        return `Va. ¿La cerveza de qué marca y cuántas? Por ejemplo Corona, Victoria o Modelo. ${FOLLOW_LA} 🍺`;
       }
       if (missing.includes("marca")) {
         return `Va. ¿La cerveza de qué marca? Por ejemplo Corona, Victoria o Modelo. ${FOLLOW_LA} 🍺`;
       }
-      const brand = clean(item.marca);
-      const who = brand ? `La ${brand}` : "La cerveza";
+      if (missing.includes("tamano") && missing.includes("cantidad")) {
+        return `Va. ${who}, ¿lata, media, caguama o six, y cuántas? ${FOLLOW_LA} 🍺`;
+      }
+      if (missing.includes("cantidad")) return `Va. ${who}, ¿cuántas? ${FOLLOW_LA} 🍺`;
       return `Va. ${who}, ¿lata, media, caguama o six? ${FOLLOW_LA} 🍺`;
     },
   },
@@ -550,10 +824,121 @@ const CATEGORIES: Category[] = [
       return `Va. ¿Cajetilla o cartón? ${FOLLOW_LOS} 🚬`;
     },
   },
+  packagedFamily({
+    id: "mayonesa",
+    nombre: "Mayonesa",
+    match: /\b(mayonesas?|mayo)\b/,
+    article: "La",
+    example: "McCormick, Hellmann's o Heinz",
+    shelfAsk: "de qué frasco (chico, de 190 g o de kilo)",
+    follow: FOLLOW_LA,
+    emoji: "🫙",
+  }),
+  packagedFamily({
+    id: "crema",
+    nombre: "Crema",
+    match: /\bcrema\b/,
+    exclude: /\b(dental|corporal|batir|nivea|para el cafe|para cafe)\b/,
+    article: "La",
+    example: "Lala, Alpura o Santa Clara",
+    shelfAsk: "de qué presentación (chica, grande o de litro)",
+    follow: FOLLOW_LA,
+    emoji: "🥛",
+  }),
+  packagedFamily({
+    id: "gomitas",
+    nombre: "Gomitas",
+    match: /\bgomitas?\b/,
+    article: "Las",
+    example: "Panditas, Gomilocas o Winis",
+    shelfAsk: "de qué bolsa (chica, grande o bolsaza)",
+    follow: FOLLOW_LAS(),
+    emoji: "🍬",
+  }),
+  packagedFamily({
+    id: "papas",
+    nombre: "Papas",
+    match: /\bpapas?\b/,
+    skip: (blob) => /\b(kilo|kilos|kg)\b/.test(blob) && !/\b(sabritas|barcel|rufles|pringles|doritos|chips)\b/.test(blob),
+    article: "Las",
+    example: "Sabritas, Barcel o Pringles",
+    shelfAsk: "de qué bolsa (chica, grande o bolsaza)",
+    follow: FOLLOW_LAS(),
+    emoji: "🍟",
+  }),
+  packagedFamily({
+    id: "galletas",
+    nombre: "Galletas",
+    match: /\b(galletas?|emperador|marias|habaneras|principe|canelitas|oreo|chokis|saladitas)\b/,
+    article: "Las",
+    example: "Emperador, Marías o Príncipe",
+    shelfAsk: "de qué paquete (chico, grande o de cuántos gramos)",
+    follow: FOLLOW_LAS(),
+    emoji: "🍪",
+  }),
+  packagedFamily({
+    id: "queso",
+    nombre: "Queso",
+    match: /\bquesos?\b/,
+    article: "El",
+    example: "Lala, Alpura o Caperucita",
+    shelfAsk: "de a cómo (pieza, rebanadas o de kilo)",
+    follow: FOLLOW_LO,
+    emoji: "🧀",
+  }),
+  {
+    id: "verdura",
+    nombre: "Verdura",
+    match: PRODUCE_WORDS,
+    kind: "produce",
+    slots: ["tipo", "tamano"],
+    label: (blob) => produceHit(blob)?.nombre ?? "Verdura",
+    typePhrase: produceType,
+    filled: (slot, blob, item) => {
+      if (slot === "tipo") return !produceNeedsType(blob) || produceType(blob) != null;
+      return /\b(kilo|kilos|kg)\b/.test(blob) || (typeof item.cantidad === "number" && item.cantidad > 0 && /\b(kilo|kilos|kg)\b/.test(`${blob} ${item.unidad ?? ""}`));
+    },
+    ask: (missing, _item, blob) => {
+      const hit = produceHit(blob);
+      const nombre = (hit?.nombre ?? "eso").toLocaleLowerCase("es-MX");
+      const article = hit?.article === "la" ? "La" : "El";
+      if (/\bcebollas?\b/.test(blob) && missing.includes("tipo") && missing.includes("tamano")) {
+        return `Va. La cebolla, ¿blanca o morada, y de cuántos kilos? ${FOLLOW_LA} 🧅`;
+      }
+      if (/\bcebollas?\b/.test(blob) && missing.includes("tipo")) {
+        return `Va. La cebolla, ¿blanca o morada? ${FOLLOW_LA} 🧅`;
+      }
+      if (/\bchiles?\b/.test(blob) && missing.includes("tipo") && missing.includes("tamano")) {
+        return `Va. El chile, ¿de cuál (jalapeño, serrano o habanero) y de cuántos kilos? ${FOLLOW_LO} 🌶️`;
+      }
+      if (/\bchiles?\b/.test(blob) && missing.includes("tipo")) {
+        return `Va. El chile, ¿jalapeño, serrano o habanero? ${FOLLOW_LO} 🌶️`;
+      }
+      const emoji = /\bjitomates?\b|\btomates?\b/.test(blob) ? "🍅" : "🥬";
+      const follow = article === "La" ? FOLLOW_LA : FOLLOW_LO;
+      return `Va. ${article} ${nombre}, ¿de cuántos kilos? ${follow} ${emoji}`;
+    },
+  },
+  {
+    id: "papa",
+    nombre: "Papa",
+    match: /\bpapas?\b/,
+    kind: "produce",
+    skip: (blob) => !/\b(kilo|kilos|kg)\b/.test(blob) || /\b(sabritas|barcel|rufles|pringles|doritos|chips)\b/.test(blob),
+    slots: ["tamano"],
+    filled: (slot, blob, item) => slot === "tamano" && (/\b(kilo|kilos|kg)\b/.test(blob) || (typeof item.cantidad === "number" && item.cantidad > 0)),
+    ask: () => `Va. La papa, ¿de cuántos kilos? ${FOLLOW_LA} 🥔`,
+  },
 ];
 
 function FOLLOW_LAS(): string {
   return "Con eso ya las anoto y seguimos el mandado.";
+}
+
+function categoryRejected(category: Category, blob: string): boolean {
+  if (category.exclude?.test(blob)) return true;
+  if (category.skip?.(blob)) return true;
+  return false;
 }
 
 function categoryFor(text: string): Category | null {
@@ -561,7 +946,7 @@ function categoryFor(text: string): Category | null {
   if (!haystack) return null;
   for (const category of CATEGORIES) {
     if (!category.match.test(haystack)) continue;
-    if (category.exclude?.test(haystack)) continue;
+    if (categoryRejected(category, haystack)) continue;
     return category;
   }
   return null;
@@ -604,7 +989,8 @@ function hitsIn(message: string): Hit[] {
     while ((match = re.exec(haystack))) {
       const wordIndex = haystack.slice(0, match.index).split(" ").filter(Boolean).length;
       const local = words.slice(Math.max(0, wordIndex - 3), wordIndex + 5).join(" ");
-      if (category.exclude?.test(local) || category.exclude?.test(haystack.slice(match.index, match.index + 40))) {
+      const tail = haystack.slice(match.index, match.index + 40);
+      if (categoryRejected(category, local) || (category.exclude?.test(tail) ?? false)) {
         if (match.index === re.lastIndex) re.lastIndex += 1;
         continue;
       }
@@ -621,9 +1007,20 @@ function hitsIn(message: string): Hit[] {
   return unique;
 }
 
+function alignedWords(message: string): string[] {
+  const rawWords = dropAddressTail(message).split(/\s+/).filter(Boolean);
+  const aligned: string[] = [];
+  for (const raw of rawWords) {
+    const pieces = norm(raw).split(" ").filter(Boolean);
+    if (!pieces.length) continue;
+    aligned.push(raw);
+    for (const piece of pieces.slice(1)) aligned.push(piece);
+  }
+  return aligned;
+}
+
 function windowsFor(message: string): Array<{ category: Category; text: string }> {
-  const cleaned = dropAddressTail(message);
-  const words = norm(cleaned).split(" ").filter(Boolean);
+  const words = alignedWords(message);
   const hits = hitsIn(message);
   if (!words.length || !hits.length) return [];
   const buckets = new Map<string, { category: Category; words: string[] }>();
@@ -680,7 +1077,7 @@ function applyDetail(item: PedidoItemInput, extraRaw: string, ignore: Set<string
     .split(" ")
     .filter((token) => !ignore.has(token))
     .join(" ");
-  const category = categoryFor(`${item.nombre_producto} ${extra}`) ?? categoryFor(item.nombre_producto);
+  const category = categoryFor(`${itemText(item)} ${extra}`) ?? itemCategory(item);
   if (!category) return scrubItem(item, ignore);
 
   if (waiverNote(blobOf(item))) {
@@ -688,26 +1085,52 @@ function applyDetail(item: PedidoItemInput, extraRaw: string, ignore: Set<string
   }
 
   const next: PedidoItemInput = { ...item };
-  const tokens = brandTokens(extra, ignore);
-  if (!clean(next.marca) && tokens.length) next.marca = displayBrand(extraRaw, tokens);
+  const productTokens = new Set(norm(next.nombre_producto).split(" ").filter((token) => token.length >= 3));
+  const tokens = brandTokens(extra, ignore).filter((token) => !productTokens.has(token));
+  if (category.kind !== "produce" && !clean(next.marca) && tokens.length) next.marca = displayBrand(extraRaw, tokens);
+  if (
+    category.kind !== "produce" &&
+    clean(next.marca) &&
+    norm(next.nombre_producto) === norm(String(next.marca)) &&
+    norm(category.nombre) !== norm(String(next.marca))
+  ) {
+    next.nombre_producto = category.nombre;
+  }
 
   next.presentacion = mergeText(next.presentacion, category.typePhrase?.(extra) ?? null);
   const size = category.sizePhrase?.(extra) ?? null;
   if (size && (category.id === "papel" || /lata|ml|familiar|vidrio|six|caguama|media|cajetilla|carton|garrafon/.test(norm(size)))) {
     next.presentacion = mergeText(next.presentacion, size);
   } else if (size && /\blitro/.test(norm(size))) {
-    const qty = parseQty(norm(size));
-    if (next.cantidad == null && qty != null) next.cantidad = qty;
-    if (!clean(next.unidad)) next.unidad = qtyUnit(size);
+    if (category.countSeparate) {
+      next.presentacion = mergeText(next.presentacion, size);
+    } else {
+      const qty = parseQty(norm(size));
+      if (next.cantidad == null && qty != null) next.cantidad = qty;
+      if (!clean(next.unidad)) next.unidad = qtyUnit(size);
+    }
   } else if (size && /\bkilo|docena/.test(norm(size))) {
-    if (!clean(next.unidad)) next.unidad = norm(size).includes("docena") ? "docena" : "kilo";
-    const qty = parseQty(extra);
-    if (next.cantidad == null && qty != null) next.cantidad = qty;
+    if (category.countSeparate) {
+      next.presentacion = mergeText(next.presentacion, size);
+    } else {
+      if (!clean(next.unidad)) next.unidad = norm(size).includes("docena") ? "docena" : "kilo";
+      const qty = parseQty(extra);
+      if (next.cantidad == null && qty != null) next.cantidad = qty;
+    }
   } else if (size) {
     next.presentacion = mergeText(next.presentacion, size);
   }
 
-  if (next.cantidad == null) {
+  if (category.countSeparate) {
+    if (next.cantidad == null) {
+      const count = parsePackageCount(extra);
+      if (count != null) next.cantidad = count;
+    }
+    if (!clean(next.unidad)) {
+      const unit = countUnit(extra);
+      if (unit) next.unidad = unit;
+    }
+  } else if (next.cantidad == null) {
     const qty = parseQty(extra);
     const bareMl = /\b\d{3}\b/.test(extra) && !/\b(litro|litros|kilo|kilos|rollo|rollos|pieza|piezas|docena)\b/.test(extra);
     const mentionsCount =
@@ -715,7 +1138,12 @@ function applyDetail(item: PedidoItemInput, extraRaw: string, ignore: Set<string
       (/\d/.test(extra) && !bareMl);
     if (qty != null && mentionsCount) next.cantidad = qty;
   }
-  if (!clean(next.unidad)) {
+  if (category.kind === "produce" && /\b(kilo|kilos|kg)\b/.test(extra) && next.cantidad == null) {
+    const qty = qtyBeforeUnit(extra, /kilos?|kg/) ?? parseQty(extra);
+    next.cantidad = qty ?? 1;
+    if (!clean(next.unidad)) next.unidad = "kilo";
+  }
+  if (!clean(next.unidad) && !category.countSeparate) {
     const unit = extra.match(/\b(kilos|kilo|kg|litros|litro|paquete|piezas|pieza|bolsa|docena|garrafon|lata|rollos|rollo)\b/);
     if (unit) {
       const mapped: Record<string, string> = { kilos: "kilo", kg: "kilo", litros: "litros", garrafon: "garrafón" };
@@ -740,8 +1168,39 @@ function qtyUnit(size: string): string {
   return "litro";
 }
 
+function fallbackPackaged(nombre: string): Category {
+  const pretty = niceWord(nombre);
+  const base = packagedFamily({
+    id: `otro:${norm(nombre)}`,
+    nombre: pretty,
+    match: /$^/,
+    article: "El",
+    example: "la marca que uses en tu casa",
+    shelfAsk: "de qué presentación (chico, grande, gramos o litros)",
+    follow: FOLLOW_LO,
+    emoji: "🛒",
+  });
+  return {
+    ...base,
+    filled: (slot, blob, item) => {
+      if (slot !== "marca") return base.filled(slot, blob, item);
+      const own = new Set(norm(item.nombre_producto).split(" ").filter((token) => token.length >= 3));
+      if (brandTokens(blob, own).length > 0) return true;
+      return [...own].filter((token) => !STOP.has(token)).length >= 2;
+    },
+  };
+}
+
+function itemText(item: PedidoItemInput): string {
+  return [item.nombre_producto, item.marca, item.presentacion, item.unidad, item.notas].filter(Boolean).join(" ");
+}
+
 function itemCategory(item: PedidoItemInput): Category | null {
-  return categoryFor([item.nombre_producto, item.marca, item.presentacion, item.notas].filter(Boolean).join(" "));
+  const known = categoryFor(itemText(item));
+  if (known) return known;
+  const nombre = clean(item.nombre_producto);
+  if (!nombre) return null;
+  return fallbackPackaged(nombre);
 }
 
 function firstIncompleteIndex(items: PedidoItemInput[]): number {
@@ -773,9 +1232,16 @@ export function prepareQuoteItems(
 
   if (windows.length) {
     for (const window of windows) {
-      const index = next.findIndex((item) => itemCategory(item)?.id === window.category.id);
+      const index = next.findIndex((item) => {
+        const current = itemCategory(item);
+        if (!current || current.id !== window.category.id) return false;
+        if (current.id !== "verdura") return true;
+        const wanted = window.category.label?.(window.text) ?? window.category.nombre;
+        return norm(item.nombre_producto) === norm(wanted);
+      });
       if (index === -1) {
-        next.push(applyDetail({ nombre_producto: window.category.nombre }, window.text, ignore));
+        const label = window.category.label?.(window.text) ?? window.category.nombre;
+        next.push(applyDetail({ nombre_producto: label }, window.text, ignore));
       } else {
         next[index] = applyDetail(next[index], window.text, ignore);
       }

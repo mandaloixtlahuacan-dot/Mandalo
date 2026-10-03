@@ -333,23 +333,55 @@ function formatAddress(snapshot: PedidoSnapshot): string {
   return mapsLink ? `${direccion}\n${mapsLink}` : direccion;
 }
 
+function trimQty(value: number): string {
+  if (Number.isInteger(value)) return String(value);
+  return String(value);
+}
+
+function pluralUnit(qty: number, unit: string): string {
+  if (qty === 1) return unit;
+  const plural: Record<string, string> = {
+    frasco: "frascos",
+    pieza: "piezas",
+    paquete: "paquetes",
+    kilo: "kilos",
+    litro: "litros",
+    lata: "latas",
+    botella: "botellas",
+    caja: "cajas",
+    bolsa: "bolsas",
+    rollo: "rollos",
+  };
+  return plural[unit] ?? (unit.endsWith("s") ? unit : `${unit}s`);
+}
+
+/** Línea que ven el cliente (antes del SÍ) y la tienda: qué, marca o "la que sea", presentación y cantidad. */
+export function formatSpecificItemLine(item: PedidoItemInput): string {
+  const nombre = cleanText(item.nombre_producto);
+  const marca = cleanText(item.marca);
+  const presentacion = cleanText(item.presentacion);
+  const unidad = cleanText(item.unidad);
+  const notas = cleanText(item.notas);
+  const qty = typeof item.cantidad === "number" && Number.isFinite(item.cantidad) && item.cantidad > 0 ? trimQty(item.cantidad) : null;
+  const qtyPhrase = qty && unidad ? `${qty} ${pluralUnit(Number(qty), unidad)}` : qty ? `x${qty}` : null;
+  const parts = [nombre, marca, presentacion, qtyPhrase, notas].filter((part): part is string => Boolean(part));
+  const kept: string[] = [];
+  for (const part of parts) {
+    const key = part.toLowerCase();
+    if (kept.some((prev) => prev.toLowerCase() === key || prev.toLowerCase().includes(key))) continue;
+    kept.push(part);
+  }
+  return kept.join(", ");
+}
+
+export function dispatchItemAlreadyShowsQty(nombreProducto: string, cantidad: number): boolean {
+  const qty = trimQty(cantidad).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?:^|[^\\d.-])${qty}(?!\\d)`).test(nombreProducto);
+}
+
 export function formatItems(items: PedidoItemInput[]): string {
   if (!items.length) return "- Sin productos definidos";
-
-  return items
-    .map((item) => {
-      const parts = [
-        item.nombre_producto,
-        item.marca,
-        item.presentacion,
-        item.cantidad != null ? `x${item.cantidad}` : null,
-        item.unidad,
-        item.notas,
-      ].filter(Boolean);
-
-      return `- ${parts.join(" ")}`;
-    })
-    .join("\n");
+  return items.map((item) => `- ${formatSpecificItemLine(item)}`).join("\n");
 }
 
 export function buildCustomerMessage(params: {

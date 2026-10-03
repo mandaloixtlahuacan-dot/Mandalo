@@ -6,7 +6,7 @@ import { getChatCompletion, getOpenAIModel } from "@/lib/openaiClient";
 import { buildMandaloSystemPrompt } from "@/lib/mandaloPrompt";
 import { normalizeWhatsAppText, waapiSendImage, waapiSendText } from "@/lib/waapi";
 import { detectActorByPhone, ensureMxWhatsappIntl, normalizePhone } from "@/lib/roles";
-import { buildCustomerMessage, createCaptureEngine, extractCandidateItems, formatItems as formatSnapshotItems, type PedidoItemInput } from "@/lib/services/captureEngine";
+import { buildCustomerMessage, createCaptureEngine, dispatchItemAlreadyShowsQty, extractCandidateItems, formatItems as formatSnapshotItems, type PedidoItemInput } from "@/lib/services/captureEngine";
 import * as pedidoRepositoryV2 from "@/lib/repositories/pedidoRepositoryV2";
 import { getAdminPhone } from "@/lib/repositories/configRepository";
 import * as metricsRepository from "@/lib/repositories/metricsRepository";
@@ -161,7 +161,13 @@ function isOrderTrackingQuestion(text: string): boolean {
 
 function formatItemsForMessage(items: Array<{ nombreProducto: string; cantidad: number | null }>): string {
   if (!items.length) return "(sin productos)";
-  return items.map((it) => `- ${it.nombreProducto}${it.cantidad != null ? ` x${it.cantidad}` : ""}`).join("\n");
+  return items
+    .map((it) => {
+      const name = it.nombreProducto.trim() || "producto";
+      if (it.cantidad == null || dispatchItemAlreadyShowsQty(name, it.cantidad)) return `- ${name}`;
+      return `- ${name} x${it.cantidad}`;
+    })
+    .join("\n");
 }
 
 // Flags ligeros en memoria: solo se usan para no re-preguntar "¿continuar o

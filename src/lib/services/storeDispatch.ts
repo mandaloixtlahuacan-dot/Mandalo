@@ -14,6 +14,7 @@ import {
 } from "@/lib/repositories/pedidoRepositoryV2";
 import { buildOrderTimeoutMetadata } from "@/lib/services/orderTimeouts";
 import { formatCustomerQuoteMessage } from "@/lib/customerUx";
+import { dispatchItemAlreadyShowsQty } from "@/lib/services/captureEngine";
 import { calculateFinalPrice, MANDALO_DELIVERY_FEE } from "@/lib/ordenes";
 import { saveChatMessage as guardarMensajeChat } from "@/lib/messages";
 import type { OrderState } from "@/lib/orderStateMachine";
@@ -27,7 +28,13 @@ import type { OrderState } from "@/lib/orderStateMachine";
 // líneas triviales, más simple duplicarlas aquí que orquestar el import.
 function formatItemsForDispatch(items: Array<{ nombreProducto: string; cantidad: number | null }>): string {
   if (!items.length) return "(sin productos)";
-  return items.map((it) => `- ${it.nombreProducto}${it.cantidad != null ? ` x${it.cantidad}` : ""}`).join("\n");
+  return items
+    .map((it) => {
+      const name = it.nombreProducto.trim() || "producto";
+      if (it.cantidad == null || dispatchItemAlreadyShowsQty(name, it.cantidad)) return `- ${name}`;
+      return `- ${name} x${it.cantidad}`;
+    })
+    .join("\n");
 }
 
 function logStoreDispatch(params: {

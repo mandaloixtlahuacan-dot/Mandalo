@@ -2,7 +2,17 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 2 de octubre de 2026. En tiendas que cotizan (sin menú
+> Última actualización: 3 de octubre de 2026. En tiendas que cotizan (sin menú
+> fijo, por ejemplo ZAGU) cualquier producto pide solo lo que falta: marca,
+> presentación que cambia lo que se baja del anaquel, y cantidad. La verdura
+> suelta (jitomate, cebolla) no inventa marca: kilos, y tipo solo si cambia
+> el producto. "Del que sea" / "la que sea" / "cualquiera" / "la más barata"
+> cierran ese hueco y no se vuelven a preguntar. Antes del primer SÍ el cliente
+> ve la línea concreta; la tienda recibe la misma (marca, tamaño, cantidad).
+> Abarrotes siguen sin precio en ese paso y el cargo al cliente es un solo $35.
+> George (tienda 5) y su foto de menú no entran en estas preguntas. Código en
+> rama, sin merge y sin deploy.
+> Actualización anterior: 2 de octubre de 2026. En tiendas que cotizan (sin menú
 > fijo) una línea vaga ya no se cierra: el bot pregunta solo lo que falta
 > (marca, tipo o presentación) con ejemplos, en un mensaje. "Del que sea",
 > "la que sea", "cualquiera" y "la más barata" se anotan y no se vuelven a

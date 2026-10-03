@@ -2,6 +2,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { ensureMxWhatsappIntl } from "@/lib/roles";
 import { getPedidoById, setPedidoEstado, type PedidoFullRecord } from "@/lib/repositories/pedidoRepositoryV2";
 import * as outboxRepository from "@/lib/repositories/outboxRepository";
+import { dispatchItemAlreadyShowsQty } from "@/lib/services/captureEngine";
 import { createStateTransitionService } from "@/lib/services/stateTransitionService";
 import { orderTimeoutFieldNames, type OrderTimeoutKind } from "@/lib/services/orderTimeouts";
 import type { OrderState } from "@/lib/orderStateMachine";
@@ -34,7 +35,13 @@ function toNullableNumber(value: unknown): number | null {
 
 function formatPedidoItems(items: Array<{ nombreProducto: string; cantidad: number | null }>): string {
   if (!items.length) return "- Sin productos definidos";
-  return items.map((item) => `- ${item.nombreProducto}${item.cantidad != null ? ` x${item.cantidad}` : ""}`).join("\n");
+  return items
+    .map((item) => {
+      const name = item.nombreProducto.trim() || "producto";
+      if (item.cantidad == null || dispatchItemAlreadyShowsQty(name, item.cantidad)) return `- ${name}`;
+      return `- ${name} x${item.cantidad}`;
+    })
+    .join("\n");
 }
 
 type OutboundNotice = {
