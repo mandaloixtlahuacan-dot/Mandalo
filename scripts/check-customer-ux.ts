@@ -70,15 +70,28 @@ assert(nicheIdForCategoria("Hamburguesas y hotdogs") === "restaurantes", "alias 
 assert(nicheIdForCategoria("nicho:restaurantes") === "restaurantes", "categoria explícita");
 assert(nicheIdForCategoria("taqueria") === null, "taquería queda fuera hasta que exista el nicho");
 
+const greetingBody = `¡Hola! Soy Mándalo.
+Este es el envío y servicio: el repartidor va por lo que pidas y te lo lleva a la puerta.
+
+Me dices qué quieres y de qué tienda. Te paso el precio y, si te late, sale por ello. Pagas en efectivo cuando llegue.
+
+Abro de 3 a 9. El envío y servicio son $35.
+
+¿Qué se te antoja?`;
+const greetingOptions = CUSTOMER_STORE_NICHES.map((niche, index) => `${index + 1}. ${niche.label}`).join("\n");
 const greeting = buildGreeting(new Date("2026-10-02T20:00:00Z"));
-assert(greeting.startsWith("¡Buenas tardes! Soy Mándalo, tu mandadero. Tú dime el antojo y yo lo consigo."), "el saludo de la tarde es el texto aprobado");
-assert(buildGreeting(new Date("2026-10-02T15:00:00Z")).startsWith("¡Buenos días!"), "de mañana sigue siendo buenos días");
-assert(buildGreeting(new Date("2026-10-03T05:00:00Z")).startsWith("¡Buenas noches!"), "de noche sigue siendo buenas noches");
+assert(greeting === `${greetingBody}\n\n${greetingOptions}`, "el saludo es el texto aprobado y las opciones del código");
+assert(buildGreeting(new Date("2026-10-02T15:00:00Z")) === greeting, "de mañana el saludo no cambia");
+assert(buildGreeting(new Date("2026-10-03T05:00:00Z")) === greeting, "de noche el saludo no cambia");
+assert(greeting.includes("El envío y servicio son $35."), "el cargo va en una sola línea de $35");
+assert(!greeting.includes("Buenos días") && !greeting.includes("Buenas tardes") && !greeting.includes("Buenas noches"), "ya no saluda según la hora");
+assert(!greeting.includes("tu mandadero") && !greeting.includes("Tú dime el antojo y yo lo consigo."), "ya no usa el saludo de mandadero");
 assert(greeting.includes("1. Tiendas de abarrotes"), "filtro abarrotes");
 assert(greeting.includes("2. Restaurantes"), "filtro restaurantes");
 assert(greeting.trimEnd().endsWith("2. Restaurantes"), "el saludo termina en las dos opciones");
 assert(!greeting.includes("Pícale al número o al nombre."), "ya no pide picarle al número");
-assert(!greeting.includes("¿Qué se te antoja?"), "el antojo va en la primera línea");
+assert(greeting.includes("¿Qué se te antoja?"), "pregunta el antojo antes de las opciones");
+assert(!greeting.includes("$10") && !greeting.includes("$25"), "el saludo no parte $10 y $25");
 assert(greeting.includes("\n"), "el saludo trae saltos de línea");
 assert(!customerCopySplitsFee(greeting), "el saludo no parte el cargo");
 
