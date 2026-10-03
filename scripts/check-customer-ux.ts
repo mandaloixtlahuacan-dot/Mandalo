@@ -5,6 +5,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { buildMandaloSystemPrompt } from "../src/lib/mandaloPrompt";
 import { priceCatalogOrder, reconcileCatalogQuantities } from "../src/lib/catalogQuantities";
+import { applyCatalogSpeech } from "../src/lib/catalogOrderSpeech";
 import { buildCustomerMessage, dispatchItemAlreadyShowsQty, formatSpecificItemLine, mergeSnapshot, type PedidoItemInput } from "../src/lib/services/captureEngine";
 import { validateCaptureForConfirmation } from "../src/lib/services/validationEngine";
 import { normalizeWhatsAppText } from "../src/lib/waapi";
@@ -175,6 +176,33 @@ const dogosExtra = classifyCustomerTurn({
   stores,
 });
 assert(dogosExtra.type === "continue", "con productos en el carrito, dos dogos no reenvían el menú");
+
+const anotoMarYTierra =
+  "Anoto:\n• Hamburguesa Mar y Tierra Chica — 1 pieza\n\n¿Quieres grande o chica? ¿Solo una o más?";
+const sumaGeorge =
+  "Quiero una hamburguesa, mar y tierra chica También me gustaría un refresco, una Pepsi y un dogo de Arrachera";
+const sumaConCarrito = classifyCustomerTurn({
+  message: sumaGeorge,
+  lastBotText: anotoMarYTierra,
+  hasBusiness: true,
+  hasItems: true,
+  businessId: george.id,
+  stores,
+});
+assert(sumaConCarrito.type === "continue", "con productos, repetir la hamburguesa y sumar Pepsi y dogo no reenvía la foto");
+const sumaSinGuardar = classifyCustomerTurn({
+  message: sumaGeorge,
+  lastBotText: anotoMarYTierra,
+  hasBusiness: true,
+  hasItems: false,
+  businessId: george.id,
+  stores,
+});
+assert(
+  sumaSinGuardar.type === "continue",
+  "si el anoto no se guardó, Pepsi y el dogo de arrachera tampoco reenvían la foto",
+);
+assert(renderCustomerTurn(sumaConCarrito, stores, anotoMarYTierra) == null, "ese turno no arma la foto del menú");
 
 const pideMenu = classifyCustomerTurn({
   message: "pásame el menú",
@@ -907,6 +935,58 @@ const quoteDos = formatCustomerQuoteMessage({
 assert(quoteDos.includes("2 ") && quoteDos.includes("$110") && quoteDos.includes("$145"), "el SÍ del precio repite cantidad y precio de dos");
 assert(quoteDos.includes("$35") && !quoteDos.includes("$10") && !quoteDos.includes("$25"), "ese SÍ sigue en un solo $35");
 assert(formatCourierCancelNotice(9).includes("#9"), "si el repartidor ya tenía el pedido, el aviso de cancelación lo nombra");
+
+const menuGeorge = [
+  { nombreProducto: "Hamburguesa Mar y Tierra Chica", precio: 90 },
+  { nombreProducto: "Hamburguesa Mar y Tierra Grande", precio: 140 },
+  { nombreProducto: "Hamburguesa Arrachera Chica", precio: 70 },
+  { nombreProducto: "Hamburguesa Arrachera Grande", precio: 100 },
+  { nombreProducto: "Dogo arrachera", precio: 45 },
+  { nombreProducto: "Dogo clásico", precio: 35 },
+  { nombreProducto: "Refresco", precio: 20 },
+];
+const marYTierra = applyCatalogSpeech({
+  base: [{ nombre_producto: "Hamburguesa Mar y Tierra Chica", cantidad: 1 }],
+  userMessage: "Ok quiero una de mar y tierra",
+  catalog: menuGeorge,
+});
+assert(marYTierra.applied && marYTierra.missing, "mar y tierra se anota y sigue faltando el tamaño");
+assert(!/chica|grande/i.test(marYTierra.items[0]?.nombre_producto ?? ""), "no guarda chica si el cliente no la dijo");
+assert(marYTierra.items[0]?.cantidad === 1, "una cuenta como 1 pieza");
+const lineaMar = marYTierra.reply?.split("\n").find((line) => line.startsWith("•")) ?? "";
+assert(/1 pieza/.test(lineaMar) && !/chica|grande/i.test(lineaMar), "la línea anota la pieza y no el tamaño");
+assert(/¿La quieres chica o grande\?/.test(marYTierra.reply ?? ""), "pregunta solo el tamaño");
+assert(!/solo una|cuánt|de qué marca/i.test(marYTierra.reply ?? ""), "no vuelve a preguntar la cantidad que ya dijo");
+
+const conPepsi = applyCatalogSpeech({
+  base: marYTierra.items,
+  userMessage: sumaGeorge,
+  catalog: menuGeorge,
+});
+assert(conPepsi.applied && !conPepsi.missing, "chica, Pepsi y dogo de arrachera cierran el menú");
+assert(conPepsi.items.length === 3, "suma la hamburguesa, el refresco y el dogo");
+assert(/mar y tierra chica/i.test(conPepsi.items[0]?.nombre_producto ?? ""), "ahora sí guarda chica, porque la dijo");
+assert(conPepsi.items[0]?.cantidad === 1, "la hamburguesa sigue en 1");
+assert(/refresco/i.test(conPepsi.items[1]?.nombre_producto ?? "") && /pepsi/i.test(String(conPepsi.items[1]?.marca)), "la Pepsi queda en el refresco");
+assert(/dogo arrachera/i.test(conPepsi.items[2]?.nombre_producto ?? ""), "el dogo de arrachera entra al pedido");
+assert(conPepsi.items.every((item) => item.cantidad === 1), "una Pepsi y un dogo quedan en 1");
+assert(!/la quieres|cuánt|de qué marca|solo una/i.test(conPepsi.reply ?? ""), "no repregunta tamaño, marca ni cantidad ya dichos");
+assert(!/te paso el menú|te dejo el menú/i.test(conPepsi.reply ?? ""), "sumar productos no arma el pie de la foto");
+
+const dogoNoAplasta = applyCatalogSpeech({
+  base: [{ nombre_producto: "Hamburguesa de pollo", cantidad: 2 }],
+  userMessage: "y también un dogo de arrachera",
+  catalog: [{ nombreProducto: "Hamburguesa de pollo", precio: 70 }, ...menuGeorge],
+});
+assert(dogoNoAplasta.items[0]?.cantidad === 2, "sumar un dogo no baja las dos hamburguesas");
+assert(/dogo arrachera/i.test(dogoNoAplasta.items[1]?.nombre_producto ?? ""), "el dogo nuevo sí se anota");
+
+const dogosVagos = applyCatalogSpeech({
+  base: [],
+  userMessage: "dos dogos",
+  catalog: menuGeorge,
+});
+assert(!dogosVagos.applied, "dos dogos sin sabor no eligen uno al azar");
 
 const prompt = buildMandaloSystemPrompt({
   negociosDisponibles: "ZAGU",

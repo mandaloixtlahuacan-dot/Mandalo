@@ -2,7 +2,11 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 3 de octubre de 2026. Si el cliente ya iba en un abarrotes
+> Última actualización: 3 de octubre de 2026. En George, «una de mar y tierra»
+> anota la hamburguesa y 1 pieza, sin inventar chica, y pregunta solo el
+> tamaño. Si después suman Pepsi y dogo de arrachera, entran al pedido y no
+> se reenvía la foto. Código en rama, sin merge y sin deploy.
+> Actualización anterior del mismo día: si el cliente ya iba en un abarrotes
 > (ZAGU) y acepta restaurantes, se suelta esa tienda: con un solo restaurante
 > se cambia solo y se le pasa el menú; con varios, se ofrece la lista y el
 > menú sale al elegir o al nombrar el restaurante. Ya no se queda contestando

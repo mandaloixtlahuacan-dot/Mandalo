@@ -541,6 +541,33 @@ function isMenuQuestion(message: string): boolean {
   return text.length <= 80 && /\b(menu|que tienes|que venden|que traes)\b/.test(text);
 }
 
+/**
+ * El mensaje no es solo "una hamburguesa" o "dos dogos": nombra sabor, marca
+ * u otro producto. Con la tienda de menú ya elegida, eso se anota; no vuelve
+ * a pedir la foto.
+ */
+export function messageAddsCatalogItems(message: string): boolean {
+  const text = normalizeUxText(message);
+  if (!text) return false;
+  const flavorOrBrand =
+    /\bmar y tierra\b/.test(text) ||
+    /\barrachera\b/.test(text) ||
+    /\bhawaian[ao]\b/.test(text) ||
+    /\bcuban[ao]\b/.test(text) ||
+    /\bclasic[oa]\b/.test(text) ||
+    /\bpepsi\b/.test(text) ||
+    /\bcoca\b/.test(text) ||
+    /\bseven\b/.test(text) ||
+    /\bmirinda\b/.test(text) ||
+    /\bmanzana\b/.test(text);
+  const heads = [
+    /\bhamburguesas?\b/.test(text),
+    /\b(?:hot\s*dogs?|hotdogs?|dogos?|dogo)\b/.test(text),
+    /\brefrescos?\b/.test(text) || /\b(?:pepsi|coca|seven|mirinda)\b/.test(text),
+  ].filter(Boolean).length;
+  return flavorOrBrand || heads >= 2;
+}
+
 export function classifyCustomerTurn(params: {
   message: string;
   lastBotText: string;
@@ -615,7 +642,11 @@ export function classifyCustomerTurn(params: {
   const alreadyShowingMenu = lastBotShowsMenuPhoto(lastBotText) || lastBotText.includes(UX_MENU_MARKER);
   // "y dos dogos" con el carrito ya armado es un producto más, no un pedido de menú.
   // "pásame el menú" / "qué venden" siguen en isMenuQuestion, aunque ya haya productos.
-  if (hint && restaurantContext && !alreadyShowingMenu && !hasItems) {
+  // Si ya está en el restaurante y el mensaje nombra sabor o suma otro producto
+  // (mar y tierra, Pepsi, dogo de arrachera), tampoco: repetir "hamburguesa"
+  // no es un pedido de foto.
+  const alreadyAtCatalog = hasBusiness && (menuFocus?.usaCatalogoFijo === true || focusedStore?.usaCatalogoFijo === true);
+  if (hint && restaurantContext && !alreadyShowingMenu && !hasItems && !(alreadyAtCatalog && messageAddsCatalogItems(message))) {
     return { type: "ask_menu", store: menuFocus };
   }
 

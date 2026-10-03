@@ -6,7 +6,7 @@ import { getChatCompletion, getOpenAIModel } from "@/lib/openaiClient";
 import { buildMandaloSystemPrompt } from "@/lib/mandaloPrompt";
 import { normalizeWhatsAppText, waapiSendImage, waapiSendText } from "@/lib/waapi";
 import { detectActorByPhone, ensureMxWhatsappIntl, normalizePhone } from "@/lib/roles";
-import { priceCatalogOrder } from "@/lib/catalogQuantities";
+import { priceCatalogOrder, type CatalogPriceRow } from "@/lib/catalogQuantities";
 import { buildCustomerMessage, createCaptureEngine, dispatchItemAlreadyShowsQty, extractCandidateItems, formatItems as formatSnapshotItems, type PedidoItemInput } from "@/lib/services/captureEngine";
 import * as pedidoRepositoryV2 from "@/lib/repositories/pedidoRepositoryV2";
 import { getAdminPhone } from "@/lib/repositories/configRepository";
@@ -30,6 +30,7 @@ import {
   buildGreeting,
   catalogUsesMenuImage,
   classifyCustomerTurn,
+  messageAddsCatalogItems,
   formatCatalogMenuCaption,
   formatCatalogOrderRegistered,
   formatCatalogReceiptFee,
@@ -1399,7 +1400,7 @@ async function catalogReplyReplacingMissingMenu(params: {
   } else if (turn.type === "ask_menu" || turn.type === "ask_category") {
     const only = restaurantCatalogStore(stores, null);
     if (only && only !== "list") store = only;
-  } else if (!hasItems && businessId) {
+  } else if (!hasItems && businessId && !messageAddsCatalogItems(params.mensaje)) {
     store = stores.find((item) => item.id === businessId && item.usaCatalogoFijo) ?? null;
   }
   if (!store?.usaCatalogoFijo) return null;
@@ -1799,6 +1800,16 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
   }
 
   const knownZoneNames = await fetchZonasCobertura();
+  let catalogRows: CatalogPriceRow[] | undefined;
+  if (usaCatalogoFijo) {
+    const catalogId = Number(
+      (llmOrderState as { business_id?: unknown } | null)?.business_id ??
+        (currentOrderState as { businessId?: unknown }).businessId,
+    );
+    if (Number.isFinite(catalogId) && catalogId > 0) {
+      catalogRows = await pedidoRepositoryV2.getProductosTiendaActivos(catalogId).catch(() => []);
+    }
+  }
   const captureResult = await captureEngine.processCustomerCapture({
     customerPhone: telefono,
     customerName: String(currentOrderState?.customerName ?? "").trim() || null,
@@ -1810,6 +1821,7 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
     forceBusiness,
     forceReplaceItems,
     quoteStore: !usaCatalogoFijo,
+    catalog: catalogRows,
   });
 
   console.log("[captureEngine] pedido:", {
@@ -1838,7 +1850,9 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
       ? "Voy anotando tu pedido. En cuanto tenga todo listo te paso el resumen para que lo confirmes. 🛒"
       : llmReplyClean;
   // En tienda que cotiza, una línea vaga no se cierra con el texto de la IA:
-  // se pregunta marca/tipo/tamaño con ejemplos. El catálogo (George) no entra aquí.
+  // se pregunta marca, tamaño o cantidad. En menú fijo, la misma pregunta
+  // sale solo del hueco que el cliente no dijo (sin anotar chica ni una pieza
+  // de más).
   const quoteQuestion = captureResult.validation.issues.find((issue) => issue.customerQuestion)?.customerQuestion;
   const missingStore = captureResult.validation.missingFields.includes("negocio");
   let customerMessage =
