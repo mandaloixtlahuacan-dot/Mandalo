@@ -2,7 +2,13 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 3 de octubre de 2026. En un solo mensaje de abarrotes
+> Última actualización: 3 de octubre de 2026. Si el cliente ya iba en un abarrotes
+> (ZAGU) y acepta restaurantes, se suelta esa tienda: con un solo restaurante
+> se cambia solo y se le pasa el menú; con varios, se ofrece la lista y el
+> menú sale al elegir o al nombrar el restaurante. Ya no se queda contestando
+> que ZAGU no tiene menú. El menú no espera un "¿quieres que te lo pase?".
+> Código en rama, sin merge y sin deploy.
+> Actualización anterior del mismo día: en un solo mensaje de abarrotes
 > ("dos mayonesas, un kilo de papas y 2 kilos de jitomate") cada cantidad se
 > queda en su producto: la mayonesa pide marca y frasco, la papa queda en 1
 > kilo y el jitomate en 2. En el menú fijo (George) "dos
