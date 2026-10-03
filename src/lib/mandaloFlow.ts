@@ -30,23 +30,18 @@ import {
   buildGreeting,
   catalogUsesMenuImage,
   classifyCustomerTurn,
-  formatAbarrotesStoreAck,
   formatCatalogMenuCaption,
   formatCatalogOrderRegistered,
   formatCatalogReceiptFee,
   formatQuoteOrderRegistered,
-  formatNicheStoreList,
-  formatNoFixedMenu,
   formatPreConfirmFeeNote,
   formatRunningTotal,
   matchCategoriasEnTexto,
-  nicheById,
-  nicheListedInLastBot,
   normalizeUxText,
+  renderCustomerTurn,
   replyClaimsMissingMenu,
+  restaurantCatalogStore,
   storeMentionedInMessage,
-  storesInNiche,
-  type CustomerTurn,
   type UxStore,
 } from "@/lib/customerUx";
 import {
@@ -1343,53 +1338,6 @@ async function loadUxStores(): Promise<UxStore[]> {
   return stores;
 }
 
-type UxBody = string | { kind: "menu_image"; store: UxStore; caption: string } | null;
-
-function menuImageBody(store: UxStore): UxBody {
-  if (!store.usaCatalogoFijo) return formatNoFixedMenu(store.nombre);
-  return { kind: "menu_image", store, caption: formatCatalogMenuCaption(store) };
-}
-
-function restaurantCatalogStore(stores: UxStore[], preferred: UxStore | null): UxStore | "list" | null {
-  if (preferred?.usaCatalogoFijo) return preferred;
-  const inNiche = storesInNiche(stores, "restaurantes").filter((store) => store.usaCatalogoFijo);
-  if (inNiche.length === 1) return inNiche[0];
-  if (inNiche.length > 1) return "list";
-  const anyCatalog = stores.filter((store) => store.usaCatalogoFijo);
-  if (anyCatalog.length === 1) return anyCatalog[0];
-  return null;
-}
-
-async function bodyForCustomerTurn(
-  turn: CustomerTurn,
-  stores: UxStore[],
-  lastBotText: string,
-): Promise<UxBody> {
-  if (turn.type === "greeting") return buildGreeting();
-  if (turn.type === "show_niche") {
-    const niche = nicheById(turn.nicheId);
-    return niche ? formatNicheStoreList(niche, stores) : buildGreeting();
-  }
-  if (turn.type === "pick_store") {
-    if (!turn.store.usaCatalogoFijo) return formatAbarrotesStoreAck(turn.store);
-    return menuImageBody(turn.store);
-  }
-  if (turn.type === "ask_menu" || turn.type === "ask_category") {
-    const preferred = turn.type === "ask_menu" ? turn.store : turn.store;
-    const store = preferred ?? (() => {
-      const resolved = restaurantCatalogStore(stores, null);
-      return resolved && resolved !== "list" ? resolved : null;
-    })();
-    if (!store) {
-      const listed = nicheListedInLastBot(lastBotText);
-      if (listed) return formatNicheStoreList(listed, stores);
-      return buildGreeting();
-    }
-    return menuImageBody(store);
-  }
-  return null;
-}
-
 async function rememberStoreChoice(
   telefono: string,
   mensaje: string,
@@ -1413,6 +1361,18 @@ async function rememberStoreChoice(
   });
 }
 
+async function clearActiveStoreChoice(telefono: string, mensaje: string): Promise<void> {
+  await captureEngine.processCustomerCapture({
+    customerPhone: telefono,
+    userMessage: mensaje,
+    currentSnapshot: null,
+    clearBusiness: true,
+    forceReplaceItems: true,
+    llmOrderState: { stage: "collecting", items: [] },
+    feeNote: formatPreConfirmFeeNote("cotiza_tienda"),
+  });
+}
+
 async function catalogReplyReplacingMissingMenu(params: {
   telefono: string;
   mensaje: string;
@@ -1432,16 +1392,15 @@ async function catalogReplyReplacingMissingMenu(params: {
     stores,
   });
 
+  const hasItems = Array.isArray(snapshot?.items) && snapshot.items.some((item) => String(item?.nombre_producto ?? "").trim());
   let store: UxStore | null = null;
   if ((turn.type === "ask_menu" || turn.type === "ask_category" || turn.type === "pick_store") && turn.store?.usaCatalogoFijo) {
     store = turn.store;
-  } else if (businessId) {
-    store = stores.find((item) => item.id === businessId && item.usaCatalogoFijo) ?? null;
-  }
-
-  if (!store) {
+  } else if (turn.type === "ask_menu" || turn.type === "ask_category") {
     const only = restaurantCatalogStore(stores, null);
     if (only && only !== "list") store = only;
+  } else if (!hasItems && businessId) {
+    store = stores.find((item) => item.id === businessId && item.usaCatalogoFijo) ?? null;
   }
   if (!store?.usaCatalogoFijo) return null;
   return { store, caption: formatCatalogMenuCaption(store) };
@@ -1470,7 +1429,7 @@ async function tryDeterministicCustomerUx(params: {
 
   if (turn.type === "running_total") {
     const store = turn.store;
-    let body = "Dime de qué tienda es el pedido y te saco la cuenta.";
+    let body = "Dime de qué tienda y te saco la cuenta. 👀";
     if (store && !store.usaCatalogoFijo) {
       body = formatRunningTotal({ storeName: store.nombre, lines: [], subtotal: null, catalog: false });
     } else if (store) {
@@ -1488,31 +1447,24 @@ async function tryDeterministicCustomerUx(params: {
     return { ok: true, role: "cliente", accion: "ux_running_total" };
   }
 
-  const body = await bodyForCustomerTurn(turn, stores, lastBotText);
-  if (!body) return null;
+  const rendered = renderCustomerTurn(turn, stores, lastBotText);
+  if (!rendered) return null;
 
-  const storeToRemember =
-    turn.type === "pick_store"
-      ? turn.store
-      : turn.type === "ask_menu" && turn.store
-        ? turn.store
-        : turn.type === "ask_category"
-          ? restaurantCatalogStore(stores, turn.store)
-          : typeof body === "object"
-            ? body.store
-            : null;
-  if (storeToRemember && storeToRemember !== "list") {
-    const switching = businessId != null && storeToRemember.id !== businessId;
-    await rememberStoreChoice(params.telefono, params.mensaje, storeToRemember, switching).catch((e: unknown) => {
+  if (rendered.clearActiveStore) {
+    await clearActiveStoreChoice(params.telefono, params.mensaje).catch((e: unknown) => {
+      console.error("[mandalo] no se pudo soltar la tienda anterior", { message: getErrorMessage(e) });
+    });
+  } else if (rendered.rememberStore) {
+    const switching = businessId != null && rendered.rememberStore.id !== businessId;
+    await rememberStoreChoice(params.telefono, params.mensaje, rendered.rememberStore, switching).catch((e: unknown) => {
       console.error("[mandalo] no se pudo recordar la tienda elegida", { message: getErrorMessage(e) });
     });
   }
 
-  const outgoing = typeof body === "string" ? body : body.caption;
   await guardarMensajeChat({ telefono: params.telefono, texto: String(params.mensaje ?? ""), estado: "cliente" }).catch(() => {});
-  if (typeof body === "object") await sendCatalogMenu(params.telefono, body.store, body.caption);
-  else await sendWhatsApp(params.telefono, body);
-  await guardarMensajeChat({ telefono: params.telefono, texto: outgoing, estado: "bot" }).catch(() => {});
+  if (rendered.kind === "menu") await sendCatalogMenu(params.telefono, rendered.store, rendered.text);
+  else await sendWhatsApp(params.telefono, rendered.text);
+  await guardarMensajeChat({ telefono: params.telefono, texto: rendered.text, estado: "bot" }).catch(() => {});
   return { ok: true, role: "cliente", accion: `ux_${turn.type}` };
 }
 
