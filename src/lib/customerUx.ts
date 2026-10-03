@@ -159,22 +159,13 @@ export function customerCopySplitsFee(text: string): boolean {
   return mentionsServiceSlice && mentionsDeliverySlice;
 }
 
-/** Marca del saludo actual. El detector de nicho la busca junto con las dos etiquetas. */
-const GREETING_NICHE_MARKER = "¡Hola! Soy Mándalo.";
-
-const GREETING_BODY = `${GREETING_NICHE_MARKER}
-Este es el envío y servicio: el repartidor va por lo que pidas y te lo lleva a la puerta.
-
-Me dices qué quieres y de qué tienda. Te paso el precio y, si te late, sale por ello. Pagas en efectivo cuando llegue.
-
-Abro de 3 a 9. El envío y servicio son $35.
-
-¿Qué se te antoja?`;
+const GREETING_BODY = `¡Hola! Soy Mándalo, tu mandadero de Ixtlahuacán. Pido en la tienda o el restaurante que me digas y te lo llevo. ¿De dónde quieres?
+1. Abarrotes
+2. Restaurantes`;
 
 export function buildGreeting(now = new Date()): string {
   void now;
-  const options = CUSTOMER_STORE_NICHES.map((niche, index) => `${index + 1}. ${niche.label}`).join("\n");
-  return `${GREETING_BODY}\n\n${options}`;
+  return GREETING_BODY;
 }
 
 export function nicheById(id: string): StoreNiche | null {
@@ -378,8 +369,10 @@ export function matchNicheChoice(message: string): StoreNiche | null {
 }
 
 export function lastBotAskedForNiche(lastBot: string): boolean {
+  if (lastBot.includes("¿De dónde quieres?") && lastBot.includes("1. Abarrotes") && lastBot.includes("2. Restaurantes")) {
+    return true;
+  }
   const asked =
-    lastBot.includes(GREETING_NICHE_MARKER) ||
     lastBot.includes("Tú dime el antojo y yo lo consigo.") ||
     lastBot.includes("Pícale al número o al nombre.") ||
     lastBot.includes("Responde con el número o el nombre.");

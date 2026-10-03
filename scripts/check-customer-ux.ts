@@ -70,35 +70,32 @@ assert(nicheIdForCategoria("Hamburguesas y hotdogs") === "restaurantes", "alias 
 assert(nicheIdForCategoria("nicho:restaurantes") === "restaurantes", "categoria explícita");
 assert(nicheIdForCategoria("taqueria") === null, "taquería queda fuera hasta que exista el nicho");
 
-const greetingBody = `¡Hola! Soy Mándalo.
-Este es el envío y servicio: el repartidor va por lo que pidas y te lo lleva a la puerta.
-
-Me dices qué quieres y de qué tienda. Te paso el precio y, si te late, sale por ello. Pagas en efectivo cuando llegue.
-
-Abro de 3 a 9. El envío y servicio son $35.
-
-¿Qué se te antoja?`;
-const greetingOptions = CUSTOMER_STORE_NICHES.map((niche, index) => `${index + 1}. ${niche.label}`).join("\n");
 const greeting = buildGreeting(new Date("2026-10-02T20:00:00Z"));
-assert(greeting === `${greetingBody}\n\n${greetingOptions}`, "el saludo es el texto aprobado y las opciones del código");
+assert(
+  greeting ===
+    `¡Hola! Soy Mándalo, tu mandadero de Ixtlahuacán. Pido en la tienda o el restaurante que me digas y te lo llevo. ¿De dónde quieres?
+1. Abarrotes
+2. Restaurantes`,
+  "el saludo es el texto aprobado",
+);
 assert(buildGreeting(new Date("2026-10-02T15:00:00Z")) === greeting, "de mañana el saludo no cambia");
 assert(buildGreeting(new Date("2026-10-03T05:00:00Z")) === greeting, "de noche el saludo no cambia");
-assert(greeting.includes("El envío y servicio son $35."), "el cargo va en una sola línea de $35");
-assert(!greeting.includes("Buenos días") && !greeting.includes("Buenas tardes") && !greeting.includes("Buenas noches"), "ya no saluda según la hora");
-assert(!greeting.includes("tu mandadero") && !greeting.includes("Tú dime el antojo y yo lo consigo."), "ya no usa el saludo de mandadero");
-assert(greeting.includes("1. Tiendas de abarrotes"), "filtro abarrotes");
-assert(greeting.includes("2. Restaurantes"), "filtro restaurantes");
-assert(greeting.trimEnd().endsWith("2. Restaurantes"), "el saludo termina en las dos opciones");
+assert(!greeting.includes("$35") && !greeting.includes("$10") && !greeting.includes("$25"), "el saludo no habla del cargo");
+assert(!greeting.includes("Abro de 3") && !greeting.includes("efectivo") && !greeting.includes("envío y servicio"), "el saludo no trae horario, pago ni el párrafo de envío");
 assert(!greeting.includes("Pícale al número o al nombre."), "ya no pide picarle al número");
-assert(greeting.includes("¿Qué se te antoja?"), "pregunta el antojo antes de las opciones");
-assert(!greeting.includes("$10") && !greeting.includes("$25"), "el saludo no parte $10 y $25");
-assert(greeting.includes("\n"), "el saludo trae saltos de línea");
+assert(greeting.trimEnd().endsWith("2. Restaurantes"), "el saludo termina en las dos opciones");
 assert(!customerCopySplitsFee(greeting), "el saludo no parte el cargo");
 
+function nicheFromGreeting(message: string) {
+  const turn = classifyCustomerTurn({ message, lastBotText: greeting, hasBusiness: false, hasItems: false, businessId: null, stores });
+  return turn.type === "show_niche" ? turn.nicheId : "";
+}
+
 assert(classifyCustomerTurn({ message: "hola", lastBotText: "", hasBusiness: false, hasItems: false, businessId: null, stores }).type === "greeting", "hola → saludo");
-assert(classifyCustomerTurn({ message: "2", lastBotText: greeting, hasBusiness: false, hasItems: false, businessId: null, stores }).type === "show_niche", "2 → restaurantes");
-assert(classifyCustomerTurn({ message: "1", lastBotText: greeting, hasBusiness: false, hasItems: false, businessId: null, stores }).type === "show_niche", "1 → abarrotes");
-assert(classifyCustomerTurn({ message: "abarrotes", lastBotText: greeting, hasBusiness: false, hasItems: false, businessId: null, stores }).type === "show_niche", "el nombre del nicho sigue eligiendo");
+assert(nicheFromGreeting("1") === "abarrotes", "1 → abarrotes");
+assert(nicheFromGreeting("2") === "restaurantes", "2 → restaurantes");
+assert(nicheFromGreeting("Abarrotes") === "abarrotes", "Abarrotes elige el nicho de abarrotes");
+assert(nicheFromGreeting("Restaurantes") === "restaurantes", "Restaurantes elige el nicho de restaurantes");
 const oldGreeting =
   "¡Buenas tardes! Soy Mándalo, yo te hago el mandado. 🛵\n\n¿Qué se te antoja?\n\n1. Tiendas de abarrotes\n2. Restaurantes\n\nPícale al número o al nombre.";
 assert(classifyCustomerTurn({ message: "1", lastBotText: oldGreeting, hasBusiness: false, hasItems: false, businessId: null, stores }).type === "show_niche", "un saludo viejo todavía acepta el 1");
