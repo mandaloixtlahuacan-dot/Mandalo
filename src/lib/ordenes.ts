@@ -51,19 +51,83 @@ export function extraerPrecio(texto: string): number | null {
   return m ? Number(m[1]) : null;
 }
 
-// Comando de tienda mencionado desde BLOQUE 1 del prompt ("Asume disponibilidad
-// y deja que la tienda cotice o responda #NO_DISPONIBLE") pero nunca antes
-// implementado — cierra el estado ajuste_producto, que existía en la máquina
-// de estados sin lógica real detrás. Formato esperado: "ORDEN #162 NO_DISPONIBLE
-// takis fuego" (mismo estilo que "ORDEN #162 PRECIO 87") — el texto después del
-// comando es la referencia del producto, se resuelve por coincidencia difusa
-// contra pedido_items en el llamador.
+// La tienda marca un producto mientras cotiza. Acepta el token de siempre y
+// frases naturales, en cualquier combinación de mayúsculas, con o sin guion
+// bajo: "no disponible", "no_disponible", "no hay", "no está" / "no esta"
+// (también el plural "no están"). El texto que sigue es el producto; el
+// número de orden lo exige extraerComandoNoDisponible, no esta función.
+// "á" se aplana solo para buscar la frase: el nombre del producto se recorta
+// del texto original, así que conserva acentos y mayúsculas.
+const FRASE_NO_DISPONIBLE =
+  /\b(?:no[\s_-]+disponible|no\s+estan?(?:\s+disponible)?|no\s+hay)\b[\s:,.\-–—!?¿¡]*(\S(?:.*\S)?)/;
+
+function foldMatchText(value: string): string {
+  return value.toLowerCase().replace(/[áéíóúü]/g, (ch) => {
+    if (ch === "á") return "a";
+    if (ch === "é") return "e";
+    if (ch === "í") return "i";
+    if (ch === "ó") return "o";
+    return "u";
+  });
+}
+
+function limpiarProductoTexto(value: string): string {
+  return value
+    .replace(/\s+orden\s*#?\s*\d+\s*$/i, "")
+    .replace(/^[\s,;:.!?¿¡–—-]+|[\s,;:.!?¿¡–—-]+$/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function extraerNoDisponible(texto: string): { productoTexto: string } | null {
-  const normalized = String(texto ?? "");
-  const m = normalized.match(/no_disponible\b[:\-]?\s*(.+)/i);
-  if (!m) return null;
-  const productoTexto = m[1].trim();
-  return productoTexto ? { productoTexto } : null;
+  const original = String(texto ?? "").replace(/\s+/g, " ").trim();
+  if (!original) return null;
+  const folded = foldMatchText(original);
+  const match = folded.match(FRASE_NO_DISPONIBLE);
+  if (!match || match.index == null || !match[1]) return null;
+  const productStart = match.index + match[0].length - match[1].length;
+  const productoTexto = limpiarProductoTexto(original.slice(productStart));
+  if (!productoTexto || !/[0-9a-záéíóúüñ]/i.test(productoTexto)) return null;
+  return { productoTexto };
+}
+
+// Hace falta el número de orden Y un producto. Sin orden, "no hay coca" o
+// una charla no marcan nada — aunque la frase sí se haya reconocido.
+// Un PRECIO/TOTAL con número sigue siendo cotización: "no hay problema"
+// pegado a "PRECIO 150" no se roba el comando. El token no_disponible sí
+// gana, igual que antes.
+export function extraerComandoNoDisponible(texto: string): { ordenId: number; productoTexto: string } | null {
+  const ordenId = extraerOrdenId(texto);
+  const parsed = extraerNoDisponible(texto);
+  if (!ordenId || !parsed) return null;
+  const esToken = /\bno[\s_-]+disponible\b/.test(foldMatchText(String(texto ?? "")));
+  if (extraerPrecio(texto) != null && !esToken) return null;
+  return { ordenId, productoTexto: parsed.productoTexto };
+}
+
+// Mismo texto que ya ve el cliente cuando la tienda (o el catálogo fijo)
+// marca un faltante. El nombre entre comillas es el nombreProducto guardado,
+// no lo que la tienda escribió.
+export function mensajeClienteProductoNoDisponible(tiendaNombre: string | null | undefined, nombreProducto: string): string {
+  return (
+    `📦 *${tiendaNombre ?? "La tienda"}* no tiene disponible:\n"${nombreProducto}"\n\n` +
+    `¿Quieres continuar tu pedido sin este producto, o prefieres cambiarlo por otro?\n\n` +
+    `Responde "sin él" para quitarlo, o dime el producto por el que lo cambias. 🙏`
+  );
+}
+
+// Si el texto no coincide con una línea, se le dice solo a la tienda.
+export function mensajeTiendaProductoNoEncontrado(
+  ordenId: number,
+  productoTexto: string,
+  lineas: string,
+  ejemploProducto: string,
+): string {
+  return (
+    `No encontré "${productoTexto}" en el pedido #${ordenId}.\n\n` +
+    `Productos del pedido:\n${lineas}\n\n` +
+    `Escribe el nombre tal como aparece arriba, ej: ORDEN #${ordenId} NO_DISPONIBLE ${ejemploProducto}`
+  );
 }
 
 // Formato de moneda consistente para mensajes al cliente/tienda/repartidor:

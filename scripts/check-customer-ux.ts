@@ -71,13 +71,24 @@ assert(nicheIdForCategoria("nicho:restaurantes") === "restaurantes", "categoria 
 assert(nicheIdForCategoria("taqueria") === null, "taquería queda fuera hasta que exista el nicho");
 
 const greeting = buildGreeting(new Date("2026-10-02T20:00:00Z"));
+assert(greeting.startsWith("¡Buenas tardes! Soy Mándalo, tu mandadero. Tú dime el antojo y yo lo consigo."), "el saludo de la tarde es el texto aprobado");
+assert(buildGreeting(new Date("2026-10-02T15:00:00Z")).startsWith("¡Buenos días!"), "de mañana sigue siendo buenos días");
+assert(buildGreeting(new Date("2026-10-03T05:00:00Z")).startsWith("¡Buenas noches!"), "de noche sigue siendo buenas noches");
 assert(greeting.includes("1. Tiendas de abarrotes"), "filtro abarrotes");
 assert(greeting.includes("2. Restaurantes"), "filtro restaurantes");
+assert(greeting.trimEnd().endsWith("2. Restaurantes"), "el saludo termina en las dos opciones");
+assert(!greeting.includes("Pícale al número o al nombre."), "ya no pide picarle al número");
+assert(!greeting.includes("¿Qué se te antoja?"), "el antojo va en la primera línea");
 assert(greeting.includes("\n"), "el saludo trae saltos de línea");
 assert(!customerCopySplitsFee(greeting), "el saludo no parte el cargo");
 
 assert(classifyCustomerTurn({ message: "hola", lastBotText: "", hasBusiness: false, hasItems: false, businessId: null, stores }).type === "greeting", "hola → saludo");
 assert(classifyCustomerTurn({ message: "2", lastBotText: greeting, hasBusiness: false, hasItems: false, businessId: null, stores }).type === "show_niche", "2 → restaurantes");
+assert(classifyCustomerTurn({ message: "1", lastBotText: greeting, hasBusiness: false, hasItems: false, businessId: null, stores }).type === "show_niche", "1 → abarrotes");
+assert(classifyCustomerTurn({ message: "abarrotes", lastBotText: greeting, hasBusiness: false, hasItems: false, businessId: null, stores }).type === "show_niche", "el nombre del nicho sigue eligiendo");
+const oldGreeting =
+  "¡Buenas tardes! Soy Mándalo, yo te hago el mandado. 🛵\n\n¿Qué se te antoja?\n\n1. Tiendas de abarrotes\n2. Restaurantes\n\nPícale al número o al nombre.";
+assert(classifyCustomerTurn({ message: "1", lastBotText: oldGreeting, hasBusiness: false, hasItems: false, businessId: null, stores }).type === "show_niche", "un saludo viejo todavía acepta el 1");
 const abarrotesList = formatNicheStoreList(CUSTOMER_STORE_NICHES[0], stores);
 assert(abarrotesList.includes("ZAGU"), "abarrotes incluye a ZAGU");
 assert(!abarrotesList.includes("George"), "abarrotes no mezcla restaurantes");

@@ -81,6 +81,14 @@
 > `fix/cotizacion-tienda-y-pendientes` mergeada desde el 2026-08-20, commit
 > `fa1de26`, también validada en vivo.
 
+## 🚧 Bloque 2026-10-03 — faltante de tienda en español natural
+
+Código en rama, **sin merge y sin deploy**.
+
+Mientras cotiza, la tienda puede marcar un producto con el número de orden y el nombre, en cualquier combinación de mayúsculas, con o sin guion bajo: `no disponible`, `no_disponible`, `no hay`, `no está` / `no esta`. Ejemplos: `ORDEN #12 no disponible mayonesa`, `orden 12 no hay coca`, `ORDEN #12 No está la leche`. Sin número de orden (`no hay coca`, `No está la leche` solo, o una charla) no se cancela nada. Si el texto no coincide con una línea, la tienda recibe las líneas y un ejemplo; al cliente no se le escribe. Si coincide, el cliente sigue viendo el nombre de la tienda, el `nombreProducto` guardado entre comillas, y la opción de quitarlo o cambiarlo. Precio, SÍ del cliente, comandos del repartidor, menú de George y el cargo de $35 no cambian.
+
+El saludo sigue la hora (buenos días, buenas tardes, buenas noches) y termina en las dos opciones. Ya no dice "Pícale al número o al nombre."
+
 ## 🚧 Bloque 2026-10-02 — UX de WhatsApp (filtros, $35 junto, menú de catálogo)
 
 Código en rama, **sin merge y sin deploy**. Decisiones de Víctor aplicadas en copy y plantillas deterministas (`src/lib/customerUx.ts`):

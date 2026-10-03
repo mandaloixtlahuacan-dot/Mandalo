@@ -169,12 +169,7 @@ export function buildGreeting(now = new Date()): string {
   const hour = hourInMexico(now);
   const franja = hour >= 6 && hour < 12 ? "¡Buenos días!" : hour >= 12 && hour < 19 ? "¡Buenas tardes!" : "¡Buenas noches!";
   const options = CUSTOMER_STORE_NICHES.map((niche, index) => `${index + 1}. ${niche.label}`).join("\n");
-  return (
-    `${franja} Soy Mándalo, yo te hago el mandado. 🛵\n\n` +
-    `¿Qué se te antoja?\n\n` +
-    `${options}\n\n` +
-    `Pícale al número o al nombre.`
-  );
+  return `${franja} Soy Mándalo, tu mandadero. Tú dime el antojo y yo lo consigo.\n\n${options}`;
 }
 
 export function nicheById(id: string): StoreNiche | null {
@@ -379,7 +374,9 @@ export function matchNicheChoice(message: string): StoreNiche | null {
 
 export function lastBotAskedForNiche(lastBot: string): boolean {
   const asked =
-    lastBot.includes("Pícale al número o al nombre.") || lastBot.includes("Responde con el número o el nombre.");
+    lastBot.includes("Tú dime el antojo y yo lo consigo.") ||
+    lastBot.includes("Pícale al número o al nombre.") ||
+    lastBot.includes("Responde con el número o el nombre.");
   return CUSTOMER_STORE_NICHES.every((niche) => lastBot.includes(niche.label)) && asked;
 }
 
