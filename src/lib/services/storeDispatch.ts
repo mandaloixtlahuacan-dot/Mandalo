@@ -15,7 +15,7 @@ import { buildOrderTimeoutMetadata } from "@/lib/services/orderTimeouts";
 import { matchCatalogProduct, priceCatalogOrder } from "@/lib/catalogQuantities";
 import { formatCustomerQuoteMessage } from "@/lib/customerUx";
 import { dispatchItemAlreadyShowsQty } from "@/lib/services/captureEngine";
-import { calculateFinalPrice, MANDALO_DELIVERY_FEE } from "@/lib/ordenes";
+import { calculateFinalPrice, MANDALO_DELIVERY_FEE, mensajeClienteProductoNoDisponible } from "@/lib/ordenes";
 import { saveChatMessage as guardarMensajeChat } from "@/lib/messages";
 import type { OrderState } from "@/lib/orderStateMachine";
 
@@ -148,10 +148,7 @@ export async function flagItemUnavailable(params: {
     payload: { itemId: item.id, itemNombre: item.nombreProducto },
   });
 
-  const msgCliente =
-    `📦 *${pedido.tienda.nombre ?? "La tienda"}* no tiene disponible:\n"${item.nombreProducto}"\n\n` +
-    `¿Quieres continuar tu pedido sin este producto, o prefieres cambiarlo por otro?\n\n` +
-    `Responde "sin él" para quitarlo, o dime el producto por el que lo cambias. 🙏`;
+  const msgCliente = mensajeClienteProductoNoDisponible(pedido.tienda.nombre, item.nombreProducto);
   await outboxRepository.enqueueOutboundMessage({
     pedidoId: pedido.id,
     tipoMensaje: "notificacion_cliente",

@@ -49,7 +49,13 @@ import {
   type CustomerTurn,
   type UxStore,
 } from "@/lib/customerUx";
-import { extraerNoDisponible, extraerOrdenId, extraerPrecio, formatMoney } from "@/lib/ordenes";
+import {
+  extraerComandoNoDisponible,
+  extraerOrdenId,
+  extraerPrecio,
+  formatMoney,
+  mensajeTiendaProductoNoEncontrado,
+} from "@/lib/ordenes";
 import { isTerminalState, type OrderState } from "@/lib/orderStateMachine";
 import {
   extractCoordsFromUbicacion,
@@ -1976,10 +1982,12 @@ async function handleTiendaProductoNoDisponible(
 
   const item = await pedidoRepositoryV2.findPedidoItemByText(pedido.tienda.pedidoTiendaId, productoTexto);
   if (!item) {
-    const msg =
-      `No encontré "${productoTexto}" en el pedido #${ordenId}.\n\n` +
-      `Productos del pedido:\n${formatItemsForMessage(pedido.items)}\n\n` +
-      `Escribe el nombre tal como aparece arriba, ej: ORDEN #${ordenId} NO_DISPONIBLE ${pedido.items[0]?.nombreProducto ?? "producto"}`;
+    const msg = mensajeTiendaProductoNoEncontrado(
+      ordenId,
+      productoTexto,
+      formatItemsForMessage(pedido.items),
+      pedido.items[0]?.nombreProducto ?? "producto",
+    );
     await sendWhatsApp(telefono, msg);
     return { ok: true, role: "tienda", ordenId, error: "PRODUCTO_NO_ENCONTRADO" };
   }
@@ -1995,12 +2003,13 @@ async function handleTiendaProductoNoDisponible(
 }
 
 async function handleTiendaMessage(telefono: string, mensaje: string, tiendaId: number): Promise<JsonObject> {
-  const ordenId = extraerOrdenId(String(mensaje));
-  const noDisponible = extraerNoDisponible(String(mensaje));
+  const noDisponible = extraerComandoNoDisponible(String(mensaje));
 
-  if (ordenId && noDisponible) {
-    return handleTiendaProductoNoDisponible(telefono, tiendaId, ordenId, noDisponible.productoTexto);
+  if (noDisponible) {
+    return handleTiendaProductoNoDisponible(telefono, tiendaId, noDisponible.ordenId, noDisponible.productoTexto);
   }
+
+  const ordenId = extraerOrdenId(String(mensaje));
 
   const precio = extraerPrecio(String(mensaje));
   if (!ordenId || precio == null || Number.isNaN(precio)) {
