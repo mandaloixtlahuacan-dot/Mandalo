@@ -159,17 +159,13 @@ export function customerCopySplitsFee(text: string): boolean {
   return mentionsServiceSlice && mentionsDeliverySlice;
 }
 
-function hourInMexico(now: Date): number {
-  return Number(
-    new Intl.DateTimeFormat("en-US", { hour: "numeric", hour12: false, timeZone: "America/Mexico_City" }).format(now),
-  );
-}
+const GREETING_BODY = `¡Hola! Soy Mándalo, tu mandadero de Ixtlahuacán. Pido en la tienda o el restaurante que me digas y te lo llevo. ¿De dónde quieres?
+1. Abarrotes
+2. Restaurantes`;
 
 export function buildGreeting(now = new Date()): string {
-  const hour = hourInMexico(now);
-  const franja = hour >= 6 && hour < 12 ? "¡Buenos días!" : hour >= 12 && hour < 19 ? "¡Buenas tardes!" : "¡Buenas noches!";
-  const options = CUSTOMER_STORE_NICHES.map((niche, index) => `${index + 1}. ${niche.label}`).join("\n");
-  return `${franja} Soy Mándalo, tu mandadero. Tú dime el antojo y yo lo consigo.\n\n${options}`;
+  void now;
+  return GREETING_BODY;
 }
 
 export function nicheById(id: string): StoreNiche | null {
@@ -373,6 +369,9 @@ export function matchNicheChoice(message: string): StoreNiche | null {
 }
 
 export function lastBotAskedForNiche(lastBot: string): boolean {
+  if (lastBot.includes("¿De dónde quieres?") && lastBot.includes("1. Abarrotes") && lastBot.includes("2. Restaurantes")) {
+    return true;
+  }
   const asked =
     lastBot.includes("Tú dime el antojo y yo lo consigo.") ||
     lastBot.includes("Pícale al número o al nombre.") ||
