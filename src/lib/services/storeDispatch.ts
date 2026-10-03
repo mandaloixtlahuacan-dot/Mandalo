@@ -4,7 +4,6 @@ import * as outboxRepository from "@/lib/repositories/outboxRepository";
 import {
   appendPedidoEvento,
   getProductosTiendaActivos,
-  matchProductoTienda,
   setPedidoEstado,
   setPedidoItemDisponible,
   setPedidoTiendaCotizacion,
@@ -13,7 +12,9 @@ import {
   type PedidoFullRecord,
 } from "@/lib/repositories/pedidoRepositoryV2";
 import { buildOrderTimeoutMetadata } from "@/lib/services/orderTimeouts";
+import { matchCatalogProduct, priceCatalogOrder } from "@/lib/catalogQuantities";
 import { formatCustomerQuoteMessage } from "@/lib/customerUx";
+import { dispatchItemAlreadyShowsQty } from "@/lib/services/captureEngine";
 import { calculateFinalPrice, MANDALO_DELIVERY_FEE } from "@/lib/ordenes";
 import { saveChatMessage as guardarMensajeChat } from "@/lib/messages";
 import type { OrderState } from "@/lib/orderStateMachine";
@@ -27,7 +28,13 @@ import type { OrderState } from "@/lib/orderStateMachine";
 // líneas triviales, más simple duplicarlas aquí que orquestar el import.
 function formatItemsForDispatch(items: Array<{ nombreProducto: string; cantidad: number | null }>): string {
   if (!items.length) return "(sin productos)";
-  return items.map((it) => `- ${it.nombreProducto}${it.cantidad != null ? ` x${it.cantidad}` : ""}`).join("\n");
+  return items
+    .map((it) => {
+      const name = it.nombreProducto.trim() || "producto";
+      if (it.cantidad == null || dispatchItemAlreadyShowsQty(name, it.cantidad)) return `- ${name}`;
+      return `- ${name} x${it.cantidad}`;
+    })
+    .join("\n");
 }
 
 function logStoreDispatch(params: {
@@ -61,11 +68,17 @@ export async function finalizeStoreQuote(params: {
   pedido: PedidoFullRecord;
   subtotal: number;
   actorTipo: "tienda" | "sistema";
+  itemLines?: string[] | null;
 }): Promise<{ total: number }> {
   const { pedido, subtotal, actorTipo } = params;
   if (!pedido.tienda) throw new Error(`finalizeStoreQuote: pedido ${pedido.id} sin tienda vinculada`);
 
   const total = calculateFinalPrice(subtotal);
+  const itemLines =
+    params.itemLines ??
+    formatItemsForDispatch(pedido.items.filter((item) => item.disponible !== false))
+      .split("\n")
+      .filter((line) => line.trim().length > 0);
 
   await setPedidoTiendaCotizacion({ pedidoTiendaId: pedido.tienda.pedidoTiendaId, subtotal });
   await setPedidoTotales({ pedidoId: pedido.id, servicioRepartidor: MANDALO_DELIVERY_FEE, totalCliente: total });
@@ -88,6 +101,7 @@ export async function finalizeStoreQuote(params: {
     pedidoId: pedido.id,
     subtotal,
     total,
+    itemLines,
   });
   await outboxRepository.enqueueOutboundMessage({
     pedidoId: pedido.id,
@@ -172,7 +186,7 @@ async function dispatchCatalogoFijo(
   const catalogo = await getProductosTiendaActivos(pedido.tienda.tiendaId);
   const matches = pedido.items
     .filter((item) => item.disponible !== false)
-    .map((item) => ({ item, match: matchProductoTienda(catalogo, item.nombreProducto) }));
+    .map((item) => ({ item, match: matchCatalogProduct(catalogo, item.nombreProducto) }));
 
   const missing = matches.find((m) => !m.match);
   if (missing) {
@@ -181,13 +195,22 @@ async function dispatchCatalogoFijo(
   }
 
   const subtotal = matches.reduce((sum, m) => sum + m.match!.precio * (m.item.cantidad ?? 1), 0);
-  await finalizeStoreQuote({ pedido, subtotal, actorTipo: "sistema" });
+  const priced = priceCatalogOrder(
+    matches.map((entry) => ({ nombre_producto: entry.item.nombreProducto, cantidad: entry.item.cantidad })),
+    catalogo,
+  );
+  await finalizeStoreQuote({
+    pedido,
+    subtotal,
+    actorTipo: "sistema",
+    itemLines: priced.lines,
+  });
 
   const tiendaTelefono = ensureMxWhatsappIntl(pedido.tienda.telefono);
   const aviso =
     `📦 Nuevo pedido #${pedido.id} (catálogo, ya cobrado automático)\n\n` +
     `${pedido.direccionEntrega ? `Dirección: ${pedido.direccionEntrega}\n` : ""}` +
-    `Pedido:\n${formatItemsForDispatch(pedido.items)}\n\n` +
+    `Pedido:\n${priced.lines.join("\n")}\n\n` +
     `Ya no hace falta que cotices — prepáralo en cuanto puedas. 🙏`;
 
   logStoreDispatch({

@@ -2,6 +2,8 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { ensureMxWhatsappIntl } from "@/lib/roles";
 import { getPedidoById, setPedidoEstado, type PedidoFullRecord } from "@/lib/repositories/pedidoRepositoryV2";
 import * as outboxRepository from "@/lib/repositories/outboxRepository";
+import { formatCourierCancelNotice } from "@/lib/customerUx";
+import { dispatchItemAlreadyShowsQty } from "@/lib/services/captureEngine";
 import { createStateTransitionService } from "@/lib/services/stateTransitionService";
 import { orderTimeoutFieldNames, type OrderTimeoutKind } from "@/lib/services/orderTimeouts";
 import type { OrderState } from "@/lib/orderStateMachine";
@@ -34,7 +36,13 @@ function toNullableNumber(value: unknown): number | null {
 
 function formatPedidoItems(items: Array<{ nombreProducto: string; cantidad: number | null }>): string {
   if (!items.length) return "- Sin productos definidos";
-  return items.map((item) => `- ${item.nombreProducto}${item.cantidad != null ? ` x${item.cantidad}` : ""}`).join("\n");
+  return items
+    .map((item) => {
+      const name = item.nombreProducto.trim() || "producto";
+      if (item.cantidad == null || dispatchItemAlreadyShowsQty(name, item.cantidad)) return `- ${name}`;
+      return `- ${name} x${item.cantidad}`;
+    })
+    .join("\n");
 }
 
 type OutboundNotice = {
@@ -171,6 +179,16 @@ const TIMEOUT_CONFIGS: TimeoutKindConfig[] = [
           tipoMensaje: "cotizacion_tienda",
           destinatarioTipo: "negocio",
           destinatarioId: pedido.tienda.tiendaId,
+        });
+      }
+      const courierPhone = cleanText(pedido.metadata.current_courier_phone);
+      if (courierPhone) {
+        notices.push({
+          telefono: ensureMxWhatsappIntl(courierPhone),
+          body: formatCourierCancelNotice(pedido.id),
+          tipoMensaje: "dispatch_repartidor",
+          destinatarioTipo: "repartidor",
+          destinatarioId: toNullableNumber(pedido.metadata.current_courier_id),
         });
       }
       return notices;

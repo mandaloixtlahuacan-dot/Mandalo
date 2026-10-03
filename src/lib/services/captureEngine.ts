@@ -1,4 +1,5 @@
 import { formatPreConfirmFeeNote } from "@/lib/customerUx";
+import { reconcileCatalogQuantities } from "@/lib/catalogQuantities";
 import type { OrderState } from "@/lib/orderStateMachine";
 import { normalizePhone } from "@/lib/roles";
 import { resolveMapsLink } from "@/lib/services/geo";
@@ -333,23 +334,55 @@ function formatAddress(snapshot: PedidoSnapshot): string {
   return mapsLink ? `${direccion}\n${mapsLink}` : direccion;
 }
 
+function trimQty(value: number): string {
+  if (Number.isInteger(value)) return String(value);
+  return String(value);
+}
+
+function pluralUnit(qty: number, unit: string): string {
+  if (qty === 1) return unit;
+  const plural: Record<string, string> = {
+    frasco: "frascos",
+    pieza: "piezas",
+    paquete: "paquetes",
+    kilo: "kilos",
+    litro: "litros",
+    lata: "latas",
+    botella: "botellas",
+    caja: "cajas",
+    bolsa: "bolsas",
+    rollo: "rollos",
+  };
+  return plural[unit] ?? (unit.endsWith("s") ? unit : `${unit}s`);
+}
+
+/** Línea que ven el cliente (antes del SÍ) y la tienda: qué, marca o "la que sea", presentación y cantidad. */
+export function formatSpecificItemLine(item: PedidoItemInput): string {
+  const nombre = cleanText(item.nombre_producto);
+  const marca = cleanText(item.marca);
+  const presentacion = cleanText(item.presentacion);
+  const unidad = cleanText(item.unidad);
+  const notas = cleanText(item.notas);
+  const qty = typeof item.cantidad === "number" && Number.isFinite(item.cantidad) && item.cantidad > 0 ? trimQty(item.cantidad) : null;
+  const qtyPhrase = qty && unidad ? `${qty} ${pluralUnit(Number(qty), unidad)}` : qty ? `x${qty}` : null;
+  const parts = [nombre, marca, presentacion, qtyPhrase, notas].filter((part): part is string => Boolean(part));
+  const kept: string[] = [];
+  for (const part of parts) {
+    const key = part.toLowerCase();
+    if (kept.some((prev) => prev.toLowerCase() === key || prev.toLowerCase().includes(key))) continue;
+    kept.push(part);
+  }
+  return kept.join(", ");
+}
+
+export function dispatchItemAlreadyShowsQty(nombreProducto: string, cantidad: number): boolean {
+  const qty = trimQty(cantidad).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?:^|[^\\d.-])${qty}(?!\\d)`).test(nombreProducto);
+}
+
 export function formatItems(items: PedidoItemInput[]): string {
   if (!items.length) return "- Sin productos definidos";
-
-  return items
-    .map((item) => {
-      const parts = [
-        item.nombre_producto,
-        item.marca,
-        item.presentacion,
-        item.cantidad != null ? `x${item.cantidad}` : null,
-        item.unidad,
-        item.notas,
-      ].filter(Boolean);
-
-      return `- ${parts.join(" ")}`;
-    })
-    .join("\n");
+  return items.map((item) => `- ${formatSpecificItemLine(item)}`).join("\n");
 }
 
 export function buildCustomerMessage(params: {
@@ -423,26 +456,36 @@ export function createCaptureEngine(deps: CaptureEngineDeps) {
           customerName: input.customerName ?? null,
         }));
 
+      const priorSnapshot = input.currentSnapshot ?? existingPedido?.snapshot_json ?? null;
       const mergedSnapshot = mergeSnapshot({
-        currentSnapshot: input.currentSnapshot ?? existingPedido?.snapshot_json ?? null,
+        currentSnapshot: priorSnapshot,
         llmOrderState: input.llmOrderState ?? null,
         customerName: input.customerName ?? null,
         forceBusiness: input.forceBusiness === true,
         forceReplaceItems: input.forceReplaceItems === true,
       });
 
-      // mergedSnapshot.items ya viene fusionado (turno actual + lo ya capturado
+      // En menú fijo la IA a veces reenvía el producto sin cantidad (o en 1)
+      // cuando el cliente manda la ubicación o agrega otro. La cantidad dicha
+      // y la que ya estaba anotada se conservan. Las tiendas que cotizan no
+      // pasan por aquí: ahí "cuántos" sigue siendo una pregunta.
+      const itemsForValidation = input.quoteStore
+        ? mergedSnapshot.items ?? []
+        : reconcileCatalogQuantities(priorSnapshot?.items ?? [], mergedSnapshot.items ?? [], input.userMessage);
+      const snapshotForValidation: PedidoSnapshot = { ...mergedSnapshot, items: itemsForValidation };
+
+      // itemsForValidation ya viene fusionado (turno actual + lo ya capturado
       // antes) — validamos sobre esa lista completa, no solo lo del turno.
       const validation = validationEngine.validateCaptureForConfirmation({
-        snapshot: mergedSnapshot,
-        items: mergedSnapshot.items ?? [],
+        snapshot: snapshotForValidation,
+        items: itemsForValidation,
         knownZoneNames: input.knownZoneNames ?? [],
         quoteStore: input.quoteStore === true,
         userMessage: input.userMessage,
       });
 
       const nextSnapshot: PedidoSnapshot = {
-        ...mergedSnapshot,
+        ...snapshotForValidation,
         // Persistimos la versión validada/normalizada (nombres limpios, items
         // sin nombre descartados) para no volver a arrastrar basura en el
         // siguiente turno.

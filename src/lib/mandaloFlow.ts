@@ -6,7 +6,8 @@ import { getChatCompletion, getOpenAIModel } from "@/lib/openaiClient";
 import { buildMandaloSystemPrompt } from "@/lib/mandaloPrompt";
 import { normalizeWhatsAppText, waapiSendImage, waapiSendText } from "@/lib/waapi";
 import { detectActorByPhone, ensureMxWhatsappIntl, normalizePhone } from "@/lib/roles";
-import { buildCustomerMessage, createCaptureEngine, extractCandidateItems, formatItems as formatSnapshotItems, type PedidoItemInput } from "@/lib/services/captureEngine";
+import { priceCatalogOrder } from "@/lib/catalogQuantities";
+import { buildCustomerMessage, createCaptureEngine, dispatchItemAlreadyShowsQty, extractCandidateItems, formatItems as formatSnapshotItems, type PedidoItemInput } from "@/lib/services/captureEngine";
 import * as pedidoRepositoryV2 from "@/lib/repositories/pedidoRepositoryV2";
 import { getAdminPhone } from "@/lib/repositories/configRepository";
 import * as metricsRepository from "@/lib/repositories/metricsRepository";
@@ -31,7 +32,9 @@ import {
   classifyCustomerTurn,
   formatAbarrotesStoreAck,
   formatCatalogMenuCaption,
+  formatCatalogOrderRegistered,
   formatCatalogReceiptFee,
+  formatQuoteOrderRegistered,
   formatNicheStoreList,
   formatNoFixedMenu,
   formatPreConfirmFeeNote,
@@ -161,7 +164,13 @@ function isOrderTrackingQuestion(text: string): boolean {
 
 function formatItemsForMessage(items: Array<{ nombreProducto: string; cantidad: number | null }>): string {
   if (!items.length) return "(sin productos)";
-  return items.map((it) => `- ${it.nombreProducto}${it.cantidad != null ? ` x${it.cantidad}` : ""}`).join("\n");
+  return items
+    .map((it) => {
+      const name = it.nombreProducto.trim() || "producto";
+      if (it.cantidad == null || dispatchItemAlreadyShowsQty(name, it.cantidad)) return `- ${name}`;
+      return `- ${name} x${it.cantidad}`;
+    })
+    .join("\n");
 }
 
 // Flags ligeros en memoria: solo se usan para no re-preguntar "¿continuar o
@@ -675,20 +684,7 @@ async function catalogPriceLines(
   items: PedidoItemInput[],
 ): Promise<{ lines: string[]; subtotal: number | null }> {
   const catalog = await pedidoRepositoryV2.getProductosTiendaActivos(businessId);
-  let subtotal = 0;
-  let complete = items.length > 0;
-  const lines = items.map((item) => {
-    const nombre = String(item.nombre_producto ?? "").trim();
-    const qty = item.cantidad ?? 1;
-    const match = pedidoRepositoryV2.matchProductoTienda(catalog, nombre);
-    if (!match) {
-      complete = false;
-      return `- ${nombre}${qty > 1 ? ` x${qty}` : ""}`;
-    }
-    subtotal += match.precio * (qty > 0 ? qty : 1);
-    return `- ${nombre} — ${formatMoney(match.precio)}${qty > 1 ? ` x${qty}` : ""}`;
-  });
-  return { lines, subtotal: complete ? subtotal : null };
+  return priceCatalogOrder(items, catalog);
 }
 
 // --- Cliente ---
@@ -938,7 +934,9 @@ async function handleEsperandoConfirmacionInicial(
     return { ok: true, role: "cliente", stage: "confirmacion_cliente", pedidoId: pedido.id };
   }
 
-  const msgCliente = `📩 Pedido #${full.id} quedó registrado para envío a *${full.tienda.nombre}*.\n\nTe avisaré en cuanto la tienda confirme el precio.`;
+  const msgCliente = full.tienda.usaCatalogoFijo
+    ? formatCatalogOrderRegistered(full.id, full.tienda.nombre ?? "la tienda")
+    : formatQuoteOrderRegistered(full.id, full.tienda.nombre ?? "la tienda");
   await sendWhatsApp(telefono, msgCliente);
   await guardarMensajeChat({ telefono, texto: msgCliente, estado: "bot" }).catch(() => {});
   return { ok: true, role: "cliente", stage: "pendiente_tiendas", pedidoId: full.id };

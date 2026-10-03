@@ -3,7 +3,7 @@ import { normalizePhone } from "@/lib/roles";
 import { resetChatHistory } from "@/lib/messages";
 import { parseDiasCerrado } from "@/lib/services/businessHours";
 import type { OrderState } from "@/lib/orderStateMachine";
-import type { PedidoItemInput, PedidoSnapshot, PedidoV2Record } from "@/lib/services/captureEngine";
+import { formatSpecificItemLine, type PedidoItemInput, type PedidoSnapshot, type PedidoV2Record } from "@/lib/services/captureEngine";
 
 type UnknownRow = Record<string, unknown>;
 
@@ -30,10 +30,7 @@ function getPhoneVariants(rawPhone: string): string[] {
 }
 
 function composeItemText(item: PedidoItemInput): string {
-  return [item.nombre_producto, item.marca, item.presentacion, item.unidad, item.notas]
-    .map((part) => cleanText(part))
-    .filter(Boolean)
-    .join(" ");
+  return formatSpecificItemLine(item);
 }
 
 function mapPedidoRow(row: UnknownRow): PedidoV2Record {

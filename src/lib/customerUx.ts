@@ -117,16 +117,34 @@ export function formatPreConfirmFeeNote(mode: "catalogo" | "cotiza_tienda"): str
   return `La tienda cotiza tus productos, más ${formatMoney(CUSTOMER_FACING_FEE)} de envío y servicio.`;
 }
 
+export function formatCatalogOrderRegistered(pedidoId: number, tiendaNombre: string): string {
+  const tienda = tiendaNombre.trim() || "la tienda";
+  return `📩 Pedido #${pedidoId} quedó registrado con *${tienda}*.\n\nTe mando el total para que lo confirmes con un SÍ.`;
+}
+
+export function formatQuoteOrderRegistered(pedidoId: number, tiendaNombre: string): string {
+  const tienda = tiendaNombre.trim() || "la tienda";
+  return `📩 Pedido #${pedidoId} quedó registrado para envío a *${tienda}*.\n\nTe avisaré en cuanto la tienda confirme el precio.`;
+}
+
+export function formatCourierCancelNotice(pedidoId: number): string {
+  return `El pedido #${pedidoId} se canceló. Ya no hace falta que lo recojas.`;
+}
+
 export function formatCustomerQuoteMessage(params: {
   tiendaNombre: string;
   pedidoId: number;
   subtotal: number;
   total: number;
+  itemLines?: string[] | null;
 }): string {
   const tienda = params.tiendaNombre.trim() || "la tienda";
+  const lines = (params.itemLines ?? []).map((line) => line.trim()).filter(Boolean);
+  const productos = lines.length ? `${lines.join("\n")}\n` : "";
   return (
     `Este es el total de tu pedido en *${tienda}*:\n\n` +
     `Pedido #${params.pedidoId}\n` +
+    productos +
     `Subtotal: ${formatMoney(params.subtotal)}\n` +
     `${formatCustomerFeeLine()}\n` +
     `*Total a pagar: ${formatMoney(params.total)}*\n\n` +
@@ -219,7 +237,7 @@ export function formatAbarrotesStoreAck(store: UxStore): string {
     ? ""
     : `\n\nOjo: está cerrada ahora${store.abreTexto ? ` (${store.abreTexto})` : ""}. Lo armamos igual y se manda en cuanto abra.`;
   return (
-    `Va, de ${store.nombre}. Dime qué se te antoja. Si falta marca o presentación, te pregunto con un ejemplo.${closed}\n\n` +
+    `Va, de ${store.nombre}. Dime qué se te antoja. Si falta marca, presentación o cuántos, te pregunto con un ejemplo.${closed}\n\n` +
     `La tienda cotiza y se suman ${formatMoney(CUSTOMER_FACING_FEE)} de envío y servicio.`
   );
 }
@@ -296,7 +314,7 @@ export function formatCatalogMenu(storeName: string, category: string, items: Ar
 
 export function formatNoFixedMenu(storeName: string): string {
   return (
-    `${storeName} no trae menú fijo. Dime el producto; si falta marca o presentación, te pregunto antes de cotizarlo.\n\n` +
+    `${storeName} no trae menú fijo. Dime el producto; si falta marca, presentación o cuántos, te pregunto antes de cotizarlo.\n\n` +
     `${formatCustomerFeeLine()}.`
   );
 }
