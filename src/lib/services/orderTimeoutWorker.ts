@@ -2,6 +2,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { ensureMxWhatsappIntl } from "@/lib/roles";
 import { getPedidoById, setPedidoEstado, type PedidoFullRecord } from "@/lib/repositories/pedidoRepositoryV2";
 import * as outboxRepository from "@/lib/repositories/outboxRepository";
+import { formatCourierCancelNotice } from "@/lib/customerUx";
 import { dispatchItemAlreadyShowsQty } from "@/lib/services/captureEngine";
 import { createStateTransitionService } from "@/lib/services/stateTransitionService";
 import { orderTimeoutFieldNames, type OrderTimeoutKind } from "@/lib/services/orderTimeouts";
@@ -178,6 +179,16 @@ const TIMEOUT_CONFIGS: TimeoutKindConfig[] = [
           tipoMensaje: "cotizacion_tienda",
           destinatarioTipo: "negocio",
           destinatarioId: pedido.tienda.tiendaId,
+        });
+      }
+      const courierPhone = cleanText(pedido.metadata.current_courier_phone);
+      if (courierPhone) {
+        notices.push({
+          telefono: ensureMxWhatsappIntl(courierPhone),
+          body: formatCourierCancelNotice(pedido.id),
+          tipoMensaje: "dispatch_repartidor",
+          destinatarioTipo: "repartidor",
+          destinatarioId: toNullableNumber(pedido.metadata.current_courier_id),
         });
       }
       return notices;

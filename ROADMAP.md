@@ -2,8 +2,11 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 3 de octubre de 2026. En tiendas que cotizan (sin menú
-> fijo, por ejemplo ZAGU) cualquier producto pide solo lo que falta: marca,
+> Última actualización: 3 de octubre de 2026. En el menú fijo (George) "dos
+> hamburguesas" ya no se cobra como una: el ticket de después de la ubicación
+> muestra la cantidad y el precio de las dos, más el mismo $35. Agregar "dos
+> dogos" no aplasta lo que ya estaba. En tiendas que cotizan (sin menú fijo,
+> por ejemplo ZAGU) cualquier producto pide solo lo que falta: marca,
 > presentación que cambia lo que se baja del anaquel, y cantidad. La verdura
 > suelta (jitomate, cebolla) no inventa marca: kilos, y tipo solo si cambia
 > el producto. "Del que sea" / "la que sea" / "cualquiera" / "la más barata"

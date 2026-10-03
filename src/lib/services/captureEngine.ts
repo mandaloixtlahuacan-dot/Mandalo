@@ -1,4 +1,5 @@
 import { formatPreConfirmFeeNote } from "@/lib/customerUx";
+import { reconcileCatalogQuantities } from "@/lib/catalogQuantities";
 import type { OrderState } from "@/lib/orderStateMachine";
 import { normalizePhone } from "@/lib/roles";
 import { resolveMapsLink } from "@/lib/services/geo";
@@ -455,26 +456,36 @@ export function createCaptureEngine(deps: CaptureEngineDeps) {
           customerName: input.customerName ?? null,
         }));
 
+      const priorSnapshot = input.currentSnapshot ?? existingPedido?.snapshot_json ?? null;
       const mergedSnapshot = mergeSnapshot({
-        currentSnapshot: input.currentSnapshot ?? existingPedido?.snapshot_json ?? null,
+        currentSnapshot: priorSnapshot,
         llmOrderState: input.llmOrderState ?? null,
         customerName: input.customerName ?? null,
         forceBusiness: input.forceBusiness === true,
         forceReplaceItems: input.forceReplaceItems === true,
       });
 
-      // mergedSnapshot.items ya viene fusionado (turno actual + lo ya capturado
+      // En menú fijo la IA a veces reenvía el producto sin cantidad (o en 1)
+      // cuando el cliente manda la ubicación o agrega otro. La cantidad dicha
+      // y la que ya estaba anotada se conservan. Las tiendas que cotizan no
+      // pasan por aquí: ahí "cuántos" sigue siendo una pregunta.
+      const itemsForValidation = input.quoteStore
+        ? mergedSnapshot.items ?? []
+        : reconcileCatalogQuantities(priorSnapshot?.items ?? [], mergedSnapshot.items ?? [], input.userMessage);
+      const snapshotForValidation: PedidoSnapshot = { ...mergedSnapshot, items: itemsForValidation };
+
+      // itemsForValidation ya viene fusionado (turno actual + lo ya capturado
       // antes) — validamos sobre esa lista completa, no solo lo del turno.
       const validation = validationEngine.validateCaptureForConfirmation({
-        snapshot: mergedSnapshot,
-        items: mergedSnapshot.items ?? [],
+        snapshot: snapshotForValidation,
+        items: itemsForValidation,
         knownZoneNames: input.knownZoneNames ?? [],
         quoteStore: input.quoteStore === true,
         userMessage: input.userMessage,
       });
 
       const nextSnapshot: PedidoSnapshot = {
-        ...mergedSnapshot,
+        ...snapshotForValidation,
         // Persistimos la versión validada/normalizada (nombres limpios, items
         // sin nombre descartados) para no volver a arrastrar basura en el
         // siguiente turno.

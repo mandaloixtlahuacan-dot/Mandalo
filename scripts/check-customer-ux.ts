@@ -4,6 +4,7 @@
  */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { buildMandaloSystemPrompt } from "../src/lib/mandaloPrompt";
+import { priceCatalogOrder, reconcileCatalogQuantities } from "../src/lib/catalogQuantities";
 import { buildCustomerMessage, dispatchItemAlreadyShowsQty, formatSpecificItemLine, mergeSnapshot, type PedidoItemInput } from "../src/lib/services/captureEngine";
 import { validateCaptureForConfirmation } from "../src/lib/services/validationEngine";
 import { normalizeWhatsAppText } from "../src/lib/waapi";
@@ -14,8 +15,11 @@ import {
   formatCatalogCategories,
   formatCatalogMenu,
   formatCatalogMenuCaption,
+  formatCatalogOrderRegistered,
   formatCatalogReceiptFee,
+  formatCourierCancelNotice,
   formatCustomerQuoteMessage,
+  formatQuoteOrderRegistered,
   formatNicheStoreList,
   formatPreConfirmFeeNote,
   nicheIdForCategoria,
@@ -558,6 +562,91 @@ assert(waivableReceipt.includes("la que sea"), "el recibo lleva la nota de que l
 assert(waivableReceipt.includes("$35"), "el recibo de cotización sigue en $35");
 assert(!waivableReceipt.includes("$10") && !waivableReceipt.includes("$25"), "el recibo no parte el cargo");
 
+const georgeCatalog = [
+  { nombreProducto: "Hamburguesa de pollo", precio: 55 },
+  { nombreProducto: "Dogo clásico", precio: 40 },
+];
+const enElNombre = reconcileCatalogQuantities([], [{ nombre_producto: "dos hamburguesas de pollo" }], "dos hamburguesas de pollo");
+assert(enElNombre[0]?.cantidad === 2, "si la cantidad viene pegada al nombre, se separa");
+assert(!/^dos\b/i.test(String(enElNombre[0]?.nombre_producto ?? "")), "el nombre del menú ya no empieza con dos");
+assert(priceCatalogOrder(enElNombre, georgeCatalog).subtotal === 110, "el nombre en plural sigue costando dos");
+
+const dosPollo = reconcileCatalogQuantities(
+  [],
+  [{ nombre_producto: "Hamburguesa de pollo", cantidad: 1 }],
+  "dos hamburguesas de pollo",
+);
+assert(dosPollo[0]?.cantidad === 2, "dos hamburguesas de pollo se quedan en 2");
+const pricedDos = priceCatalogOrder(dosPollo, georgeCatalog);
+assert(pricedDos.subtotal === 110, "dos hamburguesas de pollo cuestan el precio de dos");
+assert(pricedDos.lines[0]?.includes("2 "), "el ticket muestra la cantidad 2");
+assert(pricedDos.lines[0]?.includes("$110"), "el renglón muestra el precio de dos");
+assert(!pricedDos.lines[0]?.includes("$55"), "el renglón no se queda en el precio de una");
+const ticketDos = buildCustomerMessage({
+  validation: georgeHotdog,
+  snapshot: { ...quoteBase, businessId: 5, businessName: "Hamburguesas Hotdogs George", items: dosPollo },
+  items: dosPollo,
+  pricedLines: pricedDos.lines.join("\n"),
+  feeNote: formatCatalogReceiptFee(pricedDos.subtotal),
+});
+assert(ticketDos.includes("$110"), "el ticket final trae el precio de dos hamburguesas");
+assert(ticketDos.includes("$35"), "el ticket de catálogo sigue con un solo $35");
+assert(ticketDos.includes("$145"), "el total suma las dos hamburguesas más $35");
+assert(!ticketDos.includes("$10") && !ticketDos.includes("$25"), "el ticket de catálogo no parte el cargo");
+
+const trasUbicacion = reconcileCatalogQuantities(
+  [{ nombre_producto: "Hamburguesa de pollo", cantidad: 2 }],
+  [{ nombre_producto: "Hamburguesa de pollo", cantidad: 1 }],
+  "",
+);
+assert(trasUbicacion[0]?.cantidad === 2, "la ubicación no baja la cantidad a 1");
+assert(priceCatalogOrder(trasUbicacion, georgeCatalog).subtotal === 110, "después de la ubicación se siguen cobrando dos");
+
+const conDogos = reconcileCatalogQuantities(
+  [{ nombre_producto: "Hamburguesa de pollo", cantidad: 2 }],
+  [
+    { nombre_producto: "Hamburguesa de pollo", cantidad: 1 },
+    { nombre_producto: "Dogo clásico", cantidad: 1 },
+  ],
+  "y también dos dogos",
+);
+assert(conDogos[0]?.cantidad === 2, "agregar dogos no aplasta las hamburguesas");
+assert(conDogos[1]?.cantidad === 2, "dos dogos se quedan en 2");
+const pricedMixto = priceCatalogOrder(conDogos, georgeCatalog);
+assert(pricedMixto.subtotal === 190, "dos hamburguesas y dos dogos suman las cuatro piezas");
+assert(pricedMixto.lines[1]?.includes("$80"), "los dos dogos se cobran a precio de dos");
+
+const unaSola = reconcileCatalogQuantities(
+  [{ nombre_producto: "Hamburguesa de pollo", cantidad: 2 }],
+  [{ nombre_producto: "Hamburguesa de pollo", cantidad: 2 }],
+  "mejor una hamburguesa de pollo",
+);
+assert(unaSola[0]?.cantidad === 1, "si pide una, la cantidad baja a 1");
+assert(priceCatalogOrder(unaSola, georgeCatalog).lines[0]?.includes("$55"), "una hamburguesa se cobra a precio de una");
+
+const plural = priceCatalogOrder([{ nombre_producto: "Hamburguesas de pollo", cantidad: 2 }], georgeCatalog);
+assert(plural.subtotal === 110, "el plural del menú sigue encontrando el precio de dos");
+
+const storeLine = formatSpecificItemLine({ nombre_producto: "Hamburguesa de pollo", cantidad: 2 });
+assert(/x2/.test(storeLine), "la tienda y el repartidor ven las dos piezas");
+assert(dispatchItemAlreadyShowsQty(storeLine, 2), "no se duplica el 2 en el mensaje de la tienda");
+
+const registrado = formatCatalogOrderRegistered(9, "Hamburguesas Hotdogs George");
+assert(registrado.includes("SÍ"), "en catálogo el primer SÍ avisa que sigue el total");
+assert(!registrado.toLowerCase().includes("confirme el precio"), "en catálogo no se dice que la tienda va a cotizar");
+const cotiza = formatQuoteOrderRegistered(9, "ZAGU");
+assert(cotiza.toLowerCase().includes("confirme el precio"), "en abarrotes sí se espera la cotización de la tienda");
+const quoteDos = formatCustomerQuoteMessage({
+  tiendaNombre: "Hamburguesas Hotdogs George",
+  pedidoId: 9,
+  subtotal: 110,
+  total: 145,
+  itemLines: pricedDos.lines,
+});
+assert(quoteDos.includes("2 ") && quoteDos.includes("$110") && quoteDos.includes("$145"), "el SÍ del precio repite cantidad y precio de dos");
+assert(quoteDos.includes("$35") && !quoteDos.includes("$10") && !quoteDos.includes("$25"), "ese SÍ sigue en un solo $35");
+assert(formatCourierCancelNotice(9).includes("#9"), "si el repartidor ya tenía el pedido, el aviso de cancelación lo nombra");
+
 const prompt = buildMandaloSystemPrompt({
   negociosDisponibles: "ZAGU",
   negociosCerrados: "(ninguno)",
@@ -572,6 +661,7 @@ assert(prompt.includes("del que sea") && prompt.includes("la más barata") && pr
 assert(prompt.includes("Lala") && prompt.includes("Pétalo") && prompt.includes("Ciel"), "el prompt trae ejemplos, no un catálogo cerrado");
 assert(prompt.includes("no reenvíes") || prompt.includes("No reenvíes"), "el prompt no manda a reenviar menús");
 assert(prompt.includes("foto del menú"), "el flujo de foto de George sigue en el prompt");
+assert(prompt.includes("dos hamburguesas = 2"), "el prompt no deja caer la cantidad del menú");
 assert(prompt.includes("$35"), "el prompt no cambia el cargo de $35");
 
 console.log("\n--- Transcripción de ejemplo ---\n");
