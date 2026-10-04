@@ -7,7 +7,7 @@ import { buildMandaloSystemPrompt } from "@/lib/mandaloPrompt";
 import { normalizeWhatsAppText, waapiSendImage, waapiSendText } from "@/lib/waapi";
 import { detectActorByPhone, ensureMxWhatsappIntl, normalizePhone } from "@/lib/roles";
 import { priceCatalogOrder, type CatalogPriceRow } from "@/lib/catalogQuantities";
-import { buildCustomerMessage, createCaptureEngine, dispatchItemAlreadyShowsQty, extractCandidateItems, formatItems as formatSnapshotItems, type PedidoItemInput } from "@/lib/services/captureEngine";
+import { buildCustomerMessage, createCaptureEngine, dispatchItemAlreadyShowsQty, extractCandidateItems, type PedidoItemInput } from "@/lib/services/captureEngine";
 import * as pedidoRepositoryV2 from "@/lib/repositories/pedidoRepositoryV2";
 import { getAdminPhone } from "@/lib/repositories/configRepository";
 import * as metricsRepository from "@/lib/repositories/metricsRepository";
@@ -52,7 +52,8 @@ import {
   formatMoney,
   mensajeTiendaProductoNoEncontrado,
 } from "@/lib/ordenes";
-import { isTerminalState, type OrderState } from "@/lib/orderStateMachine";
+import { canTransition, isTerminalState, type OrderState } from "@/lib/orderStateMachine";
+import { confirmationCustomerMessage, planConfirmationAmendment, renderPedidoSummary } from "@/lib/confirmationAmendment";
 import {
   extractCoordsFromUbicacion,
   isWithinCoverageArea,
@@ -758,18 +759,16 @@ async function cancelOpenPedido(pedido: PedidoV2Record, telefono: string, reason
 // folio ("pedido #12") en todo mensaje de seguimiento al cliente, para que
 // tenga una referencia rápida a mano si necesita escribir por una queja.
 function buildResumenPedido(pedido: PedidoV2Record, feeNote?: string, pricedLines?: string | null): string {
-  const snapshot = pedido.snapshot_json;
-  const tienda = String(snapshot.businessName ?? "").trim() || "(sin tienda)";
-  const direccionBase = String(snapshot.addressText ?? "").trim() || "(sin dirección)";
   // El link de mapa se calcula aparte de addressText a propósito (no vive
   // embebido en el texto guardado) — ver buildAddressTextFromCoords en geo.ts.
   // Sin esta línea el cliente dejaba de ver el link por completo al confirmar
   // por GPS (bug reportado en producción agosto 2026).
-  const mapsLink = resolveMapsLink({ latitud: snapshot.latitud ?? null, longitud: snapshot.longitud ?? null });
-  const direccion = mapsLink ? `${direccionBase}\n${mapsLink}` : direccionBase;
-  const items = pricedLines?.trim() || formatSnapshotItems(snapshot.items ?? []);
-  const fee = feeNote?.trim() || formatPreConfirmFeeNote("cotiza_tienda");
-  return `🧾 Pedido #${pedido.id}\n\nTienda: ${tienda}\n\n🛒 Productos:\n${items}\n\n${fee}\n\n🏠 Entrega:\n${direccion}`;
+  return renderPedidoSummary({
+    pedidoId: pedido.id,
+    snapshot: pedido.snapshot_json,
+    feeNote,
+    pricedLines,
+  });
 }
 
 // Un pedido puede esperar por dos razones independientes (Mándalo cerrado,
@@ -883,6 +882,69 @@ async function handleEsperandoConfirmacionInicial(
         feeNote = formatCatalogReceiptFee(priced.subtotal);
       }
     }
+
+    // Un cambio de productos se queda en este mismo pedido. Lo que no es un
+    // producto (ni un sí, que ya se fue por arriba) vuelve a mostrar el resumen.
+    if (String(mensaje ?? "").trim()) {
+      try {
+        const knownZoneNames = await fetchZonasCobertura();
+        const zones = knownZoneNames.length ? knownZoneNames : snapshot.addressZone ? [snapshot.addressZone] : [];
+        const plan = planConfirmationAmendment({
+          pedidoId: pedido.id,
+          message: mensaje,
+          snapshot,
+          quoteStore: !full.tienda.usaCatalogoFijo,
+          knownZoneNames: zones,
+        });
+        if (plan.kind === "amend") {
+          const nextState = plan.nextState;
+          if (nextState !== pedido.estado && !canTransition(pedido.estado, nextState)) {
+            throw new Error(`Transición no permitida: ${pedido.estado} -> ${nextState}`);
+          }
+          const nextSnapshot = { ...snapshot, items: plan.items };
+          await pedidoRepositoryV2.updatePedidoSnapshot({
+            pedidoId: pedido.id,
+            estado: nextState,
+            snapshot: nextSnapshot,
+            addressText: snapshot.addressText ?? null,
+            latitud: snapshot.latitud ?? null,
+            longitud: snapshot.longitud ?? null,
+          });
+          await pedidoRepositoryV2.replacePedidoItems({ pedidoId: pedido.id, items: plan.items });
+          await pedidoRepositoryV2.appendPedidoEvento({
+            pedidoId: pedido.id,
+            tipoEvento: "captura_actualizada",
+            estadoOrigen: "confirmacion_cliente",
+            estadoDestino: nextState,
+            actorTipo: "cliente",
+            payload: {
+              userMessage: mensaje,
+              itemCount: plan.items.length,
+              readyForConfirmation: plan.readyForConfirmation,
+            },
+          });
+          const msg = confirmationCustomerMessage({
+            pedidoId: pedido.id,
+            snapshot: nextSnapshot,
+            items: plan.items,
+            readyForConfirmation: plan.readyForConfirmation,
+            question: plan.question,
+            feeNote,
+            pricedLines,
+            scheduleNote: avisoCerrada.trim() || null,
+          });
+          await sendWhatsApp(telefono, msg);
+          await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+          return { ok: true, role: "cliente", stage: nextState, pedidoId: pedido.id };
+        }
+      } catch (e: unknown) {
+        console.error("[mandalo] no se pudo sumar productos durante la confirmación", {
+          pedidoId: pedido.id,
+          message: getErrorMessage(e),
+        });
+      }
+    }
+
     const msg = `${buildResumenPedido({ ...pedido, snapshot_json: snapshot }, feeNote, pricedLines)}${avisoCerrada}\n\n¿Es correcto? Responde *SÍ* para confirmar. ✅`;
     await sendWhatsApp(telefono, msg);
     await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
