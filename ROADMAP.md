@@ -2,7 +2,14 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 3 de octubre de 2026. En George, «una de mar y tierra»
+> Última actualización: 4 de octubre de 2026. En la confirmación del cliente
+> (pedido #73), «quiero unas galletas» ya no reenvía el mismo resumen: se
+> queda el mismo pedido y el resumen trae lo que ya estaba más lo nuevo. En
+> tiendas que cotizan, «1 l», «de un litro» y un «1» cuando la pregunta abierta
+> es de litros cierran la leche (también si la unidad guardada era «l»). Un
+> «1» no se vuelve litros si la pregunta es marca, tipo, piezas o ml. Código
+> en rama, sin merge y sin deploy.
+> Actualización anterior: 3 de octubre de 2026. En George, «una de mar y tierra»
 > anota la hamburguesa y 1 pieza, sin inventar chica, y pregunta solo el
 > tamaño. Si después suman Pepsi y dogo de arrachera, entran al pedido y no
 > se reenvía la foto. Código en rama, sin merge y sin deploy.

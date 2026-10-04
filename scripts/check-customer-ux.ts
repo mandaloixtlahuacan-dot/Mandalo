@@ -8,6 +8,7 @@ import { priceCatalogOrder, reconcileCatalogQuantities } from "../src/lib/catalo
 import { applyCatalogSpeech } from "../src/lib/catalogOrderSpeech";
 import { buildCustomerMessage, dispatchItemAlreadyShowsQty, formatSpecificItemLine, mergeSnapshot, type PedidoItemInput } from "../src/lib/services/captureEngine";
 import { validateCaptureForConfirmation } from "../src/lib/services/validationEngine";
+import { confirmationCustomerMessage, planConfirmationAmendment } from "../src/lib/confirmationAmendment";
 import { normalizeWhatsAppText } from "../src/lib/waapi";
 import {
   buildGreeting,
@@ -687,6 +688,71 @@ assert(/litro/i.test(lecheSinTamano.question), "leche sin tamaño pide los litro
 assert(!lecheSinTamano.question.includes("de qué marca"), "la marca ya dicha no se vuelve a pedir");
 assert(!lecheSinTamano.question.includes("deslactosada"), "el tipo ya dicho no se vuelve a pedir");
 
+const lecheConMarcaYTipo = [{ nombre_producto: "Leche", marca: "Lala", presentacion: "entera" }];
+for (const dicho of ["1 l", "de 1 l", "de un litro", "de 1 litro", "1"]) {
+  const cerrada = quoteCheck(lecheConMarcaYTipo, dicho);
+  assert(cerrada.validatedItems.allItemsSpecific, `la leche cierra con "${dicho}"`);
+  assert(!cerrada.issues.some((issue) => issue.customerQuestion), `"${dicho}" no vuelve a preguntar los litros`);
+  const guardada = cerrada.validatedItems.items[0];
+  assert(/litro/i.test(`${guardada?.unidad ?? ""} ${guardada?.presentacion ?? ""}`), `"${dicho}" guarda litros`);
+  assert(guardada?.cantidad === 1, `"${dicho}" deja 1 litro`);
+}
+
+const lecheUnidadAbreviada = quoteCheck(
+  [{ nombre_producto: "Leche", marca: "Lala", presentacion: "entera", cantidad: 1, unidad: "l" }],
+  "de un litro",
+);
+assert(lecheUnidadAbreviada.validatedItems.allItemsSpecific, "un litro cierra aunque la unidad guardada sea l");
+assert(lecheUnidadAbreviada.validatedItems.items[0]?.unidad !== "l", "de un litro reemplaza la abreviatura l");
+assert(/litro/i.test(String(lecheUnidadAbreviada.validatedItems.items[0]?.unidad)), "la unidad queda en litros");
+const lecheUnLitro = quoteCheck(
+  [{ nombre_producto: "Leche", marca: "Lala", presentacion: "entera", cantidad: 1, unidad: "l" }],
+  "un litro",
+);
+assert(lecheUnLitro.validatedItems.allItemsSpecific, "un litro también reemplaza la l guardada");
+assert(/litro/i.test(String(lecheUnLitro.validatedItems.items[0]?.unidad)), "un litro deja la palabra litro");
+
+const lecheEnteraYLitros = quoteCheck(
+  [{ nombre_producto: "Leche", marca: "Lala", cantidad: 1, unidad: "l" }],
+  "La leche es entera y sería 1 l",
+);
+assert(/entera/i.test(String(lecheEnteraYLitros.validatedItems.items[0]?.presentacion)), "entera se sigue anotando");
+assert(/litro/i.test(String(lecheEnteraYLitros.validatedItems.items[0]?.unidad)), "1 l junto con entera guarda los litros");
+assert(lecheEnteraYLitros.validatedItems.allItemsSpecific, "entera y 1 l cierran la leche");
+
+const lecheSoloEntera = quoteCheck([{ nombre_producto: "Leche", marca: "Lala" }], "entera");
+assert(/entera/i.test(String(lecheSoloEntera.validatedItems.items[0]?.presentacion)), "entera sola se guarda");
+assert(!lecheSoloEntera.validatedItems.allItemsSpecific, "entera sola no inventa los litros");
+const lecheDeslactosada = quoteCheck([{ nombre_producto: "Leche", marca: "Lala" }], "deslactosada");
+assert(/deslactosada/i.test(String(lecheDeslactosada.validatedItems.items[0]?.presentacion)), "deslactosada se guarda");
+const lecheLight = quoteCheck([{ nombre_producto: "Leche", marca: "Lala" }], "light");
+assert(/light/i.test(String(lecheLight.validatedItems.items[0]?.presentacion)), "light se guarda");
+
+const unoNoEsLitrosDeMarca = quoteCheck([{ nombre_producto: "Leche" }], "1");
+assert(!unoNoEsLitrosDeMarca.validatedItems.allItemsSpecific, "un 1 no cierra la leche si falta la marca");
+assert(unoNoEsLitrosDeMarca.validatedItems.items[0]?.unidad !== "litro", "un 1 no se vuelve litros si la pregunta es la marca");
+assert(/marca|Lala/i.test(unoNoEsLitrosDeMarca.issues.find((issue) => issue.customerQuestion)?.customerQuestion ?? ""), "el 1 no tapa la pregunta de marca");
+
+const unoNoEsLitrosDeTipo = quoteCheck([{ nombre_producto: "Leche", marca: "Lala" }], "1");
+assert(unoNoEsLitrosDeTipo.validatedItems.items[0]?.unidad !== "litro", "un 1 no es litros si también falta el tipo");
+assert(/entera|litros/i.test(unoNoEsLitrosDeTipo.issues.find((issue) => issue.customerQuestion)?.customerQuestion ?? ""), "sigue pidiendo el tipo o los litros");
+
+const unoNoEsLitrosDeCoca = quoteCheck([{ nombre_producto: "Coca", marca: "Coca", cantidad: 1 }], "1");
+assert(!/litro/i.test(String(unoNoEsLitrosDeCoca.validatedItems.items[0]?.presentacion ?? "")), "un 1 no se vuelve litros de la coca");
+assert(/ml|tamaño|lata/i.test(unoNoEsLitrosDeCoca.issues.find((issue) => issue.customerQuestion)?.customerQuestion ?? ""), "la coca sigue pidiendo el tamaño en ml");
+
+const unoEsPiezaDeGalleta = quoteCheck(
+  [{ nombre_producto: "Galletas", marca: "Emperador", presentacion: "grande" }],
+  "1",
+);
+assert(unoEsPiezaDeGalleta.validatedItems.items[0]?.unidad !== "litro", "un 1 de galletas no es un litro");
+assert(!/litro/i.test(String(unoEsPiezaDeGalleta.validatedItems.items[0]?.presentacion ?? "")), "el paquete no se reescribe como litro");
+
+const aceiteUnLitro = quoteCheck([{ nombre_producto: "Aceite", marca: "1-2-3" }], "1");
+assert(aceiteUnLitro.validatedItems.allItemsSpecific, "el aceite cierra con un 1 cuando solo faltan litros");
+assert(aceiteUnLitro.validatedItems.items[0]?.cantidad === 1, "el 1 del aceite es 1 litro");
+assert(/litro/i.test(String(aceiteUnLitro.validatedItems.items[0]?.unidad)), "el aceite guarda litro");
+
 const cocaSinCantidad = questionOf("coca de 2 litros");
 assert(!cocaSinCantidad.result.readyForConfirmation, "coca con tamaño y sin cantidad no se cierra");
 assert(!cocaSinCantidad.question.includes("de qué marca"), "Coca ya es la marca");
@@ -987,6 +1053,104 @@ const dogosVagos = applyCatalogSpeech({
   catalog: menuGeorge,
 });
 assert(!dogosVagos.applied, "dos dogos sin sabor no eligen uno al azar");
+
+const pedido73 = {
+  businessId: 1,
+  businessName: "Abarrotes ZAGU",
+  businessPhone: "5213311111111",
+  addressText: "Ubicación compartida por WhatsApp",
+  latitud: 20.8658,
+  longitud: -103.24,
+  items: [{ nombre_producto: "Coca", marca: "Coca", presentacion: "2 litros", cantidad: 1, unidad: "pieza" }],
+};
+const galletasEnConfirmacion = planConfirmationAmendment({
+  pedidoId: 73,
+  message: "Quiero unas galletas",
+  snapshot: pedido73,
+  quoteStore: true,
+  knownZoneNames: ["Centro"],
+});
+assert(galletasEnConfirmacion.kind === "amend", "agregar galletas durante la confirmación no repite el resumen viejo");
+if (galletasEnConfirmacion.kind === "amend") {
+  assert(galletasEnConfirmacion.pedidoId === 73, "se queda el pedido #73");
+  assert(
+    galletasEnConfirmacion.items.some((item) => /coca/i.test(item.nombre_producto)),
+    "la Coca que ya estaba sigue en el pedido",
+  );
+  assert(
+    galletasEnConfirmacion.items.some((item) => /galleta/i.test(item.nombre_producto)),
+    "las galletas entran al mismo pedido",
+  );
+  assert(galletasEnConfirmacion.items.length === 2, "no se abre otro pedido ni se duplica la Coca");
+  const resumen = confirmationCustomerMessage({
+    pedidoId: galletasEnConfirmacion.pedidoId,
+    snapshot: { ...pedido73, items: galletasEnConfirmacion.items },
+    items: galletasEnConfirmacion.items,
+    readyForConfirmation: galletasEnConfirmacion.readyForConfirmation,
+    question: galletasEnConfirmacion.question,
+    feeNote: formatPreConfirmFeeNote("cotiza_tienda"),
+  });
+  assert(resumen.includes("Pedido #73"), "el resumen sigue siendo el pedido #73");
+  assert(/coca/i.test(resumen) && /galleta/i.test(resumen), "el resumen trae la Coca y las galletas");
+  assert(resumen.includes("$35"), "el cargo de $35 no cambia");
+  assert(!customerCopySplitsFee(resumen), "el resumen no parte el cargo");
+}
+for (const si of ["SÍ", "sí", "ok", "va", "confirmo"]) {
+  const plan = planConfirmationAmendment({
+    pedidoId: 73,
+    message: si,
+    snapshot: pedido73,
+    quoteStore: true,
+  });
+  assert(plan.kind === "confirm", `"${si}" sigue confirmando`);
+}
+assert(
+  planConfirmationAmendment({ pedidoId: 73, message: "cancela", snapshot: pedido73, quoteStore: true }).kind === "keep",
+  "cancelar no se mezcla con agregar productos",
+);
+assert(
+  planConfirmationAmendment({ pedidoId: 73, message: "pedido nuevo", snapshot: pedido73, quoteStore: true }).kind === "keep",
+  "pedido nuevo no se mezcla con agregar productos",
+);
+assert(
+  planConfirmationAmendment({ pedidoId: 73, message: "", snapshot: pedido73, quoteStore: true }).kind === "keep",
+  "un pin sin texto no cambia los productos",
+);
+assert(
+  planConfirmationAmendment({ pedidoId: 73, message: "Quiero unas galletas", snapshot: pedido73, quoteStore: false }).kind === "keep",
+  "en menú fijo la confirmación no dispara las preguntas de abarrotes",
+);
+
+const unionDeItems = mergeSnapshot({
+  currentSnapshot: {
+    businessId: 1,
+    businessName: "Abarrotes ZAGU",
+    items: [{ nombre_producto: "Coca", presentacion: "2 litros", cantidad: 1 }],
+  },
+  llmOrderState: { items: [{ nombre_producto: "Galletas" }] },
+});
+assert((unionDeItems.items ?? []).length === 2, "unir no tira la Coca cuando el turno solo trae galletas");
+assert(
+  (unionDeItems.items ?? []).some((item) => /coca/i.test(item.nombre_producto) && /2 litros/i.test(String(item.presentacion))),
+  "la Coca conserva los 2 litros",
+);
+assert((unionDeItems.items ?? []).some((item) => /galleta/i.test(item.nombre_producto)), "las galletas se suman");
+const cambioDeTienda = mergeSnapshot({
+  currentSnapshot: {
+    businessId: 1,
+    businessName: "Abarrotes ZAGU",
+    items: [{ nombre_producto: "Coca", presentacion: "2 litros", cantidad: 1 }],
+  },
+  llmOrderState: {
+    business_id: george.id,
+    business_name: george.nombre,
+    items: [{ nombre_producto: "Hamburguesa sencilla" }],
+  },
+  forceBusiness: true,
+  forceReplaceItems: true,
+});
+assert((cambioDeTienda.items ?? []).length === 1, "cambiar de tienda sí reemplaza la lista");
+assert(/hamburguesa/i.test(cambioDeTienda.items?.[0]?.nombre_producto ?? ""), "en la tienda nueva queda la hamburguesa");
 
 const prompt = buildMandaloSystemPrompt({
   negociosDisponibles: "ZAGU",

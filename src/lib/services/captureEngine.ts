@@ -206,15 +206,68 @@ function mergeBusinessPhone(previous: string | null, incoming: string | null): s
   return normalizePhone(incoming);
 }
 
-// El JSON de la IA de este turno solo trae los productos que decidió reportar
-// ahora mismo — no necesariamente el pedido completo. Si trae algo, lo
-// tratamos como la lista completa y vigente (el prompt le exige a la IA
-// devolver siempre el pedido completo, no solo lo mencionado en el mensaje
-// actual). Si no trae nada, conservamos lo que ya teníamos — un turno sobre
-// la dirección, por ejemplo, no debe borrar los productos ya capturados.
+function normItemName(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function nameStem(value: string): string {
+  if (value.endsWith("s") && value.length > 3) return value.slice(0, -1);
+  return value;
+}
+
+function itemsMatch(previous: PedidoItemInput, incoming: PedidoItemInput): boolean {
+  const left = normItemName(previous.nombre_producto);
+  const right = normItemName(incoming.nombre_producto);
+  if (!left || !right) return false;
+  if (left === right) return true;
+  const leftStem = nameStem(left);
+  const rightStem = nameStem(right);
+  if (leftStem === rightStem) return true;
+  const [short, long] = leftStem.length <= rightStem.length ? [leftStem, rightStem] : [rightStem, leftStem];
+  return short.length >= 4 && long.startsWith(`${short} `);
+}
+
+function mergeItemFields(previous: PedidoItemInput, incoming: PedidoItemInput): PedidoItemInput {
+  const marca = cleanText(incoming.marca) ?? cleanText(previous.marca);
+  const presentacion = cleanText(incoming.presentacion) ?? cleanText(previous.presentacion);
+  const unidad = cleanText(incoming.unidad) ?? cleanText(previous.unidad);
+  const notas = cleanText(incoming.notas) ?? cleanText(previous.notas);
+  const incomingQty =
+    typeof incoming.cantidad === "number" && Number.isFinite(incoming.cantidad) && incoming.cantidad > 0
+      ? incoming.cantidad
+      : null;
+  const cantidad = incomingQty ?? previous.cantidad;
+  const merged: PedidoItemInput = {
+    nombre_producto: cleanText(incoming.nombre_producto) || previous.nombre_producto,
+  };
+  if (marca) merged.marca = marca;
+  if (presentacion) merged.presentacion = presentacion;
+  if (cantidad != null) merged.cantidad = cantidad;
+  if (unidad) merged.unidad = unidad;
+  if (notas) merged.notas = notas;
+  return merged;
+}
+
+// La IA de este turno a menudo manda solo lo que el cliente acaba de decir
+// ("unas galletas"), no el pedido completo. Unir conserva lo ya anotado y
+// actualiza la línea que sí vino de nuevo. Cambiar de tienda no pasa por
+// aquí: mergeSnapshot reemplaza la lista con forceReplaceItems.
 function mergeItems(previous: PedidoItemInput[] | null | undefined, incoming: PedidoItemInput[]): PedidoItemInput[] {
-  if (incoming.length) return incoming;
-  return Array.isArray(previous) ? previous : [];
+  const prior = Array.isArray(previous) ? previous.map((item) => ({ ...item })) : [];
+  if (!incoming.length) return prior;
+  const next = prior;
+  for (const item of incoming) {
+    const index = next.findIndex((candidate) => itemsMatch(candidate, item));
+    if (index === -1) next.push({ ...item });
+    else next[index] = mergeItemFields(next[index], item);
+  }
+  return next;
 }
 
 export function mergeSnapshot(params: {

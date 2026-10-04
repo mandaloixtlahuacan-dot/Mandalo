@@ -40,6 +40,7 @@ const STOP = new Set([
   "y", "o", "e", "con", "sin", "por", "para", "que", "se", "al", "lo", "les",
   "su", "sus", "mi", "mis", "tu", "tus", "en", "es", "son", "me", "te", "le",
   "quiero", "dame", "denme", "traeme", "manda", "mande", "mandado", "anota",
+  "seria",
   "anotala", "anotalo", "anotar", "porfa", "favor", "porfavor", "gracias",
   "hola", "buenas", "bueno", "entonces", "nomas", "solo", "pura", "puro",
   "tambien", "ademas", "ejemplo", "esta", "este", "eso", "esa", "mas", "muy",
@@ -226,13 +227,37 @@ function lecheTipo(blob: string): string | null {
   return null;
 }
 
+const LITER_QTY = "\\d+(?:\\.\\d+)?|un|una|uno|dos|tres|cuatro|cinco|seis|media|medio";
+const LITER_UNIT = "lts|lt|litros?|l";
+
+function literPhraseFromQty(qty: number | null): string {
+  if (qty == null || qty === 1) return "1 litro";
+  return `${qty} litros`;
+}
+
+// "1 l", "de 1 l", "un litro" y "l" suelto cuentan como tamaño. La abreviatura
+// guardada en unidad ("l") no cierra sola: vive dentro del producto y no trae
+// la palabra "litro", así que la pregunta seguiría. Esa unidad se reemplaza
+// cuando el cliente contesta el tamaño (ver applyDetail).
 function litrosPhrase(blob: string): string | null {
   const ml = blob.match(/\b(\d+)\s*ml\b/);
   if (ml) return `${ml[1]} ml`;
-  if (!/\blitros?\b/.test(blob)) return null;
-  const qty = qtyBeforeUnit(blob, /litros?/);
-  if (qty == null) return "1 litro";
-  return qty === 1 ? "1 litro" : `${qty} litros`;
+  const withQty = blob.match(new RegExp(`\\b(${LITER_QTY})\\s*(?:${LITER_UNIT})\\b`));
+  if (withQty) return literPhraseFromQty(wordToQty(withQty[1]));
+  if (/\blitros?\b/.test(blob)) return "1 litro";
+  if (/^(?:de\s+)?(?:l|lt|lts)$/.test(blob)) return "1 litro";
+  return null;
+}
+
+function bareLiterQuantity(extra: string): number | null {
+  const match = extra.match(/^(?:de\s+)?(\d+(?:\.\d+)?|un|una|uno|dos|tres|cuatro|cinco|seis|media|medio)$/);
+  if (!match) return null;
+  return wordToQty(match[1]);
+}
+
+function isLiterAbbrev(value: string | null | undefined): boolean {
+  const unit = norm(String(value ?? ""));
+  return unit === "l" || unit === "lt" || unit === "lts" || unit === "litro" || unit === "litros";
 }
 
 function rollPhrase(blob: string): string | null {
@@ -241,7 +266,7 @@ function rollPhrase(blob: string): string | null {
 }
 
 const SIZE_UNITS = new Set([
-  "litro", "litros", "ml", "g", "gr", "gramo", "gramos", "kg", "kilo", "kilos", "rollo", "rollos",
+  "litro", "litros", "l", "lt", "lts", "ml", "g", "gr", "gramo", "gramos", "kg", "kilo", "kilos", "rollo", "rollos",
 ]);
 
 function parsePackageCount(blob: string): number | null {
@@ -1062,7 +1087,15 @@ function splitProductClauses(message: string): string[] {
     .split(/\s*(?:,|;|\by\b)\s*/)
     .map((part) => part.trim())
     .filter((part) => part.length > 0);
-  return parts.length ? parts : [text];
+  if (!parts.length) return [text];
+  // "La leche es entera y sería 1 l": el "y" parte el tamaño del producto.
+  // Si el tramo no nombra otro producto, se queda en el anterior.
+  const merged: string[] = [];
+  for (const part of parts) {
+    if (merged.length && !hitsIn(part).length) merged[merged.length - 1] = `${merged[merged.length - 1]} y ${part}`;
+    else merged.push(part);
+  }
+  return merged;
 }
 
 function windowsInClause(message: string): Array<{ category: Category; text: string }> {
@@ -1146,6 +1179,14 @@ function presentationBelongsToWindow(presentacion: string | null | undefined, ex
   return tokens.every((token) => blob.includes(token));
 }
 
+function soleLiterQuestion(category: Category, item: PedidoItemInput): boolean {
+  const missing = missingSlots(category, item);
+  if (missing.length !== 1 || missing[0] !== "tamano") return false;
+  const question = norm(category.ask(missing, item, blobOf(item)));
+  if (/\b(ml|garrafon|medio|kilo|rollo|lata|pieza|docena)\b/.test(question)) return false;
+  return /\blitro/.test(question);
+}
+
 function applyDetail(
   item: PedidoItemInput,
   extraRaw: string,
@@ -1158,6 +1199,7 @@ function applyDetail(
     .join(" ");
   const category = categoryFor(`${itemText(item)} ${extra}`) ?? itemCategory(item);
   if (!category) return scrubItem(item, ignore);
+  const literQuestionOpen = soleLiterQuestion(category, item);
 
   if (waiverNote(blobOf(item))) {
     return scrubItem({ ...item, notas: clean(item.notas) ?? waiverNote(blobOf(item)) ?? "la que sea" }, ignore);
@@ -1178,7 +1220,11 @@ function applyDetail(
   }
 
   next.presentacion = mergeText(next.presentacion, category.typePhrase?.(extra) ?? null);
-  const size = category.sizePhrase?.(extra) ?? null;
+  let size = category.sizePhrase?.(extra) ?? null;
+  if (!size && literQuestionOpen) {
+    const bare = bareLiterQuantity(extra);
+    if (bare != null) size = literPhraseFromQty(bare);
+  }
   if (size && (category.id === "papel" || /lata|ml|familiar|vidrio|six|caguama|media|cajetilla|carton|garrafon/.test(norm(size)))) {
     next.presentacion = mergeText(next.presentacion, size);
   } else if (size && /\blitro/.test(norm(size))) {
@@ -1186,8 +1232,10 @@ function applyDetail(
       next.presentacion = mergeText(next.presentacion, size);
     } else {
       const qty = parseQty(norm(size));
-      if (next.cantidad == null && qty != null) next.cantidad = qty;
-      if (!clean(next.unidad)) next.unidad = qtyUnit(size);
+      // "l" ya guardado no trae la palabra litro: esta respuesta la reemplaza.
+      const replaceLiter = isLiterAbbrev(next.unidad);
+      if (qty != null && (next.cantidad == null || replaceLiter)) next.cantidad = qty;
+      if (!clean(next.unidad) || replaceLiter) next.unidad = qtyUnit(size);
     }
   } else if (size && /\bkilo|docena/.test(norm(size))) {
     if (category.countSeparate) {
