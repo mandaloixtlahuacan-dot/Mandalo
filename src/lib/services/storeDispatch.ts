@@ -15,7 +15,7 @@ import { buildOrderTimeoutMetadata } from "@/lib/services/orderTimeouts";
 import { matchCatalogProduct, priceCatalogOrder } from "@/lib/catalogQuantities";
 import { formatCustomerQuoteMessage } from "@/lib/customerUx";
 import { dispatchItemAlreadyShowsQty } from "@/lib/services/captureEngine";
-import { calculateFinalPrice, MANDALO_DELIVERY_FEE, mensajeClienteProductoNoDisponible } from "@/lib/ordenes";
+import { calculateFinalPrice, MANDALO_DELIVERY_FEE, MANDALO_SERVICE_FEE, mensajeClienteProductoNoDisponible } from "@/lib/ordenes";
 import { saveChatMessage as guardarMensajeChat } from "@/lib/messages";
 import type { OrderState } from "@/lib/orderStateMachine";
 
@@ -81,7 +81,12 @@ export async function finalizeStoreQuote(params: {
       .filter((line) => line.trim().length > 0);
 
   await setPedidoTiendaCotizacion({ pedidoTiendaId: pedido.tienda.pedidoTiendaId, subtotal });
-  await setPedidoTotales({ pedidoId: pedido.id, servicioRepartidor: MANDALO_DELIVERY_FEE, totalCliente: total });
+  await setPedidoTotales({
+    pedidoId: pedido.id,
+    servicioMandalo: MANDALO_SERVICE_FEE,
+    servicioRepartidor: MANDALO_DELIVERY_FEE,
+    totalCliente: total,
+  });
   await setPedidoEstado({
     pedidoId: pedido.id,
     estado: "confirmado_tiendas",

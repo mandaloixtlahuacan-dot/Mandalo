@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { MANDALO_SERVICE_FEE } from "@/lib/ordenes";
 import { normalizePhone } from "@/lib/roles";
 import { resetChatHistory } from "@/lib/messages";
 import { parseDiasCerrado } from "@/lib/services/businessHours";
@@ -130,6 +131,7 @@ export async function getOrCreateDraftPedido(params: {
     .insert({
       cliente_telefono: telefono,
       estado: "seleccion_productos" satisfies OrderState,
+      servicio_mandalo: MANDALO_SERVICE_FEE,
     })
     .select("id, estado, metadata_json")
     .maybeSingle();
@@ -299,7 +301,7 @@ export async function getPedidoById(pedidoId: number): Promise<PedidoFullRecord 
     direccionEntrega: row.direccion_entrega == null ? null : String(row.direccion_entrega),
     latitud: row.latitud == null ? null : Number(row.latitud),
     longitud: row.longitud == null ? null : Number(row.longitud),
-    servicioMandalo: Number(row.servicio_mandalo ?? 20),
+    servicioMandalo: Number(row.servicio_mandalo ?? MANDALO_SERVICE_FEE),
     servicioRepartidor: row.servicio_repartidor == null ? null : Number(row.servicio_repartidor),
     totalCliente: row.total_cliente == null ? null : Number(row.total_cliente),
     metadata,
@@ -458,6 +460,7 @@ export async function replacePedidoItemText(itemId: number, nuevoTexto: string, 
 
 export async function setPedidoTotales(params: {
   pedidoId: number;
+  servicioMandalo: number;
   servicioRepartidor: number;
   totalCliente: number;
 }): Promise<void> {
@@ -465,6 +468,7 @@ export async function setPedidoTotales(params: {
   const { error } = await supabase
     .from("pedidos")
     .update({
+      servicio_mandalo: params.servicioMandalo,
       servicio_repartidor: params.servicioRepartidor,
       total_cliente: params.totalCliente,
       updated_at: new Date().toISOString(),

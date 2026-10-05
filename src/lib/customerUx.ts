@@ -1,5 +1,5 @@
 /**
- * Copy y decisiones deterministas del cliente (filtros, listas, menú, $35).
+ * Copy y decisiones deterministas del cliente (filtros, listas, menú, $25).
  *
  * WhatsApp se lleva mal con listas armadas por la IA: el modelo aplana saltos
  * de línea y, un turno después de elegir tienda, el catálogo a veces todavía
@@ -592,9 +592,9 @@ export function messageAddsCatalogItems(message: string): boolean {
     /\bmirinda\b/.test(text) ||
     /\bmanzanitas?\b/.test(text) ||
     /\bmanzana\b/.test(text) ||
-    /\b(peinesillo|diezmillo|chamberete|ribeye|chorizo|costilla|cocido|bistec|pastor)\b/.test(text) ||
+    /\b(peinesillo|diezmillo|chamberete|ribeye|chorizo|costilla|cocido|bistec|pastor|pulpa)\b/.test(text) ||
     /\bcarb[oó]n\b/.test(text) ||
-    /\bfiro\b/.test(text) ||
+    /\b(firo|fino)\b/.test(text) ||
     /\bhot\s*wings?\b/.test(text) ||
     /\bhot\s*wins?\b/.test(text) ||
     /\bbbq\b/.test(text);

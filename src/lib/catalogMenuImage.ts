@@ -2,10 +2,9 @@
  * Foto de menú de una tienda con catálogo fijo.
  *
  * George: `public/menus/george.png` (o el base64 partido que ya está en el repo).
- * Carnicería La Central: el mismo mecanismo. Si Víctor todavía no manda la
- * foto, no hay archivo y esta función regresa null — el pedido no se bloquea.
- * También acepta `CARNICERIA_LA_CENTRAL_MENU_IMAGE_URL` (https) para no
- * esperar el PNG en el deploy.
+ * Carnicería La Central: `public/menus/carniceria-la-central.png`.
+ * Si el PNG no está, esta función regresa null y el pedido sigue en texto.
+ * También acepta `CARNICERIA_LA_CENTRAL_MENU_IMAGE_URL` (https).
  */
 
 import { readdir, readFile } from "node:fs/promises";

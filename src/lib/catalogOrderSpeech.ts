@@ -121,6 +121,8 @@ function canon(word: string): string {
   if (word === "chamberetes") return "chamberete";
   if (word === "ribeyes") return "ribeye";
   if (word === "argentinos") return "argentino";
+  if (word === "firo" || word === "firos") return "fino";
+  if (word === "pulpas") return "pulpa";
   return word;
 }
 
@@ -439,7 +441,9 @@ function looseScore(family: Family, spanText: string, families: Family[]): numbe
     return spoken.every((token) => tokens.has(token));
   });
   if (owners.length !== 1 || owners[0] !== family) return 0;
-  const strong = spoken.some((token) => token.length >= 6) || spoken.length >= 2;
+  // «fino» y «pulpa» son cortos, pero en este menú nombran un solo producto.
+  const strong =
+    spoken.some((token) => token.length >= 6 || token === "fino" || token === "pulpa") || spoken.length >= 2;
   if (!strong) return 0;
   return spoken.length * 2 + 3;
 }

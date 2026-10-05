@@ -110,7 +110,7 @@ export type CaptureInput = {
   // cual a validationEngine para verificar la zona que sugiera la IA contra
   // la lista real (mismo patrón que resolveTiendaStrictByName con tiendas).
   knownZoneNames?: string[];
-  // Nota de cobro ya redactada para el cliente (un solo $35). Si falta,
+  // Nota de cobro ya redactada para el cliente (un solo $25). Si falta,
   // el recibo usa el texto de tienda que cotiza.
   feeNote?: string | null;
   // Precios ya armados (nombre — $precio). Si vienen, el recibo los usa

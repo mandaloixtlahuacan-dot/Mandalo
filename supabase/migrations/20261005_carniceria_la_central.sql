@@ -8,12 +8,14 @@
 --      un teléfono que ya no sea el marcador.
 --   2) Pon hora_apertura / hora_cierre reales. En NULL la tienda se trata
 --      como siempre abierta.
---   3) La foto del menú no va en esta migración. El bot la toma de
---      public/menus/carniceria-la-central.png o de la variable
---      CARNICERIA_LA_CENTRAL_MENU_IMAGE_URL. Sin foto, manda el menú en texto.
+--   3) La foto oficial ya está en public/menus/carniceria-la-central.png.
+--      CARNICERIA_LA_CENTRAL_MENU_IMAGE_URL solo hace falta si esa foto no
+--      entra al despliegue.
 --
--- No hay pollo. El carbón es Firo (con R). Carnes: precio por kilo.
--- Carbón y salsas: precio por pieza.
+-- Menú impreso: 19 productos, sin pollo. Carnes, pastor y carbón por kilo.
+-- Salsas por pieza. El carbón del menú se llama Carbón fino (el habla también
+-- acepta firo y carbón). Si este SQL ya se corrió con los nombres viejos,
+-- los UPDATE de abajo los alinean antes de insertar.
 
 insert into public.tiendas (nombre, categoria, telefono, direccion, activa, usa_catalogo_fijo)
 select
@@ -34,27 +36,58 @@ set
   activa = true
 where nombre ilike 'carnicer_a la central';
 
+update public.productos_tienda p
+set nombre_producto = 'Carne de puerco al pastor',
+    categoria = 'Carne de puerco al pastor',
+    precio = 120
+from public.tiendas t
+where p.tienda_id = t.id
+  and t.nombre ilike 'carnicer_a la central'
+  and p.nombre_producto = 'Carne al pastor'
+  and not exists (
+    select 1
+    from public.productos_tienda p2
+    where p2.tienda_id = t.id
+      and p2.nombre_producto = 'Carne de puerco al pastor'
+  );
+
+update public.productos_tienda p
+set nombre_producto = 'Carbón fino',
+    categoria = 'Extras',
+    precio = 75
+from public.tiendas t
+where p.tienda_id = t.id
+  and t.nombre ilike 'carnicer_a la central'
+  and p.nombre_producto = 'Carbón Firo'
+  and not exists (
+    select 1
+    from public.productos_tienda p2
+    where p2.tienda_id = t.id
+      and p2.nombre_producto = 'Carbón fino'
+  );
+
 insert into public.productos_tienda (tienda_id, nombre_producto, precio, disponible, categoria)
 select t.id, v.nombre_producto, v.precio, true, v.categoria
 from public.tiendas t
 cross join (
   values
-    ('Arrachera Marinada', 280, 'Carnes'),
-    ('Bistec de res Marinada', 210, 'Carnes'),
-    ('Chorizo', 115, 'Carnes'),
-    ('Chorizo Argentino', 135, 'Carnes'),
-    ('Costilla de puerco marinada', 120, 'Carnes'),
-    ('Bistec de puerco marinado', 120, 'Carnes'),
-    ('Carne al pastor', 120, 'Carnes'),
-    ('Peinesillo', 215, 'Carnes'),
-    ('Diezmillo', 215, 'Carnes'),
-    ('Bistec de res', 210, 'Carnes'),
-    ('Cocido de res', 155, 'Carnes'),
-    ('Chamberete', 155, 'Carnes'),
-    ('Bistec de puerco', 120, 'Carnes'),
-    ('Costilla de puerco', 110, 'Carnes'),
-    ('Ribeye de res con hueso', 210, 'Carnes'),
-    ('Carbón Firo', 75, 'Extras'),
+    ('Arrachera Marinada', 280, 'Res marinada'),
+    ('Bistec de res Marinada', 210, 'Res marinada'),
+    ('Peinesillo', 215, 'Res'),
+    ('Diezmillo', 215, 'Res'),
+    ('Bistec de res', 210, 'Res'),
+    ('Cocido de res', 155, 'Res'),
+    ('Chamberete', 155, 'Res'),
+    ('Ribeye de res con hueso', 210, 'Res'),
+    ('Pulpa de puerco', 115, 'Puerco'),
+    ('Costilla de puerco marinada', 120, 'Puerco'),
+    ('Bistec de puerco marinado', 120, 'Puerco'),
+    ('Bistec de puerco', 120, 'Puerco'),
+    ('Costilla de puerco', 110, 'Puerco'),
+    ('Carne de puerco al pastor', 120, 'Carne de puerco al pastor'),
+    ('Chorizo', 115, 'Embutidos'),
+    ('Chorizo Argentino', 135, 'Embutidos'),
+    ('Carbón fino', 75, 'Extras'),
     ('Salsa BBQ', 59, 'Extras'),
     ('Salsa Hot Wings', 55, 'Extras')
 ) as v(nombre_producto, precio, categoria)
@@ -66,7 +99,9 @@ where t.nombre ilike 'carnicer_a la central'
       and p.nombre_producto = v.nombre_producto
   );
 
--- Verificación (no cambia datos): debe verse una tienda y 18 productos, sin pollo.
+-- Verificación (no cambia datos): una tienda, 19 productos, sin pollo,
+-- con Pulpa de puerco y Carbón fino. El teléfono marcador y el horario
+-- siguen pendientes de Víctor.
 select t.id, t.nombre, t.categoria, t.telefono, t.usa_catalogo_fijo, t.hora_apertura, t.hora_cierre
 from public.tiendas t
 where t.nombre ilike 'carnicer_a la central';
@@ -75,4 +110,4 @@ select p.nombre_producto, p.precio, p.categoria, p.disponible
 from public.productos_tienda p
 join public.tiendas t on t.id = p.tienda_id
 where t.nombre ilike 'carnicer_a la central'
-order by p.nombre_producto;
+order by p.categoria, p.nombre_producto;

@@ -81,7 +81,8 @@ const laCentral: UxStore = {
 };
 const stores = [zagu, george, taqueria, laCentral];
 
-assert(MANDALO_SERVICE_FEE === 10 && MANDALO_DELIVERY_FEE === 25, "el desglose interno sigue 10+25");
+assert(MANDALO_SERVICE_FEE === 0 && MANDALO_DELIVERY_FEE === 25, "el desglose interno es 0 de Mándalo y 25 del repartidor");
+assert(MANDALO_SERVICE_FEE + MANDALO_DELIVERY_FEE === 25, "servicio y envío suman el $25 del cliente");
 assert(CUSTOMER_STORE_NICHES.length === 3, "el cliente ve abarrotes, restaurantes y carnicerías");
 assert(nicheIdForCategoria("Abarrotes") === "abarrotes", "ZAGU/Abarrotes");
 assert(nicheIdForCategoria("Restaurante") === "restaurantes", "George/Restaurante");
@@ -108,7 +109,7 @@ assert(buildGreeting(new Date("2026-10-02T15:00:00Z")) === greeting, "de mañana
 assert(buildGreeting(new Date("2026-10-03T05:00:00Z")) === greeting, "de noche el saludo no cambia");
 assert(!greeting.includes("Tiendas de abarrotes"), "el saludo ya no lista Tiendas de abarrotes");
 assert(!greeting.includes("Tú dime el antojo y yo lo consigo."), "ya no usa el saludo de mandadero por hora");
-assert(!greeting.includes("$35") && !greeting.includes("efectivo") && !greeting.includes("Abro de"), "el saludo no trae precio, horario ni pago");
+assert(!greeting.includes("$35") && !greeting.includes("$25") && !greeting.includes("efectivo") && !greeting.includes("Abro de"), "el saludo no trae precio, horario ni pago");
 assert(greeting.trimEnd().endsWith("3. Carnicerías"), "el saludo termina en las tres opciones");
 assert(!greeting.includes("Pícale al número o al nombre."), "ya no pide picarle al número");
 assert(greeting.includes("\n"), "el saludo trae saltos de línea");
@@ -133,7 +134,7 @@ assert(classifyCustomerTurn({ message: "1", lastBotText: oldGreeting, hasBusines
 const abarrotesList = formatNicheStoreList(CUSTOMER_STORE_NICHES[0], stores);
 assert(abarrotesList.includes("ZAGU"), "abarrotes incluye a ZAGU");
 assert(!abarrotesList.includes("George"), "abarrotes no mezcla restaurantes");
-assert(abarrotesList.includes("más $35 de envío y servicio"), "abarrotes avisa que la tienda cotiza más $35");
+assert(abarrotesList.includes("más $25 de envío y servicio"), "abarrotes avisa que la tienda cotiza más $25");
 
 const listed = formatNicheStoreList(CUSTOMER_STORE_NICHES[1], stores);
 assert(listed.includes("Hamburguesas Hotdogs George"), "lista de restaurantes incluye a George");
@@ -141,7 +142,7 @@ assert(listed.includes("abre mañana a las 7pm"), "la cerrada se puede programar
 assert(!listed.includes("Tacos el Grillo"), "la taquería no se cuela en restaurantes");
 assert(!listed.includes("Carnicería"), "restaurantes no mezcla carnicerías");
 assert(!abarrotesList.includes("Carnicería"), "abarrotes no mezcla carnicerías");
-assert(listed.includes("$35"), "la lista avisa el cargo junto");
+assert(listed.includes("$25"), "la lista avisa el cargo junto");
 assert(!customerCopySplitsFee(listed), "la lista no parte $10+$25");
 
 const carniceriaNiche = CUSTOMER_STORE_NICHES.find((niche) => niche.id === "carnicerias");
@@ -151,7 +152,7 @@ assert(carniceriasList.includes("Carnicería La Central"), "carnicerías lista s
 assert(carniceriasList.includes("abre mañana a las 9am"), "La Central cerrada se puede programar");
 assert(!carniceriasList.includes("George"), "carnicerías no mezcla a George");
 assert(!carniceriasList.includes("ZAGU"), "carnicerías no mezcla abarrotes");
-assert(carniceriasList.includes("más $35 de envío y servicio") || carniceriasList.includes("$35"), "carnicerías avisa el cargo junto");
+assert(carniceriasList.includes("más $25 de envío y servicio") || carniceriasList.includes("$25"), "carnicerías avisa el cargo junto");
 assert(!customerCopySplitsFee(carniceriasList), "carnicerías no parte $10+$25");
 assert((carniceriasList.match(/^\d+\. /gm) ?? []).length === 1, "en carnicerías solo aparece La Central");
 const carniceriaAbierta = formatNicheStoreList(carniceriaNiche!, [{ ...laCentral, abierta: true, abreTexto: "" }]);
@@ -171,12 +172,18 @@ assert(
 const centralMenu = renderCustomerTurn(pickedCentral, stores, carniceriasList);
 assert(centralMenu?.kind === "menu" && centralMenu.store.id === laCentral.id, "elegir La Central manda el menú como George");
 assert(
-  centralMenu != null && centralMenu.kind === "menu" && centralMenu.text.includes("$35") && !customerCopySplitsFee(centralMenu.text),
-  "el menú de La Central cobra $35 junto",
+  centralMenu != null && centralMenu.kind === "menu" && centralMenu.text.includes("$25") && !centralMenu.text.includes("$35") && !customerCopySplitsFee(centralMenu.text),
+  "el menú de La Central cobra $25 junto",
 );
 assert(catalogUsesMenuImage(laCentral) && catalogMenuImageKind(laCentral) === "carniceria-la-central", "La Central usa el mismo camino de foto que George");
 assert(catalogMenuPngRelative("carniceria-la-central") === CARNICERIA_LA_CENTRAL_MENU_PNG, "la foto espera el PNG de Víctor");
 assert(CARNICERIA_MENU_IMAGE_ENV === "CARNICERIA_LA_CENTRAL_MENU_IMAGE_URL", "la URL de la foto es opcional");
+assert(existsSync(CARNICERIA_LA_CENTRAL_MENU_PNG) && statSync(CARNICERIA_LA_CENTRAL_MENU_PNG).size > 20_000, "está la foto del menú de La Central");
+const centralPng = readFileSync(CARNICERIA_LA_CENTRAL_MENU_PNG);
+assert(
+  centralPng.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
+  "la foto de La Central es un PNG",
+);
 const centralSinFoto = formatCatalogMenuCaption(laCentral, { photo: false });
 assert(!/foto/i.test(centralSinFoto) && centralSinFoto.includes("nombre del menú"), "sin foto no promete la imagen");
 assert(centralSinFoto.includes("cerrada"), "sin foto también avisa si está cerrada");
@@ -301,7 +308,7 @@ assert(/te paso el menú/i.test(caption), "al elegir el restaurante se avisa que
 assert(caption.includes("Te paso el menú de"), "la foto se anuncia, no se lista");
 assert(!/quieres que te pase el menú/i.test(caption), "no pregunta antes de mandar el menú");
 assert(!caption.toLowerCase().includes("categoría"), "el pie de la foto no pide categoría");
-assert(caption.includes("$35"), "el pie avisa el envío");
+assert(caption.includes("$25") && !caption.includes("$35"), "el pie avisa el envío de $25");
 assert(
   (existsSync("public/menus/george.png") && statSync("public/menus/george.png").size > 20_000) ||
     (existsSync("public/menus/george.png.b64") && statSync("public/menus/george.png.b64").size > 20_000) ||
@@ -545,11 +552,11 @@ assert(switchedSnapshot.businessId === george.id, "el snapshot cambia a George")
 assert(String(switchedSnapshot.businessName).includes("George"), "el nombre largo de George gana");
 assert((switchedSnapshot.items ?? []).length === 0, "los productos de ZAGU no se quedan");
 
-const quote = formatCustomerQuoteMessage({ tiendaNombre: "ZAGU", pedidoId: 12, subtotal: 80, total: 115 });
-assert(quote.includes("Envío y servicio: $35"), "cotización con $35 junto");
-assert(quote.includes("Total a pagar: $115"), "total = subtotal + 35");
-assert(!quote.includes("$10"), "el cliente no ve $10");
-assert(!quote.includes("$25"), "el cliente no ve $25");
+const quote = formatCustomerQuoteMessage({ tiendaNombre: "ZAGU", pedidoId: 12, subtotal: 80, total: 105 });
+assert(quote.includes("Envío y servicio: $25"), "cotización con $25 junto");
+assert(quote.includes("Total a pagar: $105"), "total = subtotal + 25");
+assert(!/\$10\b/.test(quote), "el cliente no ve $10");
+assert(!/\$35\b/.test(quote), "el cliente no ve el cargo viejo");
 assert(!customerCopySplitsFee(quote), "la cotización no parte el cargo");
 
 const abarrotesSnapshot = {
@@ -570,7 +577,7 @@ const receipt = buildCustomerMessage({
   items: abarrotesSnapshot.items,
   feeNote: formatPreConfirmFeeNote("cotiza_tienda"),
 });
-assert(receipt.includes("La tienda cotiza tus productos, más $35 de envío y servicio."), "recibo de abarrotes antes del SÍ");
+assert(receipt.includes("La tienda cotiza tus productos, más $25 de envío y servicio."), "recibo de abarrotes antes del SÍ");
 assert(!receipt.includes("$10"), "el recibo no parte el cargo");
 assert(receipt.includes("\n"), "el recibo conserva saltos de línea");
 
@@ -592,9 +599,9 @@ const catalogReceipt = buildCustomerMessage({
   feeNote: formatCatalogReceiptFee(60),
   pricedLines: "- Hamburguesa sencilla — $60",
 });
-assert(catalogReceipt.includes("Envío y servicio: $35"), "recibo de catálogo con $35");
+assert(catalogReceipt.includes("Envío y servicio: $25") && !catalogReceipt.includes("$35"), "recibo de catálogo con $25");
 assert(catalogReceipt.includes("Hamburguesa sencilla — $60"), "el recibo trae el precio del producto");
-assert(catalogReceipt.includes("Total: $95"), "el recibo suma producto + envío");
+assert(catalogReceipt.includes("Total: $85"), "el recibo suma producto + envío");
 
 const quoteBase = {
   businessId: 1,
@@ -1060,7 +1067,7 @@ const lineaJitomate = formatSpecificItemLine(jitomateCompleta ?? { nombre_produc
 assert(ticketJunto.includes(lineaMayo) && /190/.test(lineaMayo) && /McCormick/.test(ticketJunto), "el ticket junto muestra la mayonesa de 190 g");
 assert(ticketJunto.includes(lineaPapa) && /1 kilo/i.test(lineaPapa), "el ticket junto muestra 1 kilo de papa");
 assert(ticketJunto.includes(lineaJitomate) && /2 kilos/i.test(lineaJitomate), "el ticket junto muestra 2 kilos de jitomate");
-assert(ticketJunto.includes("$35") && !ticketJunto.includes("$10") && !ticketJunto.includes("$25"), "el ticket junto sigue en un solo $35");
+assert(ticketJunto.includes("$25") && !ticketJunto.includes("$10") && !ticketJunto.includes("$35"), "el ticket junto es un solo $25");
 assert(!/sabritas|barcel|pringles/i.test(ticketJunto), "el ticket junto no pide bolsa de papas");
 
 const sucio = quoteCheck(
@@ -1081,7 +1088,7 @@ assert(jitomateSucio?.cantidad === 2, "el jitomate que la IA dejó en 1 vuelve a
 
 assert(mayoReceipt.includes("McCormick") && mayoReceipt.includes("190"), "el cliente ve marca y presentación antes del SÍ");
 assert(mayoReceipt.includes("SÍ"), "el cierre sigue pidiendo SÍ");
-assert(mayoReceipt.includes("$35") && !mayoReceipt.includes("$10") && !mayoReceipt.includes("$25"), "abarrotes siguen en un solo $35");
+assert(mayoReceipt.includes("$25") && !mayoReceipt.includes("$10") && !mayoReceipt.includes("$35"), "abarrotes siguen en un solo $25");
 
 const papasKilo = quoteCheck([], "kilo de papas");
 assert(papasKilo.validatedItems.allItemsSpecific, "kilo de papas es papa suelta, no Sabritas");
@@ -1110,8 +1117,8 @@ const waivableReceipt = buildCustomerMessage({
   feeNote: formatPreConfirmFeeNote("cotiza_tienda"),
 });
 assert(waivableReceipt.includes("la que sea"), "el recibo lleva la nota de que la tienda escoge");
-assert(waivableReceipt.includes("$35"), "el recibo de cotización sigue en $35");
-assert(!waivableReceipt.includes("$10") && !waivableReceipt.includes("$25"), "el recibo no parte el cargo");
+assert(waivableReceipt.includes("$25"), "el recibo de cotización es de $25");
+assert(!waivableReceipt.includes("$10") && !waivableReceipt.includes("$35"), "el recibo no parte el cargo ni usa el monto viejo");
 
 const georgeCatalog = [
   { nombreProducto: "Hamburguesa de pollo", precio: 55 },
@@ -1141,9 +1148,9 @@ const ticketDos = buildCustomerMessage({
   feeNote: formatCatalogReceiptFee(pricedDos.subtotal),
 });
 assert(ticketDos.includes("$110"), "el ticket final trae el precio de dos hamburguesas");
-assert(ticketDos.includes("$35"), "el ticket de catálogo sigue con un solo $35");
-assert(ticketDos.includes("$145"), "el total suma las dos hamburguesas más $35");
-assert(!ticketDos.includes("$10") && !ticketDos.includes("$25"), "el ticket de catálogo no parte el cargo");
+assert(ticketDos.includes("Envío y servicio: $25"), "el ticket de catálogo trae un solo $25");
+assert(ticketDos.includes("$135"), "el total suma las dos hamburguesas más $25");
+assert(!/\$10\b/.test(ticketDos) && !/\$35\b/.test(ticketDos), "el ticket de catálogo no parte el cargo ni usa el monto viejo");
 
 const trasUbicacion = reconcileCatalogQuantities(
   [{ nombre_producto: "Hamburguesa de pollo", cantidad: 2 }],
@@ -1191,11 +1198,11 @@ const quoteDos = formatCustomerQuoteMessage({
   tiendaNombre: "Hamburguesas Hotdogs George",
   pedidoId: 9,
   subtotal: 110,
-  total: 145,
+  total: 135,
   itemLines: pricedDos.lines,
 });
-assert(quoteDos.includes("2 ") && quoteDos.includes("$110") && quoteDos.includes("$145"), "el SÍ del precio repite cantidad y precio de dos");
-assert(quoteDos.includes("$35") && !quoteDos.includes("$10") && !quoteDos.includes("$25"), "ese SÍ sigue en un solo $35");
+assert(quoteDos.includes("2 ") && quoteDos.includes("$110") && quoteDos.includes("$135"), "el SÍ del precio repite cantidad y precio de dos");
+assert(quoteDos.includes("Envío y servicio: $25") && !/\$10\b/.test(quoteDos) && !/\$35\b/.test(quoteDos), "ese SÍ es un solo $25");
 assert(formatCourierCancelNotice(9).includes("#9"), "si el repartidor ya tenía el pedido, el aviso de cancelación lo nombra");
 
 const menuGeorge = [
@@ -1470,10 +1477,12 @@ const listaConPapas = formatProductListConfirm(papasEnLaLista.items);
 assert(/papas gajo 315g/i.test(listaConPapas) && listaConPapas.includes("¿Están bien estos productos?"), "después de te faltaron se vuelve a listar con las papas");
 
 const menuCentral = CARNICERIA_LA_CENTRAL_PRODUCTOS.map(({ nombreProducto, precio }) => ({ nombreProducto, precio }));
-assert(menuCentral.length === 18, "La Central tiene los 18 productos de la lista");
+assert(menuCentral.length === 19, "La Central tiene los 19 productos del menú impreso");
 assert(!menuCentral.some((row) => /pollo|pechuga|alitas/i.test(row.nombreProducto)), "La Central no vende pollo");
-assert(menuCentral.some((row) => row.nombreProducto === "Carbón Firo" && row.precio === 75), "el carbón es Firo, a $75");
-assert(!menuCentral.some((row) => /fino/i.test(row.nombreProducto)), "el carbón no se llama fino");
+assert(menuCentral.some((row) => row.nombreProducto === "Pulpa de puerco" && row.precio === 115), "el menú incluye Pulpa de puerco a $115");
+assert(menuCentral.some((row) => row.nombreProducto === "Carne de puerco al pastor" && row.precio === 120), "el pastor se llama Carne de puerco al pastor");
+assert(menuCentral.some((row) => row.nombreProducto === "Carbón fino" && row.precio === 75), "el carbón del menú es Carbón fino, a $75");
+assert(!menuCentral.some((row) => /firo/i.test(row.nombreProducto)), "el nombre guardado no es Firo");
 const pedidoCentral =
   "Quiero una arrachera marinada, un bistec de puerco marinado, peinesillo, un diezmillo, chamberete, un ribeye y carbón firo, y una salsa hot wins";
 const anotadoCentral = applyCatalogSpeech({ base: [], userMessage: pedidoCentral, catalog: menuCentral });
@@ -1485,17 +1494,17 @@ assert(lineaCentral(/^Peinesillo$/)?.cantidad === 1, "peinesillo se anota");
 assert(lineaCentral(/^Diezmillo$/)?.cantidad === 1, "diezmillo se anota");
 assert(lineaCentral(/^Chamberete$/)?.cantidad === 1, "chamberete se anota");
 assert(lineaCentral(/^Ribeye de res con hueso$/)?.cantidad === 1, "ribeye se anota con el nombre del menú");
-assert(lineaCentral(/^Carbón Firo$/)?.cantidad === 1, "carbón firo se anota, no fino");
+assert(lineaCentral(/^Carbón fino$/)?.cantidad === 1, "carbón firo se guarda como Carbón fino");
 assert(lineaCentral(/^Salsa Hot Wings$/)?.cantidad === 1, "hot wins es Salsa Hot Wings");
 assert(anotadoCentral.items.length === 8, "el pedido de La Central son ocho líneas");
 assert(!anotadoCentral.items.some((item) => /pollo/i.test(item.nombre_producto)), "hablar de la carnicería no inventa pollo");
 const precioCentral = priceCatalogOrder(anotadoCentral.items, menuCentral);
 assert(precioCentral.subtotal === 280 + 120 + 215 + 215 + 155 + 210 + 75 + 55, "los precios del menú se suman");
 const ticketCentral = formatCatalogReceiptFee(precioCentral.subtotal);
-assert(ticketCentral.includes("$35") && !customerCopySplitsFee(ticketCentral), "el ticket de La Central sigue en $35 junto");
+assert(ticketCentral.includes("$25") && !ticketCentral.includes("$35") && !customerCopySplitsFee(ticketCentral), "el ticket de La Central es un solo $25");
 const listaCentral = formatProductListConfirm(anotadoCentral.items);
 assert(listaCentral.includes("¿Están bien estos productos?"), "antes del GPS se vuelve a listar");
-assert(/arrachera marinada/i.test(listaCentral) && /carb[oó]n firo/i.test(listaCentral) && /hot wings/i.test(listaCentral), "la lista trae arrachera, carbón firo y hot wings");
+assert(/arrachera marinada/i.test(listaCentral) && /carb[oó]n fino/i.test(listaCentral) && /hot wings/i.test(listaCentral), "la lista trae arrachera, carbón fino y hot wings");
 const enLaCentral = classifyCustomerTurn({
   message: pedidoCentral,
   lastBotText: centralMenuText,
@@ -1563,7 +1572,21 @@ const fino = applyCatalogSpeech({
   userMessage: "un carbón fino",
   catalog: menuCentral,
 });
-assert(!fino.items.some((item) => /firo/i.test(item.nombre_producto)), "fino no se anota como Firo");
+assert(fino.items[0]?.nombre_producto === "Carbón fino", "carbón fino se anota con el nombre del menú");
+for (const phrase of ["carbón firo", "fino", "firo", "carbón"]) {
+  const carbon = applyCatalogSpeech({ base: [], userMessage: phrase, catalog: menuCentral });
+  assert(carbon.items[0]?.nombre_producto === "Carbón fino", `${phrase} también es Carbón fino`);
+}
+const pulpa = applyCatalogSpeech({
+  base: [],
+  userMessage: "una pulpa de puerco",
+  catalog: menuCentral,
+});
+assert(pulpa.items[0]?.nombre_producto === "Pulpa de puerco" && pulpa.items[0]?.cantidad === 1, "pulpa de puerco se anota");
+const pulpaSola = applyCatalogSpeech({ base: [], userMessage: "pulpa", catalog: menuCentral });
+assert(pulpaSola.items[0]?.nombre_producto === "Pulpa de puerco", "pulpa sola es Pulpa de puerco");
+const pastorViejo = applyCatalogSpeech({ base: [], userMessage: "carne al pastor", catalog: menuCentral });
+assert(pastorViejo.items[0]?.nombre_producto === "Carne de puerco al pastor", "carne al pastor usa el nombre del menú");
 const pollo = applyCatalogSpeech({
   base: [],
   userMessage: "un pollo",
@@ -1630,7 +1653,7 @@ if (galletasEnConfirmacion.kind === "amend") {
   });
   assert(resumen.includes("Pedido #73"), "el resumen sigue siendo el pedido #73");
   assert(/coca/i.test(resumen) && /galleta/i.test(resumen), "el resumen trae la Coca y las galletas");
-  assert(resumen.includes("$35"), "el cargo de $35 no cambia");
+  assert(resumen.includes("$25") && !resumen.includes("$35"), "el cargo del resumen es $25");
   assert(!customerCopySplitsFee(resumen), "el resumen no parte el cargo");
 }
 for (const si of ["SÍ", "sí", "ok", "va", "confirmo"]) {
@@ -1814,7 +1837,7 @@ assert(prompt.includes("foto del menú"), "el flujo de foto de George sigue en e
 assert(prompt.includes("pasa el menú"), "el prompt manda el menú al nombrar o elegir el restaurante");
 assert(prompt.includes("suelta la tienda anterior"), "el prompt suelta la tienda al cambiar de categoría");
 assert(prompt.includes("dos hamburguesas = 2"), "el prompt no deja caer la cantidad del menú");
-assert(prompt.includes("$35"), "el prompt no cambia el cargo de $35");
+assert(prompt.includes("$25") && !prompt.includes("$35"), "el prompt cobra $25 y no el monto viejo");
 assert(prompt.includes("cada uno es su propio item"), "el prompt no junta varios productos en un nombre");
 assert(prompt.includes("¿Están bien estos productos?"), "el prompt no pide GPS antes de confirmar los productos");
 
@@ -1894,7 +1917,7 @@ const listaProductos = buildCustomerMessage({
 assert(listaProductos.startsWith("OK, pediste:"), "con los productos claros se listan antes de la dirección");
 assert(listaProductos.includes("¿Están bien estos productos?"), "se pregunta si los productos están bien");
 assert(!listaProductos.includes("ubicación por GPS"), "esa lista no pide GPS");
-assert(!listaProductos.includes("$35"), "la lista de productos no adelanta el cargo");
+assert(!listaProductos.includes("$35") && !listaProductos.includes("$25"), "la lista de productos no adelanta el cargo");
 assert(/az[uú]car/i.test(listaProductos) && /horchata/i.test(listaProductos) && /arroz/i.test(listaProductos) && /coca|refresco/i.test(listaProductos), "la lista trae los cuatro");
 assert(!arrozConMarca.readyForConfirmation, "sin dirección y sin SÍ de productos no hay ticket final");
 

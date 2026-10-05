@@ -2,18 +2,23 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 5 de octubre de 2026. Tercer filtro **Carnicerías**:
-> el saludo ofrece Abarrotes, Restaurantes y Carnicerías. Elegir Carnicerías
-> lista solo a Carnicería La Central (`usa_catalogo_fijo`, mismo confirmar /
-> corregir / SÍ / GPS que George). Menú de 18 productos, sin pollo; el carbón
-> es **Carbón Firo**. El cargo al cliente sigue siendo $35 de envío y servicio.
-> El SQL está en `supabase/migrations/20261005_carniceria_la_central.sql` —
-> Víctor lo corre; el teléfono `520000000000` es marcador y hay que cambiarlo
+> Última actualización: 5 de octubre de 2026. El cargo al cliente es **$25 de
+> envío y servicio** (`servicio_mandalo` 0 + `servicio_repartidor` 25). El
+> ticket de WhatsApp no lo parte y no usa el $35 anterior. Las notas viejas de
+> este archivo que dicen $35 describen la regla de antes de hoy.
+> Tercer filtro **Carnicerías**: el saludo ofrece Abarrotes, Restaurantes y
+> Carnicerías. Elegir Carnicerías lista solo a Carnicería La Central
+> (`usa_catalogo_fijo`, mismo confirmar / corregir / SÍ / GPS que George).
+> Menú impreso de 19 productos, sin pollo. Incluye Pulpa de puerco ($115/kg)
+> y Carne de puerco al pastor ($120/kg). El carbón se guarda como **Carbón
+> fino** ($75/kg); firo, fino y carbón apuntan a ese nombre. La foto oficial
+> está en `public/menus/carniceria-la-central.png`. El pie del arte dice $25;
+> coincide con el cargo y no se editó la imagen.
+> El SQL de la tienda está en `supabase/migrations/20261005_carniceria_la_central.sql`
+> y el default del cargo en `supabase/migrations/20261005_cargo_cliente_25.sql`.
+> Víctor los corre. El teléfono `520000000000` es marcador: hay que cambiarlo
 > al WhatsApp real, igual que el horario (en NULL se ve siempre abierta).
-> La foto del menú todavía no está: va en `public/menus/carniceria-la-central.png`
-> o en `CARNICERIA_LA_CENTRAL_MENU_IMAGE_URL`. Sin foto el bot manda el menú
-> en texto y el habla sigue contra los nombres del catálogo. Código en rama,
-> sin merge y sin deploy.
+> Código en rama, sin merge y sin deploy.
 > Actualización anterior del mismo día: Pedido #85 (George, menú fijo):
 > «quiero una hamburguesa de res, unas papas gajo, una Pepsi y una manzanita»
 > anota las cuatro líneas (Papas Gajo aunque el menú diga 315g o 1 pieza;
@@ -169,7 +174,7 @@ El saludo sigue la hora (buenos días, buenas tardes, buenas noches) y termina e
 
 Código en rama, **sin merge y sin deploy**. Decisiones de Víctor aplicadas en copy y plantillas deterministas (`src/lib/customerUx.ts`):
 
-- Al cliente el cargo es una sola línea de **$35 de envío y servicio**. De esos $35, **$25** son para el repartidor y **$10** para Mándalo (Víctor). Víctor lo confirmó en una prueba en vivo el 2026-10-03; reemplaza el servicio fijo de $20. Internamente siguen `MANDALO_SERVICE_FEE = 10` y `MANDALO_DELIVERY_FEE = 25`.
+- Al cliente el cargo era una sola línea de **$35 de envío y servicio** ($25 repartidor + $10 Mándalo), confirmado en vivo el 2026-10-03. **Quedó reemplazado el 5 de octubre de 2026:** el cliente paga **$25** (`MANDALO_SERVICE_FEE = 0`, `MANDALO_DELIVERY_FEE = 25`). Ver el encabezado de este archivo.
 - Después del saludo: filtro **Abarrotes** / **Restaurantes** / **Carnicerías**, luego la lista de ese nicho (abiertas y cerradas, para no romper `esperando_apertura_tienda`). Nichos nuevos se agregan en `CUSTOMER_STORE_NICHES` y con `tiendas.categoria` (alias o `nicho:<id>`). Una tienda con categoría que no mapea (hoy, por ejemplo, `taqueria`) **no sale en esos filtros** hasta que se agregue el nicho o se le cambie la categoría. Carnicerías lista a Carnicería La Central cuando su `categoria` es Carnicerías y `usa_catalogo_fijo` está activo.
 - George (o cualquier tienda con `usa_catalogo_fijo` y productos) responde categorías y menú con precios reales desde la base, sin esperar a que la IA “vea” el catálogo al turno siguiente. Si la IA dice que el menú no está cargado y sí hay productos, ese texto se reemplaza.
 - Los saltos de línea de WhatsApp ya no se aplastan en `normalizeWhatsAppText` / `sanitizeCustomerReply`.
@@ -337,7 +342,7 @@ Dos bugs reportados por Víctor, arreglados antes de presentar Mándalo a una ti
 
 1. **(Crítico) Cliente atorado al rechazar el precio final** — responder cualquier cosa que no fuera "SÍ" en `confirmado_tiendas` (incluyendo un "No" clarísimo) repetía "Procesando tu pedido..." para siempre, sin cancelar ni avanzar. Nueva función `messages.isNoConfirmation` (simétrica a `isYesConfirmation`, excluye frases de duda como "no sé"/"dame un momento" para no cancelar de más) distingue un rechazo claro de una respuesta ambigua: rechazo → cancela gratis y avisa; ambiguo → repite el total y pide de nuevo en vez de un filler vacío.
    - **Corrección de regla de negocio de paso:** el corte de la cancelación gratuita estaba mal puesto en el código — se ponía en cuanto la TIENDA cotizaba (`confirmado_tiendas` ya estaba en `PAST_FREE_CANCEL_WINDOW`, escalando al admin), no en cuanto el CLIENTE confirmaba, que es la regla real. Se corrigió: `confirmado_tiendas` sale de `PAST_FREE_CANCEL_WINDOW` (ya no escala al admin) y entra a `TIENDA_NOTIFIABLE_CANCEL_STATES` en `cancelOpenPedido` (la tienda se entera si el cliente rechaza el precio después de ya haber cotizado). **CLAUDE.md Sección 5 ganó una regla nueva (#7, "Cancelación gratuita")** — antes se citaba como si ya existiera ahí desde varios bloques de trabajo atrás (ver notas de agosto 22), pero nunca se había escrito realmente; ahora sí queda explícita.
-2. **Comisiones: el desglose vigente es $35 ($25 repartidor + $10 Mándalo)** — pedido de Víctor de una sesión anterior que nunca se aplicó. Causa raíz real: `mandaloFlow.ts` tenía sus **propias constantes duplicadas** (`MANDALO_SERVICE_FEE`/`MANDALO_DELIVERY_FEE`) además de las de `ordenes.ts` — cualquier cambio a un archivo dejaba al otro con los valores viejos, y de hecho el total (`calculateFinalPrice`, en `ordenes.ts`) y la columna `servicio_repartidor` guardada en BD (con la constante duplicada de `mandaloFlow.ts`) habrían quedado **inconsistentes entre sí** si solo se hubiera tocado un archivo. Se eliminaron las duplicadas — `mandaloFlow.ts` ahora importa de `ordenes.ts`, única fuente de verdad. El cargo al cliente quedó en **$35 de envío y servicio**: **$25** para el repartidor y **$10** para Mándalo. Víctor confirmó ese desglose en vivo el 2026-10-03. Se reemplazó la mención anterior de un servicio fijo de $20.
+2. **Comisiones (histórico de agosto 2026; el cargo vigente desde el 5 de octubre de 2026 es $25, ver el encabezado):** el desglose de entonces era $35 ($25 repartidor + $10 Mándalo) — pedido de Víctor de una sesión anterior que nunca se aplicó. Causa raíz real: `mandaloFlow.ts` tenía sus **propias constantes duplicadas** (`MANDALO_SERVICE_FEE`/`MANDALO_DELIVERY_FEE`) además de las de `ordenes.ts` — cualquier cambio a un archivo dejaba al otro con los valores viejos, y de hecho el total (`calculateFinalPrice`, en `ordenes.ts`) y la columna `servicio_repartidor` guardada en BD (con la constante duplicada de `mandaloFlow.ts`) habrían quedado **inconsistentes entre sí** si solo se hubiera tocado un archivo. Se eliminaron las duplicadas — `mandaloFlow.ts` ahora importa de `ordenes.ts`, única fuente de verdad. El cargo al cliente quedó en **$35 de envío y servicio**: **$25** para el repartidor y **$10** para Mándalo. Víctor confirmó ese desglose en vivo el 2026-10-03. Se reemplazó la mención anterior de un servicio fijo de $20.
 
 **Pendiente:** probar en vivo antes de la reunión de hoy — responder "No" a un precio final real y confirmar que cancela con el mensaje correcto (no más "procesando" infinito), y un pedido de prueba de punta a punta para confirmar que el cargo al cliente ya sale en $35 de envío y servicio ($25 para el repartidor y $10 para Mándalo). Ese desglose lo confirmó Víctor en vivo el 2026-10-03.
 
