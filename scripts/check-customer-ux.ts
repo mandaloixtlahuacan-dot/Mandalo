@@ -9,7 +9,7 @@ import { applyCatalogSpeech } from "../src/lib/catalogOrderSpeech";
 import { ADDRESS_ASK_MESSAGE, buildCustomerMessage, dispatchItemAlreadyShowsQty, formatProductListConfirm, formatSpecificItemLine, mergeSnapshot, type PedidoItemInput } from "../src/lib/services/captureEngine";
 import { validateCaptureForConfirmation } from "../src/lib/services/validationEngine";
 import { confirmationCustomerMessage, planConfirmationAmendment } from "../src/lib/confirmationAmendment";
-import { isBareOrderRejection, isNoConfirmation, isYesConfirmation } from "../src/lib/messages";
+import { classifyProductListReply, isBareOrderRejection, isNoConfirmation, isProductListRequest, isYesConfirmation } from "../src/lib/messages";
 import { normalizeWhatsAppText } from "../src/lib/waapi";
 import {
   buildGreeting,
@@ -1567,6 +1567,118 @@ const flowSrc = readFileSync("src/lib/mandaloFlow.ts", "utf8");
 assert(flowSrc.includes("cliente_rechazo_confirmacion_inicial"), "un no en el primer resumen cancela el pedido");
 assert(flowSrc.includes("cliente_rechazo_productos"), "un no en la lista de productos cancela el pedido");
 assert(flowSrc.includes("awaitingProductConfirm"), "el sí de la lista no es el sí del ticket final");
+assert(flowSrc.includes("classifyProductListReply"), "el sí con corrección no se trata como el sí del GPS");
+assert(flowSrc.includes("productos_corregidos"), "una corrección en la lista se guarda antes de volver a preguntar");
+
+const tiendaSinGps = { businessId: 1, businessName: "Abarrotes" };
+function quoteSinGps(items: PedidoItemInput[], userMessage: string, flags?: { productosConfirmados?: boolean; awaitingProductConfirm?: boolean }) {
+  return validateCaptureForConfirmation({
+    snapshot: { ...tiendaSinGps, items, ...(flags ? { flags } : {}) },
+    items,
+    quoteStore: true,
+    userMessage,
+  });
+}
+function listaDe(result: ReturnType<typeof quoteSinGps>) {
+  return buildCustomerMessage({
+    validation: result,
+    snapshot: tiendaSinGps,
+    items: result.validatedItems.items,
+    feeNote: formatPreConfirmFeeNote("cotiza_tienda"),
+  });
+}
+
+for (const corta of ["Blanca", "La quiero blanca", "Morada"]) {
+  const cerrada = quoteSinGps([{ nombre_producto: "Cebolla", cantidad: 1, unidad: "kilo" }], corta);
+  const linea = cerrada.validatedItems.items[0];
+  assert(cerrada.validatedItems.allItemsSpecific, `"${corta}" cierra la cebolla`);
+  assert(/blanca|morada/i.test(String(linea?.presentacion)), `"${corta}" guarda el tipo`);
+  const pregunta = listaDe(cerrada);
+  assert(pregunta.includes("¿Están bien estos productos?"), `"${corta}" pasa a la lista`);
+  assert(!/blanca o morada/i.test(pregunta), `"${corta}" no vuelve a preguntar el tipo`);
+  assert(!pregunta.includes("ubicación por GPS"), `"${corta}" no pide GPS`);
+}
+
+const blancaAunqueFalteFrijol = quoteSinGps(
+  [
+    { nombre_producto: "Frijol", cantidad: 1, unidad: "kilo" },
+    { nombre_producto: "Cebolla", cantidad: 1, unidad: "kilo" },
+  ],
+  "Blanca",
+);
+const cebollaBlanca = blancaAunqueFalteFrijol.validatedItems.items.find((item) => /cebolla/i.test(item.nombre_producto));
+assert(/blanca/i.test(String(cebollaBlanca?.presentacion)), "blanca se anota en la cebolla aunque el frijol siga abierto");
+assert(!/blanca/i.test(String(blancaAunqueFalteFrijol.validatedItems.items.find((item) => /frijol/i.test(item.nombre_producto))?.presentacion ?? "")), "blanca no se le pega al frijol");
+
+const chileCorto = quoteSinGps([{ nombre_producto: "Chile", cantidad: 1, unidad: "kilo" }], "jalapeño");
+assert(/jalapeño/i.test(String(chileCorto.validatedItems.items[0]?.presentacion)), "jalapeño cierra el chile sin repetir el nombre");
+assert(chileCorto.validatedItems.allItemsSpecific, "el chile con variedad y kilos ya se puede listar");
+assert(!/jalapeño, serrano/i.test(listaDe(chileCorto)), "no vuelve a preguntar el chile");
+
+const aceiteCorto = quoteSinGps([{ nombre_producto: "Aceite" }], "Nutrioli");
+assert(/nutrioli/i.test(String(aceiteCorto.validatedItems.items[0]?.marca)), "Nutrioli cierra la marca del aceite sin decir aceite");
+assert(/tamaño|litro/i.test(aceiteCorto.issues.find((issue) => issue.customerQuestion)?.customerQuestion ?? ""), "al aceite solo le falta el tamaño");
+const jamonClaro = quoteSinGps([{ nombre_producto: "Jamón" }], "FUD");
+assert(/fud/i.test(String(jamonClaro.validatedItems.items[0]?.marca)), "FUD cierra la marca del jamón sin decir jamón");
+const jamonCuarto = quoteSinGps([{ nombre_producto: "Jamón", marca: "FUD" }], "1/4");
+assert(jamonCuarto.validatedItems.items[0]?.cantidad === 0.25, "1/4 del jamón queda en un cuarto de kilo");
+assert(/1\/4/.test(String(jamonCuarto.validatedItems.items[0]?.presentacion)), "el jamón muestra 1/4");
+const cuartoNuevo = quoteSinGps([], "un cuarto de jamón");
+assert(/jam[oó]n/i.test(cuartoNuevo.validatedItems.items[0]?.nombre_producto ?? ""), "un cuarto de jamón abre la línea");
+assert(cuartoNuevo.validatedItems.items[0]?.cantidad === 0.25, "un cuarto queda en 0.25 kg");
+assert(!/cuarto/i.test(String(cuartoNuevo.validatedItems.items[0]?.marca ?? "")), "cuarto no se guarda como marca");
+const gramosJamon = quoteSinGps([], "250 g de jamón");
+assert(gramosJamon.validatedItems.items[0]?.cantidad === 250, "250 g de jamón no se pierde");
+assert(/250/.test(String(gramosJamon.validatedItems.items[0]?.presentacion)), "250 g queda en la presentación");
+
+const mandado80 = "1 kg frijol, 1 kg arroz, 1 kg cebolla, 1/4 jamón, 1 L leche, Coca 2 L";
+const pedido80 = quoteSinGps([], mandado80);
+const jamon80 = pedido80.validatedItems.items.find((item) => /jam[oó]n/i.test(item.nombre_producto));
+assert(jamon80 != null, "el jamón con cantidad no se pierde del mensaje");
+assert(jamon80?.cantidad === 0.25, "el 1/4 de jamón no se vuelve otra cantidad");
+assert(pedido80.validatedItems.items.some((item) => /frijol/i.test(item.nombre_producto)), "el frijol sigue en el mandado");
+assert(pedido80.validatedItems.items.some((item) => /arroz/i.test(item.nombre_producto)), "el arroz sigue en el mandado");
+assert(pedido80.validatedItems.items.some((item) => /cebolla/i.test(item.nombre_producto)), "la cebolla sigue en el mandado");
+assert(pedido80.validatedItems.items.some((item) => /leche/i.test(item.nombre_producto)), "la leche sigue en el mandado");
+assert(pedido80.validatedItems.items.some((item) => /coca|refresco/i.test(item.nombre_producto)), "la coca sigue en el mandado");
+const aceiteYJamon = quoteSinGps([], "1 litro de aceite y 1/4 de jamón");
+assert(aceiteYJamon.validatedItems.items.some((item) => /aceite/i.test(item.nombre_producto)), "el aceite con cantidad no se pierde");
+assert(aceiteYJamon.validatedItems.items.some((item) => /jam[oó]n/i.test(item.nombre_producto)), "el jamón sigue junto al aceite");
+
+assert(classifyProductListReply("Sí") === "confirm", "un sí limpio confirma la lista");
+assert(classifyProductListReply("Sí, nomás que la cebolla es blanca") === "revise", "sí, nomás que no es un sí limpio");
+assert(classifyProductListReply("sí, solo que la cebolla es blanca") === "revise", "sí, solo que corrige");
+assert(classifyProductListReply("sí pero la cebolla es blanca") === "revise", "sí pero corrige");
+assert(classifyProductListReply("No") === "cancel", "un no en la lista sigue cancelando");
+assert(isProductListRequest("Me puedes pasar otra vez la lista"), "pedir la lista otra vez se reconoce");
+assert(isProductListRequest("pásame la lista"), "pásame la lista se reconoce");
+assert(!isProductListRequest("pásame el menú"), "el menú no es la lista del pedido");
+assert(isYesConfirmation("SÍ") && !isYesConfirmation("Sí, nomás que la cebolla es blanca"), "el sí del ticket no se confunde con una corrección");
+
+const casiListo = [
+  { nombre_producto: "Frijol", presentacion: "negro", cantidad: 1, unidad: "kilo" },
+  { nombre_producto: "Arroz", marca: "SOS", cantidad: 1, unidad: "kilo" },
+  { nombre_producto: "Cebolla", cantidad: 1, unidad: "kilo" },
+  { nombre_producto: "Jamón", marca: "FUD", presentacion: "1/4 kg", cantidad: 0.25, unidad: "kilo" },
+  { nombre_producto: "Leche", marca: "Lala", presentacion: "entera", cantidad: 1, unidad: "litro" },
+  { nombre_producto: "Refresco", marca: "Coca", presentacion: "2 litros", cantidad: 1, unidad: "pieza" },
+];
+const nomasQue = quoteSinGps(casiListo, "Sí, nomás que la cebolla es blanca", { awaitingProductConfirm: true });
+const cebollaCorregida = nomasQue.validatedItems.items.find((item) => /cebolla/i.test(item.nombre_producto));
+assert(/blanca/i.test(String(cebollaCorregida?.presentacion)), "nomás que blanca corrige la cebolla");
+assert(nomasQue.validatedItems.items.some((item) => /jam[oó]n/i.test(item.nombre_producto)), "la corrección no borra el jamón");
+const listaCorregida = listaDe(nomasQue);
+assert(listaCorregida.includes("¿Están bien estos productos?"), "después de nomás que se vuelve a listar");
+assert(/blanca/i.test(listaCorregida), "la lista nueva dice blanca");
+assert(!listaCorregida.includes("ubicación por GPS"), "la corrección no salta al GPS");
+
+const conBlanca = nomasQue.validatedItems.items;
+const otraVez = quoteSinGps(conBlanca, "Me puedes pasar otra vez la lista", { productosConfirmados: true });
+const listaOtraVez = listaDe(otraVez);
+assert(listaOtraVez.includes("¿Están bien estos productos?"), "pedir la lista la reenvía");
+assert(/cebolla/i.test(listaOtraVez) && /blanca/i.test(listaOtraVez) && /jam[oó]n/i.test(listaOtraVez), "la lista reenviada trae los productos");
+assert(!listaOtraVez.includes("ubicación por GPS"), "pedir la lista no contesta solo con el GPS");
+assert(prompt.includes("nomás que") && prompt.includes("respuesta corta"), "el prompt acepta la corrección y la respuesta corta");
 assert(prompt.includes("Sanitas") && prompt.includes("arroz higiénico") && prompt.includes("Pinol"), "el prompt lee Sanitas, arroz higiénico y Pinol como en la tienda");
 
 console.log("\n--- Transcripción de ejemplo ---\n");

@@ -7,7 +7,7 @@ import { buildMandaloSystemPrompt } from "@/lib/mandaloPrompt";
 import { normalizeWhatsAppText, waapiSendImage, waapiSendText } from "@/lib/waapi";
 import { detectActorByPhone, ensureMxWhatsappIntl, normalizePhone } from "@/lib/roles";
 import { priceCatalogOrder, type CatalogPriceRow } from "@/lib/catalogQuantities";
-import { ADDRESS_ASK_MESSAGE, buildCustomerMessage, createCaptureEngine, dispatchItemAlreadyShowsQty, extractCandidateItems, isProductListConfirmMessage, type PedidoItemInput } from "@/lib/services/captureEngine";
+import { ADDRESS_ASK_MESSAGE, buildCustomerMessage, createCaptureEngine, dispatchItemAlreadyShowsQty, extractCandidateItems, formatProductListConfirm, isProductListConfirmMessage, type PedidoItemInput } from "@/lib/services/captureEngine";
 import * as pedidoRepositoryV2 from "@/lib/repositories/pedidoRepositoryV2";
 import { getAdminPhone } from "@/lib/repositories/configRepository";
 import * as metricsRepository from "@/lib/repositories/metricsRepository";
@@ -67,6 +67,7 @@ import {
   fetchRecentChatHistory as fetchHistorialReciente,
   containsFalseConfirmationClaim,
   isBareOrderRejection,
+  classifyProductListReply,
   isCancelIntent,
   isComplaintMessage,
   isDropProductIntent,
@@ -808,11 +809,99 @@ async function handleAwaitingProductList(
   pedido: PedidoV2Record,
   ubicacionCoords: Coordinates | null,
 ): Promise<JsonObject | null> {
-  if (!isBareOrderRejection(mensaje) && !isYesConfirmation(mensaje)) return null;
+  const replyKind = classifyProductListReply(mensaje);
+  if (replyKind === "ignore") return null;
+  if (replyKind === "revise") {
+    const full = await pedidoRepositoryV2.getPedidoById(pedido.id).catch(() => null);
+    if (full?.tienda?.usaCatalogoFijo === true) return null;
+  }
 
   await guardarMensajeChat({ telefono, texto: String(mensaje ?? ""), estado: "cliente" }).catch(() => {});
 
-  if (isBareOrderRejection(mensaje)) {
+  if (replyKind === "relist") {
+    const items = pedido.snapshot_json.items ?? [];
+    const snapshot = {
+      ...pedido.snapshot_json,
+      flags: {
+        ...(pedido.snapshot_json.flags ?? {}),
+        awaitingProductConfirm: true,
+      },
+    };
+    await pedidoRepositoryV2.updatePedidoSnapshot({
+      pedidoId: pedido.id,
+      estado: "seleccion_productos",
+      snapshot,
+      addressText: snapshot.addressText ?? null,
+      latitud: snapshot.latitud ?? null,
+      longitud: snapshot.longitud ?? null,
+      tiendaId: snapshot.businessId ?? null,
+    });
+    const msg = formatProductListConfirm(items);
+    await sendWhatsApp(telefono, msg);
+    await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+    return { ok: true, role: "cliente", accion: "lista_reenviada", pedidoId: pedido.id };
+  }
+
+  if (replyKind === "revise") {
+    const knownZoneNames = await fetchZonasCobertura();
+    const snapshot = {
+      ...pedido.snapshot_json,
+      flags: {
+        ...(pedido.snapshot_json.flags ?? {}),
+        productosConfirmados: false,
+        awaitingProductConfirm: true,
+      },
+    };
+    if (ubicacionCoords) {
+      snapshot.addressText = buildAddressTextFromCoords();
+      snapshot.latitud = ubicacionCoords.latitude;
+      snapshot.longitud = ubicacionCoords.longitude;
+    }
+    const validation = validationEngine.validateCaptureForConfirmation({
+      snapshot,
+      items: snapshot.items ?? [],
+      knownZoneNames,
+      quoteStore: true,
+      userMessage: mensaje,
+    });
+    const question = validation.issues.find((issue) => issue.customerQuestion)?.customerQuestion ?? "";
+    const nextSnapshot = {
+      ...snapshot,
+      items: validation.validatedItems.items,
+      flags: {
+        ...(snapshot.flags ?? {}),
+        addressValidated: Boolean(validation.validatedAddress?.isValid),
+        itemsValidated: validation.validatedItems.allItemsSpecific,
+        readyForConfirmation: false,
+        productosConfirmados: false,
+        awaitingProductConfirm: isProductListConfirmMessage(question),
+      },
+    };
+    await pedidoRepositoryV2.updatePedidoSnapshot({
+      pedidoId: pedido.id,
+      estado: "seleccion_productos",
+      snapshot: nextSnapshot,
+      addressText: nextSnapshot.addressText ?? null,
+      latitud: nextSnapshot.latitud ?? null,
+      longitud: nextSnapshot.longitud ?? null,
+      tiendaId: validation.validatedBusiness.businessId,
+    });
+    await pedidoRepositoryV2.replacePedidoItems({ pedidoId: pedido.id, items: validation.validatedItems.items });
+    await pedidoRepositoryV2.appendPedidoEvento({
+      pedidoId: pedido.id,
+      tipoEvento: "productos_corregidos",
+      estadoOrigen: "seleccion_productos",
+      estadoDestino: "seleccion_productos",
+      actorTipo: "cliente",
+      payload: { userMessage: mensaje },
+    });
+    const msg = question || formatProductListConfirm(validation.validatedItems.items);
+    await sendWhatsApp(telefono, msg);
+    await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+    return { ok: true, role: "cliente", accion: "productos_corregidos", pedidoId: pedido.id };
+  }
+
+  if (replyKind === "cancel") {
     await cancelOpenPedido(pedido, telefono, "cliente_rechazo_productos");
     const msg = `De acuerdo, cancelé tu pedido #${pedido.id}. No se te cobra nada. 🙏\n\nCuando quieras hacer uno nuevo, aquí estoy. 🛒`;
     await sendWhatsApp(telefono, msg);
@@ -1815,14 +1904,18 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
     // estado === "seleccion_productos": seguimos abajo con el flujo de captura.
   }
 
-  if (
-    openPedido &&
-    openPedido.estado === "seleccion_productos" &&
-    openPedido.snapshot_json.flags?.awaitingProductConfirm &&
-    String(mensaje ?? "").trim()
-  ) {
-    const productReply = await handleAwaitingProductList(telefono, mensaje, openPedido, ubicacionCoords);
-    if (productReply) return productReply;
+  if (openPedido && openPedido.estado === "seleccion_productos" && String(mensaje ?? "").trim()) {
+    const flags = openPedido.snapshot_json.flags;
+    const onList = flags?.awaitingProductConfirm === true;
+    const waitingAddress =
+      flags?.productosConfirmados === true &&
+      openPedido.snapshot_json.latitud == null &&
+      !String(openPedido.snapshot_json.addressText ?? "").trim();
+    const replyKind = classifyProductListReply(mensaje);
+    if ((onList && replyKind !== "ignore") || (waitingAddress && replyKind === "relist")) {
+      const productReply = await handleAwaitingProductList(telefono, mensaje, openPedido, ubicacionCoords);
+      if (productReply) return productReply;
+    }
   }
 
   const inCapture = !openPedido || openPedido.estado === "seleccion_productos";

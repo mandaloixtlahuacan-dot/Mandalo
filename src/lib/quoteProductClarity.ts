@@ -437,24 +437,33 @@ function produceHit(blob: string): { nombre: string; article: "el" | "la" } | nu
   return null;
 }
 
+function onionType(blob: string): string | null {
+  if (/\bcambray\b/.test(blob)) return "cambray";
+  if (/\bmorad[ao]\b/.test(blob)) return "morada";
+  if (/\bblanc[ao]\b/.test(blob)) return "blanca";
+  return null;
+}
+
+function chileType(blob: string): string | null {
+  if (/\bjalapeno\b/.test(blob)) return "jalapeño";
+  if (/\bserrano\b/.test(blob)) return "serrano";
+  if (/\bhabanero\b/.test(blob)) return "habanero";
+  if (/\bpoblano\b/.test(blob)) return "poblano";
+  if (/\bguero\b/.test(blob)) return "güero";
+  if (/\barbol\b/.test(blob)) return "de árbol";
+  if (/\bchipotle\b/.test(blob)) return "chipotle";
+  if (/\bmorron\b/.test(blob)) return "morrón";
+  return null;
+}
+
+// El color o la variedad solo cierran si el blob dice qué verdura es.
+// Una respuesta corta («blanca», «jalapeño») no trae el nombre: applyDetail
+// lo antepone desde la línea que ya estaba abierta.
 function produceType(blob: string): string | null {
-  if (/\bcebollas?\b/.test(blob)) {
-    if (/\bcambray\b/.test(blob)) return "cambray";
-    if (/\bmorad[ao]\b/.test(blob)) return "morada";
-    if (/\bblanc[ao]\b/.test(blob)) return "blanca";
-    return null;
-  }
-  if (/\bchiles?\b/.test(blob)) {
-    if (/\bjalapeno\b/.test(blob)) return "jalapeño";
-    if (/\bserrano\b/.test(blob)) return "serrano";
-    if (/\bhabanero\b/.test(blob)) return "habanero";
-    if (/\bpoblano\b/.test(blob)) return "poblano";
-    if (/\bguero\b/.test(blob)) return "güero";
-    if (/\barbol\b/.test(blob)) return "de árbol";
-    if (/\bchipotle\b/.test(blob)) return "chipotle";
-    if (/\bmorron\b/.test(blob)) return "morrón";
-    return null;
-  }
+  const onion = /\bcebollas?\b/.test(blob);
+  const chile = /\bchiles?\b/.test(blob);
+  if (onion && !chile) return onionType(blob);
+  if (chile && !onion) return chileType(blob);
   return null;
 }
 
@@ -752,9 +761,9 @@ const CATEGORIES: Category[] = [
     match: /\bfrijol(?:es)?\b/,
     slots: ["tipo", "tamano"],
     typePhrase: (blob) => {
-      if (/\bnegro\b/.test(blob)) return "negro";
+      if (/\bnegr[ao]\b/.test(blob)) return "negro";
       if (/\bbayo\b/.test(blob)) return "bayo";
-      if (/\bperuano\b/.test(blob)) return "peruano";
+      if (/\bperuan[ao]\b/.test(blob)) return "peruano";
       if (/\bpinto\b/.test(blob)) return "pinto";
       if (/\bflor\b/.test(blob)) return "flor de mayo";
       return null;
@@ -1252,7 +1261,8 @@ function unknownProductLabel(clause: string): string | null {
 
 function clauseOpensProduct(part: string): boolean {
   if (hitsIn(part).length > 0) return true;
-  return purchaseClause(part) && unknownProductLabel(part) != null;
+  if (purchaseClause(part) && unknownProductLabel(part) != null) return true;
+  return measuredUnknownWindow(part) != null;
 }
 
 const STACK_LEAD = new Set([
@@ -1264,10 +1274,15 @@ const STACK_LEAD = new Set([
 // El segundo empieza con cantidad + tanque/kilo: ahí se parte, sin cortar
 // "Quiero un kilo…" (el verbo no es un producto).
 function separateStackedPurchases(message: string): string {
-  return message.replace(
-    /([A-Za-zÁÉÍÓÚÑáéíóúñ]{4,})\s+((?:un|una|uno|unos|unas|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|\d+)\s+(?:tanks?|tanques?|kilos?|kg)\b)/gi,
-    (full, word: string, rest: string) => (STACK_LEAD.has(norm(word)) ? full : `${word}, ${rest}`),
-  );
+  return message
+    .replace(
+      /([A-Za-zÁÉÍÓÚÑáéíóúñ]{4,})\s+((?:un|una|uno|unos|unas|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|\d+)\s+(?:tanks?|tanques?|kilos?|kg)\b)/gi,
+      (full, word: string, rest: string) => (STACK_LEAD.has(norm(word)) ? full : `${word}, ${rest}`),
+    )
+    .replace(
+      /([A-Za-zÁÉÍÓÚÑáéíóúñ]{4,})\s+(\d+\s*\/\s*\d+\s+[A-Za-zÁÉÍÓÚÑáéíóúñ])/g,
+      (full, word: string, rest: string) => (STACK_LEAD.has(norm(word)) ? full : `${word}, ${rest}`),
+    );
 }
 
 function splitProductClauses(message: string): string[] {
@@ -1392,11 +1407,20 @@ function unknownProductWindow(clause: string): { category: Category; text: strin
   return { category: fallbackPackaged(label), text: clause };
 }
 
+function measuredUnknownWindow(clause: string): { category: Category; text: string } | null {
+  if (hitsIn(clause).length) return null;
+  if (!measuredAmount(clause)) return null;
+  const label = productLabelOutsideMeasure(clause);
+  if (!label) return null;
+  if (categoryFor(label)) return null;
+  return { category: fallbackPackaged(label), text: clause };
+}
+
 function windowsFor(message: string): Array<{ category: Category; text: string }> {
   return splitProductClauses(message).flatMap((clause) => {
     const found = windowsInClause(clause);
     if (found.length) return found;
-    const unknown = unknownProductWindow(clause);
+    const unknown = unknownProductWindow(clause) ?? measuredUnknownWindow(clause);
     return unknown ? [unknown] : [];
   });
 }
@@ -1538,6 +1562,76 @@ function categoryNouns(): Set<string> {
   return nouns;
 }
 
+const TYPE_GROUPS: Record<string, string[][]> = {
+  verdura: [["blanca", "blanco", "morada", "morado", "cambray", "jalapeño", "serrano", "habanero", "poblano", "güero", "chipotle", "morrón", "de árbol"]],
+  frijol: [["negro", "negra", "bayo", "peruano", "pinto", "flor de mayo"]],
+  leche: [["entera", "deslactosada", "light", "orgánica", "chocolate", "fresa"]],
+  huevo: [["rojo", "blanco"]],
+  tortilla: [["de harina", "de maíz"]],
+  pan: [["de caja", "bolillo", "telera", "birote", "dulce"]],
+};
+
+function mergeType(category: Category, current: string | null | undefined, typed: string | null): string | null {
+  if (!typed) return clean(current);
+  const group = (TYPE_GROUPS[category.id] ?? []).find((words) => words.some((word) => norm(typed).includes(norm(word))));
+  let prev = clean(current) ?? "";
+  if (group) {
+    for (const word of [...group].sort((a, b) => b.length - a.length)) {
+      prev = prev.replace(new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "ig"), " ");
+    }
+    prev = prev.replace(/\s+/g, " ").trim();
+  }
+  return mergeText(prev || null, typed);
+}
+
+// La respuesta corta no repite el producto. Se prueba primero el texto tal
+// cual y, si no trae el nombre, se antepone el de la línea abierta — sin la
+// presentación vieja, para que «blanca» reemplace «morada».
+function typeFromReply(category: Category, item: PedidoItemInput, extraNorm: string): string | null {
+  const direct = category.typePhrase?.(extraNorm) ?? null;
+  if (direct) return direct;
+  const name = norm(item.nombre_producto);
+  if (!name || !extraNorm) return null;
+  return category.typePhrase?.(`${name} ${extraNorm}`) ?? null;
+}
+
+function measuredAmount(raw: string): { cantidad: number; unidad: string; presentacion: string } | null {
+  const text = String(raw ?? "");
+  if (/\b(litro|litros|ml)\b/i.test(text) && !/\d+\s*\/\s*\d+/.test(text)) return null;
+  const grams = text.match(/\b(\d+(?:\.\d+)?)\s*(?:g|gr|gramos)\b/i);
+  if (grams) {
+    const n = Number(grams[1]);
+    if (n > 0) return { cantidad: n, unidad: "g", presentacion: `${n} g` };
+  }
+  const fraction = text.match(/\b(\d+)\s*\/\s*(\d+)\b/);
+  if (fraction) {
+    const num = Number(fraction[1]);
+    const den = Number(fraction[2]);
+    if (den > 0 && num > 0 && num / den < 5) {
+      const label = `${num}/${den}`;
+      return { cantidad: num / den, unidad: "kilo", presentacion: `${label} kg` };
+    }
+  }
+  if (/\b(?:un|una)\s+cuarto\b|\bcuarto\s+de\b/i.test(text)) {
+    return { cantidad: 0.25, unidad: "kilo", presentacion: "1/4 kg" };
+  }
+  return null;
+}
+
+const MEASURE_WORDS = new Set([
+  "cuarto", "cuartos", "medio", "media", "kilo", "kilos", "kg", "gramo", "gramos", "gr",
+]);
+
+function productLabelOutsideMeasure(clause: string): string | null {
+  const withoutFraction = clause.replace(/\d+\s*\/\s*\d+/g, " ");
+  const tokens = norm(withoutFraction)
+    .split(" ")
+    .filter((token) => token.length >= 3 && !STOP.has(token) && !MEASURE_WORDS.has(token) && !/^\d+(?:\.\d+)?$/.test(token));
+  if (!tokens.length) return null;
+  const label = displayBrand(withoutFraction, tokens).trim();
+  return label || null;
+}
+
 function applyDetail(
   item: PedidoItemInput,
   extraRaw: string,
@@ -1560,7 +1654,9 @@ function applyDetail(
   if (boundWindow && !presentationBelongsToWindow(next.presentacion, extra)) next.presentacion = null;
   const productTokens = new Set(norm(next.nombre_producto).split(" ").filter((token) => token.length >= 3));
   const nouns = categoryNouns();
-  const tokens = brandTokens(extra, ignore).filter((token) => !productTokens.has(token) && !nouns.has(token));
+  const tokens = brandTokens(extra, ignore).filter(
+    (token) => !productTokens.has(token) && !nouns.has(token) && !MEASURE_WORDS.has(token),
+  );
   if (category.kind !== "produce" && !spokenBrand(next) && tokens.length) next.marca = displayBrand(extraRaw, tokens);
   if (category.id === "arroz") {
     const hinted = riceBrandFrom(extraRaw);
@@ -1577,7 +1673,7 @@ function applyDetail(
     next.nombre_producto = category.nombre;
   }
 
-  next.presentacion = mergeText(next.presentacion, category.typePhrase?.(extra) ?? null);
+  next.presentacion = mergeType(category, next.presentacion, typeFromReply(category, next, extra));
   let size = category.sizePhrase?.(extra) ?? null;
   if (!size && literQuestionOpen) {
     const bare = bareLiterQuantity(extra);
@@ -1664,6 +1760,21 @@ function applyDetail(
   if (genericBrandNote(extra) || genericBrandNote(next.notas ?? "")) {
     next.notas = "genéricas";
     if (genericBrandNote(next.marca ?? "")) next.marca = null;
+  }
+  const measured = measuredAmount(extraRaw);
+  const bulkMeasure =
+    measured != null &&
+    (category.id.startsWith("otro:") || category.kind === "produce" || measured.presentacion.includes("/"));
+  if (measured && bulkMeasure) {
+    const prev = clean(next.presentacion) ?? "";
+    const stripped = prev
+      .replace(/\b1 kilo\b/gi, " ")
+      .replace(/\b\d+(?:\.\d+)?\s*kilos?\b/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    next.presentacion = mergeText(stripped || null, measured.presentacion);
+    next.cantidad = measured.cantidad;
+    next.unidad = measured.unidad;
   }
   return scrubItem(next, ignore);
 }
@@ -1889,6 +2000,36 @@ function firstIncompleteIndex(items: PedidoItemInput[]): number {
   });
 }
 
+function answerClosesItem(item: PedidoItemInput, message: string, ignore: Set<string>): boolean {
+  const category = itemCategory(item);
+  if (!category) return false;
+  const before = missingSlots(category, item);
+  if (!before.length) return false;
+  const applied = applyDetail(item, message, ignore);
+  return missingSlots(category, applied).length < before.length;
+}
+
+// La pregunta abierta es la primera línea incompleta. Si la respuesta corta
+// no le cierra el hueco pero sí se lo cierra a otra (blanca → cebolla,
+// Nutrioli → aceite), va a esa. Si varias lo aceptan, gana la de la marca.
+function pickDetailIndex(items: PedidoItemInput[], message: string, ignore: Set<string>): number {
+  const first = firstIncompleteIndex(items);
+  if (first === -1) return -1;
+  if (answerClosesItem(items[first], message, ignore)) return first;
+  const others = items
+    .map((_, index) => index)
+    .filter((index) => index !== first && answerClosesItem(items[index], message, ignore));
+  if (others.length === 1) return others[0];
+  if (others.length > 1) {
+    const hinted = categoryFromBrand(norm(message));
+    if (hinted) {
+      const match = others.find((index) => itemCategory(items[index])?.id === hinted.id);
+      if (match != null) return match;
+    }
+  }
+  return first;
+}
+
 export function prepareQuoteItems(
   items: PedidoItemInput[],
   userMessage?: string | null,
@@ -1941,7 +2082,7 @@ export function prepareQuoteItems(
     const open = next.filter((item) => quoteItemNeedsDetail(item)).length;
     const splitsProducts = open > 1 && /\sy\s/.test(norm(message));
     if (!splitsProducts) {
-      const index = firstIncompleteIndex(next);
+      const index = pickDetailIndex(next, message, ignore);
       if (index !== -1) next[index] = applyDetail(next[index], message, ignore);
     }
   }
