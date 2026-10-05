@@ -2,7 +2,14 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 5 de octubre de 2026. Una respuesta corta cierra el dato
+> Última actualización: 5 de octubre de 2026. Pedido #81: «Sí, solamente te
+> faltó…», «agrega», «añade» o «también quiero» no es el SÍ del GPS. Cualquier
+> alta o cambio deja los productos sin confirmar y vuelve a mandar «OK,
+> pediste… ¿Están bien?», también si ya se estaba pidiendo la ubicación. Dos
+> papeles (Sanitas y Sam's) no se fusionan, y «Agregar» no se guarda como
+> marca. El saludo, los $35, el horario, el repartidor y el «No» pelado no
+> cambian. Código en rama, sin merge y sin deploy.
+> Actualización anterior del mismo día: una respuesta corta cierra el dato
 > que se acaba de preguntar (blanca, morada, jalapeño, Nutrioli, FUD) aunque
 > no repitan el producto. «Sí, nomás que…» corrige y vuelve a listar antes
 > del GPS; «pásame la lista» reenvía los productos. Un 1/4 de jamón (o un

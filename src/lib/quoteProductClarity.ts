@@ -40,6 +40,10 @@ const STOP = new Set([
   "y", "o", "e", "con", "sin", "por", "para", "que", "se", "al", "lo", "les",
   "su", "sus", "mi", "mis", "tu", "tus", "en", "es", "son", "me", "te", "le",
   "quiero", "dame", "denme", "traeme", "manda", "mande", "mandado", "anota",
+  "agregar", "agrega", "agregame", "agregale", "agregalo", "agreguen",
+  "anadir", "anade", "anademe", "anadele", "anadelo",
+  "falto", "faltaron", "faltaba", "faltan", "faltante", "faltantes",
+  "solamente", "pero",
   "seria",
   "anotala", "anotalo", "anotar", "porfa", "favor", "porfavor", "gracias",
   "hola", "buenas", "bueno", "entonces", "nomas", "solo", "pura", "puro",
@@ -1077,7 +1081,7 @@ function rewriteGrocerySlips(message: string): string {
 }
 
 const BRAND_HINTS: Array<{ re: RegExp; id: string }> = [
-  { re: /\bsanitas\b|\bpetalos?\b|\bregio\b|\bsuavel\b/, id: "papel" },
+  { re: /\bsanitas\b|\bpetalos?\b|\bregio\b|\bsuavel\b|\bsams\b|\bsam s\b/, id: "papel" },
   { re: /\bpinol\b|\bfabuloso\b|\bmaestro limpio\b/, id: "limpiador" },
   { re: /\bcloralex\b|\bblancatel\b|\bclorox\b/, id: "cloro" },
   { re: /\bzotes?\b|\bpalmolive\b|\bescudos?\b/, id: "jabon" },
@@ -1162,9 +1166,17 @@ function hitsIn(message: string): Hit[] {
     unique.push(hit);
   }
   // Sin palabra de producto, la marca conocida abre la línea (Sanitas = papel).
-  // Si ya hay un producto ("crema Lala"), la marca no abre otra categoría.
+  // Si ya hay un producto ("crema Lala", "servilletas Sanitas"), la marca no
+  // se roba la línea: servilletas no son papel higiénico.
   if (unique.length) return unique;
   return brandHintHits(haystack);
+}
+
+function hintLeavesAnotherProduct(haystack: string, hintRe: RegExp): boolean {
+  const stripped = haystack.replace(new RegExp(hintRe.source, "g"), " ");
+  return stripped
+    .split(" ")
+    .some((token) => token.length >= 3 && !STOP.has(token) && !/^\d+$/.test(token));
 }
 
 function brandHintHits(haystack: string): Hit[] {
@@ -1172,6 +1184,7 @@ function brandHintHits(haystack: string): Hit[] {
   for (const hint of BRAND_HINTS) {
     const match = new RegExp(hint.re.source).exec(haystack);
     if (!match) continue;
+    if (hintLeavesAnotherProduct(haystack, hint.re)) continue;
     const category = CATEGORIES.find((item) => item.id === hint.id);
     if (!category) continue;
     const wordIndex = haystack.slice(0, match.index).split(" ").filter(Boolean).length;
@@ -1245,15 +1258,31 @@ const PURCHASE_UNIT =
 // abre otro producto: no empieza con la cantidad.
 function purchaseClause(part: string): boolean {
   const text = norm(part);
-  return new RegExp(
-    `^(?:tambien |ademas )?(?:quiero |dame |manden? |mandame |traeme |anota |anotame )?(?:un|una|uno|unos|unas|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|\\d+)\\s+(?:${PURCHASE_UNIT})\\b`,
-  ).test(text);
+  const qty = "un|una|uno|unos|unas|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|\\d+";
+  const lead = "(?:tambien |ademas )?(?:quiero |dame |manden? |mandame |traeme |anota |anotame )?";
+  if (new RegExp(`^${lead}(?:${qty})\\s+(?:${PURCHASE_UNIT})\\b`).test(text)) return true;
+  // "caja de servilletas" no trae "una", pero sí es una compra.
+  return new RegExp(`^(?:${PURCHASE_UNIT})\\b`).test(text);
+}
+
+function brandHintTokenSet(text: string): Set<string> {
+  const blob = norm(text);
+  const tokens = new Set<string>();
+  for (const hint of BRAND_HINTS) {
+    const re = new RegExp(hint.re.source, "g");
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(blob))) {
+      for (const token of match[0].split(" ")) if (token) tokens.add(token);
+    }
+  }
+  return tokens;
 }
 
 function unknownProductLabel(clause: string): string | null {
+  const brands = brandHintTokenSet(clause);
   const tokens = norm(clause)
     .split(" ")
-    .filter((token) => token.length >= 3 && !STOP.has(token) && !/^\d+$/.test(token));
+    .filter((token) => token.length >= 3 && !STOP.has(token) && !/^\d+$/.test(token) && !brands.has(token));
   if (!tokens.length) return null;
   const label = displayBrand(clause, tokens).trim();
   return label || null;
@@ -1283,6 +1312,34 @@ function separateStackedPurchases(message: string): string {
       /([A-Za-zÁÉÍÓÚÑáéíóúñ]{4,})\s+(\d+\s*\/\s*\d+\s+[A-Za-zÁÉÍÓÚÑáéíóúñ])/g,
       (full, word: string, rest: string) => (STACK_LEAD.has(norm(word)) ? full : `${word}, ${rest}`),
     );
+}
+
+const INTENT_BRAND = new Set([
+  "agregar", "agrega", "agregame", "agregale", "agregalo", "agreguen",
+  "anadir", "anade", "anademe", "anadele", "anadelo",
+  "falto", "faltaron", "faltaba", "faltan", "faltante", "faltantes",
+  "solamente", "tambien", "quiero", "pero",
+]);
+
+// «Agregar servilletas Sanitas» no es una marca. El verbo se queda fuera.
+function withoutIntentBrand(item: PedidoItemInput): PedidoItemInput {
+  const marca = clean(item.marca);
+  if (!marca) return item;
+  const words = marca.split(/\s+/);
+  const kept = words.filter((word) => !INTENT_BRAND.has(norm(word)));
+  if (kept.length === words.length) return item;
+  return { ...item, marca: kept.join(" ") || null };
+}
+
+// «Sí, solamente te faltó caja…» y «está bien, pero agregar caja…» traen el
+// producto después del verbo. Ese verbo no entra a la línea.
+function stripAddLead(message: string): string {
+  return message
+    .replace(
+      /^(?:(?:est[aá] bien|ok|s[ií]|va|dale|de acuerdo|confirmo)\b[\s,.]*)?(?:pero\b[\s,.]*)?(?:solamente\s+te\s+)?(?:falt\w+|agrega\w*|a[nñ]ade\w*|a[nñ]adir|tambi[eé]n quiero)\b[\s,.]*/i,
+      "",
+    )
+    .trim();
 }
 
 function splitProductClauses(message: string): string[] {
@@ -1355,9 +1412,6 @@ function purchaseQtyUnit(blob: string): { cantidad: number; unidad: string } | n
       `\\b(un|una|uno|unos|unas|\\d+)\\s+(${PURCHASE_UNIT})\\b`,
     ),
   );
-  if (!match) return null;
-  const qty = wordToQty(match[1]);
-  if (qty == null || qty <= 0) return null;
   const singular: Record<string, string> = {
     cajas: "caja",
     paquetes: "paquete",
@@ -1373,7 +1427,14 @@ function purchaseQtyUnit(blob: string): { cantidad: number; unidad: string } | n
     garrafones: "garrafón",
     bidones: "bidón",
   };
-  return { cantidad: qty, unidad: singular[match[2]] ?? match[2] };
+  if (match) {
+    const qty = wordToQty(match[1]);
+    if (qty == null || qty <= 0) return null;
+    return { cantidad: qty, unidad: singular[match[2]] ?? match[2] };
+  }
+  const bare = blob.match(new RegExp(`^(${PURCHASE_UNIT})\\b`));
+  if (!bare) return null;
+  return { cantidad: 1, unidad: singular[bare[1]] ?? bare[1] };
 }
 
 // "un litro" / "una caja" ya traen la pieza. "2 litros" es el tamaño del empaque.
@@ -1748,6 +1809,17 @@ function applyDetail(
       next.unidad = mapped[unit[1]] ?? unit[1];
     }
   }
+  if (
+    next.cantidad == null &&
+    /\b(caja|cajas|paquete|paquetes)\b/.test(extra) &&
+    !/\b\d+\b/.test(extra)
+  ) {
+    const unit = extra.match(/\b(cajas|caja|paquetes|paquete)\b/);
+    if (unit) {
+      next.cantidad = 1;
+      if (!clean(next.unidad)) next.unidad = unit[1].endsWith("s") ? unit[1].slice(0, -1) : unit[1];
+    }
+  }
   if (category.id === "cigarros" && clean(next.marca) && !/\bcarton|cajetilla/.test(blobOf(next))) {
     if (next.cantidad != null || /\b(un|una)\b/.test(extra)) {
       next.presentacion = mergeText(next.presentacion, "cajetilla");
@@ -1809,6 +1881,7 @@ function fallbackPackaged(nombre: string): Category {
       // "Frutos rojos Fusi" ya dice qué bajar. No se pregunta tamaño de más.
       if (slot === "tamano") {
         if (base.filled(slot, blob, item)) return true;
+        if (/\b(caja|cajas|paquete|paquetes)\b/.test(blob)) return true;
         return ownWords.filter((token) => token.length >= 4).length >= 2;
       }
       return base.filled(slot, blob, item);
@@ -1878,6 +1951,14 @@ function collapseAliasDuplicate(items: PedidoItemInput[]): PedidoItemInput[] {
       const specific = aGeneric ? next[j] : next[i];
       const genericIndex = aGeneric ? i : j;
       const specificIndex = aGeneric ? j : i;
+      const genericName = norm(generic.nombre_producto);
+      const specificName = norm(specific.nombre_producto);
+      const genericTokens = genericName.split(" ").filter((token) => token.length >= 4);
+      const sameShelf =
+        specificName.includes(genericName) ||
+        genericName.includes(specificName) ||
+        genericTokens.some((token) => specificName.split(" ").includes(token));
+      if (!sameShelf) continue;
       const brandTokensOfGeneric = norm(generic.marca ?? "")
         .split(" ")
         .filter((token) => token.length >= 4 && !STOP.has(token));
@@ -2036,9 +2117,10 @@ export function prepareQuoteItems(
   ignoreText?: string | null,
 ): PedidoItemInput[] {
   const ignore = ignoreSet(ignoreText);
-  let next = tidyQuoteLines(items.map((item) => ({ ...item })));
+  let next = tidyQuoteLines(items.map((item) => withoutIntentBrand({ ...item })));
   const message = String(userMessage ?? "").trim();
-  const visible = message ? stripClauses(message, next) : "";
+  const opened = stripAddLead(message);
+  const visible = opened ? stripClauses(opened, next) : "";
   const windows = visible ? windowsFor(visible) : [];
   if (windows.length > 1) {
     next = next.filter((item) => !mashedLine(item, windows) && !bareInventedPapel(item, message, windows));
