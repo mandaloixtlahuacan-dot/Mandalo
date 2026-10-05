@@ -68,6 +68,7 @@ const STOP = new Set([
   "individual", "frasco", "frascos", "sobre", "sobres", "tubo",
   "mayonesa", "mayonesas", "mayo", "crema", "gomita", "gomitas",
   "papa", "papas", "galleta", "galletas", "queso", "quesos",
+  "cloro", "limpiador", "limpiadores",
   "jitomate", "jitomates", "tomate", "tomates", "cebolla", "cebollas",
   "cilantro", "perejil", "limon", "limones", "chile", "chiles",
   "zanahoria", "zanahorias", "pepino", "pepinos", "lechuga", "lechugas",
@@ -914,6 +915,48 @@ const CATEGORIES: Category[] = [
     emoji: "🧀",
   }),
   {
+    id: "limpiador",
+    nombre: "Limpiador",
+    match: /\b(limpiadores?|pinol|fabuloso|maestro limpio)\b/,
+    slots: ["marca", "tamano"],
+    sizePhrase: litrosPhrase,
+    filled: (slot, blob) => (slot === "marca" ? hasBrand(blob, new Set()) : litrosPhrase(blob) != null),
+    ask: (missing, item) => {
+      const brand = clean(item.marca);
+      const who = brand ? `El ${brand}` : "El limpiador";
+      if (missing.includes("marca") && missing.includes("tamano")) {
+        return `Va. El limpiador, ¿de qué marca y de cuántos litros? Por ejemplo Pinol o Fabuloso. ${FOLLOW_LO} 🧴`;
+      }
+      if (missing.includes("marca")) {
+        return `Va. ¿El limpiador de qué marca? Por ejemplo Pinol o Fabuloso. ${FOLLOW_LO} 🧴`;
+      }
+      return `Va. ${who}, ¿de cuántos litros? ${FOLLOW_LO} 🧴`;
+    },
+  },
+  {
+    id: "cloro",
+    nombre: "Cloro",
+    match: /\b(cloro|cloralex|blancatel|clorox)\b/,
+    countSeparate: true,
+    slots: ["marca", "tamano", "cantidad"],
+    sizePhrase: shelfPhrase,
+    filled: (slot, blob, item) => {
+      if (slot === "marca") return hasBrand(blob, new Set());
+      if (slot === "tamano") return hasShelfPresentation(blob);
+      return hasPackageCount(blob, item) || containerAlreadyCounted(blob, item);
+    },
+    ask: (missing, item) => {
+      const brand = clean(item.marca);
+      const who = brand ? `El ${brand}` : "El cloro";
+      const bits: string[] = [];
+      if (missing.includes("marca")) bits.push("de qué marca");
+      if (missing.includes("tamano")) bits.push("de qué presentación (chico, grande o de litros)");
+      if (missing.includes("cantidad")) bits.push("cuántos");
+      const example = missing.includes("marca") ? "Por ejemplo Cloralex, Blancatel o Clorox." : "";
+      return `Va. ${who}, ¿${joinSpanish(bits)}? ${example} ${FOLLOW_LO} 🧴`.replace(/\s+/g, " ").trim();
+    },
+  },
+  {
     id: "verdura",
     nombre: "Verdura",
     match: PRODUCE_WORDS,
@@ -968,27 +1011,39 @@ function categoryRejected(category: Category, blob: string): boolean {
   return false;
 }
 
-function categoryFor(text: string): Category | null {
-  const haystack = norm(text);
-  if (!haystack) return null;
-  for (const category of CATEGORIES) {
-    if (!category.match.test(haystack)) continue;
-    if (category.id === "papel" && higienicoModifiesOtherProduct(haystack)) continue;
-    if (categoryRejected(category, haystack)) continue;
-    return category;
+// "arroz higiénico" junto, en la misma frase, es papel higiénico mal dicho.
+// "un kilo de arroz y un paquete de papel" no entra: ahí hay dos productos.
+function rewriteGrocerySlips(message: string): string {
+  return message.replace(/\barroz\s+higi[eé]nicos?\b/gi, "papel higiénico");
+}
+
+const BRAND_HINTS: Array<{ re: RegExp; id: string }> = [
+  { re: /\bsanitas\b|\bpetalos?\b|\bregio\b|\bsuavel\b/, id: "papel" },
+  { re: /\bpinol\b|\bfabuloso\b|\bmaestro limpio\b/, id: "limpiador" },
+  { re: /\bcloralex\b|\bblancatel\b|\bclorox\b/, id: "cloro" },
+  { re: /\bzotes?\b|\bpalmolive\b|\bescudos?\b/, id: "jabon" },
+  { re: /\bnutrioli\b|\bcapullos?\b/, id: "aceite" },
+  { re: /\blalas?\b|\balpura\b|\bsanta clara\b/, id: "leche" },
+  { re: /\bgamesa\b|\bmarianela\b/, id: "galletas" },
+];
+
+function categoryFromBrand(haystack: string): Category | null {
+  for (const hint of BRAND_HINTS) {
+    if (!hint.re.test(haystack)) continue;
+    return CATEGORIES.find((category) => category.id === hint.id) ?? null;
   }
   return null;
 }
 
-// "higiénico" solo es papel cuando no está pegado a otro producto.
-// "papel higiénico" sigue siendo papel. "arroz higiénico" se queda en el arroz:
-// si no, el primer match (papel, antes que arroz) se come la frase y pregunta rollos.
-function higienicoModifiesOtherProduct(haystack: string): boolean {
-  if (/\bpapel\b/.test(haystack)) return false;
-  const match = haystack.match(/\b([a-z]{3,})\s+higienicos?\b/);
-  if (!match) return false;
-  const prev = match[1];
-  return CATEGORIES.some((other) => other.id !== "papel" && other.match.test(prev));
+function categoryFor(text: string): Category | null {
+  const haystack = norm(rewriteGrocerySlips(text));
+  if (!haystack) return null;
+  for (const category of CATEGORIES) {
+    if (!category.match.test(haystack)) continue;
+    if (categoryRejected(category, haystack)) continue;
+    return category;
+  }
+  return categoryFromBrand(haystack);
 }
 
 function ignoreSet(ignoreText?: string | null): Set<string> {
@@ -1019,7 +1074,7 @@ function looksLikeAddress(message: string): boolean {
 type Hit = { wordIndex: number; category: Category };
 
 function hitsIn(message: string): Hit[] {
-  const words = norm(dropAddressTail(message)).split(" ").filter(Boolean);
+  const words = norm(rewriteGrocerySlips(dropAddressTail(message))).split(" ").filter(Boolean);
   const haystack = words.join(" ");
   const hits: Hit[] = [];
   for (const category of CATEGORIES) {
@@ -1047,7 +1102,23 @@ function hitsIn(message: string): Hit[] {
     if (unique.some((item) => item.wordIndex === hit.wordIndex)) continue;
     unique.push(hit);
   }
-  return unique;
+  // Sin palabra de producto, la marca conocida abre la línea (Sanitas = papel).
+  // Si ya hay un producto ("crema Lala"), la marca no abre otra categoría.
+  if (unique.length) return unique;
+  return brandHintHits(haystack);
+}
+
+function brandHintHits(haystack: string): Hit[] {
+  if (!haystack) return [];
+  for (const hint of BRAND_HINTS) {
+    const match = new RegExp(hint.re.source).exec(haystack);
+    if (!match) continue;
+    const category = CATEGORIES.find((item) => item.id === hint.id);
+    if (!category) continue;
+    const wordIndex = haystack.slice(0, match.index).split(" ").filter(Boolean).length;
+    return [{ wordIndex, category }];
+  }
+  return [];
 }
 
 function alignedWords(message: string): string[] {
@@ -1135,7 +1206,7 @@ function clauseOpensProduct(part: string): boolean {
 }
 
 function splitProductClauses(message: string): string[] {
-  const text = dropAddressTail(message);
+  const text = rewriteGrocerySlips(dropAddressTail(message));
   const parts = text
     .split(/\s*(?:,|;|\by\b|\btambi[eé]n\b|\badem[aá]s\b)\s*/i)
     .map((part) => part.trim())
@@ -1153,10 +1224,14 @@ function splitProductClauses(message: string): string[] {
 }
 
 function windowsInClause(message: string): Array<{ category: Category; text: string }> {
-  const words = alignedWords(message);
-  const hits = hitsIn(message);
+  const rewritten = rewriteGrocerySlips(message);
+  const words = alignedWords(rewritten);
+  const found = hitsIn(rewritten);
+  // "galletas Emperador" nombra el producto y la marca: es una sola línea.
+  const sameCategory = found.length > 1 && new Set(found.map((hit) => hit.category.id)).size === 1;
+  const hits = sameCategory ? [found[0]] : found;
   if (!words.length || !hits.length) return [];
-  const normWords = norm(dropAddressTail(message)).split(" ").filter(Boolean);
+  const normWords = norm(dropAddressTail(rewritten)).split(" ").filter(Boolean);
   if (hits.length === 1 || words.length !== normWords.length) {
     if (hits.length === 1) return [{ category: hits[0].category, text: words.join(" ") }];
     const buckets = new Map<string, { category: Category; words: string[] }>();
@@ -1221,6 +1296,20 @@ function purchaseQtyUnit(blob: string): { cantidad: number; unidad: string } | n
   return { cantidad: qty, unidad: singular[match[2]] ?? match[2] };
 }
 
+// "un litro" / "una caja" ya traen la pieza. "2 litros" es el tamaño del empaque.
+function indefiniteUnit(blob: string): { cantidad: number; unidad: string } | null {
+  const match = blob.match(new RegExp(`\\b(un|una|uno)\\s+(${PURCHASE_UNIT})\\b`));
+  if (!match) return null;
+  return purchaseQtyUnit(`${match[1]} ${match[2]}`);
+}
+
+function containerAlreadyCounted(blob: string, item: PedidoItemInput): boolean {
+  if (/\b(un|una|uno)\s+(litros?|botellas?|garrafones?|cajas?|paquetes?|piezas?)\b/.test(blob)) return true;
+  if (typeof item.cantidad !== "number" || item.cantidad <= 0) return false;
+  const unit = norm(`${item.unidad ?? ""} ${item.presentacion ?? ""}`);
+  return /^(1|un|una)\b/.test(String(item.cantidad)) && /\b(litro|litros|botella|caja|paquete|pieza|garrafon)\b/.test(unit);
+}
+
 function applySpokenPurchase(item: PedidoItemInput, text: string): PedidoItemInput {
   const purchase = purchaseQtyUnit(norm(text));
   if (!purchase) return item;
@@ -1248,11 +1337,14 @@ function windowsFor(message: string): Array<{ category: Category; text: string }
 }
 
 function windowLabel(category: Category, text: string): string {
-  const base = category.label?.(text) ?? category.nombre;
-  if (category.id === "arroz" && /\bhigienicos?\b/.test(norm(text)) && !/\bpapel\b/.test(norm(text))) {
-    return "Arroz higiénico";
-  }
-  return base;
+  return category.label?.(text) ?? category.nombre;
+}
+
+function shelfName(category: Category, currentName: string | null | undefined, label: string): string {
+  if (category.id.startsWith("otro:") || category.id === "verdura") return clean(currentName) || label;
+  const current = clean(currentName);
+  if (current && category.match.test(norm(current))) return current;
+  return label;
 }
 
 function contentTokens(text: string): string[] {
@@ -1265,8 +1357,14 @@ function itemMatchesWindow(item: PedidoItemInput, window: { category: Category; 
   const current = itemCategory(item);
   const wanted = windowLabel(window.category, window.text);
   if (current?.id === window.category.id) {
-    if (current.id !== "verdura") return true;
-    return norm(item.nombre_producto) === norm(wanted);
+    if (current.id === "verdura") return norm(item.nombre_producto) === norm(wanted);
+    const itemBrands = contentTokens(item.marca ?? "");
+    const nameTokens = new Set(norm(window.category.nombre).split(" "));
+    const windowBrands = contentTokens(window.text).filter((token) => !nameTokens.has(token));
+    if (itemBrands.length && windowBrands.length && !itemBrands.some((token) => windowBrands.includes(token))) {
+      return false;
+    }
+    return true;
   }
   const stem = (value: string) => {
     const token = norm(value).split(" ").find((part) => part.length >= 4) ?? "";
@@ -1298,9 +1396,9 @@ function bareInventedPapel(
   if (item.cantidad != null || clean(item.unidad)) return false;
   const name = norm(item.nombre_producto);
   if (name !== "papel" && name !== "papel higienico") return false;
-  const hay = norm(message);
+  const hay = norm(rewriteGrocerySlips(message));
   if (/\bpapel\b/.test(hay)) return false;
-  return higienicoModifiesOtherProduct(hay);
+  return /\bhigienicos?\b/.test(norm(message));
 }
 
 function missingSlots(category: Category, item: PedidoItemInput, extra = ""): SlotId[] {
@@ -1411,6 +1509,15 @@ function applyDetail(
   if (category.countSeparate) {
     const count = parsePackageCount(extra);
     if (count != null && (next.cantidad == null || boundWindow)) next.cantidad = count;
+    // "un litro de Cloralex": el "un" no es un número suelto y el litro es el
+    // tamaño, pero también es un bote. "2 litros" de la Coca no entra aquí.
+    if (next.cantidad == null) {
+      const spoken = indefiniteUnit(extra);
+      if (spoken) {
+        next.cantidad = spoken.cantidad;
+        if (!clean(next.unidad)) next.unidad = spoken.unidad;
+      }
+    }
     if (!clean(next.unidad)) {
       const unit = countUnit(extra);
       if (unit) next.unidad = unit;
@@ -1419,7 +1526,7 @@ function applyDetail(
     const qty = parseQty(extra);
     const bareMl = /\b\d{3}\b/.test(extra) && !/\b(litro|litros|kilo|kilos|rollo|rollos|pieza|piezas|docena)\b/.test(extra);
     const mentionsCount =
-      /\b(kilo|kilos|kg|docena|pieza|piezas|bolsa|paquete|litro|litros|rollo|rollos|lata|caguama)\b/.test(extra) ||
+      /\b(kilo|kilos|kg|docena|pieza|piezas|bolsa|paquete|paquetes|litro|litros|rollo|rollos|lata|caguama|caja|cajas)\b/.test(extra) ||
       (/\d/.test(extra) && !bareMl);
     if (qty != null && mentionsCount) next.cantidad = qty;
   }
@@ -1430,9 +1537,16 @@ function applyDetail(
     if (!clean(next.unidad)) next.unidad = "kilo";
   }
   if (!clean(next.unidad) && !category.countSeparate) {
-    const unit = extra.match(/\b(kilos|kilo|kg|litros|litro|paquete|piezas|pieza|bolsa|docena|garrafon|lata|rollos|rollo)\b/);
+    const unit = extra.match(/\b(kilos|kilo|kg|litros|litro|paquetes|paquete|piezas|pieza|bolsa|docena|garrafon|lata|rollos|rollo|cajas|caja)\b/);
     if (unit) {
-      const mapped: Record<string, string> = { kilos: "kilo", kg: "kilo", litros: "litros", garrafon: "garrafón" };
+      const mapped: Record<string, string> = {
+        kilos: "kilo",
+        kg: "kilo",
+        litros: "litros",
+        paquetes: "paquete",
+        cajas: "caja",
+        garrafon: "garrafón",
+      };
       next.unidad = mapped[unit[1]] ?? unit[1];
     }
   }
@@ -1523,24 +1637,28 @@ export function prepareQuoteItems(
 
   if (windows.length) {
     const boundWindow = windows.length > 1;
+    const used = new Set<number>();
+    const produced: PedidoItemInput[] = [];
     for (const window of windows) {
       const label = windowLabel(window.category, window.text);
-      const index = next.findIndex((item) => itemMatchesWindow(item, window));
+      const index = next.findIndex((item, itemIndex) => !used.has(itemIndex) && itemMatchesWindow(item, window));
       const finish = (item: PedidoItemInput) => {
-        const detailed = applyDetail(item, window.text, ignore, boundWindow);
+        const named = {
+          ...item,
+          nombre_producto: shelfName(window.category, item.nombre_producto, label),
+        };
+        const detailed = applyDetail(named, window.text, ignore, boundWindow);
         return window.category.id.startsWith("otro:") ? applySpokenPurchase(detailed, window.text) : detailed;
       };
       if (index === -1) {
-        next.push(finish({ nombre_producto: label }));
+        produced.push(finish({ nombre_producto: label }));
       } else {
-        const current = next[index];
-        const base =
-          norm(label) === "arroz higienico" && /^arroz\b/.test(norm(current.nombre_producto))
-            ? { ...current, nombre_producto: label }
-            : current;
-        next[index] = finish(base);
+        used.add(index);
+        produced.push(finish(next[index]));
       }
     }
+    const prior = next.filter((_, itemIndex) => !used.has(itemIndex));
+    next = [...prior, ...produced];
   } else if (!flavoredWater && message && !looksLikeAddress(message) && (norm(message).split(" ").length <= 14 || waiverNote(message))) {
     const open = next.filter((item) => quoteItemNeedsDetail(item)).length;
     const splitsProducts = open > 1 && /\sy\s/.test(norm(message));
