@@ -437,3 +437,22 @@ export function isComplaintMessage(text: string): boolean {
   );
 }
 
+// «queja», «reclamo» o pedir una persona sigue siendo escalamiento aunque
+// el mensaje también mencione el pedido. «te faltaron» durante la captura no.
+const HUMAN_HELP_REGEX =
+  /\b(queja|reclamo|me quejo|hablar con alguien|hablar con una persona|hablar con el administrador|atencion al cliente)\b/;
+
+export function requestsHumanHelp(text: string): boolean {
+  return HUMAN_HELP_REGEX.test(normalizeMessageIntentText(text));
+}
+
+// Durante la captura o la lista de productos, «Sí, pero te faltaron…» corrige
+// el mandado. No se avisa al admin. Una queja de verdad (no llegó, cobraron
+// mal, hablar con alguien) sí se escala, con o sin pedido abierto.
+export function shouldEscalateComplaint(text: string, options?: { editingOrder?: boolean }): boolean {
+  if (!isComplaintMessage(text)) return false;
+  if (requestsHumanHelp(text)) return true;
+  if (options?.editingOrder && messageCorrectsOrder(text)) return false;
+  return true;
+}
+

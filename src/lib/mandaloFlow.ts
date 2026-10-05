@@ -6,7 +6,9 @@ import { getChatCompletion, getOpenAIModel } from "@/lib/openaiClient";
 import { buildMandaloSystemPrompt } from "@/lib/mandaloPrompt";
 import { normalizeWhatsAppText, waapiSendImage, waapiSendText } from "@/lib/waapi";
 import { detectActorByPhone, ensureMxWhatsappIntl, normalizePhone } from "@/lib/roles";
+import { applyCatalogSpeech } from "@/lib/catalogOrderSpeech";
 import { priceCatalogOrder, type CatalogPriceRow } from "@/lib/catalogQuantities";
+import { dropItemsNamedInRemoval } from "@/lib/quoteProductClarity";
 import { ADDRESS_ASK_MESSAGE, buildCustomerMessage, createCaptureEngine, dispatchItemAlreadyShowsQty, extractCandidateItems, formatProductListConfirm, isProductListConfirmMessage, type PedidoItemInput } from "@/lib/services/captureEngine";
 import * as pedidoRepositoryV2 from "@/lib/repositories/pedidoRepositoryV2";
 import { getAdminPhone } from "@/lib/repositories/configRepository";
@@ -69,7 +71,7 @@ import {
   isBareOrderRejection,
   classifyProductListReply,
   isCancelIntent,
-  isComplaintMessage,
+  shouldEscalateComplaint,
   isDropProductIntent,
   isConversationModeMessage,
   isNewOrderIntent,
@@ -803,6 +805,62 @@ function describeWhyWaiting(params: {
   return `*${tiendaNombre}* y Mándalo ya deberían estar disponibles`;
 }
 
+async function reviseFixedCatalogProductList(
+  telefono: string,
+  mensaje: string,
+  pedido: PedidoV2Record,
+  full: PedidoFullRecord,
+  ubicacionCoords: Coordinates | null,
+): Promise<JsonObject> {
+  await guardarMensajeChat({ telefono, texto: String(mensaje ?? ""), estado: "cliente" }).catch(() => {});
+  const catalog =
+    full.tienda?.tiendaId != null
+      ? await pedidoRepositoryV2.getProductosTiendaActivos(full.tienda.tiendaId).catch(() => [])
+      : [];
+  const base = (pedido.snapshot_json.items ?? []).map((item) => ({ ...item }));
+  const spoken = applyCatalogSpeech({ base, userMessage: mensaje, catalog });
+  const items = dropItemsNamedInRemoval(spoken.applied ? spoken.items : base, mensaje);
+  const missing = spoken.applied && spoken.missing;
+  const msg = missing && spoken.reply ? spoken.reply : formatProductListConfirm(items);
+  const snapshot = {
+    ...pedido.snapshot_json,
+    items,
+    flags: {
+      ...(pedido.snapshot_json.flags ?? {}),
+      productosConfirmados: false,
+      awaitingProductConfirm: isProductListConfirmMessage(msg),
+      readyForConfirmation: false,
+      itemsValidated: !missing,
+    },
+  };
+  if (ubicacionCoords) {
+    snapshot.addressText = buildAddressTextFromCoords();
+    snapshot.latitud = ubicacionCoords.latitude;
+    snapshot.longitud = ubicacionCoords.longitude;
+  }
+  await pedidoRepositoryV2.updatePedidoSnapshot({
+    pedidoId: pedido.id,
+    estado: "seleccion_productos",
+    snapshot,
+    addressText: snapshot.addressText ?? null,
+    latitud: snapshot.latitud ?? null,
+    longitud: snapshot.longitud ?? null,
+    tiendaId: snapshot.businessId ?? full.tienda?.tiendaId ?? null,
+  });
+  await pedidoRepositoryV2.replacePedidoItems({ pedidoId: pedido.id, items });
+  await pedidoRepositoryV2.appendPedidoEvento({
+    pedidoId: pedido.id,
+    tipoEvento: "productos_corregidos",
+    estadoOrigen: "seleccion_productos",
+    estadoDestino: "seleccion_productos",
+    actorTipo: "cliente",
+    payload: { userMessage: mensaje, catalogoFijo: true },
+  });
+  await sendWhatsApp(telefono, msg);
+  await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+  return { ok: true, role: "cliente", accion: "productos_corregidos", pedidoId: pedido.id };
+}
+
 async function handleAwaitingProductList(
   telefono: string,
   mensaje: string,
@@ -813,7 +871,9 @@ async function handleAwaitingProductList(
   if (replyKind === "ignore") return null;
   if (replyKind === "revise") {
     const full = await pedidoRepositoryV2.getPedidoById(pedido.id).catch(() => null);
-    if (full?.tienda?.usaCatalogoFijo === true) return null;
+    if (full?.tienda?.usaCatalogoFijo === true) {
+      return reviseFixedCatalogProductList(telefono, mensaje, pedido, full, ubicacionCoords);
+    }
   }
 
   await guardarMensajeChat({ telefono, texto: String(mensaje ?? ""), estado: "cliente" }).catch(() => {});
@@ -1767,7 +1827,11 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
   // con "¿qué se te antoja hoy?": lo conectamos directo con el admin, con o
   // sin pedido activo (puede llegar después de que la retención ya borró el
   // pedido que originó la queja).
-  if (isComplaintMessage(mensaje)) {
+  const editingOrder =
+    hasActivePedido &&
+    openPedido != null &&
+    (openPedido.estado === "seleccion_productos" || openPedido.estado === "confirmacion_cliente");
+  if (shouldEscalateComplaint(mensaje, { editingOrder })) {
     await guardarMensajeChat({ telefono, texto: String(mensaje ?? ""), estado: "cliente" }).catch(() => {});
     await outboxRepository
       .enqueueAdminNotification({

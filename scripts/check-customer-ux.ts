@@ -9,7 +9,7 @@ import { applyCatalogSpeech } from "../src/lib/catalogOrderSpeech";
 import { ADDRESS_ASK_MESSAGE, buildCustomerMessage, dispatchItemAlreadyShowsQty, formatProductListConfirm, formatSpecificItemLine, mergeSnapshot, type PedidoItemInput } from "../src/lib/services/captureEngine";
 import { validateCaptureForConfirmation } from "../src/lib/services/validationEngine";
 import { confirmationCustomerMessage, planConfirmationAmendment } from "../src/lib/confirmationAmendment";
-import { classifyProductListReply, isBareOrderRejection, isNoConfirmation, isProductListRequest, isYesConfirmation } from "../src/lib/messages";
+import { classifyProductListReply, isBareOrderRejection, isComplaintMessage, isNoConfirmation, isProductListRequest, isYesConfirmation, shouldEscalateComplaint } from "../src/lib/messages";
 import { normalizeWhatsAppText } from "../src/lib/waapi";
 import {
   buildGreeting,
@@ -1190,6 +1190,136 @@ const dogosVagos = applyCatalogSpeech({
 });
 assert(!dogosVagos.applied, "dos dogos sin sabor no eligen uno al azar");
 
+const pedido83 =
+  "una hamburguesa hawaiana, una hamburguesa cubana, Salchi locos, 3 Dogos clásicos y 3 refrescos: 1 Pepsi y 2 manzanitas";
+const menuMarcas = [
+  { nombreProducto: "Hamburguesa Hawaiana", precio: 75 },
+  { nombreProducto: "Hamburguesa Cubana", precio: 80 },
+  { nombreProducto: "Salchilocos", precio: 65 },
+  { nombreProducto: "Dogo Clásico", precio: 35 },
+  { nombreProducto: "Refresco Pepsi Coca Seven Sprite Mirinda Manzana", precio: 20 },
+];
+const menuSimple = [
+  { nombreProducto: "Hamburguesa Hawaiana", precio: 75 },
+  { nombreProducto: "Hamburguesa Cubana", precio: 80 },
+  { nombreProducto: "Salchi locos", precio: 65 },
+  { nombreProducto: "Dogo Clásico", precio: 35 },
+  { nombreProducto: "Refresco", precio: 20 },
+];
+function assertPedido83(catalog: Array<{ nombreProducto: string; precio: number }>, etiqueta: string) {
+  const parsed = applyCatalogSpeech({ base: [], userMessage: pedido83, catalog });
+  assert(parsed.applied && !parsed.missing, `${etiqueta}: el mensaje completo no deja huecos`);
+  const find = (re: RegExp) => parsed.items.find((item) => re.test(`${item.nombre_producto} ${item.marca ?? ""}`));
+  const hawaiana = find(/hawaiana/i);
+  const cubana = find(/cubana/i);
+  const salchi = find(/salchi/i);
+  const dogo = find(/dogo/i);
+  const pepsi = find(/pepsi/i);
+  const manzana = find(/manzana/i);
+  assert(hawaiana?.cantidad === 1, `${etiqueta}: hawaiana es 1`);
+  assert(cubana?.cantidad === 1, `${etiqueta}: cubana es 1`);
+  assert(Boolean(salchi) && salchi?.cantidad === 1, `${etiqueta}: salchi locos entra en 1`);
+  assert(/cl[aá]sico/i.test(dogo?.nombre_producto ?? "") && dogo?.cantidad === 3, `${etiqueta}: 3 dogos clásicos`);
+  assert(/pepsi/i.test(`${pepsi?.nombre_producto ?? ""} ${pepsi?.marca ?? ""}`) && pepsi?.cantidad === 1, `${etiqueta}: 1 Pepsi`);
+  assert(/manzana/i.test(`${manzana?.nombre_producto ?? ""} ${manzana?.marca ?? ""}`) && manzana?.cantidad === 2, `${etiqueta}: 2 manzanitas`);
+  assert(parsed.items.length === 6, `${etiqueta}: son seis líneas, no solo las dos hamburguesas`);
+  assert(!/cuánt|de qué marca|la quieres/i.test(parsed.reply ?? ""), `${etiqueta}: no re-pregunta lo que ya dijo`);
+  const lista = formatProductListConfirm(parsed.items);
+  assert(lista.includes("¿Están bien estos productos?"), `${etiqueta}: la lista pide confirmación`);
+  assert(!lista.includes("ubicación por GPS"), `${etiqueta}: la lista no pide GPS`);
+  assert(!lista.includes("$35") && !lista.includes("$10") && !lista.includes("$25"), `${etiqueta}: la lista no cambia el cargo`);
+  for (const pieza of [hawaiana, cubana, salchi, dogo, pepsi, manzana]) {
+    assert(lista.toLowerCase().includes((pieza?.nombre_producto ?? "no-esta").toLowerCase()), `${etiqueta}: la lista trae ${pieza?.nombre_producto}`);
+  }
+}
+assertPedido83(menuMarcas, "menú con marcas en el refresco");
+assertPedido83(menuSimple, "menú con refresco suelto y salchi locos");
+assertPedido83(
+  [
+    { nombreProducto: "Hamburguesa Hawaiana", precio: 75 },
+    { nombreProducto: "Hamburguesa Cubana", precio: 80 },
+    { nombreProducto: "Salchilocos", precio: 65 },
+    { nombreProducto: "Dogo Clásico", precio: 35 },
+    { nombreProducto: "Refresco Pepsi", precio: 20 },
+    { nombreProducto: "Refresco Manzana", precio: 20 },
+  ],
+  "menú con un refresco por marca",
+);
+assertPedido83(
+  [
+    { nombreProducto: "Hamburguesa Hawaiana", precio: 75 },
+    { nombreProducto: "Hamburguesa Cubana", precio: 80 },
+    { nombreProducto: "Salchilocos", precio: 65 },
+    { nombreProducto: "Dogo Clásico", precio: 35 },
+    { nombreProducto: "Pepsi", precio: 20 },
+    { nombreProducto: "Manzana", precio: 20 },
+  ],
+  "menú con Pepsi y Manzana como productos",
+);
+
+const hawaianaConTamaño = applyCatalogSpeech({
+  base: [],
+  userMessage: "una hamburguesa hawaiana",
+  catalog: [
+    { nombreProducto: "Hamburguesa Hawaiana Chica", precio: 70 },
+    { nombreProducto: "Hamburguesa Hawaiana Grande", precio: 95 },
+  ],
+});
+assert(hawaianaConTamaño.applied && hawaianaConTamaño.missing, "si el menú tiene dos tamaños, se pregunta el tamaño");
+assert(hawaianaConTamaño.items[0]?.cantidad === 1, "una hawaiana ya trae la cantidad");
+assert(!/chica|grande/i.test(hawaianaConTamaño.items[0]?.nombre_producto ?? ""), "no inventa el tamaño");
+assert(/chica o grande/i.test(hawaianaConTamaño.reply ?? ""), "pregunta el tamaño que falta");
+assert(!/cuánt/i.test(hawaianaConTamaño.reply ?? ""), "no vuelve a preguntar cuántas");
+
+const otraCubana = applyCatalogSpeech({
+  base: [],
+  userMessage: "otra cubana",
+  catalog: menuSimple,
+});
+assert(otraCubana.items[0]?.cantidad === 1 && /cubana/i.test(otraCubana.items[0]?.nombre_producto ?? ""), "otra cuenta como 1");
+
+const unosClasicos = applyCatalogSpeech({
+  base: [],
+  userMessage: "unos dogos clásicos",
+  catalog: menuSimple,
+});
+assert(unosClasicos.items[0]?.cantidad === 1 && /cl[aá]sico/i.test(unosClasicos.items[0]?.nombre_producto ?? ""), "unos cuenta como 1");
+
+const soloDos = applyCatalogSpeech({
+  base: [],
+  userMessage: pedido83,
+  catalog: menuSimple,
+});
+const faltaron = "Sí, pero te faltaron los demás";
+assert(classifyProductListReply(faltaron) === "revise", "te faltaron en la lista se revisa");
+assert(!isYesConfirmation(faltaron), "te faltaron no es el sí del GPS");
+assert(isComplaintMessage(faltaron), "faltaron sigue siendo frase de queja fuera de la captura");
+assert(!shouldEscalateComplaint(faltaron, { editingOrder: true }), "durante la lista, te faltaron no avisa al admin");
+assert(shouldEscalateComplaint(faltaron, { editingOrder: false }), "sin pedido en captura, te faltaron sí avisa al admin");
+assert(shouldEscalateComplaint("quiero hablar con alguien, te faltaron cosas", { editingOrder: true }), "pedir una persona sí se escala");
+assert(shouldEscalateComplaint("no me llego el pedido", { editingOrder: true }), "no llegó sigue siendo queja");
+assert(!shouldEscalateComplaint("hola", { editingOrder: true }), "un saludo no es queja");
+const corregido83 = applyCatalogSpeech({
+  base: soloDos.items.filter((item) => /hawaiana|cubana/i.test(item.nombre_producto)),
+  userMessage: "Sí, pero te faltaron Salchi locos, 3 dogos clásicos, 1 pepsi y 2 manzanitas",
+  catalog: menuSimple,
+});
+assert(corregido83.applied && !corregido83.missing, "nombrar lo que faltó completa el menú");
+assert(corregido83.items.length === 6, "la corrección no tira las hamburguesas");
+const listaCorregida83 = formatProductListConfirm(corregido83.items);
+assert(listaCorregida83.includes("¿Están bien estos productos?") && !listaCorregida83.includes("ubicación por GPS"), "después de faltó se vuelve a listar, sin GPS");
+assert(/salchi/i.test(listaCorregida83) && /cl[aá]sico/i.test(listaCorregida83) && /pepsi/i.test(listaCorregida83) && /manzana/i.test(listaCorregida83), "la lista nueva trae lo que faltaba");
+
+const pedidoEnGeorge = classifyCustomerTurn({
+  message: pedido83,
+  lastBotText: "Menú de Hamburguesas Hotdogs George",
+  hasBusiness: true,
+  hasItems: false,
+  businessId: george.id,
+  stores,
+});
+assert(pedidoEnGeorge.type === "continue", "el pedido completo de George no vuelve a pedir el menú");
+
 const pedido73 = {
   businessId: 1,
   businessName: "Abarrotes ZAGU",
@@ -1569,6 +1699,9 @@ assert(flowSrc.includes("cliente_rechazo_productos"), "un no en la lista de prod
 assert(flowSrc.includes("awaitingProductConfirm"), "el sí de la lista no es el sí del ticket final");
 assert(flowSrc.includes("classifyProductListReply"), "el sí con corrección no se trata como el sí del GPS");
 assert(flowSrc.includes("productos_corregidos"), "una corrección en la lista se guarda antes de volver a preguntar");
+assert(flowSrc.includes("shouldEscalateComplaint"), "te faltaron durante la captura no se manda como queja");
+assert(flowSrc.includes("reviseFixedCatalogProductList"), "el menú fijo también corrige y vuelve a listar");
+assert(!flowSrc.includes("usaCatalogoFijo === true) return null"), "corregir en George ya no se ignora");
 
 const tiendaSinGps = { businessId: 1, businessName: "Abarrotes" };
 function quoteSinGps(items: PedidoItemInput[], userMessage: string, flags?: { productosConfirmados?: boolean; awaitingProductConfirm?: boolean }) {

@@ -28,7 +28,7 @@ export type CatalogSpeechResult = {
   question: string | null;
 };
 
-type AnchorKind = "hamburguesa" | "dogo" | "refresco";
+type AnchorKind = "hamburguesa" | "dogo" | "refresco" | "product";
 type Gap = "tamano" | "cantidad" | "marca";
 
 const QTY: Record<string, number> = {
@@ -37,6 +37,8 @@ const QTY: Record<string, number> = {
   uno: 1,
   unos: 1,
   unas: 1,
+  otro: 1,
+  otra: 1,
   dos: 2,
   tres: 3,
   cuatro: 4,
@@ -92,14 +94,28 @@ function norm(value: string): string {
 
 function canon(word: string): string {
   if (word === "hamburguesas") return "hamburguesa";
+  if (word === "hawaianas") return "hawaiana";
+  if (word === "cubanas") return "cubana";
   if (word === "hotdogs" || word === "hotdog" || word === "dogos" || word === "dogo") return "dogo";
   if (word === "refrescos") return "refresco";
+  if (word === "manzanitas" || word === "manzanita") return "manzana";
+  if (word === "clasicos" || word === "clasicas" || word === "clasica") return "clasico";
   return word;
+}
+
+function qtyWord(word: string): number | null {
+  if (QTY[word] != null) return QTY[word];
+  if (/^\d{1,2}$/.test(word)) {
+    const parsed = Number(word);
+    if (parsed >= 1 && parsed <= 30) return parsed;
+  }
+  return null;
 }
 
 function words(value: string): string[] {
   return norm(value)
     .split(" ")
+    .filter((word) => qtyWord(word) == null)
     .map(canon)
     .filter((word) => word.length >= 3 && !FILLER.has(word));
 }
@@ -157,7 +173,8 @@ function qtyAttached(text: string, index: number): number | null {
   const before = norm(text.slice(0, index)).split(" ").filter(Boolean);
   for (let i = before.length - 1; i >= 0 && i >= before.length - 6; i--) {
     const word = before[i];
-    if (QTY[word] != null) return QTY[word];
+    const qty = qtyWord(word);
+    if (qty != null) return qty;
     if (FILLER.has(word)) continue;
     break;
   }
@@ -165,8 +182,8 @@ function qtyAttached(text: string, index: number): number | null {
 }
 
 function qtyIn(text: string): number | null {
-  const match = norm(text).match(/\b(un|una|uno|unos|unas|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\b/);
-  return match ? (QTY[match[1]] ?? null) : null;
+  const match = norm(text).match(/\b(un|una|uno|unos|unas|otro|otra|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|\d{1,2})\b/);
+  return match ? qtyWord(match[1]) : null;
 }
 
 function fillerBetween(raw: string): boolean {
@@ -174,12 +191,53 @@ function fillerBetween(raw: string): boolean {
   return parts.every((word) => FILLER.has(word) || QTY[word] != null);
 }
 
-function spansOf(text: string): Array<{ kind: AnchorKind | null; text: string; qty: number | null }> {
+function wordSpans(text: string): Array<{ word: string; index: number; end: number }> {
+  const spans: Array<{ word: string; index: number; end: number }> = [];
+  for (const match of text.matchAll(/\S+/g)) {
+    if (match.index == null) continue;
+    spans.push({ word: match[0], index: match.index, end: match.index + match[0].length });
+  }
+  return spans;
+}
+
+function phraseHits(text: string, phrase: string): Array<{ index: number; end: number }> {
+  const target = phrase.replace(/\s+/g, "");
+  if (target.length < 5) return [];
+  const tokens = wordSpans(text);
+  const hits: Array<{ index: number; end: number }> = [];
+  const widest = Math.min(4, tokens.length);
+  for (let size = 1; size <= widest; size++) {
+    for (let i = 0; i + size <= tokens.length; i++) {
+      const slice = tokens.slice(i, i + size);
+      if (slice.map((token) => token.word).join("") !== target) continue;
+      hits.push({ index: slice[0].index, end: slice[slice.length - 1].end });
+    }
+  }
+  return hits;
+}
+
+function isHeadFamily(family: Family): boolean {
+  return family.nameTokens.some((token) => HEADS.has(token));
+}
+
+function productAnchorHits(text: string, families: Family[]): Array<{ index: number; end: number }> {
+  const hits: Array<{ index: number; end: number }> = [];
+  for (const family of families) {
+    if (isHeadFamily(family)) continue;
+    const phrases = [family.key];
+    const longest = family.distinct.slice().sort((a, b) => b.length - a.length)[0];
+    if (longest && longest.length >= 6 && longest !== family.key.replace(/\s+/g, "")) phrases.push(longest);
+    for (const phrase of phrases) hits.push(...phraseHits(text, phrase));
+  }
+  return hits;
+}
+
+function spansOf(text: string, families: Family[] = []): Array<{ kind: AnchorKind | null; text: string; qty: number | null }> {
   const patterns: Array<{ kind: AnchorKind | "brand"; re: RegExp }> = [
     { kind: "hamburguesa", re: /\bhamburguesas?\b/g },
     { kind: "dogo", re: /\b(?:hot\s*dogs?|hotdogs?|dogos?|dogo)\b/g },
     { kind: "refresco", re: /\brefrescos?\b/g },
-    { kind: "brand", re: /\b(pepsi|coca|seven|sprite|mirinda|manzana)\b/g },
+    { kind: "brand", re: /\b(pepsi|coca|seven|sprite|mirinda|manzanitas?|manzana)\b/g },
   ];
   const hits: Array<{ kind: AnchorKind | "brand"; index: number; end: number }> = [];
   for (const pattern of patterns) {
@@ -187,6 +245,9 @@ function spansOf(text: string): Array<{ kind: AnchorKind | null; text: string; q
       if (match.index == null) continue;
       hits.push({ kind: pattern.kind, index: match.index, end: match.index + match[0].length });
     }
+  }
+  for (const hit of productAnchorHits(text, families)) {
+    hits.push({ kind: "product", index: hit.index, end: hit.end });
   }
   hits.sort((a, b) => a.index - b.index || a.end - b.end);
   const kept: typeof hits = [];
@@ -212,29 +273,66 @@ function spansOf(text: string): Array<{ kind: AnchorKind | null; text: string; q
   });
 }
 
+function isBrandListDrink(family: Family): boolean {
+  const brands = family.distinct.filter((token) => BRANDS.includes(token));
+  const other = family.distinct.filter((token) => !BRANDS.includes(token));
+  return brands.length >= 2 && other.length === 0;
+}
+
 function scoreFamily(family: Family, span: { kind: AnchorKind | null; text: string }): number {
   const tokens = new Set(words(span.text));
   for (const brand of BRANDS) {
     if (norm(span.text).includes(brand)) tokens.add(brand);
   }
+  const compactSpan = norm(span.text).replace(/[^a-z0-9]/g, "");
+  const compactKey = family.key.replace(/[^a-z0-9]/g, "");
+  const compactHit = compactKey.length >= 5 && compactSpan.includes(compactKey);
+  const brandList = isBrandListDrink(family);
+
+  if (brandList) {
+    const mentioned = BRANDS.some((brand) => tokens.has(brand));
+    if (!(span.kind === "refresco" || mentioned)) return 0;
+    return mentioned ? 3 : 1;
+  }
+
   if (family.distinct.length) {
-    if (!family.distinct.every((token) => tokens.has(token))) return 0;
+    const tokensHit = family.distinct.every((token) => tokens.has(token));
+    if (!tokensHit && !compactHit) return 0;
   } else if (!(family.nameTokens.includes("refresco") && (span.kind === "refresco" || BRANDS.some((brand) => tokens.has(brand))))) {
     return 0;
   }
   let score = family.distinct.length * 2;
+  if (compactHit) score += 3;
   if (family.distinct.length === 0) score = 2;
-  if (span.kind && family.nameTokens.includes(span.kind)) score += 3;
+  if (span.kind && span.kind !== "product" && family.nameTokens.includes(span.kind)) score += 3;
   if (span.kind === "dogo" && family.nameTokens.includes("hamburguesa")) score -= 8;
   if (span.kind === "hamburguesa" && family.nameTokens.includes("dogo")) score -= 8;
   if (span.kind === "refresco" && (family.nameTokens.includes("hamburguesa") || family.nameTokens.includes("dogo"))) score -= 8;
+  const said = norm(span.text);
+  if (/\bclasicos?\b/.test(said) && /\bclasico\b/.test(family.key)) score += 1;
+  if (/\bclasicas?\b/.test(said) && /\bclasica\b/.test(family.key)) score += 1;
   return score;
 }
 
 function brandIn(text: string): string | null {
-  const tokens = norm(text).split(" ");
+  const tokens = norm(text).split(" ").filter(Boolean).map(canon);
   const found = BRANDS.find((brand) => tokens.includes(brand));
   return found ? titleBrand(found) : null;
+}
+
+function uncountedPlural(span: { text: string; qty: number | null }): boolean {
+  if (span.qty != null) return false;
+  return /\b(hamburguesas|dogos|hotdogs|hot\s+dogs|refrescos|manzanitas)\b/.test(norm(span.text));
+}
+
+function isDrinkLine(line: SpokenLine): boolean {
+  return line.familyKey === "refresco" || line.nameTokens.includes("refresco");
+}
+
+function dropDrinkIntroducers(lines: SpokenLine[]): SpokenLine[] {
+  const branded = lines.some((line) => isDrinkLine(line) && Boolean(line.marca));
+  if (!branded) return lines;
+  return lines.filter((line) => !(isDrinkLine(line) && !line.marca));
 }
 
 function sizeIn(text: string): string | null {
@@ -273,39 +371,47 @@ function lineFromSpan(span: { kind: AnchorKind | null; text: string; qty: number
     ? family.rows.find((row) => sizesIn(row.nombreProducto).includes(wantedSize) || sizesIn(row.nombreProducto).includes(spokenSize ?? ""))
     : null;
   const needsSize = family.sizes.length > 1 && !sizedRow;
-  const drink = family.nameTokens.includes("refresco") && family.distinct.length === 0;
+  const brandList = isBrandListDrink(family);
+  const drink = (family.nameTokens.includes("refresco") && family.distinct.length === 0) || brandList;
   const brand = drink ? brandIn(span.text) : null;
   const needsBrand = drink && !brand;
   const gaps: Gap[] = [];
   if (needsSize) gaps.push("tamano");
   if (needsBrand) gaps.push("marca");
-  if (span.qty == null) gaps.push("cantidad");
+  const cantidad = span.qty ?? (uncountedPlural(span) ? null : 1);
+  if (cantidad == null) gaps.push("cantidad");
   const single = family.rows.length === 1 ? family.rows[0].nombreProducto : family.unsizedName;
   return {
-    familyKey: family.key,
-    nombre: sizedRow?.nombreProducto ?? (needsSize ? family.unsizedName : single),
+    familyKey: brandList ? "refresco" : family.key,
+    nombre: sizedRow?.nombreProducto ?? (needsSize ? family.unsizedName : brandList ? "Refresco" : single),
     marca: brand,
-    cantidad: span.qty,
+    cantidad,
     gaps,
     sizeAsk: family.sizes.join(" o "),
-    label: family.unsizedName,
-    distinct: family.distinct,
-    nameTokens: family.nameTokens,
+    label: brandList ? "Refresco" : family.unsizedName,
+    distinct: brandList ? [] : family.distinct,
+    nameTokens: brandList ? ["refresco"] : family.nameTokens,
   };
 }
 
 function sameFamily(item: CatalogSpeechItem, line: SpokenLine): boolean {
   const key = stripSize(item.nombre_producto);
-  if (key === line.familyKey) return true;
-  if (!line.distinct.length || !line.distinct.every((token) => words(key).includes(token))) return false;
-  const tokens = new Set(words(key));
-  const itemIsDogo = tokens.has("dogo");
-  const itemIsBurger = tokens.has("hamburguesa");
-  const familyIsDogo = line.nameTokens.includes("dogo");
-  const familyIsBurger = line.nameTokens.includes("hamburguesa");
-  if (itemIsDogo && familyIsBurger) return false;
-  if (itemIsBurger && familyIsDogo) return false;
-  return true;
+  let matched = key === line.familyKey;
+  if (!matched) {
+    if (!line.distinct.length || !line.distinct.every((token) => words(key).includes(token))) return false;
+    const tokens = new Set(words(key));
+    const itemIsDogo = tokens.has("dogo");
+    const itemIsBurger = tokens.has("hamburguesa");
+    const familyIsDogo = line.nameTokens.includes("dogo");
+    const familyIsBurger = line.nameTokens.includes("hamburguesa");
+    if (itemIsDogo && familyIsBurger) return false;
+    if (itemIsBurger && familyIsDogo) return false;
+    matched = true;
+  }
+  const itemBrand = canon(norm(String(item.marca ?? "")));
+  const lineBrand = canon(norm(String(line.marca ?? "")));
+  if (itemBrand && lineBrand && itemBrand !== lineBrand) return false;
+  return matched;
 }
 
 function pieceLabel(qty: number): string {
@@ -349,10 +455,12 @@ export function applyCatalogSpeech(params: {
   const families = familiesOf(params.catalog);
   if (!text || !families.length) return { applied: false, missing: false, items: base, reply: null, question: null };
 
-  const fromAnchors = spansOf(text)
+  const fromAnchors = spansOf(text, families)
     .map((span) => lineFromSpan(span, families))
     .filter((line): line is SpokenLine => line != null);
-  const spoken = fromAnchors.length ? fromAnchors : [sizeFollowUp(base, text, families)].filter((line): line is SpokenLine => line != null);
+  const spoken = dropDrinkIntroducers(
+    fromAnchors.length ? fromAnchors : [sizeFollowUp(base, text, families)].filter((line): line is SpokenLine => line != null),
+  );
   if (!spoken.length) return { applied: false, missing: false, items: base, reply: null, question: null };
 
   const items = base;
