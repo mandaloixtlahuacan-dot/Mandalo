@@ -2,7 +2,19 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 5 de octubre de 2026. Pedido #85 (George, menú fijo):
+> Última actualización: 5 de octubre de 2026. Tercer filtro **Carnicerías**:
+> el saludo ofrece Abarrotes, Restaurantes y Carnicerías. Elegir Carnicerías
+> lista solo a Carnicería La Central (`usa_catalogo_fijo`, mismo confirmar /
+> corregir / SÍ / GPS que George). Menú de 18 productos, sin pollo; el carbón
+> es **Carbón Firo**. El cargo al cliente sigue siendo $35 de envío y servicio.
+> El SQL está en `supabase/migrations/20261005_carniceria_la_central.sql` —
+> Víctor lo corre; el teléfono `520000000000` es marcador y hay que cambiarlo
+> al WhatsApp real, igual que el horario (en NULL se ve siempre abierta).
+> La foto del menú todavía no está: va en `public/menus/carniceria-la-central.png`
+> o en `CARNICERIA_LA_CENTRAL_MENU_IMAGE_URL`. Sin foto el bot manda el menú
+> en texto y el habla sigue contra los nombres del catálogo. Código en rama,
+> sin merge y sin deploy.
+> Actualización anterior del mismo día: Pedido #85 (George, menú fijo):
 > «quiero una hamburguesa de res, unas papas gajo, una Pepsi y una manzanita»
 > anota las cuatro líneas (Papas Gajo aunque el menú diga 315g o 1 pieza;
 > lo mismo con salchi locos). Si el menú tiene dos tamaños, se pregunta solo
@@ -158,7 +170,7 @@ El saludo sigue la hora (buenos días, buenas tardes, buenas noches) y termina e
 Código en rama, **sin merge y sin deploy**. Decisiones de Víctor aplicadas en copy y plantillas deterministas (`src/lib/customerUx.ts`):
 
 - Al cliente el cargo es una sola línea de **$35 de envío y servicio**. De esos $35, **$25** son para el repartidor y **$10** para Mándalo (Víctor). Víctor lo confirmó en una prueba en vivo el 2026-10-03; reemplaza el servicio fijo de $20. Internamente siguen `MANDALO_SERVICE_FEE = 10` y `MANDALO_DELIVERY_FEE = 25`.
-- Después del saludo: filtro **Tiendas de abarrotes** / **Restaurantes**, luego la lista de ese nicho (abiertas y cerradas, para no romper `esperando_apertura_tienda`). Nichos nuevos se agregan en `CUSTOMER_STORE_NICHES` y con `tiendas.categoria` (alias o `nicho:<id>`). Una tienda con categoría que no mapea (hoy, por ejemplo, `taqueria`) **no sale en esos dos filtros** hasta que se agregue el nicho o se le cambie la categoría.
+- Después del saludo: filtro **Abarrotes** / **Restaurantes** / **Carnicerías**, luego la lista de ese nicho (abiertas y cerradas, para no romper `esperando_apertura_tienda`). Nichos nuevos se agregan en `CUSTOMER_STORE_NICHES` y con `tiendas.categoria` (alias o `nicho:<id>`). Una tienda con categoría que no mapea (hoy, por ejemplo, `taqueria`) **no sale en esos filtros** hasta que se agregue el nicho o se le cambie la categoría. Carnicerías lista a Carnicería La Central cuando su `categoria` es Carnicerías y `usa_catalogo_fijo` está activo.
 - George (o cualquier tienda con `usa_catalogo_fijo` y productos) responde categorías y menú con precios reales desde la base, sin esperar a que la IA “vea” el catálogo al turno siguiente. Si la IA dice que el menú no está cargado y sí hay productos, ese texto se reemplaza.
 - Los saltos de línea de WhatsApp ya no se aplastan en `normalizeWhatsAppText` / `sanitizeCustomerReply`.
 

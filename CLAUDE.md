@@ -165,7 +165,7 @@ Timeouts **unificados a 10 minutos, con recordatorio a los 5**, en los tres punt
 
 ## 9. Tono y atención al cliente del bot
 
-- Saluda siempre al inicio de la conversación, de forma cálida y personal. Después del saludo, ofrece dos filtros cortos (Tiendas de abarrotes y Restaurantes) antes de listar negocios — no es un menú frío de productos. Nichos futuros (farmacia, ferretería, taquería) se agregan en `CUSTOMER_STORE_NICHES` y en `tiendas.categoria`, sin hardcodear el nombre del negocio.
+- Saluda siempre al inicio de la conversación, de forma cálida y personal. Después del saludo, ofrece tres filtros cortos (Abarrotes, Restaurantes y Carnicerías) antes de listar negocios — no es un menú frío de productos. Nichos futuros (farmacia, ferretería, taquería) se agregan en `CUSTOMER_STORE_NICHES` y en `tiendas.categoria`, sin hardcodear el nombre del negocio.
 - Tono: chavo del pueblo que sale a hacer el mandado. Cercano, corto, con humor ligero. Máximo unos 3–4 emojis por mensaje.
 - Lenguaje simple y sin fricción: debe poder usarlo tanto un abuelo como un adolescente sin confundirse. Evitar jerga técnica, mensajes largos, o pasos innecesarios.
 - Concreto pero amable: mensajes cortos y claros, pero con calidez — el cliente debe sentir confianza de que su pedido va a llegar bien.

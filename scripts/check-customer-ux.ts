@@ -6,6 +6,8 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { buildMandaloSystemPrompt } from "../src/lib/mandaloPrompt";
 import { priceCatalogOrder, reconcileCatalogQuantities } from "../src/lib/catalogQuantities";
 import { applyCatalogSpeech } from "../src/lib/catalogOrderSpeech";
+import { CARNICERIA_LA_CENTRAL_MENU_PNG, CARNICERIA_LA_CENTRAL_PRODUCTOS, CARNICERIA_MENU_IMAGE_ENV } from "../src/lib/carniceriaLaCentralCatalog";
+import { catalogMenuPngRelative } from "../src/lib/catalogMenuImage";
 import { ADDRESS_ASK_MESSAGE, buildCustomerMessage, dispatchItemAlreadyShowsQty, formatProductListConfirm, formatSpecificItemLine, mergeSnapshot, type PedidoItemInput } from "../src/lib/services/captureEngine";
 import { validateCaptureForConfirmation } from "../src/lib/services/validationEngine";
 import { confirmationCustomerMessage, planConfirmationAmendment } from "../src/lib/confirmationAmendment";
@@ -18,6 +20,8 @@ import {
   customerCopySplitsFee,
   formatCatalogCategories,
   formatCatalogMenu,
+  catalogMenuImageKind,
+  catalogUsesMenuImage,
   formatCatalogMenuCaption,
   formatCatalogOrderRegistered,
   formatCatalogReceiptFee,
@@ -66,25 +70,38 @@ const taqueria: UxStore = {
   abreTexto: "",
   usaCatalogoFijo: false,
 };
-const stores = [zagu, george, taqueria];
+const laCentral: UxStore = {
+  id: 11,
+  nombre: "Carnicería La Central",
+  categoria: "Carnicerías",
+  telefono: "5213344444444",
+  abierta: false,
+  abreTexto: "abre mañana a las 9am",
+  usaCatalogoFijo: true,
+};
+const stores = [zagu, george, taqueria, laCentral];
 
 assert(MANDALO_SERVICE_FEE === 10 && MANDALO_DELIVERY_FEE === 25, "el desglose interno sigue 10+25");
-assert(CUSTOMER_STORE_NICHES.length === 2, "hoy el cliente solo ve dos nichos");
+assert(CUSTOMER_STORE_NICHES.length === 3, "el cliente ve abarrotes, restaurantes y carnicerías");
 assert(nicheIdForCategoria("Abarrotes") === "abarrotes", "ZAGU/Abarrotes");
 assert(nicheIdForCategoria("Restaurante") === "restaurantes", "George/Restaurante");
 assert(nicheIdForCategoria("Hamburguesas y hotdogs") === "restaurantes", "alias hamburguesas");
 assert(nicheIdForCategoria("nicho:restaurantes") === "restaurantes", "categoria explícita");
+assert(nicheIdForCategoria("Carnicerías") === "carnicerias", "La Central/Carnicerías");
+assert(nicheIdForCategoria("carniceria") === "carnicerias", "alias carniceria");
+assert(nicheIdForCategoria("nicho:carnicerias") === "carnicerias", "categoria explícita de carnicería");
 assert(nicheIdForCategoria("taqueria") === null, "taquería queda fuera hasta que exista el nicho");
 
 const greeting = buildGreeting(new Date("2026-10-02T20:00:00Z"));
 assert(
   greeting ===
     `¡Hola! Soy Mándalo, tu mandadero en Ixtlahuacán del Río.
-Con gusto pido en la tienda o el restaurante que me digas y te lo llevo a la puerta.
+Con gusto pido en la tienda, el restaurante o la carnicería que me digas y te lo llevo a la puerta.
 
 ¿De dónde quieres?
 1. Abarrotes
-2. Restaurantes`,
+2. Restaurantes
+3. Carnicerías`,
   "el saludo es el texto aprobado",
 );
 assert(buildGreeting(new Date("2026-10-02T15:00:00Z")) === greeting, "de mañana el saludo no cambia");
@@ -92,7 +109,7 @@ assert(buildGreeting(new Date("2026-10-03T05:00:00Z")) === greeting, "de noche e
 assert(!greeting.includes("Tiendas de abarrotes"), "el saludo ya no lista Tiendas de abarrotes");
 assert(!greeting.includes("Tú dime el antojo y yo lo consigo."), "ya no usa el saludo de mandadero por hora");
 assert(!greeting.includes("$35") && !greeting.includes("efectivo") && !greeting.includes("Abro de"), "el saludo no trae precio, horario ni pago");
-assert(greeting.trimEnd().endsWith("2. Restaurantes"), "el saludo termina en las dos opciones");
+assert(greeting.trimEnd().endsWith("3. Carnicerías"), "el saludo termina en las tres opciones");
 assert(!greeting.includes("Pícale al número o al nombre."), "ya no pide picarle al número");
 assert(greeting.includes("\n"), "el saludo trae saltos de línea");
 assert(!customerCopySplitsFee(greeting), "el saludo no parte el cargo");
@@ -105,8 +122,11 @@ function nicheFromGreeting(message: string) {
 assert(classifyCustomerTurn({ message: "hola", lastBotText: "", hasBusiness: false, hasItems: false, businessId: null, stores }).type === "greeting", "hola → saludo");
 assert(nicheFromGreeting("1") === "abarrotes", "1 → abarrotes");
 assert(nicheFromGreeting("2") === "restaurantes", "2 → restaurantes");
+assert(nicheFromGreeting("3") === "carnicerias", "3 → carnicerías");
 assert(nicheFromGreeting("Abarrotes") === "abarrotes", "Abarrotes elige abarrotes");
 assert(nicheFromGreeting("Restaurantes") === "restaurantes", "Restaurantes elige restaurantes");
+assert(nicheFromGreeting("Carnicerías") === "carnicerias", "Carnicerías elige carnicerías");
+assert(nicheFromGreeting("carniceria") === "carnicerias", "carniceria elige carnicerías");
 const oldGreeting =
   "¡Buenas tardes! Soy Mándalo, yo te hago el mandado. 🛵\n\n¿Qué se te antoja?\n\n1. Tiendas de abarrotes\n2. Restaurantes\n\nPícale al número o al nombre.";
 assert(classifyCustomerTurn({ message: "1", lastBotText: oldGreeting, hasBusiness: false, hasItems: false, businessId: null, stores }).type === "show_niche", "un saludo viejo todavía acepta el 1");
@@ -119,8 +139,48 @@ const listed = formatNicheStoreList(CUSTOMER_STORE_NICHES[1], stores);
 assert(listed.includes("Hamburguesas Hotdogs George"), "lista de restaurantes incluye a George");
 assert(listed.includes("abre mañana a las 7pm"), "la cerrada se puede programar");
 assert(!listed.includes("Tacos el Grillo"), "la taquería no se cuela en restaurantes");
+assert(!listed.includes("Carnicería"), "restaurantes no mezcla carnicerías");
+assert(!abarrotesList.includes("Carnicería"), "abarrotes no mezcla carnicerías");
 assert(listed.includes("$35"), "la lista avisa el cargo junto");
 assert(!customerCopySplitsFee(listed), "la lista no parte $10+$25");
+
+const carniceriaNiche = CUSTOMER_STORE_NICHES.find((niche) => niche.id === "carnicerias");
+assert(carniceriaNiche != null, "existe el nicho carnicerías");
+const carniceriasList = formatNicheStoreList(carniceriaNiche!, stores);
+assert(carniceriasList.includes("Carnicería La Central"), "carnicerías lista solo a La Central");
+assert(carniceriasList.includes("abre mañana a las 9am"), "La Central cerrada se puede programar");
+assert(!carniceriasList.includes("George"), "carnicerías no mezcla a George");
+assert(!carniceriasList.includes("ZAGU"), "carnicerías no mezcla abarrotes");
+assert(carniceriasList.includes("más $35 de envío y servicio") || carniceriasList.includes("$35"), "carnicerías avisa el cargo junto");
+assert(!customerCopySplitsFee(carniceriasList), "carnicerías no parte $10+$25");
+assert((carniceriasList.match(/^\d+\. /gm) ?? []).length === 1, "en carnicerías solo aparece La Central");
+const carniceriaAbierta = formatNicheStoreList(carniceriaNiche!, [{ ...laCentral, abierta: true, abreTexto: "" }]);
+assert(carniceriaAbierta.includes("Carnicería La Central") && !carniceriaAbierta.includes("cerrada"), "abierta no dice cerrada");
+const pickedCentral = classifyCustomerTurn({
+  message: "1",
+  lastBotText: carniceriasList,
+  hasBusiness: false,
+  hasItems: false,
+  businessId: null,
+  stores,
+});
+assert(
+  pickedCentral.type === "pick_store" && pickedCentral.store.id === laCentral.id,
+  "1 en carnicerías elige a La Central",
+);
+const centralMenu = renderCustomerTurn(pickedCentral, stores, carniceriasList);
+assert(centralMenu?.kind === "menu" && centralMenu.store.id === laCentral.id, "elegir La Central manda el menú como George");
+assert(
+  centralMenu != null && centralMenu.kind === "menu" && centralMenu.text.includes("$35") && !customerCopySplitsFee(centralMenu.text),
+  "el menú de La Central cobra $35 junto",
+);
+assert(catalogUsesMenuImage(laCentral) && catalogMenuImageKind(laCentral) === "carniceria-la-central", "La Central usa el mismo camino de foto que George");
+assert(catalogMenuPngRelative("carniceria-la-central") === CARNICERIA_LA_CENTRAL_MENU_PNG, "la foto espera el PNG de Víctor");
+assert(CARNICERIA_MENU_IMAGE_ENV === "CARNICERIA_LA_CENTRAL_MENU_IMAGE_URL", "la URL de la foto es opcional");
+const centralSinFoto = formatCatalogMenuCaption(laCentral, { photo: false });
+assert(!/foto/i.test(centralSinFoto) && centralSinFoto.includes("nombre del menú"), "sin foto no promete la imagen");
+assert(centralSinFoto.includes("cerrada"), "sin foto también avisa si está cerrada");
+const centralMenuText = centralMenu != null && centralMenu.kind === "menu" ? centralMenu.text : "";
 
 const picked = classifyCustomerTurn({
   message: "1",
@@ -1408,6 +1468,119 @@ assert(papasEnLaLista.applied && papasEnLaLista.items.length === 4, "y te faltar
 assert(papasEnLaLista.items.some((item) => item.nombre_producto === "Papas Gajo 315g" && item.cantidad === 1), "las papas gajo entran al pedido");
 const listaConPapas = formatProductListConfirm(papasEnLaLista.items);
 assert(/papas gajo 315g/i.test(listaConPapas) && listaConPapas.includes("¿Están bien estos productos?"), "después de te faltaron se vuelve a listar con las papas");
+
+const menuCentral = CARNICERIA_LA_CENTRAL_PRODUCTOS.map(({ nombreProducto, precio }) => ({ nombreProducto, precio }));
+assert(menuCentral.length === 18, "La Central tiene los 18 productos de la lista");
+assert(!menuCentral.some((row) => /pollo|pechuga|alitas/i.test(row.nombreProducto)), "La Central no vende pollo");
+assert(menuCentral.some((row) => row.nombreProducto === "Carbón Firo" && row.precio === 75), "el carbón es Firo, a $75");
+assert(!menuCentral.some((row) => /fino/i.test(row.nombreProducto)), "el carbón no se llama fino");
+const pedidoCentral =
+  "Quiero una arrachera marinada, un bistec de puerco marinado, peinesillo, un diezmillo, chamberete, un ribeye y carbón firo, y una salsa hot wins";
+const anotadoCentral = applyCatalogSpeech({ base: [], userMessage: pedidoCentral, catalog: menuCentral });
+assert(anotadoCentral.applied && !anotadoCentral.missing, "el pedido de La Central se anota sin huecos inventados");
+const lineaCentral = (re: RegExp) => anotadoCentral.items.find((item) => re.test(item.nombre_producto));
+assert(lineaCentral(/^Arrachera Marinada$/)?.cantidad === 1, "arrachera marinada queda en 1");
+assert(lineaCentral(/^Bistec de puerco marinado$/)?.cantidad === 1, "bistec de puerco marinado no cae en el de res ni en el sin marinar");
+assert(lineaCentral(/^Peinesillo$/)?.cantidad === 1, "peinesillo se anota");
+assert(lineaCentral(/^Diezmillo$/)?.cantidad === 1, "diezmillo se anota");
+assert(lineaCentral(/^Chamberete$/)?.cantidad === 1, "chamberete se anota");
+assert(lineaCentral(/^Ribeye de res con hueso$/)?.cantidad === 1, "ribeye se anota con el nombre del menú");
+assert(lineaCentral(/^Carbón Firo$/)?.cantidad === 1, "carbón firo se anota, no fino");
+assert(lineaCentral(/^Salsa Hot Wings$/)?.cantidad === 1, "hot wins es Salsa Hot Wings");
+assert(anotadoCentral.items.length === 8, "el pedido de La Central son ocho líneas");
+assert(!anotadoCentral.items.some((item) => /pollo/i.test(item.nombre_producto)), "hablar de la carnicería no inventa pollo");
+const precioCentral = priceCatalogOrder(anotadoCentral.items, menuCentral);
+assert(precioCentral.subtotal === 280 + 120 + 215 + 215 + 155 + 210 + 75 + 55, "los precios del menú se suman");
+const ticketCentral = formatCatalogReceiptFee(precioCentral.subtotal);
+assert(ticketCentral.includes("$35") && !customerCopySplitsFee(ticketCentral), "el ticket de La Central sigue en $35 junto");
+const listaCentral = formatProductListConfirm(anotadoCentral.items);
+assert(listaCentral.includes("¿Están bien estos productos?"), "antes del GPS se vuelve a listar");
+assert(/arrachera marinada/i.test(listaCentral) && /carb[oó]n firo/i.test(listaCentral) && /hot wings/i.test(listaCentral), "la lista trae arrachera, carbón firo y hot wings");
+const enLaCentral = classifyCustomerTurn({
+  message: pedidoCentral,
+  lastBotText: centralMenuText,
+  hasBusiness: true,
+  hasItems: false,
+  businessId: laCentral.id,
+  stores,
+});
+assert(enLaCentral.type === "continue", "el pedido de La Central no vuelve a pedir el filtro ni la foto");
+assert(classifyProductListReply("SÍ") === "confirm" && isYesConfirmation("SÍ"), "un SÍ limpio sigue a la dirección");
+const faltaronDiezmillo = "Sí, te faltó el diezmillo";
+assert(classifyProductListReply(faltaronDiezmillo) === "revise", "te faltó en La Central se revisa");
+assert(!isYesConfirmation(faltaronDiezmillo), "te faltó no es el SÍ del GPS");
+assert(!shouldEscalateComplaint(faltaronDiezmillo, { editingOrder: true }), "te faltó en la lista no avisa al admin");
+const agregaChamberete = "agrega chamberete";
+assert(classifyProductListReply(agregaChamberete) === "revise", "agrega en La Central se revisa");
+assert(!shouldEscalateComplaint("y te faltaron el peinesillo", { editingOrder: true }), "te faltaron en la lista no avisa al admin");
+assert(shouldEscalateComplaint("y te faltaron el peinesillo", { editingOrder: false }), "faltaron fuera de la captura sigue siendo queja");
+const sumadoCentral = applyCatalogSpeech({
+  base: anotadoCentral.items.filter((item) => !/diezmillo|chamberete/i.test(item.nombre_producto)),
+  userMessage: "te faltaron el diezmillo y agrega chamberete",
+  catalog: menuCentral,
+});
+assert(sumadoCentral.applied, "faltaron y agrega se anotan en el menú fijo");
+assert(sumadoCentral.items.some((item) => item.nombre_producto === "Diezmillo"), "el diezmillo que faltó entra");
+assert(sumadoCentral.items.some((item) => item.nombre_producto === "Chamberete"), "el chamberete agregado entra");
+assert(formatProductListConfirm(sumadoCentral.items).includes("¿Están bien estos productos?"), "después de corregir se vuelve a listar");
+const marinado = applyCatalogSpeech({
+  base: [],
+  userMessage: "bistec de puerco marinada",
+  catalog: menuCentral,
+});
+assert(marinado.items[0]?.nombre_producto === "Bistec de puerco marinado", "marinada y marinado son el mismo corte");
+const costillaSola = applyCatalogSpeech({
+  base: [],
+  userMessage: "una costilla de puerco",
+  catalog: menuCentral,
+});
+assert(costillaSola.items[0]?.nombre_producto === "Costilla de puerco" && costillaSola.items[0]?.cantidad === 1, "costilla de puerco no se va a la marinada");
+const conPeso = applyCatalogSpeech({
+  base: [],
+  userMessage: "2 kilos de arrachera marinada",
+  catalog: menuCentral.map((row) =>
+    row.nombreProducto === "Arrachera Marinada" ? { ...row, nombreProducto: "Arrachera Marinada 1kg" } : row,
+  ),
+});
+assert(
+  conPeso.items[0]?.nombre_producto === "Arrachera Marinada 1kg" && conPeso.items[0]?.cantidad === 2,
+  "2 kilos no se pierden y el 1kg del nombre no estorba",
+);
+const kiloSuelto = applyCatalogSpeech({
+  base: [],
+  userMessage: "1 kg de diezmillo",
+  catalog: menuCentral,
+});
+assert(kiloSuelto.items[0]?.nombre_producto === "Diezmillo" && kiloSuelto.items[0]?.cantidad === 1, "1 kg de diezmillo es una unidad");
+const medio = applyCatalogSpeech({
+  base: [],
+  userMessage: "medio kilo de chorizo",
+  catalog: menuCentral,
+});
+assert(medio.items[0]?.nombre_producto === "Chorizo" && medio.items[0]?.cantidad === 0.5, "medio kilo de chorizo no es el argentino ni un kilo");
+const fino = applyCatalogSpeech({
+  base: [],
+  userMessage: "un carbón fino",
+  catalog: menuCentral,
+});
+assert(!fino.items.some((item) => /firo/i.test(item.nombre_producto)), "fino no se anota como Firo");
+const pollo = applyCatalogSpeech({
+  base: [],
+  userMessage: "un pollo",
+  catalog: menuCentral,
+});
+assert(!pollo.applied || !pollo.items.some((item) => /pollo/i.test(item.nombre_producto)), "pollo no matchea el menú");
+const bistecVago = applyCatalogSpeech({ base: [], userMessage: "un bistec", catalog: menuCentral });
+assert(!bistecVago.applied, "bistec solo no escoge un corte");
+const desdeZagu = classifyCustomerTurn({
+  message: "Carnicerías",
+  lastBotText: "Va, de ZAGU. Dime qué se te antoja.",
+  hasBusiness: true,
+  hasItems: false,
+  businessId: zagu.id,
+  stores,
+});
+assert(desdeZagu.type === "pick_store" && desdeZagu.store.id === laCentral.id, "aceptar carnicerías con una sola tienda suelta a ZAGU");
 
 const pedidoEnGeorge = classifyCustomerTurn({
   message: pedido83,
