@@ -24,6 +24,8 @@ export type CatalogSpeechResult = {
   items: CatalogSpeechItem[];
   /** Lista "Anoto" y, si falta algo, una sola pregunta de ese hueco. */
   reply: string | null;
+  /** Solo el hueco, para pegarlo debajo del resumen de confirmación. */
+  question: string | null;
 };
 
 type AnchorKind = "hamburguesa" | "dogo" | "refresco";
@@ -240,6 +242,23 @@ function sizeIn(text: string): string | null {
   return match?.[1] ?? null;
 }
 
+function sizeFollowUp(base: CatalogSpeechItem[], text: string, families: Family[]): SpokenLine | null {
+  const size = sizeIn(text);
+  if (!size) return null;
+  if (spansOf(text).some((span) => span.kind != null)) return null;
+  const pending: Array<{ index: number; family: Family }> = [];
+  base.forEach((item, index) => {
+    const family = families.find((candidate) => candidate.key === stripSize(item.nombre_producto));
+    if (!family || family.sizes.length < 2) return;
+    if (sizesIn(item.nombre_producto).length) return;
+    pending.push({ index, family });
+  });
+  if (pending.length !== 1) return null;
+  const family = pending[0].family;
+  const qty = base[pending[0].index]?.cantidad ?? null;
+  return lineFromSpan({ kind: null, text: `${family.key} ${size}`, qty: typeof qty === "number" ? qty : null }, families);
+}
+
 function lineFromSpan(span: { kind: AnchorKind | null; text: string; qty: number | null }, catalog: Family[]): SpokenLine | null {
   const ranked = catalog
     .map((family) => ({ family, score: scoreFamily(family, span) }))
@@ -328,12 +347,13 @@ export function applyCatalogSpeech(params: {
   const base = params.base.map((item) => ({ ...item }));
   const text = norm(params.userMessage);
   const families = familiesOf(params.catalog);
-  if (!text || !families.length) return { applied: false, missing: false, items: base, reply: null };
+  if (!text || !families.length) return { applied: false, missing: false, items: base, reply: null, question: null };
 
-  const spoken = spansOf(text)
+  const fromAnchors = spansOf(text)
     .map((span) => lineFromSpan(span, families))
     .filter((line): line is SpokenLine => line != null);
-  if (!spoken.length) return { applied: false, missing: false, items: base, reply: null };
+  const spoken = fromAnchors.length ? fromAnchors : [sizeFollowUp(base, text, families)].filter((line): line is SpokenLine => line != null);
+  if (!spoken.length) return { applied: false, missing: false, items: base, reply: null, question: null };
 
   const items = base;
   for (const line of spoken) {
@@ -364,5 +384,5 @@ export function applyCatalogSpeech(params: {
   const missing = spoken.some((line) => line.gaps.length);
   const question = questionFor(spoken, items.length);
   const reply = `Anoto:\n${items.map(itemLine).join("\n")}${question ? `\n\n${question}` : ""}`;
-  return { applied: true, missing, items, reply };
+  return { applied: true, missing, items, reply, question };
 }

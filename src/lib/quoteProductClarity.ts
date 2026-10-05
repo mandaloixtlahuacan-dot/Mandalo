@@ -64,6 +64,7 @@ const STOP = new Set([
   "birote", "birotes", "vegetal", "oliva", "liquido", "liquida", "polvo",
   "familiar", "vidrio", "dulce", "gas", "barata", "barato", "economica",
   "economico", "cualquiera", "haya", "tengas", "igual", "sea",
+  "generica", "genericas", "generico", "genericos",
   "chico", "chica", "chicos", "chicas", "mediano", "mediana", "medianos", "medianas", "grande", "grandes", "bolsaza", "jumbo",
   "individual", "frasco", "frascos", "sobre", "sobres", "tubo",
   "mayonesa", "mayonesas", "mayo", "crema", "gomita", "gomitas",
@@ -135,8 +136,17 @@ function hasAmount(blob: string, item: PedidoItemInput): boolean {
 }
 
 function hasBrand(blob: string, ignore: Set<string>): boolean {
+  if (/\bgeneric\w*\b/.test(blob)) return true;
   if (/\b1\s*2\s*3\b|\b123\b/.test(blob)) return true;
   return blob.split(" ").some((token) => token.length >= 3 && !/^\d+$/.test(token) && !STOP.has(token) && !ignore.has(token));
+}
+
+function spokenBrand(item: PedidoItemInput): string | null {
+  const marca = clean(item.marca);
+  if (!marca) return null;
+  const token = norm(marca);
+  if (/\bgeneric\w*\b/.test(token) || waiverNote(token)) return null;
+  return marca;
 }
 
 function brandTokens(blob: string, ignore: Set<string>): string[] {
@@ -480,7 +490,7 @@ function packagedFamily(opts: {
       return true;
     },
     ask: (missing, item, blob) => {
-      const brand = clean(item.marca) || (hasBrand(blob, new Set()) ? displayBrand(blob, brandTokens(blob, new Set())) : null);
+      const brand = spokenBrand(item);
       const brandArticle = brand && /\b(emperador|principe|oreo|red bull)\b/.test(norm(brand)) ? "El" : opts.article;
       const who = brand ? `${brandArticle} ${brand}` : `${opts.article} ${opts.nombre.toLocaleLowerCase("es-MX")}`;
       const bits: string[] = [];
@@ -534,17 +544,18 @@ const CATEGORIES: Category[] = [
     exclude: /\b(aluminio|bond|estraza|encerado|mantequilla|seda)\b/,
     slots: ["marca", "tamano"],
     sizePhrase: rollPhrase,
-    filled: (slot, blob) => (slot === "marca" ? hasBrand(blob, new Set()) : rollPhrase(blob) != null),
+    filled: (slot, blob) =>
+      slot === "marca" ? hasBrand(blob, new Set()) : rollPhrase(blob) != null || /\b(caja|cajas|paquete|paquetes)\b/.test(blob),
     ask: (missing, item) => {
-      const brandName = clean(item.marca);
+      const brandName = spokenBrand(item);
       if (missing.includes("marca") && missing.includes("tamano")) {
-        return `Va. El papel higiénico, ¿de qué marca y de cuántos rollos (4, 12, 18 o 32)? Por ejemplo Pétalo, Regio o Suavel. ${FOLLOW_LO} 🧻`;
+        return `Va. El papel higiénico, ¿de qué marca, y es caja, paquete o de cuántos rollos (4, 12, 18 o 32)? Por ejemplo Pétalo, Regio o Suavel. ${FOLLOW_LO} 🧻`;
       }
       if (missing.includes("marca")) {
         return `Va. El papel, ¿de qué marca? Por ejemplo Pétalo, Regio o Suavel. ${FOLLOW_LO} 🧻`;
       }
       const who = brandName ? `El ${brandName}` : "El papel";
-      return `Va. ${who}, ¿de cuántos rollos: 4, 12, 18 o 32? ${FOLLOW_LO} 🧻`;
+      return `Va. ${who}, ¿es caja, paquete o de cuántos rollos: 4, 12, 18 o 32? ${FOLLOW_LO} 🧻`;
     },
   },
   {
@@ -600,7 +611,7 @@ const CATEGORIES: Category[] = [
       return /\b(lata|latas|ml|litro|litros|familiar|vidrio|medio)\b/.test(blob);
     },
     ask: (missing, item, blob) => {
-      const brand = clean(item.marca) || (/\bcoca\b/.test(blob) ? "Coca" : /\bred bull\b|\bredbull\b/.test(blob) ? "Red Bull" : null);
+      const brand = spokenBrand(item) || (/\bcoca\b/.test(blob) ? "Coca" : /\bred bull\b|\bredbull\b/.test(blob) ? "Red Bull" : null);
       const sizeLabel = clean(item.presentacion);
       const who = !brand ? "El refresco" : /^coca/i.test(brand) ? `La ${brand}` : brand;
       const whoSized = sizeLabel && !missing.includes("tamano") ? `${who} ${sizeLabel}` : who;
@@ -758,6 +769,15 @@ const CATEGORIES: Category[] = [
     },
   },
   {
+    id: "lentejas",
+    nombre: "Lentejas",
+    match: /\blentejas?\b/,
+    slots: ["tamano"],
+    sizePhrase: (blob) => (/\b(kilo|kilos|kg)\b/.test(blob) ? "kilo" : null),
+    filled: (slot, blob, item) => slot === "tamano" && (hasAmount(blob, item) || /\b(kilo|kilos|kg|bolsa)\b/.test(blob)),
+    ask: () => `Va. Las lentejas, ¿de cuántos kilos? ${FOLLOW_LAS()} 🫘`,
+  },
+  {
     id: "detergente",
     nombre: "Detergente",
     match: /\bdetergente\b|\bjabon en polvo\b|\bjabon para ropa\b/,
@@ -814,7 +834,7 @@ const CATEGORIES: Category[] = [
       return /\b(six|caguama|media|lata|familiar|botella|cuarto|ml)\b/.test(blob);
     },
     ask: (missing, item) => {
-      const brand = clean(item.marca);
+      const brand = spokenBrand(item);
       const who = brand ? `La ${brand}` : "La cerveza";
       if (missing.includes("marca") && missing.includes("tamano")) {
         return `Va. La cerveza, ¿de qué marca y de cuál presentación (lata, media, caguama o six)? Por ejemplo Corona, Victoria o Modelo. ${FOLLOW_LA} 🍺`;
@@ -922,7 +942,7 @@ const CATEGORIES: Category[] = [
     sizePhrase: litrosPhrase,
     filled: (slot, blob) => (slot === "marca" ? hasBrand(blob, new Set()) : litrosPhrase(blob) != null),
     ask: (missing, item) => {
-      const brand = clean(item.marca);
+      const brand = spokenBrand(item);
       const who = brand ? `El ${brand}` : "El limpiador";
       if (missing.includes("marca") && missing.includes("tamano")) {
         return `Va. El limpiador, ¿de qué marca y de cuántos litros? Por ejemplo Pinol o Fabuloso. ${FOLLOW_LO} 🧴`;
@@ -946,7 +966,7 @@ const CATEGORIES: Category[] = [
       return hasPackageCount(blob, item) || containerAlreadyCounted(blob, item);
     },
     ask: (missing, item) => {
-      const brand = clean(item.marca);
+      const brand = spokenBrand(item);
       const who = brand ? `El ${brand}` : "El cloro";
       const bits: string[] = [];
       if (missing.includes("marca")) bits.push("de qué marca");
@@ -1375,8 +1395,8 @@ function itemMatchesWindow(item: PedidoItemInput, window: { category: Category; 
   return left.length >= 4 && left === right;
 }
 
-function windowsTouched(item: PedidoItemInput, windows: Array<{ category: Category; text: string }>): number {
-  const tokens = new Set(contentTokens(`${item.nombre_producto} ${item.marca ?? ""}`));
+function fieldTouches(text: string, windows: Array<{ category: Category; text: string }>): number {
+  const tokens = new Set(contentTokens(text));
   if (!tokens.size) return 0;
   let count = 0;
   for (const window of windows) {
@@ -1384,6 +1404,12 @@ function windowsTouched(item: PedidoItemInput, windows: Array<{ category: Catego
     if ([...tokens].some((token) => bag.has(token))) count += 1;
   }
   return count;
+}
+
+function mashedLine(item: PedidoItemInput, windows: Array<{ category: Category; text: string }>): boolean {
+  // "Sanitas Sam's Pinol" en el nombre o en la marca junta tres productos.
+  // "Frijol" con marca "Lentejas" solo toca una ventana ajena: no se tira.
+  return fieldTouches(item.nombre_producto, windows) >= 2 || fieldTouches(item.marca ?? "", windows) >= 2;
 }
 
 function bareInventedPapel(
@@ -1444,6 +1470,20 @@ function soleLiterQuestion(category: Category, item: PedidoItemInput): boolean {
   return /\blitro/.test(question);
 }
 
+function genericBrandNote(value: string): string | null {
+  return /\bgeneric\w*\b/.test(norm(value)) ? "genéricas" : null;
+}
+
+function categoryNouns(): Set<string> {
+  const nouns = new Set<string>();
+  for (const category of CATEGORIES) {
+    for (const token of norm(category.nombre).split(" ")) {
+      if (token.length >= 4) nouns.add(token);
+    }
+  }
+  return nouns;
+}
+
 function applyDetail(
   item: PedidoItemInput,
   extraRaw: string,
@@ -1465,8 +1505,10 @@ function applyDetail(
   const next: PedidoItemInput = { ...item };
   if (boundWindow && !presentationBelongsToWindow(next.presentacion, extra)) next.presentacion = null;
   const productTokens = new Set(norm(next.nombre_producto).split(" ").filter((token) => token.length >= 3));
-  const tokens = brandTokens(extra, ignore).filter((token) => !productTokens.has(token));
-  if (category.kind !== "produce" && !clean(next.marca) && tokens.length) next.marca = displayBrand(extraRaw, tokens);
+  const nouns = categoryNouns();
+  const tokens = brandTokens(extra, ignore).filter((token) => !productTokens.has(token) && !nouns.has(token));
+  if (category.kind !== "produce" && !spokenBrand(next) && tokens.length) next.marca = displayBrand(extraRaw, tokens);
+  if (genericBrandNote(next.marca ?? "")) next.marca = null;
   if (
     category.kind !== "produce" &&
     clean(next.marca) &&
@@ -1559,6 +1601,10 @@ function applyDetail(
   // "Del que sea" cierra lo que siga faltando, pero no borra los litros o la marca que ya dijo.
   const waiver = waiverNote(extra);
   if (waiver && missingSlots(category, next).length) next.notas = waiver;
+  if (genericBrandNote(extra) || genericBrandNote(next.notas ?? "")) {
+    next.notas = "genéricas";
+    if (genericBrandNote(next.marca ?? "")) next.marca = null;
+  }
   return scrubItem(next, ignore);
 }
 
@@ -1583,10 +1629,18 @@ function fallbackPackaged(nombre: string): Category {
   return {
     ...base,
     filled: (slot, blob, item) => {
-      if (slot !== "marca") return base.filled(slot, blob, item);
-      const own = new Set(norm(item.nombre_producto).split(" ").filter((token) => token.length >= 3));
-      if (brandTokens(blob, own).length > 0) return true;
-      return [...own].filter((token) => !STOP.has(token)).length >= 2;
+      const ownWords = norm(item.nombre_producto).split(" ").filter((token) => token.length >= 3 && !STOP.has(token));
+      if (slot === "marca") {
+        const own = new Set(ownWords);
+        if (brandTokens(blob, own).length > 0) return true;
+        return ownWords.length >= 2;
+      }
+      // "Frutos rojos Fusi" ya dice qué bajar. No se pregunta tamaño de más.
+      if (slot === "tamano") {
+        if (base.filled(slot, blob, item)) return true;
+        return ownWords.filter((token) => token.length >= 4).length >= 2;
+      }
+      return base.filled(slot, blob, item);
     },
   };
 }
@@ -1603,6 +1657,171 @@ function itemCategory(item: PedidoItemInput): Category | null {
   return fallbackPackaged(nombre);
 }
 
+function nameTokensOf(item: PedidoItemInput): string[] {
+  return norm(item.nombre_producto)
+    .split(" ")
+    .filter((token) => token.length >= 4 && !STOP.has(token));
+}
+
+function withoutFakeBrand(item: PedidoItemInput): PedidoItemInput {
+  const marca = clean(item.marca);
+  const generic = genericBrandNote(marca ?? "") || genericBrandNote(item.notas ?? "");
+  const waived = marca ? waiverNote(marca) : null;
+  if (!generic && !waived) return item;
+  const next: PedidoItemInput = { ...item, notas: generic || waived || item.notas };
+  if (generic || waived) next.marca = null;
+  return next;
+}
+
+function stripStolenBrands(items: PedidoItemInput[]): PedidoItemInput[] {
+  const names = items.map(nameTokensOf);
+  return items.map((item, index) => {
+    const cleaned = withoutFakeBrand(item);
+    const marca = clean(cleaned.marca);
+    if (!marca) return cleaned;
+    const words = marca.split(/\s+/);
+    const kept = words.filter((word) => {
+      const token = norm(word);
+      if (token.length < 4) return true;
+      return !names.some((bag, other) => other !== index && bag.includes(token));
+    });
+    if (kept.length === words.length) return cleaned;
+    return { ...cleaned, marca: kept.join(" ") || null };
+  });
+}
+
+const GENERIC_SHELF =
+  /^(refresco|refrescos|limpiador|limpiadores|cloro|papel higienico|papel|frijol|frijoles|arroz|leche|agua|galleta|galletas|jabon|aceite|detergente|cerveza|huevo|huevos|pan|tortilla|tortillas|mayonesa|crema|lentejas|lenteja)$/;
+
+function collapseAliasDuplicate(items: PedidoItemInput[]): PedidoItemInput[] {
+  const next = items.map((item) => ({ ...item }));
+  const drop = new Set<number>();
+  for (let i = 0; i < next.length; i += 1) {
+    if (drop.has(i)) continue;
+    for (let j = i + 1; j < next.length; j += 1) {
+      if (drop.has(j)) continue;
+      const aGeneric = GENERIC_SHELF.test(norm(next[i].nombre_producto));
+      const bGeneric = GENERIC_SHELF.test(norm(next[j].nombre_producto));
+      if (aGeneric === bGeneric) continue;
+      const generic = aGeneric ? next[i] : next[j];
+      const specific = aGeneric ? next[j] : next[i];
+      const genericIndex = aGeneric ? i : j;
+      const specificIndex = aGeneric ? j : i;
+      const brandTokensOfGeneric = norm(generic.marca ?? "")
+        .split(" ")
+        .filter((token) => token.length >= 4 && !STOP.has(token));
+      const specificBlob = norm(`${specific.nombre_producto} ${specific.marca ?? ""}`);
+      if (!brandTokensOfGeneric.some((token) => specificBlob.includes(token))) continue;
+      next[specificIndex] = {
+        ...specific,
+        cantidad: specific.cantidad ?? generic.cantidad,
+        unidad: specific.unidad ?? generic.unidad,
+        presentacion: specific.presentacion ?? generic.presentacion,
+        notas: specific.notas ?? generic.notas,
+      };
+      drop.add(genericIndex);
+    }
+  }
+  return next.filter((_, index) => !drop.has(index));
+}
+
+function collapseSameName(items: PedidoItemInput[]): PedidoItemInput[] {
+  const kept: PedidoItemInput[] = [];
+  for (const item of items) {
+    const name = norm(item.nombre_producto);
+    const index = kept.findIndex((prev) => {
+      const prevName = norm(prev.nombre_producto);
+      const related = prevName === name || (name.length >= 4 && prevName.length >= 4 && (prevName.includes(name) || name.includes(prevName)));
+      if (!related) return false;
+      const leftBrand = norm(prev.marca ?? "");
+      const rightBrand = norm(item.marca ?? "");
+      if (leftBrand && rightBrand && leftBrand !== rightBrand) return false;
+      const leftSize = norm(prev.presentacion ?? "");
+      const rightSize = norm(item.presentacion ?? "");
+      if (leftSize && rightSize && leftSize !== rightSize) return false;
+      return true;
+    });
+    if (index === -1) {
+      kept.push({ ...item });
+      continue;
+    }
+    const prev = kept[index];
+    const richer = name.length > norm(prev.nombre_producto).length ? item : prev;
+    const other = richer === item ? prev : item;
+    kept[index] = {
+      ...richer,
+      marca: richer.marca ?? other.marca,
+      presentacion: richer.presentacion ?? other.presentacion,
+      unidad: richer.unidad ?? other.unidad,
+      notas: richer.notas ?? other.notas,
+      cantidad: richer.cantidad ?? other.cantidad,
+    };
+  }
+  return kept;
+}
+
+function tidyQuoteLines(items: PedidoItemInput[]): PedidoItemInput[] {
+  return collapseSameName(collapseAliasDuplicate(stripStolenBrands(items)));
+}
+
+export function dropItemsNamedInRemoval(items: PedidoItemInput[], message: string): PedidoItemInput[] {
+  const text = norm(message);
+  const targets: string[] = [];
+  const re =
+    /\b(?:quit[aeo]\w*|borra(?:r|lo|la)?|elimina(?:r|lo|la)?|ya no quiero|ya no)\s+(?:el |la |los |las |un |una |al )?([a-z0-9]{4,})/g;
+  for (const match of text.matchAll(re)) targets.push(match[1]);
+  if (!targets.length) return items;
+  return items.filter((item) => {
+    const blob = norm(`${item.nombre_producto} ${item.marca ?? ""}`);
+    return !targets.some((target) => blob.includes(target));
+  });
+}
+
+function titlePhrase(value: string): string {
+  return value
+    .split(" ")
+    .filter(Boolean)
+    .map((word) => niceWord(word))
+    .join(" ");
+}
+
+function renameNegated(items: PedidoItemInput[], message: string): PedidoItemInput[] {
+  const text = norm(message);
+  const match = text.match(
+    /\bno (?:es|era|son|eran) (?:el |la |los |las |un |una )?([a-z]{4,})\b[\s,;:]{0,16}(?:es|son|era|sino|mejor)\s+(?:un |una |el |la |de )?([a-z0-9][a-z0-9 ]{2,50})/,
+  );
+  if (!match) return items;
+  const from = match[1];
+  const to = match[2].split(/\b(?:y|pero|quita|tambien|porfa|gracias)\b/)[0]?.trim() ?? "";
+  if (!to || norm(to) === from) return items;
+  const titled = titlePhrase(to);
+  let renamed = false;
+  return items.map((item) => {
+    if (renamed) return item;
+    const name = norm(item.nombre_producto);
+    if (name !== from && !name.startsWith(`${from} `)) return item;
+    renamed = true;
+    return { ...item, nombre_producto: titled };
+  });
+}
+
+function stripClauses(message: string, items: PedidoItemInput[]): string {
+  const nouns = categoryNouns();
+  for (const item of items) {
+    for (const token of norm(`${item.nombre_producto} ${item.marca ?? ""}`).split(" ")) {
+      if (token.length >= 4) nouns.add(token);
+    }
+  }
+  const withoutRemoval = message.replace(
+    /\b(?:quit[aeo]\w*|borra(?:r|lo|la)?|elimina(?:r|lo|la)?|ya no quiero|ya no)\s+(?:el |la |los |las |un |una |al )?[a-z0-9]+/gi,
+    " ",
+  );
+  return withoutRemoval.replace(
+    /\bno (?:es|era|son|eran)\s+(?:el |la |los |las |un |una )?([a-záéíóúñ]+)/gi,
+    (full, word: string) => (nouns.has(norm(word)) ? " " : full),
+  );
+}
+
 function firstIncompleteIndex(items: PedidoItemInput[]): number {
   return items.findIndex((item) => {
     const category = itemCategory(item);
@@ -1616,13 +1835,12 @@ export function prepareQuoteItems(
   ignoreText?: string | null,
 ): PedidoItemInput[] {
   const ignore = ignoreSet(ignoreText);
-  let next = items.map((item) => ({ ...item }));
+  let next = tidyQuoteLines(items.map((item) => ({ ...item })));
   const message = String(userMessage ?? "").trim();
-  const windows = message ? windowsFor(message) : [];
+  const visible = message ? stripClauses(message, next) : "";
+  const windows = visible ? windowsFor(visible) : [];
   if (windows.length > 1) {
-    next = next.filter(
-      (item) => windowsTouched(item, windows) < 2 && !bareInventedPapel(item, message, windows),
-    );
+    next = next.filter((item) => !mashedLine(item, windows) && !bareInventedPapel(item, message, windows));
   }
 
   const agua = CATEGORIES.find((category) => category.id === "agua");
@@ -1668,7 +1886,10 @@ export function prepareQuoteItems(
     }
   }
 
-  return next.map((item) => scrubItem(item, ignore));
+  next = tidyQuoteLines(next.map((item) => scrubItem(item, ignore)));
+  next = dropItemsNamedInRemoval(next, message);
+  next = renameNegated(next, message);
+  return tidyQuoteLines(next);
 }
 
 export function quoteQuestionForItems(items: PedidoItemInput[]): string | null {

@@ -9,6 +9,7 @@ import { applyCatalogSpeech } from "../src/lib/catalogOrderSpeech";
 import { buildCustomerMessage, dispatchItemAlreadyShowsQty, formatSpecificItemLine, mergeSnapshot, type PedidoItemInput } from "../src/lib/services/captureEngine";
 import { validateCaptureForConfirmation } from "../src/lib/services/validationEngine";
 import { confirmationCustomerMessage, planConfirmationAmendment } from "../src/lib/confirmationAmendment";
+import { isYesConfirmation } from "../src/lib/messages";
 import { normalizeWhatsAppText } from "../src/lib/waapi";
 import {
   buildGreeting,
@@ -604,8 +605,12 @@ assert(barata.validatedItems.items[0]?.notas === "la más barata", "la más bara
 
 const papel = questionOf("un paquete de papel higiénico");
 assert(!papel.result.readyForConfirmation, "un paquete de papel no alcanza");
-assert(papel.question.includes("Pétalo") && papel.question.includes("12") && papel.question.includes("32"), "el papel pide marca y rollos");
-assert(papel.question.includes("4") && papel.question.includes("18"), "el papel da los cortes de rollos");
+assert(papel.question.includes("Pétalo"), "el paquete sin marca pide la marca");
+assert(!/rollos/i.test(papel.question), "si ya dijo paquete, no pide rollos");
+const papelSinCorte = questionOf("papel higiénico Pétalo");
+assert(!papelSinCorte.result.readyForConfirmation, "Pétalo sin caja ni rollos todavía pide la presentación");
+assert(/caja/i.test(papelSinCorte.question) && /rollos/i.test(papelSinCorte.question), "sin presentación pregunta caja, paquete o rollos una vez");
+assert(!/de qué marca/i.test(papelSinCorte.question), "Pétalo ya es la marca");
 
 const papelMarca = questionOf("Pétalo de 18", [{ nombre_producto: "Papel higiénico", cantidad: 1, unidad: "paquete" }]);
 assert(papelMarca.result.validatedItems.allItemsSpecific, "Pétalo de 18 cierra el papel");
@@ -663,9 +668,14 @@ function assertTresProductos(seed: PedidoItemInput[], etiqueta: string) {
     `${etiqueta}: Pinol no se pega al resto`,
   );
   const pregunta = separado.issues.find((issue) => issue.customerQuestion)?.customerQuestion ?? "";
-  assert(/sanitas/i.test(pregunta) && /rollos/i.test(pregunta), `${etiqueta}: si falta el corte, pregunta los rollos de Sanitas`);
-  assert(!/de qué marca/i.test(pregunta), `${etiqueta}: Sanitas ya es la marca`);
-  assert(!/pinol|sam|arroz|litro/i.test(pregunta), `${etiqueta}: no pregunta Pinol, Sam's ni el litro`);
+  assert(separado.readyForConfirmation, `${etiqueta}: caja, paquete y litro ya se pueden cotizar`);
+  assert(pregunta === "", `${etiqueta}: no pide rollos si ya dijo caja y paquete`);
+  const lineaSanitas = formatSpecificItemLine(sanitas ?? { nombre_producto: "Papel" });
+  const lineaSams = formatSpecificItemLine(sams ?? { nombre_producto: "Papel" });
+  const lineaPinol = formatSpecificItemLine(pinol ?? { nombre_producto: "Limpiador" });
+  assert(/sanitas/i.test(lineaSanitas) && /caja/i.test(lineaSanitas), `${etiqueta}: la tienda ve Sanitas en caja`);
+  assert(/sam/i.test(lineaSams) && /paquete/i.test(lineaSams) && !/arroz/i.test(lineaSams), `${etiqueta}: la tienda ve el paquete de Sam's`);
+  assert(/pinol/i.test(lineaPinol) && /litro/i.test(lineaPinol), `${etiqueta}: la tienda ve Pinol de un litro`);
   return separado;
 }
 assertTresProductos(
@@ -707,23 +717,11 @@ assert(!catalogoNoParte.issues.some((issue) => issue.customerQuestion), "George 
 
 const tresGuardados = assertTresProductos([], "sin items de la IA");
 const sanitasLuego = quoteCheck(tresGuardados.validatedItems.items, "12");
-const sanitasConRollos = sanitasLuego.validatedItems.items.find((item) => /sanitas/i.test(String(item.marca)));
-const samsIgual = sanitasLuego.validatedItems.items.find((item) => /sam/i.test(String(item.marca)));
-const pinolIgual = sanitasLuego.validatedItems.items.find((item) => /pinol/i.test(String(item.marca)));
-assert(/12 rollos/i.test(String(sanitasConRollos?.presentacion)), "12 cierra solo los rollos de Sanitas");
-assert(sanitasConRollos?.cantidad === 1 && /caja/i.test(String(sanitasConRollos?.unidad)), "la caja de Sanitas se queda");
-assert(samsIgual?.presentacion == null || !/12/.test(String(samsIgual?.presentacion)), "el 12 no se le pone al papel de Sam's");
-assert(pinolIgual?.cantidad === 1 && /litro/i.test(String(pinolIgual?.unidad)), "Pinol sigue en un litro");
-const preguntaSams = sanitasLuego.issues.find((issue) => issue.customerQuestion)?.customerQuestion ?? "";
-assert(/sam/i.test(preguntaSams) && /rollos/i.test(preguntaSams), "lo que sigue son los rollos de Sam's");
-assert(!/sanitas|pinol|marca|arroz/i.test(preguntaSams), "esa pregunta no vuelve a Sanitas ni a Pinol");
-const samsLuego = quoteCheck(sanitasLuego.validatedItems.items, "18");
-assert(samsLuego.readyForConfirmation, "con los dos cortes de rollos el mandado ya se puede confirmar");
-assert(
-  /18 rollos/i.test(String(samsLuego.validatedItems.items.find((item) => /sam/i.test(String(item.marca)))?.presentacion)),
-  "18 queda en el papel de Sam's",
-);
-assert(!samsLuego.issues.some((issue) => issue.customerQuestion), "Pinol no pide marca ni litros");
+assert(sanitasLuego.validatedItems.items.length === 3, "un 12 suelto no abre otra línea ni parte el mandado");
+assert(sanitasLuego.readyForConfirmation, "caja y paquete siguen listos para cotizar");
+const papelSoloMarca = quoteCheck([{ nombre_producto: "Papel higiénico", marca: "Pétalo" }], "18");
+assert(/18 rollos/i.test(String(papelSoloMarca.validatedItems.items[0]?.presentacion)), "18 cierra el papel cuando todavía no había caja ni paquete");
+assert(papelSoloMarca.validatedItems.allItemsSpecific, "con los rollos el Pétalo ya se cotiza");
 
 const arrozYPapel = quoteCheck([], "un kilo de arroz SOS y un paquete de papel higiénico");
 assert(arrozYPapel.validatedItems.items.length === 2, "arroz y papel higiénico por separado son dos");
@@ -732,7 +730,7 @@ const papelSuelto = arrozYPapel.validatedItems.items.find((item) => /papel/i.tes
 assert(/arroz/i.test(arrozSuelto?.nombre_producto ?? "") && /sos/i.test(String(arrozSuelto?.marca)), "el arroz SOS se queda arroz");
 assert(Boolean(papelSuelto) && !/arroz/i.test(papelSuelto?.nombre_producto ?? ""), "el papel no se vuelve arroz");
 const preguntaArroz = arrozYPapel.issues.find((issue) => issue.customerQuestion)?.customerQuestion ?? "";
-assert(/rollos|pétalo/i.test(preguntaArroz) && !/arroz|sos/i.test(preguntaArroz), "el arroz ya está completo; se pregunta solo el papel");
+assert(/pétalo/i.test(preguntaArroz) && !/rollos|arroz|sos/i.test(preguntaArroz), "el arroz ya está completo; el paquete de papel solo pide marca");
 
 const arrozSams = quoteCheck([], "un kilo de arroz Sam's");
 assert(/arroz/i.test(arrozSams.validatedItems.items[0]?.nombre_producto ?? ""), "arroz Sam's sigue siendo arroz");
@@ -1256,8 +1254,115 @@ assert(
 );
 assert(
   planConfirmationAmendment({ pedidoId: 73, message: "Quiero unas galletas", snapshot: pedido73, quoteStore: false }).kind === "keep",
-  "en menú fijo la confirmación no dispara las preguntas de abarrotes",
+  "sin catálogo, el menú fijo no dispara preguntas de abarrotes",
 );
+for (const sucio of ["OK, pero te equivocaste", "sí, pero quítale el frijol", "ok cambia la coca", "va, no es eso", "confirmo, era lentejas no frijol"]) {
+  assert(!isYesConfirmation(sucio), `"${sucio}" no confirma`);
+  assert(
+    planConfirmationAmendment({ pedidoId: 73, message: sucio, snapshot: pedido73, quoteStore: true }).kind !== "confirm",
+    `"${sucio}" no despacha el pedido`,
+  );
+}
+for (const limpio of ["SÍ", "ok", "va", "confirmo"]) {
+  assert(isYesConfirmation(limpio), `"${limpio}" sigue siendo un sí limpio`);
+}
+
+const vistosCinco: PedidoItemInput[] = [
+  { nombre_producto: "Frijol", marca: "Lentejas", presentacion: "negro", cantidad: 1, unidad: "kilo" },
+  { nombre_producto: "Lentejas", marca: "genéricas", cantidad: 1, unidad: "kilo" },
+  { nombre_producto: "Limpiador", marca: "Fabuloso", presentacion: "1 litro", cantidad: 1, unidad: "litro" },
+  { nombre_producto: "Refresco", marca: "Fusi", cantidad: 1, unidad: "pieza" },
+  { nombre_producto: "Frutos Rojos Fusi", cantidad: 1, unidad: "pieza" },
+  { nombre_producto: "Coca", marca: "Coca", presentacion: "2 litros", cantidad: 1, unidad: "pieza" },
+];
+const correccionFusi =
+  "OK, pero te equivocaste: las lentejas son genéricas y el Fusi no es refresco, es frutos rojos";
+const corregido = quoteCheck(vistosCinco, correccionFusi);
+assert(corregido.validatedItems.items.length === 5, "la corrección deja las 5 líneas, no 6");
+const frijolCorregido = corregido.validatedItems.items.find((item) => /frijol/i.test(item.nombre_producto));
+const lentejasCorregidas = corregido.validatedItems.items.find((item) => /lenteja/i.test(item.nombre_producto));
+const fabulosoCorregido = corregido.validatedItems.items.find((item) => /fabuloso/i.test(`${item.nombre_producto} ${item.marca ?? ""}`));
+const fusiLineas = corregido.validatedItems.items.filter((item) => /fusi/i.test(`${item.nombre_producto} ${item.marca ?? ""}`));
+assert(Boolean(frijolCorregido) && !/lenteja/i.test(String(frijolCorregido?.marca ?? "")), "lentejas no se quedan como marca del frijol");
+assert(/negro/i.test(String(frijolCorregido?.presentacion)) && frijolCorregido?.cantidad === 1, "el frijol sigue negro de 1 kilo");
+assert(Boolean(lentejasCorregidas) && !/generic/i.test(String(lentejasCorregidas?.marca ?? "")), "genéricas no se guarda como marca");
+assert(/gen[eé]ricas/i.test(String(lentejasCorregidas?.notas ?? "")), "son genéricas queda en la nota");
+assert(Boolean(fabulosoCorregido) && /litro/i.test(`${fabulosoCorregido?.unidad ?? ""} ${fabulosoCorregido?.presentacion ?? ""}`), "el Fabuloso sigue en un litro");
+assert(fusiLineas.length === 1, "Fusi no sale dos veces");
+assert(/frutos rojos/i.test(fusiLineas[0]?.nombre_producto ?? ""), "el Fusi que se cotiza es frutos rojos");
+assert(!/^refresco$/i.test(fusiLineas[0]?.nombre_producto ?? ""), "el Fusi ya no se manda como refresco");
+const preguntaCorreccion = corregido.issues.find((issue) => issue.customerQuestion)?.customerQuestion ?? "";
+assert(!/el lentejas|el gen[eé]ricas/i.test(preguntaCorreccion), "no pregunta El Lentejas ni El genéricas");
+assert(corregido.readyForConfirmation, "con la corrección el mandado ya se puede confirmar");
+const resumenCorregido = confirmationCustomerMessage({
+  pedidoId: 78,
+  snapshot: { ...pedido73, items: corregido.validatedItems.items },
+  items: corregido.validatedItems.items,
+  readyForConfirmation: true,
+  feeNote: formatPreConfirmFeeNote("cotiza_tienda"),
+});
+for (const item of corregido.validatedItems.items) {
+  const linea = formatSpecificItemLine(item);
+  assert(resumenCorregido.includes(linea), `el resumen trae la misma línea que iría a la tienda: ${linea}`);
+  assert(!/Frijol, Lentejas/i.test(linea), "el ticket no pega lentejas en el frijol");
+}
+assert(!/refresco,\s*fusi/i.test(resumenCorregido), "el resumen no manda Fusi como refresco");
+
+const lentejasGenericas = quoteCheck([{ nombre_producto: "Lentejas", cantidad: 1, unidad: "kilo" }], "son genéricas");
+assert(lentejasGenericas.readyForConfirmation, "son genéricas cierra la marca de las lentejas");
+assert(!/el gen[eé]ricas|el lentejas/i.test(lentejasGenericas.issues.find((issue) => issue.customerQuestion)?.customerQuestion ?? ""), "no re-pregunta con El genéricas");
+const galletasGenericas = quoteCheck([{ nombre_producto: "Galletas" }], "son genéricas");
+const preguntaGalletaGenerica = galletasGenericas.issues.find((issue) => issue.customerQuestion)?.customerQuestion ?? "";
+assert(/galleta/i.test(preguntaGalletaGenerica) && !/de qué marca/i.test(preguntaGalletaGenerica), "son genéricas no vuelve a pedir la marca");
+assert(!/el gen[eé]ricas/i.test(preguntaGalletaGenerica), "la pregunta de las galletas no dice El genéricas");
+
+const pedidoGeorge = {
+  businessId: 7,
+  businessName: "Hamburguesas Hotdogs George",
+  businessPhone: "5213322222222",
+  addressText: "Ubicación compartida por WhatsApp",
+  latitud: 20.8658,
+  longitud: -103.24,
+  items: [{ nombre_producto: "Hamburguesa sencilla", cantidad: 1 }],
+};
+const sumaDogo = planConfirmationAmendment({
+  pedidoId: 80,
+  message: "y también un dogo de arrachera",
+  snapshot: pedidoGeorge,
+  quoteStore: false,
+  catalog: menuGeorge,
+});
+assert(sumaDogo.kind === "amend", "en George, sumar un dogo durante la confirmación actualiza el pedido");
+if (sumaDogo.kind === "amend") {
+  assert(sumaDogo.items.some((item) => /hamburguesa sencilla/i.test(item.nombre_producto)), "la hamburguesa se queda");
+  assert(sumaDogo.items.some((item) => /dogo arrachera/i.test(item.nombre_producto)), "el dogo entra al mismo pedido");
+  assert(sumaDogo.readyForConfirmation, "el dogo del menú no pide marca de abarrotes");
+  assert(!/pétalo|rollos|lala/i.test(sumaDogo.question ?? ""), "George no hace preguntas de tiendita");
+}
+const quitaDogo = planConfirmationAmendment({
+  pedidoId: 80,
+  message: "OK, pero te equivocaste, quita el dogo",
+  snapshot: {
+    ...pedidoGeorge,
+    items: [
+      { nombre_producto: "Hamburguesa sencilla", cantidad: 1 },
+      { nombre_producto: "Dogo arrachera", cantidad: 1 },
+    ],
+  },
+  quoteStore: false,
+  catalog: menuGeorge,
+});
+assert(quitaDogo.kind === "amend", "quitar el dogo corrige el pedido y no confirma");
+if (quitaDogo.kind === "amend") {
+  assert(quitaDogo.items.length === 1 && /hamburguesa/i.test(quitaDogo.items[0]?.nombre_producto ?? ""), "se queda solo la hamburguesa");
+}
+const grandeEnConfirmacion = applyCatalogSpeech({
+  base: marYTierra.items,
+  userMessage: "grande",
+  catalog: menuGeorge,
+});
+assert(/grande/i.test(grandeEnConfirmacion.items[0]?.nombre_producto ?? ""), "grande cierra el tamaño que faltaba");
+assert(!grandeEnConfirmacion.missing, "con el tamaño dicho ya no se pregunta");
 
 const unionDeItems = mergeSnapshot({
   currentSnapshot: {
