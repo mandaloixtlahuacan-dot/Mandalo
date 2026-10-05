@@ -2,7 +2,13 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 5 de octubre de 2026. Después de aclarar marca o
+> Última actualización: 5 de octubre de 2026. Una respuesta corta cierra el dato
+> que se acaba de preguntar (blanca, morada, jalapeño, Nutrioli, FUD) aunque
+> no repitan el producto. «Sí, nomás que…» corrige y vuelve a listar antes
+> del GPS; «pásame la lista» reenvía los productos. Un 1/4 de jamón (o un
+> aceite con cantidad) no se pierde al armar el mandado. El saludo, los $35,
+> el horario y el repartidor no cambian. Código en rama, sin merge y sin deploy.
+> Actualización anterior del mismo día: después de aclarar marca o
 > tamaño, y antes del GPS, el bot lista los productos («OK, pediste…
 > ¿Están bien estos productos?»). Un SÍ sigue a la ubicación; un «No» o
 > «no está correcto» en esa lista o en el primer resumen cancela el pedido.

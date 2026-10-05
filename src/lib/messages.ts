@@ -183,12 +183,42 @@ const QUESTION_WORDS_REGEX =
 // equivocaste…" en confirmacion_cliente se estaba yendo como SÍ y la tienda
 // recibía el mandado mal armado. Solo confirma la aceptación limpia.
 const ORDER_CHANGE_REGEX =
-  /\b(pero|equivoc\w*|quit[aeo]\w*|cambi\w*|corrig\w*|no es|no era|no son|no eran|en vez de|en lugar de)\b|\bera\b|\besta mal\b/;
+  /\b(pero|equivoc\w*|quit[aeo]\w*|cambi\w*|corrig\w*|no es|no era|no son|no eran|en vez de|en lugar de|nomas que|solo que|solamente que|nada mas que|unicamente que)\b|\bera\b|\besta mal\b/;
 
 export function messageCorrectsOrder(text: string): boolean {
   const raw = String(text ?? "").trim();
   if (!raw) return false;
   return ORDER_CHANGE_REGEX.test(normalizeMessageIntentText(raw));
+}
+
+// "pásame la lista" / "otra vez la lista" pide el mandado anotado, no el menú
+// de la tienda ni la ubicación. Se revisa el texto ya sin acentos.
+export function isProductListRequest(text: string): boolean {
+  const raw = String(text ?? "").trim();
+  if (!raw) return false;
+  const t = normalizeMessageIntentText(raw)
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!t || /\bmenu\b/.test(t)) return false;
+  const asksAgain =
+    /\b(pasame|pasas|pasar|pasa|mandame|manda|repite|repiteme|repetir|otra vez|de nuevo|me puedes|puedes pasar)\b/.test(t);
+  const aboutList = /\b(lista|pedido|productos)\b/.test(t);
+  if (asksAgain && aboutList) return true;
+  return /\bque pedi\b/.test(t) || /\bque llevo\b/.test(t);
+}
+
+export type ProductListReplyKind = "confirm" | "cancel" | "revise" | "relist" | "ignore";
+
+// En «OK, pediste… ¿están bien?»: un SÍ limpio sigue a la dirección, un No
+// cancela, un SÍ con corrección se aplica y se vuelve a listar, y pedir la
+// lista otra vez la reenvía.
+export function classifyProductListReply(text: string): ProductListReplyKind {
+  if (isProductListRequest(text)) return "relist";
+  if (isBareOrderRejection(text)) return "cancel";
+  if (isYesConfirmation(text)) return "confirm";
+  if (messageCorrectsOrder(text)) return "revise";
+  return "ignore";
 }
 
 export function isYesConfirmation(text: string): boolean {

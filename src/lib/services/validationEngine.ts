@@ -1,4 +1,5 @@
 import type { OrderState } from "@/lib/orderStateMachine";
+import { isProductListRequest } from "@/lib/messages";
 import { isGuidedQuoteItem, prepareQuoteItems, quoteItemNeedsDetail, quoteQuestionForItems } from "@/lib/quoteProductClarity";
 import {
   ADDRESS_ASK_MESSAGE,
@@ -271,10 +272,14 @@ export function validateCaptureForConfirmation(params: {
     validatedBusiness.isValid && validatedItems.hasItems && validatedItems.allItemsSpecific;
   const productosConfirmados = params.snapshot.flags?.productosConfirmados === true;
   const awaitingProductConfirm = params.snapshot.flags?.awaitingProductConfirm === true;
+  const wantsProductList = isProductListRequest(params.userMessage ?? "");
   // Lista de productos antes del GPS. Si la dirección ya venía de antes y
   // nadie está esperando esa lista, se sigue al resumen de siempre.
+  // Pedir la lista otra vez, ya esperando la dirección, la reenvía.
   const showProductList =
-    productsReady && !productosConfirmados && (!validatedAddress?.isValid || awaitingProductConfirm);
+    productsReady &&
+    ((wantsProductList && !validatedAddress?.isValid) ||
+      (!productosConfirmados && (!validatedAddress?.isValid || awaitingProductConfirm)));
 
   if (showProductList) {
     const question = formatProductListConfirm(validatedItems.items);
