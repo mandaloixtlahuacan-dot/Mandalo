@@ -1912,7 +1912,7 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
       openPedido.snapshot_json.latitud == null &&
       !String(openPedido.snapshot_json.addressText ?? "").trim();
     const replyKind = classifyProductListReply(mensaje);
-    if ((onList && replyKind !== "ignore") || (waitingAddress && replyKind === "relist")) {
+    if ((onList && replyKind !== "ignore") || (waitingAddress && (replyKind === "relist" || replyKind === "revise"))) {
       const productReply = await handleAwaitingProductList(telefono, mensaje, openPedido, ubicacionCoords);
       if (productReply) return productReply;
     }

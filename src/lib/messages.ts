@@ -185,10 +185,16 @@ const QUESTION_WORDS_REGEX =
 const ORDER_CHANGE_REGEX =
   /\b(pero|equivoc\w*|quit[aeo]\w*|cambi\w*|corrig\w*|no es|no era|no son|no eran|en vez de|en lugar de|nomas que|solo que|solamente que|nada mas que|unicamente que)\b|\bera\b|\besta mal\b/;
 
+// «Sí, solamente te faltó…», «agrega», «añade» y «también quiero» suman o
+// cambian el mandado. No son el SÍ limpio que pide el GPS.
+const ADD_PRODUCT_REGEX =
+  /\b(falto\w*|agrega\w*|anade\w*|anadir|tambien quiero|solamente te)\b|\b(?:te|me|le|nos|les) falta\b/;
+
 export function messageCorrectsOrder(text: string): boolean {
   const raw = String(text ?? "").trim();
   if (!raw) return false;
-  return ORDER_CHANGE_REGEX.test(normalizeMessageIntentText(raw));
+  const normalized = normalizeMessageIntentText(raw);
+  return ORDER_CHANGE_REGEX.test(normalized) || ADD_PRODUCT_REGEX.test(normalized);
 }
 
 // "pásame la lista" / "otra vez la lista" pide el mandado anotado, no el menú
@@ -211,8 +217,9 @@ export function isProductListRequest(text: string): boolean {
 export type ProductListReplyKind = "confirm" | "cancel" | "revise" | "relist" | "ignore";
 
 // En «OK, pediste… ¿están bien?»: un SÍ limpio sigue a la dirección, un No
-// cancela, un SÍ con corrección se aplica y se vuelve a listar, y pedir la
-// lista otra vez la reenvía.
+// cancela, y un SÍ que agrega o corrige (faltó, agrega, añade, también
+// quiero, solamente te…) se aplica y se vuelve a listar. Pedir la lista
+// otra vez la reenvía. El GPS solo llega después del SÍ limpio.
 export function classifyProductListReply(text: string): ProductListReplyKind {
   if (isProductListRequest(text)) return "relist";
   if (isBareOrderRejection(text)) return "cancel";

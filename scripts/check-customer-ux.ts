@@ -1679,6 +1679,90 @@ assert(listaOtraVez.includes("¿Están bien estos productos?"), "pedir la lista 
 assert(/cebolla/i.test(listaOtraVez) && /blanca/i.test(listaOtraVez) && /jam[oó]n/i.test(listaOtraVez), "la lista reenviada trae los productos");
 assert(!listaOtraVez.includes("ubicación por GPS"), "pedir la lista no contesta solo con el GPS");
 assert(prompt.includes("nomás que") && prompt.includes("respuesta corta"), "el prompt acepta la corrección y la respuesta corta");
+assert(prompt.includes("te faltó") && prompt.includes("también quiero"), "el prompt no toma un sí con faltó o también quiero como el SÍ del GPS");
+
+const falto = "Sí, solamente te faltó caja sanitas y paquete Sams";
+assert(classifyProductListReply(falto) === "revise", "sí, te faltó revisa y no confirma");
+assert(!isYesConfirmation(falto), "sí, te faltó no es un sí limpio");
+for (const suma of ["agrega una coca", "añade servilletas", "también quiero leche", "solamente te faltó el pan", "Sí, agrega una caja"]) {
+  assert(classifyProductListReply(suma) === "revise", `"${suma}" se revisa`);
+  assert(!isYesConfirmation(suma), `"${suma}" no confirma`);
+}
+assert(classifyProductListReply("Sí") === "confirm" && classifyProductListReply("No") === "cancel", "el sí limpio y el no pelado no cambian");
+
+const mandadoListo = [
+  { nombre_producto: "Frijol", presentacion: "negro", cantidad: 1, unidad: "kilo" },
+  { nombre_producto: "Cebolla", presentacion: "blanca", cantidad: 1, unidad: "kilo" },
+  { nombre_producto: "Limpiador", marca: "Pinol", cantidad: 1, unidad: "litro", presentacion: "1 litro" },
+];
+const conFalto = quoteSinGps(mandadoListo, falto, { awaitingProductConfirm: true, productosConfirmados: true });
+const papelSanitas = conFalto.validatedItems.items.find((item) => /sanitas/i.test(String(item.marca)));
+const papelSams = conFalto.validatedItems.items.find((item) => /sam/i.test(String(item.marca)));
+assert(Boolean(papelSanitas && papelSams), "sí, te faltó anota Sanitas y Sams");
+assert(/papel/i.test(papelSanitas?.nombre_producto ?? "") && /caja/i.test(String(papelSanitas?.unidad)), "la caja Sanitas queda como papel");
+assert(/papel/i.test(papelSams?.nombre_producto ?? "") && /paquete/i.test(String(papelSams?.unidad)), "el paquete Sams queda como papel");
+assert(conFalto.validatedItems.items.some((item) => /frijol/i.test(item.nombre_producto)), "faltó no borra el frijol");
+assert(!/agregar|falt[oó]/i.test(`${papelSanitas?.marca ?? ""} ${papelSams?.marca ?? ""}`), "faltó no se copia en la marca");
+const listaFalto = listaDe(conFalto);
+assert(listaFalto.includes("OK, pediste:") && listaFalto.includes("¿Están bien estos productos?"), "sí, te faltó vuelve a listar");
+assert(/sanitas/i.test(listaFalto) && /sam/i.test(listaFalto), "la lista nueva trae Sanitas y Sams");
+assert(!listaFalto.includes("ubicación por GPS"), "sí, te faltó no pide GPS");
+
+const yaConfirmado = conFalto.validatedItems.items;
+const servilletas = "Está bien, pero agregar caja de servilletas sanitas";
+assert(classifyProductListReply(servilletas) === "revise", "está bien pero agregar se revisa aunque ya hubo un sí");
+const conServilletas = quoteSinGps(yaConfirmado, servilletas, { productosConfirmados: true });
+const lineaServilletas = conServilletas.validatedItems.items.find((item) => /servilleta/i.test(item.nombre_producto));
+assert(lineaServilletas != null, "agregar servilletas suma la línea");
+assert(!/agregar/i.test(`${lineaServilletas?.nombre_producto ?? ""} ${lineaServilletas?.marca ?? ""}`), "agregar no se copia en la marca");
+assert(/sanitas/i.test(`${lineaServilletas?.nombre_producto ?? ""} ${lineaServilletas?.marca ?? ""}`), "las servilletas quedan Sanitas");
+assert(conServilletas.validatedItems.items.some((item) => /sanitas/i.test(String(item.marca)) && /papel/i.test(item.nombre_producto)), "el papel Sanitas sigue");
+assert(conServilletas.validatedItems.items.some((item) => /sam/i.test(String(item.marca))), "el papel Sams sigue");
+const listaServilletas = listaDe(conServilletas);
+assert(listaServilletas.includes("¿Están bien estos productos?"), "agregar después de confirmar vuelve a listar");
+assert(/servilleta/i.test(listaServilletas), "la lista nueva trae las servilletas");
+assert(!listaServilletas.includes("ubicación por GPS"), "agregar después de confirmar no pide GPS");
+const marcaSucia = quoteSinGps(
+  [{ nombre_producto: "Servilletas", marca: "Agregar Servilletas Sanitas", cantidad: 1, unidad: "caja" }],
+  "1 l",
+);
+const servilletaLimpia = marcaSucia.validatedItems.items.find((item) => /servilleta/i.test(`${item.nombre_producto} ${item.marca ?? ""}`));
+assert(servilletaLimpia != null && !/agregar/i.test(String(servilletaLimpia?.marca ?? "")), "la marca guardada no se queda con Agregar");
+
+const siete = [
+  { nombre_producto: "Frijol", presentacion: "negro", cantidad: 1, unidad: "kilo" },
+  { nombre_producto: "Arroz", marca: "SOS", cantidad: 1, unidad: "kilo" },
+  { nombre_producto: "Cebolla", presentacion: "blanca", cantidad: 1, unidad: "kilo" },
+  { nombre_producto: "Papel higiénico", marca: "Sanitas", cantidad: 1, unidad: "caja" },
+  { nombre_producto: "Papel higiénico", marca: "Sams", cantidad: 1, unidad: "paquete" },
+  { nombre_producto: "Limpiador", marca: "Pinol" },
+  { nombre_producto: "Leche", marca: "Lala", presentacion: "entera", cantidad: 1, unidad: "litro" },
+];
+const trasUnLitro = mergeSnapshot({
+  currentSnapshot: { businessId: 1, businessName: "Agua Santa", items: siete },
+  llmOrderState: {
+    items: siete.map((item) =>
+      /pinol/i.test(String(item.marca))
+        ? { ...item, cantidad: 1, unidad: "litro", presentacion: "1 litro" }
+        : { ...item },
+    ),
+  },
+});
+assert((trasUnLitro.items ?? []).length === 7, "1 l de Pinol no baja el pedido de 7 a 6");
+assert(
+  (trasUnLitro.items ?? []).some((item) => /papel/i.test(item.nombre_producto) && /sanitas/i.test(String(item.marca))),
+  "Sanitas no se fusiona con Sams",
+);
+assert(
+  (trasUnLitro.items ?? []).some((item) => /papel/i.test(item.nombre_producto) && /sam/i.test(String(item.marca))),
+  "Sams se queda en su propia línea",
+);
+const pinolCerrado = (trasUnLitro.items ?? []).find((item) => /pinol/i.test(String(item.marca)));
+assert(pinolCerrado?.cantidad === 1 && /litro/i.test(String(pinolCerrado?.unidad)), "1 l cierra el Pinol");
+assert(
+  flowSrc.includes('waitingAddress && (replyKind === "relist" || replyKind === "revise")'),
+  "esperando la dirección también se puede corregir, no solo repetir la lista",
+);
 assert(prompt.includes("Sanitas") && prompt.includes("arroz higiénico") && prompt.includes("Pinol"), "el prompt lee Sanitas, arroz higiénico y Pinol como en la tienda");
 
 console.log("\n--- Transcripción de ejemplo ---\n");

@@ -1,4 +1,5 @@
 import { formatPreConfirmFeeNote } from "@/lib/customerUx";
+import { messageCorrectsOrder } from "@/lib/messages";
 import { reconcileCatalogQuantities, type CatalogPriceRow } from "@/lib/catalogQuantities";
 import { applyCatalogSpeech } from "@/lib/catalogOrderSpeech";
 import type { OrderState } from "@/lib/orderStateMachine";
@@ -226,7 +227,42 @@ function nameStem(value: string): string {
   return value;
 }
 
-function itemsMatch(previous: PedidoItemInput, incoming: PedidoItemInput): boolean {
+function normDetail(value: string | null | undefined): string {
+  return String(value ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/['’´]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function canonicalDetail(value: string | null | undefined): string {
+  const text = normDetail(value);
+  const units: Record<string, string> = {
+    litros: "litro",
+    l: "litro",
+    lt: "litro",
+    lts: "litro",
+    cajas: "caja",
+    paquetes: "paquete",
+    piezas: "pieza",
+    kilos: "kilo",
+    kg: "kilo",
+    rollos: "rollo",
+  };
+  return units[text] ?? text;
+}
+
+function detailAgrees(left: string | null | undefined, right: string | null | undefined): boolean {
+  const a = canonicalDetail(left);
+  const b = canonicalDetail(right);
+  if (!a || !b) return true;
+  return a === b;
+}
+
+function namesAgree(previous: PedidoItemInput, incoming: PedidoItemInput): boolean {
   const left = normItemName(previous.nombre_producto);
   const right = normItemName(incoming.nombre_producto);
   if (!left || !right) return false;
@@ -236,6 +272,29 @@ function itemsMatch(previous: PedidoItemInput, incoming: PedidoItemInput): boole
   if (leftStem === rightStem) return true;
   const [short, long] = leftStem.length <= rightStem.length ? [leftStem, rightStem] : [rightStem, leftStem];
   return short.length >= 4 && long.startsWith(`${short} `);
+}
+
+// Dos "Papel higiénico" no son el mismo producto si la marca o la presentación
+// cambian (Sanitas en caja y Sam's en paquete se quedan en líneas distintas).
+function itemsMatch(previous: PedidoItemInput, incoming: PedidoItemInput): boolean {
+  if (!namesAgree(previous, incoming)) return false;
+  return (
+    detailAgrees(previous.marca, incoming.marca) &&
+    detailAgrees(previous.presentacion, incoming.presentacion) &&
+    detailAgrees(previous.unidad, incoming.unidad)
+  );
+}
+
+function itemSignature(items: PedidoItemInput[] | null | undefined): string {
+  const rows = (items ?? []).map((item) => ({
+    n: normItemName(item.nombre_producto),
+    m: normDetail(item.marca),
+    p: normDetail(item.presentacion),
+    c: item.cantidad ?? null,
+    u: canonicalDetail(item.unidad),
+  }));
+  rows.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+  return JSON.stringify(rows);
 }
 
 function mergeItemFields(previous: PedidoItemInput, incoming: PedidoItemInput): PedidoItemInput {
@@ -564,7 +623,22 @@ export function createCaptureEngine(deps: CaptureEngineDeps) {
             })
           : null;
       const itemsForValidation = spoken?.applied ? spoken.items : reconciledItems;
-      const snapshotForValidation: PedidoSnapshot = { ...mergedSnapshot, items: itemsForValidation };
+      const revisesProducts = messageCorrectsOrder(input.userMessage);
+      const productsWereConfirmed = mergedSnapshot.flags?.productosConfirmados === true;
+      const noAddressYet =
+        priorSnapshot?.latitud == null &&
+        priorSnapshot?.longitud == null &&
+        !String(priorSnapshot?.addressText ?? "").trim();
+      const itemsChanged = itemSignature(priorSnapshot?.items) !== itemSignature(itemsForValidation);
+      const mustReconfirm = (revisesProducts || itemsChanged) && productsWereConfirmed && noAddressYet;
+      const snapshotForValidation: PedidoSnapshot = {
+        ...mergedSnapshot,
+        items: itemsForValidation,
+        flags: {
+          ...(mergedSnapshot.flags ?? {}),
+          ...(mustReconfirm ? { productosConfirmados: false } : {}),
+        },
+      };
 
       // itemsForValidation ya viene fusionado (turno actual + lo ya capturado
       // antes) — validamos sobre esa lista completa, no solo lo del turno.
@@ -579,7 +653,7 @@ export function createCaptureEngine(deps: CaptureEngineDeps) {
       if (spoken?.applied) {
         validation.validatedItems = { ...validation.validatedItems, items: spoken.items };
         if (!validation.readyForConfirmation && spoken.reply) {
-          const productsConfirmed = mergedSnapshot.flags?.productosConfirmados === true;
+          const productsConfirmed = !mustReconfirm && mergedSnapshot.flags?.productosConfirmados === true;
           const needsAddress = !spoken.missing && !validation.validatedAddress?.isValid;
           const reply =
             needsAddress && productsConfirmed
@@ -629,7 +703,7 @@ export function createCaptureEngine(deps: CaptureEngineDeps) {
           addressValidated: Boolean(validation.validatedAddress?.isValid),
           itemsValidated: validation.validatedItems.allItemsSpecific,
           readyForConfirmation: validation.readyForConfirmation,
-          productosConfirmados: mergedSnapshot.flags?.productosConfirmados === true,
+          productosConfirmados: mustReconfirm ? false : mergedSnapshot.flags?.productosConfirmados === true,
           awaitingProductConfirm,
         },
       };
