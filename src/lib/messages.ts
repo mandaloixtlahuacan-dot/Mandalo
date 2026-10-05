@@ -185,10 +185,11 @@ const QUESTION_WORDS_REGEX =
 const ORDER_CHANGE_REGEX =
   /\b(pero|equivoc\w*|quit[aeo]\w*|cambi\w*|corrig\w*|no es|no era|no son|no eran|en vez de|en lugar de|nomas que|solo que|solamente que|nada mas que|unicamente que)\b|\bera\b|\besta mal\b/;
 
-// «Sí, solamente te faltó…», «agrega», «añade» y «también quiero» suman o
-// cambian el mandado. No son el SÍ limpio que pide el GPS.
+// «Sí, solamente te faltó…», «y te faltaron…», «agrega», «añade» y «también
+// quiero» suman o cambian el mandado. No son el SÍ limpio que pide el GPS.
+// «faltaron» no cabe en falto\w* (empieza con falta) ni en falta suelta.
 const ADD_PRODUCT_REGEX =
-  /\b(falto\w*|agrega\w*|anade\w*|anadir|tambien quiero|solamente te)\b|\b(?:te|me|le|nos|les) falta\b/;
+  /\b(falto\w*|faltaron|faltan|faltaba|faltaban|agrega\w*|anade\w*|anadir|tambien quiero|solamente te)\b|\b(?:te|me|le|nos|les) falta\w*/;
 
 export function messageCorrectsOrder(text: string): boolean {
   const raw = String(text ?? "").trim();

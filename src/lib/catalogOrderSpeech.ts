@@ -63,6 +63,8 @@ const HEADS = new Set(["hamburguesa", "dogo", "hotdog", "refresco"]);
 
 type Family = {
   key: string;
+  /** Nombre sin gramos/piezas, para reconocer «papas gajo» en «Papas Gajo 315g». */
+  matchKey: string;
   rows: CatalogPriceRow[];
   nameTokens: string[];
   distinct: string[];
@@ -127,6 +129,16 @@ function stripSize(value: string): string {
     .trim();
 }
 
+// «315g», «315 gramos» y «1 pieza» son el empaque del menú, no otra palabra
+// que el cliente tenga que decir. Si se quedan en el nombre, «papas gajo» no
+// alcanza a «Papas Gajo 315g» y «salchi locos» no alcanza a «Salchi locos 1 pieza».
+function stripPack(value: string): string {
+  return norm(value)
+    .replace(/\b\d+(?:[.,]\d+)?\s*(?:gramos?|grs|gr|g|kilos?|kg|piezas?|pzas?|pza|pz)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function titleBrand(brand: string): string {
   if (brand === "coca") return "Coca";
   return brand.charAt(0).toUpperCase() + brand.slice(1);
@@ -154,12 +166,14 @@ function familiesOf(catalog: CatalogPriceRow[]): Family[] {
     groups.set(key, list);
   }
   return [...groups.entries()].map(([key, rows]) => {
-    const nameTokens = words(key);
+    const matchKey = stripPack(key) || key;
+    const nameTokens = words(matchKey);
     const distinct = nameTokens.filter((token) => !HEADS.has(token));
     const sizes = SIZE_WORDS.filter((size) => rows.some((row) => sizesIn(row.nombreProducto).includes(size)));
     const sample = rows.slice().sort((a, b) => a.nombreProducto.length - b.nombreProducto.length)[0];
     return {
       key,
+      matchKey,
       rows,
       nameTokens,
       distinct,
@@ -224,9 +238,10 @@ function productAnchorHits(text: string, families: Family[]): Array<{ index: num
   const hits: Array<{ index: number; end: number }> = [];
   for (const family of families) {
     if (isHeadFamily(family)) continue;
-    const phrases = [family.key];
+    const phrases = new Set<string>();
+    if (family.matchKey.replace(/\s+/g, "").length >= 5) phrases.add(family.matchKey);
     const longest = family.distinct.slice().sort((a, b) => b.length - a.length)[0];
-    if (longest && longest.length >= 6 && longest !== family.key.replace(/\s+/g, "")) phrases.push(longest);
+    if (longest && longest.length >= 6) phrases.add(longest);
     for (const phrase of phrases) hits.push(...phraseHits(text, phrase));
   }
   return hits;
@@ -253,10 +268,11 @@ function spansOf(text: string, families: Family[] = []): Array<{ kind: AnchorKin
   const kept: typeof hits = [];
   for (const hit of hits) {
     const prev = kept[kept.length - 1];
+    // «un refresco pepsi» es una sola línea. «una Pepsi y una manzanita» son
+    // dos: la segunda marca no se traga aunque entre medias solo haya «y una».
     if (
       hit.kind === "brand" &&
-      prev &&
-      (prev.kind === "refresco" || prev.kind === "brand") &&
+      prev?.kind === "refresco" &&
       fillerBetween(text.slice(prev.end, hit.index))
     ) {
       continue;
@@ -285,7 +301,7 @@ function scoreFamily(family: Family, span: { kind: AnchorKind | null; text: stri
     if (norm(span.text).includes(brand)) tokens.add(brand);
   }
   const compactSpan = norm(span.text).replace(/[^a-z0-9]/g, "");
-  const compactKey = family.key.replace(/[^a-z0-9]/g, "");
+  const compactKey = family.matchKey.replace(/[^a-z0-9]/g, "");
   const compactHit = compactKey.length >= 5 && compactSpan.includes(compactKey);
   const brandList = isBrandListDrink(family);
 
