@@ -6,10 +6,10 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { buildMandaloSystemPrompt } from "../src/lib/mandaloPrompt";
 import { priceCatalogOrder, reconcileCatalogQuantities } from "../src/lib/catalogQuantities";
 import { applyCatalogSpeech } from "../src/lib/catalogOrderSpeech";
-import { buildCustomerMessage, dispatchItemAlreadyShowsQty, formatSpecificItemLine, mergeSnapshot, type PedidoItemInput } from "../src/lib/services/captureEngine";
+import { ADDRESS_ASK_MESSAGE, buildCustomerMessage, dispatchItemAlreadyShowsQty, formatProductListConfirm, formatSpecificItemLine, mergeSnapshot, type PedidoItemInput } from "../src/lib/services/captureEngine";
 import { validateCaptureForConfirmation } from "../src/lib/services/validationEngine";
 import { confirmationCustomerMessage, planConfirmationAmendment } from "../src/lib/confirmationAmendment";
-import { isYesConfirmation } from "../src/lib/messages";
+import { isBareOrderRejection, isNoConfirmation, isYesConfirmation } from "../src/lib/messages";
 import { normalizeWhatsAppText } from "../src/lib/waapi";
 import {
   buildGreeting,
@@ -1414,6 +1414,159 @@ assert(prompt.includes("suelta la tienda anterior"), "el prompt suelta la tienda
 assert(prompt.includes("dos hamburguesas = 2"), "el prompt no deja caer la cantidad del menú");
 assert(prompt.includes("$35"), "el prompt no cambia el cargo de $35");
 assert(prompt.includes("cada uno es su propio item"), "el prompt no junta varios productos en un nombre");
+assert(prompt.includes("¿Están bien estos productos?"), "el prompt no pide GPS antes de confirmar los productos");
+
+const pedidoAguaSanta =
+  "Quiero un kilo de azúcar dos Tanks de horchata, un kilo de arroz y una coca de 2 l";
+const sinDireccion = {
+  businessId: 1,
+  businessName: "Agua Santa",
+};
+const partido = validateCaptureForConfirmation({
+  snapshot: { ...sinDireccion, items: [] },
+  items: [],
+  quoteStore: true,
+  userMessage: pedidoAguaSanta,
+});
+assert(partido.validatedItems.items.length >= 4, "azúcar, tanks, arroz y coca quedan en líneas distintas");
+const lineaAzucar = partido.validatedItems.items.find((item) => /az[uú]car/i.test(item.nombre_producto));
+const lineaTanks = partido.validatedItems.items.find((item) => /tanks|tanques/i.test(item.nombre_producto));
+const lineaArroz = partido.validatedItems.items.find((item) => /arroz/i.test(item.nombre_producto));
+const lineaCoca = partido.validatedItems.items.find((item) => /coca|refresco/i.test(item.nombre_producto));
+assert(lineaAzucar != null && lineaTanks != null && lineaArroz != null && lineaCoca != null, "las cuatro líneas existen");
+assert(!/horchata|tanks|tanques/i.test(lineaAzucar?.nombre_producto ?? ""), "el azúcar no se pega a la horchata");
+assert(/horchata/i.test(lineaTanks?.nombre_producto ?? ""), "los tanks de horchata son su propio producto");
+assert(lineaTanks?.cantidad === 2, "los tanks quedan en 2");
+assert(/paquete/i.test(String(lineaTanks?.unidad ?? "")), "los tanks se anotan como paquetes");
+assert(lineaAzucar?.cantidad === 1 && /kilo/i.test(String(lineaAzucar?.unidad ?? "")), "el azúcar queda en 1 kilo");
+assert(/2 litro/i.test(String(lineaCoca?.presentacion ?? "")), "la coca queda de 2 litros");
+assert(
+  !partido.validatedItems.items.some((item) => /az[uú]car/i.test(item.nombre_producto) && /horchata|tanks/i.test(item.nombre_producto)),
+  "ninguna línea junta azúcar y tanks",
+);
+const preguntaPrimera = partido.issues.find((issue) => issue.customerQuestion)?.customerQuestion ?? "";
+assert(/arroz/i.test(preguntaPrimera) && /marca/i.test(preguntaPrimera), "el arroz sigue pidiendo marca antes de la lista");
+assert(!preguntaPrimera.includes("¿Están bien estos productos?"), "no se confirma la lista mientras falta la marca");
+assert(!preguntaPrimera.includes("ubicación por GPS"), "tampoco se pide GPS mientras falta la marca");
+
+const pegados = validateCaptureForConfirmation({
+  snapshot: {
+    ...sinDireccion,
+    items: [
+      { nombre_producto: "Azúcar Tanks Horchata", cantidad: 1, unidad: "kilo" },
+      { nombre_producto: "Arroz", marca: "Quieres Valle", cantidad: 1, unidad: "kilo" },
+      { nombre_producto: "Coca", marca: "Coca", presentacion: "2 litros", cantidad: 1 },
+    ],
+  },
+  items: [
+    { nombre_producto: "Azúcar Tanks Horchata", cantidad: 1, unidad: "kilo" },
+    { nombre_producto: "Arroz", marca: "Quieres Valle", cantidad: 1, unidad: "kilo" },
+    { nombre_producto: "Coca", marca: "Coca", presentacion: "2 litros", cantidad: 1 },
+  ],
+  quoteStore: true,
+  userMessage: pedidoAguaSanta,
+});
+assert(pegados.validatedItems.items.length >= 4, "si la IA los pega, el corte los vuelve a separar");
+assert(
+  !pegados.validatedItems.items.some((item) => /quieres/i.test(String(item.marca ?? ""))),
+  "Quieres Valle no se queda pegado en el primer mensaje",
+);
+
+const arrozConMarca = validateCaptureForConfirmation({
+  snapshot: { ...sinDireccion, items: partido.validatedItems.items },
+  items: partido.validatedItems.items,
+  quoteStore: true,
+  userMessage: "Si quieres valle",
+});
+const arrozMarcado = arrozConMarca.validatedItems.items.find((item) => /arroz/i.test(item.nombre_producto));
+assert(/verde valle/i.test(String(arrozMarcado?.marca ?? "")), "Si quieres valle se anota como Verde Valle");
+assert(!/quieres/i.test(String(arrozMarcado?.marca ?? "")), "Quieres no se queda como marca");
+assert(arrozConMarca.validatedItems.items.length >= 4, "la marca del arroz no borra las otras líneas");
+
+const listaProductos = buildCustomerMessage({
+  validation: arrozConMarca,
+  snapshot: { ...sinDireccion, items: arrozConMarca.validatedItems.items },
+  items: arrozConMarca.validatedItems.items,
+  feeNote: formatPreConfirmFeeNote("cotiza_tienda"),
+});
+assert(listaProductos.startsWith("OK, pediste:"), "con los productos claros se listan antes de la dirección");
+assert(listaProductos.includes("¿Están bien estos productos?"), "se pregunta si los productos están bien");
+assert(!listaProductos.includes("ubicación por GPS"), "esa lista no pide GPS");
+assert(!listaProductos.includes("$35"), "la lista de productos no adelanta el cargo");
+assert(/az[uú]car/i.test(listaProductos) && /horchata/i.test(listaProductos) && /arroz/i.test(listaProductos) && /coca|refresco/i.test(listaProductos), "la lista trae los cuatro");
+assert(!arrozConMarca.readyForConfirmation, "sin dirección y sin SÍ de productos no hay ticket final");
+
+const jitomateSinDireccion = validateCaptureForConfirmation({
+  snapshot: { ...sinDireccion, items: [{ nombre_producto: "Jitomate", cantidad: 2, unidad: "kilo" }] },
+  items: [{ nombre_producto: "Jitomate", cantidad: 2, unidad: "kilo" }],
+  quoteStore: true,
+  userMessage: "2 kilos de jitomate",
+});
+const preguntaJitomate = buildCustomerMessage({
+  validation: jitomateSinDireccion,
+  snapshot: sinDireccion,
+  items: jitomateSinDireccion.validatedItems.items,
+  feeNote: formatPreConfirmFeeNote("cotiza_tienda"),
+});
+assert(preguntaJitomate.includes("¿Están bien estos productos?"), "un producto ya claro también se confirma antes del GPS");
+assert(!preguntaJitomate.includes("ubicación por GPS"), "el jitomate listo no pide GPS todavía");
+assert(formatProductListConfirm(jitomateSinDireccion.validatedItems.items).includes("- "), "la lista va en viñetas");
+
+const jitomateConfirmado = validateCaptureForConfirmation({
+  snapshot: {
+    ...sinDireccion,
+    items: jitomateSinDireccion.validatedItems.items,
+    flags: { productosConfirmados: true },
+  },
+  items: jitomateSinDireccion.validatedItems.items,
+  quoteStore: true,
+  userMessage: "",
+});
+const pideGps = buildCustomerMessage({
+  validation: jitomateConfirmado,
+  snapshot: { ...sinDireccion, flags: { productosConfirmados: true } },
+  items: jitomateConfirmado.validatedItems.items,
+  feeNote: formatPreConfirmFeeNote("cotiza_tienda"),
+});
+assert(pideGps === ADDRESS_ASK_MESSAGE, "después del SÍ de productos se pide el GPS de siempre");
+assert(!pideGps.includes("¿Están bien estos productos?"), "ya no se repite la lista");
+
+const lecheSinCerrar = validateCaptureForConfirmation({
+  snapshot: { ...sinDireccion, items: [] },
+  items: [],
+  quoteStore: true,
+  userMessage: "dos litros de leche",
+});
+const preguntaLeche = lecheSinCerrar.issues.find((issue) => issue.customerQuestion)?.customerQuestion ?? "";
+assert(/Lala/.test(preguntaLeche), "si falta la marca no se adelanta la lista de productos");
+assert(!preguntaLeche.includes("¿Están bien estos productos?"), "la aclaración de marca va antes de confirmar la lista");
+assert(!lecheSinCerrar.readyForConfirmation, "la leche incompleta no se confirma");
+
+for (const rechazo of ["No", "No.", "No está correcto", "no esta correcto", "no es correcto"]) {
+  assert(isBareOrderRejection(rechazo), `"${rechazo}" cancela la confirmación inicial`);
+  const plan = planConfirmationAmendment({
+    pedidoId: 79,
+    message: rechazo,
+    snapshot: pedido73,
+    quoteStore: true,
+  });
+  assert(plan.kind === "cancel", `"${rechazo}" no reimprime el resumen`);
+}
+assert(!isBareOrderRejection("no, quita el frijol"), "una corrección con quita no cancela");
+assert(!isBareOrderRejection("no, sepáralos"), "pedir que se separen no cancela");
+assert(!isBareOrderRejection("cancela"), "cancela sigue en el camino de siempre");
+assert(!isBareOrderRejection("pedido nuevo"), "pedido nuevo sigue en el camino de siempre");
+assert(isNoConfirmation("No"), "el no del precio final sigue siendo un no");
+assert(isNoConfirmation("No está correcto"), "no está correcto sigue cancelando en confirmado_tiendas");
+assert(
+  planConfirmationAmendment({ pedidoId: 73, message: "Quiero unas galletas", snapshot: pedido73, quoteStore: true }).kind === "amend",
+  "agregar en la confirmación no se volvió cancelación",
+);
+assert(isYesConfirmation("SÍ") && isYesConfirmation("ok"), "el sí de productos y del ticket no cambió");
+const flowSrc = readFileSync("src/lib/mandaloFlow.ts", "utf8");
+assert(flowSrc.includes("cliente_rechazo_confirmacion_inicial"), "un no en el primer resumen cancela el pedido");
+assert(flowSrc.includes("cliente_rechazo_productos"), "un no en la lista de productos cancela el pedido");
+assert(flowSrc.includes("awaitingProductConfirm"), "el sí de la lista no es el sí del ticket final");
 assert(prompt.includes("Sanitas") && prompt.includes("arroz higiénico") && prompt.includes("Pinol"), "el prompt lee Sanitas, arroz higiénico y Pinol como en la tienda");
 
 console.log("\n--- Transcripción de ejemplo ---\n");

@@ -2,7 +2,14 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 5 de octubre de 2026. Antes del SÍ, «OK, pero te
+> Última actualización: 5 de octubre de 2026. Después de aclarar marca o
+> tamaño, y antes del GPS, el bot lista los productos («OK, pediste…
+> ¿Están bien estos productos?»). Un SÍ sigue a la ubicación; un «No» o
+> «no está correcto» en esa lista o en el primer resumen cancela el pedido.
+> «un kilo de azúcar dos Tanks de horchata…» queda en líneas separadas, y
+> «Si quieres valle» se anota como Verde Valle. El saludo, los $35, el
+> horario y el repartidor no cambian. Código en rama, sin merge y sin deploy.
+> Actualización anterior del mismo día: antes del SÍ, «OK, pero te
 > equivocaste…» corrige y vuelve a mostrar el resumen; no despacha. En
 > abarrotes, caja o paquete de una marca conocida (Sanitas, Sam's) ya alcanza
 > para cotizar, sin pedir rollos. «Son genéricas» cierra la marca. Una

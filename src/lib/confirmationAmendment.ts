@@ -1,7 +1,7 @@
 import { applyCatalogSpeech } from "@/lib/catalogOrderSpeech";
 import type { CatalogPriceRow } from "@/lib/catalogQuantities";
 import { formatPreConfirmFeeNote } from "@/lib/customerUx";
-import { isCancelIntent, isNewOrderIntent, isYesConfirmation } from "@/lib/messages";
+import { isBareOrderRejection, isCancelIntent, isNewOrderIntent, isYesConfirmation } from "@/lib/messages";
 import { dropItemsNamedInRemoval } from "@/lib/quoteProductClarity";
 import { formatItems, type PedidoItemInput, type PedidoSnapshot } from "@/lib/services/captureEngine";
 import { resolveMapsLink } from "@/lib/services/geo";
@@ -9,6 +9,7 @@ import { validateCaptureForConfirmation } from "@/lib/services/validationEngine"
 
 export type ConfirmationAmendmentPlan =
   | { kind: "confirm" }
+  | { kind: "cancel" }
   | { kind: "keep" }
   | {
       kind: "amend";
@@ -74,6 +75,7 @@ export function planConfirmationAmendment(params: {
 }): ConfirmationAmendmentPlan {
   const message = String(params.message ?? "");
   if (isYesConfirmation(message)) return { kind: "confirm" };
+  if (isBareOrderRejection(message)) return { kind: "cancel" };
   if (!message.trim() || isCancelIntent(message) || isNewOrderIntent(message)) return { kind: "keep" };
 
   const current = params.snapshot.items ?? [];

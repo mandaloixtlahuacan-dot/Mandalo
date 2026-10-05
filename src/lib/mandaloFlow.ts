@@ -7,7 +7,7 @@ import { buildMandaloSystemPrompt } from "@/lib/mandaloPrompt";
 import { normalizeWhatsAppText, waapiSendImage, waapiSendText } from "@/lib/waapi";
 import { detectActorByPhone, ensureMxWhatsappIntl, normalizePhone } from "@/lib/roles";
 import { priceCatalogOrder, type CatalogPriceRow } from "@/lib/catalogQuantities";
-import { buildCustomerMessage, createCaptureEngine, dispatchItemAlreadyShowsQty, extractCandidateItems, type PedidoItemInput } from "@/lib/services/captureEngine";
+import { ADDRESS_ASK_MESSAGE, buildCustomerMessage, createCaptureEngine, dispatchItemAlreadyShowsQty, extractCandidateItems, isProductListConfirmMessage, type PedidoItemInput } from "@/lib/services/captureEngine";
 import * as pedidoRepositoryV2 from "@/lib/repositories/pedidoRepositoryV2";
 import { getAdminPhone } from "@/lib/repositories/configRepository";
 import * as metricsRepository from "@/lib/repositories/metricsRepository";
@@ -66,6 +66,7 @@ import { MandaloAgentResponse, mandaloAgentResponseSchema } from "@/lib/llmRespo
 import {
   fetchRecentChatHistory as fetchHistorialReciente,
   containsFalseConfirmationClaim,
+  isBareOrderRejection,
   isCancelIntent,
   isComplaintMessage,
   isDropProductIntent,
@@ -801,6 +802,109 @@ function describeWhyWaiting(params: {
   return `*${tiendaNombre}* y Mándalo ya deberían estar disponibles`;
 }
 
+async function handleAwaitingProductList(
+  telefono: string,
+  mensaje: string,
+  pedido: PedidoV2Record,
+  ubicacionCoords: Coordinates | null,
+): Promise<JsonObject | null> {
+  if (!isBareOrderRejection(mensaje) && !isYesConfirmation(mensaje)) return null;
+
+  await guardarMensajeChat({ telefono, texto: String(mensaje ?? ""), estado: "cliente" }).catch(() => {});
+
+  if (isBareOrderRejection(mensaje)) {
+    await cancelOpenPedido(pedido, telefono, "cliente_rechazo_productos");
+    const msg = `De acuerdo, cancelé tu pedido #${pedido.id}. No se te cobra nada. 🙏\n\nCuando quieras hacer uno nuevo, aquí estoy. 🛒`;
+    await sendWhatsApp(telefono, msg);
+    await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+    return { ok: true, role: "cliente", accion: "rechazo_productos", pedidoId: pedido.id };
+  }
+
+  const snapshot = {
+    ...pedido.snapshot_json,
+    flags: {
+      ...(pedido.snapshot_json.flags ?? {}),
+      productosConfirmados: true,
+      awaitingProductConfirm: false,
+    },
+  };
+  if (ubicacionCoords) {
+    snapshot.addressText = buildAddressTextFromCoords();
+    snapshot.latitud = ubicacionCoords.latitude;
+    snapshot.longitud = ubicacionCoords.longitude;
+  }
+
+  const full = await pedidoRepositoryV2.getPedidoById(pedido.id).catch(() => null);
+  const catalog = full?.tienda?.usaCatalogoFijo === true;
+  const knownZoneNames = await fetchZonasCobertura();
+  const validation = validationEngine.validateCaptureForConfirmation({
+    snapshot,
+    items: snapshot.items ?? [],
+    knownZoneNames,
+    quoteStore: !catalog,
+    userMessage: "",
+  });
+  const nextState = validation.readyForConfirmation ? "confirmacion_cliente" : "seleccion_productos";
+  const nextSnapshot = {
+    ...snapshot,
+    items: validation.validatedItems.items,
+    flags: {
+      ...(snapshot.flags ?? {}),
+      addressValidated: Boolean(validation.validatedAddress?.isValid),
+      itemsValidated: validation.validatedItems.allItemsSpecific,
+      readyForConfirmation: validation.readyForConfirmation,
+      productosConfirmados: true,
+      awaitingProductConfirm: false,
+    },
+  };
+  await pedidoRepositoryV2.updatePedidoSnapshot({
+    pedidoId: pedido.id,
+    estado: nextState,
+    snapshot: nextSnapshot,
+    addressText: validation.validatedAddress?.isValid
+      ? validation.validatedAddress.raw || nextSnapshot.addressText || null
+      : nextSnapshot.addressText ?? null,
+    latitud: nextSnapshot.latitud ?? null,
+    longitud: nextSnapshot.longitud ?? null,
+    tiendaId: validation.validatedBusiness.businessId,
+  });
+  await pedidoRepositoryV2.replacePedidoItems({ pedidoId: pedido.id, items: validation.validatedItems.items });
+  await pedidoRepositoryV2.appendPedidoEvento({
+    pedidoId: pedido.id,
+    tipoEvento: "productos_confirmados",
+    estadoOrigen: "seleccion_productos",
+    estadoDestino: nextState,
+    actorTipo: "cliente",
+    payload: { userMessage: mensaje },
+  });
+
+  let feeNote = formatPreConfirmFeeNote(catalog ? "catalogo" : "cotiza_tienda");
+  let pricedLines: string | null = null;
+  if (validation.readyForConfirmation && catalog && full?.tienda?.tiendaId) {
+    const priced = await catalogPriceLines(full.tienda.tiendaId, validation.validatedItems.items).catch(() => null);
+    if (priced) {
+      pricedLines = priced.lines.join("\n");
+      feeNote = formatCatalogReceiptFee(priced.subtotal);
+    }
+  }
+
+  const pendingQuestion = validation.issues.find((issue) => issue.customerQuestion)?.customerQuestion ?? "";
+  const msg = validation.readyForConfirmation
+    ? buildCustomerMessage({
+        validation,
+        snapshot: nextSnapshot,
+        items: validation.validatedItems.items,
+        feeNote,
+        pricedLines,
+      })
+    : pendingQuestion && !isProductListConfirmMessage(pendingQuestion) && !pendingQuestion.includes("ubicación por GPS")
+      ? pendingQuestion
+      : ADDRESS_ASK_MESSAGE;
+  await sendWhatsApp(telefono, msg);
+  await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+  return { ok: true, role: "cliente", accion: "productos_confirmados", stage: nextState, pedidoId: pedido.id };
+}
+
 async function handleEsperandoConfirmacionInicial(
   telefono: string,
   mensaje: string,
@@ -870,6 +974,14 @@ async function handleEsperandoConfirmacionInicial(
   const puedeDespacharAhora = schedule.withinSchedule && mandaloSchedule.withinSchedule;
 
   if (!isYesConfirmation(mensaje)) {
+    if (isBareOrderRejection(mensaje)) {
+      await cancelOpenPedido(pedido, telefono, "cliente_rechazo_confirmacion_inicial");
+      const msg = `De acuerdo, cancelé tu pedido #${pedido.id}. No se te cobra nada. 🙏\n\nCuando quieras hacer uno nuevo, aquí estoy. 🛒`;
+      await sendWhatsApp(telefono, msg);
+      await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+      return { ok: true, role: "cliente", accion: "rechazo_confirmacion_inicial", pedidoId: pedido.id };
+    }
+
     const avisoCerrada = !puedeDespacharAhora
       ? `\n\n⏰ Ojo: ${describeWhyWaiting({ tiendaNombre: full.tienda.nombre ?? "la tienda", tiendaSchedule: schedule, mandaloSchedule })}. Te lo voy a mandar en cuanto se pueda.`
       : "";
@@ -1701,6 +1813,16 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
       }
     }
     // estado === "seleccion_productos": seguimos abajo con el flujo de captura.
+  }
+
+  if (
+    openPedido &&
+    openPedido.estado === "seleccion_productos" &&
+    openPedido.snapshot_json.flags?.awaitingProductConfirm &&
+    String(mensaje ?? "").trim()
+  ) {
+    const productReply = await handleAwaitingProductList(telefono, mensaje, openPedido, ubicacionCoords);
+    if (productReply) return productReply;
   }
 
   const inCapture = !openPedido || openPedido.estado === "seleccion_productos";
