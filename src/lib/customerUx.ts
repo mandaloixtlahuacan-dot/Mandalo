@@ -554,16 +554,18 @@ export function messageAddsCatalogItems(message: string): boolean {
     /\barrachera\b/.test(text) ||
     /\bhawaian[ao]\b/.test(text) ||
     /\bcuban[ao]\b/.test(text) ||
-    /\bclasic[oa]\b/.test(text) ||
+    /\bclasic[oa]s?\b/.test(text) ||
+    /\bsalchi\w*/.test(text) ||
     /\bpepsi\b/.test(text) ||
     /\bcoca\b/.test(text) ||
     /\bseven\b/.test(text) ||
     /\bmirinda\b/.test(text) ||
+    /\bmanzanitas?\b/.test(text) ||
     /\bmanzana\b/.test(text);
   const heads = [
     /\bhamburguesas?\b/.test(text),
     /\b(?:hot\s*dogs?|hotdogs?|dogos?|dogo)\b/.test(text),
-    /\brefrescos?\b/.test(text) || /\b(?:pepsi|coca|seven|mirinda)\b/.test(text),
+    /\brefrescos?\b/.test(text) || /\b(?:pepsi|coca|seven|mirinda|manzanitas?|manzana)\b/.test(text),
   ].filter(Boolean).length;
   return flavorOrBrand || heads >= 2;
 }
