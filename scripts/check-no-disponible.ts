@@ -90,6 +90,7 @@ for (const si of ["sí", "SÍ", "si", "ok"]) {
 assert(esConfirmacionCliente("si") && esConfirmacionCliente("ok"), "el helper viejo de sí no se movió");
 assert(!isYesConfirmation("ORDEN #12 no disponible mayonesa"), "el faltante no es un sí");
 assert(!isYesConfirmation("No está la leche"), "no está no confirma el pedido");
+assert(!isYesConfirmation("OK, pero te equivocaste"), "ok con corrección no es el sí del cliente");
 
 const alCliente = mensajeClienteProductoNoDisponible("ZAGU", "Mayonesa McCormick");
 assert(

@@ -889,14 +889,24 @@ async function handleEsperandoConfirmacionInicial(
       try {
         const knownZoneNames = await fetchZonasCobertura();
         const zones = knownZoneNames.length ? knownZoneNames : snapshot.addressZone ? [snapshot.addressZone] : [];
+        const catalogForPlan =
+          full.tienda.usaCatalogoFijo && full.tienda.tiendaId
+            ? await pedidoRepositoryV2.getProductosTiendaActivos(full.tienda.tiendaId).catch(() => [])
+            : null;
         const plan = planConfirmationAmendment({
           pedidoId: pedido.id,
           message: mensaje,
           snapshot,
           quoteStore: !full.tienda.usaCatalogoFijo,
           knownZoneNames: zones,
+          catalog: catalogForPlan,
         });
         if (plan.kind === "amend") {
+          if (catalogForPlan?.length) {
+            const repriced = priceCatalogOrder(plan.items, catalogForPlan);
+            pricedLines = repriced.lines.join("\n");
+            if (repriced.subtotal != null) feeNote = formatCatalogReceiptFee(repriced.subtotal);
+          }
           const nextState = plan.nextState;
           if (nextState !== pedido.estado && !canTransition(pedido.estado, nextState)) {
             throw new Error(`Transición no permitida: ${pedido.estado} -> ${nextState}`);

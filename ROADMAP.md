@@ -2,14 +2,18 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 5 de octubre de 2026. En tiendas que cotizan, «una caja
+> Última actualización: 5 de octubre de 2026. Antes del SÍ, «OK, pero te
+> equivocaste…» corrige y vuelve a mostrar el resumen; no despacha. En
+> abarrotes, caja o paquete de una marca conocida (Sanitas, Sam's) ya alcanza
+> para cotizar, sin pedir rollos. «Son genéricas» cierra la marca. Una
+> corrección no duplica líneas ni pega «Lentejas» como marca del frijol, ni
+> deja el Fusi como refresco y como frutos rojos a la vez. En George, sumar o
+> quitar en la confirmación actualiza el pedido. El saludo, los $35, el
+> horario y el repartidor no cambian. Código en rama, sin merge y sin deploy.
+> Actualización anterior del mismo día: en tiendas que cotizan, «una caja
 > de Sanitas, también un paquete de arroz higiénico de la marca Sam's, y un
-> litro de Pinol» queda en tres líneas: papel higiénico Sanitas (1 caja; faltan
-> los rollos), papel higiénico Sam's (1 paquete; faltan los rollos) y limpiador
-> Pinol (1 litro, ya completo). La pregunta siguiente es solo «el Sanitas, ¿de
-> cuántos rollos?». «arroz higiénico» pegado no se guarda como arroz; arroz y
-> papel por separado sí son dos. El menú fijo (George) no entra. Código en
-> rama, sin merge y sin deploy.
+> litro de Pinol» queda en tres líneas. «arroz higiénico» pegado no se guarda
+> como arroz; arroz y papel por separado sí son dos.
 > Actualización anterior: 4 de octubre de 2026. En la confirmación del cliente
 > (pedido #73), «quiero unas galletas» ya no reenvía el mismo resumen: se
 > queda el mismo pedido y el resumen trae lo que ya estaba más lo nuevo. En

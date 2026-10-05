@@ -1,5 +1,8 @@
+import { applyCatalogSpeech } from "@/lib/catalogOrderSpeech";
+import type { CatalogPriceRow } from "@/lib/catalogQuantities";
 import { formatPreConfirmFeeNote } from "@/lib/customerUx";
 import { isCancelIntent, isNewOrderIntent, isYesConfirmation } from "@/lib/messages";
+import { dropItemsNamedInRemoval } from "@/lib/quoteProductClarity";
 import { formatItems, type PedidoItemInput, type PedidoSnapshot } from "@/lib/services/captureEngine";
 import { resolveMapsLink } from "@/lib/services/geo";
 import { validateCaptureForConfirmation } from "@/lib/services/validationEngine";
@@ -67,13 +70,40 @@ export function planConfirmationAmendment(params: {
   snapshot: PedidoSnapshot;
   quoteStore: boolean;
   knownZoneNames?: string[];
+  catalog?: CatalogPriceRow[] | null;
 }): ConfirmationAmendmentPlan {
   const message = String(params.message ?? "");
   if (isYesConfirmation(message)) return { kind: "confirm" };
   if (!message.trim() || isCancelIntent(message) || isNewOrderIntent(message)) return { kind: "keep" };
-  if (!params.quoteStore) return { kind: "keep" };
 
   const current = params.snapshot.items ?? [];
+  const placeReady = addressAlreadyCaptured(params.snapshot) && params.snapshot.businessId != null;
+
+  if (!params.quoteStore) {
+    let items = current.map((item) => ({ ...item }));
+    let missing = false;
+    let question: string | null = null;
+    if (params.catalog?.length) {
+      const spoken = applyCatalogSpeech({ base: items, userMessage: message, catalog: params.catalog });
+      if (spoken.applied) {
+        items = spoken.items;
+        missing = spoken.missing;
+        question = spoken.question;
+      }
+    }
+    items = dropItemsNamedInRemoval(items, message);
+    if (itemSignature(items) === itemSignature(current)) return { kind: "keep" };
+    const readyForConfirmation = !missing && items.length > 0 && placeReady;
+    return {
+      kind: "amend",
+      pedidoId: params.pedidoId,
+      items,
+      nextState: readyForConfirmation ? "confirmacion_cliente" : "seleccion_productos",
+      readyForConfirmation,
+      question: readyForConfirmation ? null : question,
+    };
+  }
+
   const validation = validateCaptureForConfirmation({
     snapshot: params.snapshot,
     items: current,
@@ -85,8 +115,8 @@ export function planConfirmationAmendment(params: {
   if (itemSignature(items) === itemSignature(current)) return { kind: "keep" };
 
   const itemsReady = validation.validatedItems.hasItems && validation.validatedItems.allItemsSpecific;
-  const placeReady = validation.validatedBusiness.isValid && (Boolean(validation.validatedAddress?.isValid) || addressAlreadyCaptured(params.snapshot));
-  const readyForConfirmation = itemsReady && placeReady;
+  const addressReady = Boolean(validation.validatedAddress?.isValid) || addressAlreadyCaptured(params.snapshot);
+  const readyForConfirmation = itemsReady && validation.validatedBusiness.isValid && addressReady;
   const question = validation.issues.find((issue) => issue.customerQuestion)?.customerQuestion ?? null;
 
   return {

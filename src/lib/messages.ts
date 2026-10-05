@@ -179,10 +179,23 @@ export function sanitizeCustomerReply(text: string): string {
 const QUESTION_WORDS_REGEX =
   /\b(qué|cómo|cuándo|dónde|adónde|cuál|cuáles|cuánto|cuánta|cuántos|cuántas|quién|quiénes)\b/i;
 
+// Un "ok" o un "sí" que trae corrección no cierra el pedido. "OK, pero te
+// equivocaste…" en confirmacion_cliente se estaba yendo como SÍ y la tienda
+// recibía el mandado mal armado. Solo confirma la aceptación limpia.
+const ORDER_CHANGE_REGEX =
+  /\b(pero|equivoc\w*|quit[aeo]\w*|cambi\w*|corrig\w*|no es|no era|no son|no eran|en vez de|en lugar de)\b|\bera\b|\besta mal\b/;
+
+export function messageCorrectsOrder(text: string): boolean {
+  const raw = String(text ?? "").trim();
+  if (!raw) return false;
+  return ORDER_CHANGE_REGEX.test(normalizeMessageIntentText(raw));
+}
+
 export function isYesConfirmation(text: string): boolean {
   const raw = String(text ?? "").trim();
   if (!raw) return false;
   if (/[?¿]/.test(raw) || QUESTION_WORDS_REGEX.test(raw)) return false;
+  if (messageCorrectsOrder(raw)) return false;
 
   return /\b(si|sí|ok|va|confirmo|confirmar|dale|de acuerdo|visto bueno)\b/i.test(
     normalizeMessageIntentText(raw),
