@@ -2,7 +2,15 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 5 de octubre de 2026. Pedido #83 (George, menú fijo):
+> Última actualización: 5 de octubre de 2026. Pedido #85 (George, menú fijo):
+> «quiero una hamburguesa de res, unas papas gajo, una Pepsi y una manzanita»
+> anota las cuatro líneas (Papas Gajo aunque el menú diga 315g o 1 pieza;
+> lo mismo con salchi locos). Si el menú tiene dos tamaños, se pregunta solo
+> el de la hamburguesa. «una Pepsi y una manzanita» son dos refrescos.
+> «Y te faltaron unas papas gajo» en la lista corrige y vuelve a listar; no
+> avisa al admin. Fuera de la captura, «faltaron» sigue siendo queja. Los
+> $35 y el teléfono de admin no cambian. Código en rama, sin merge y sin deploy.
+> Actualización anterior del mismo día: Pedido #83 (George, menú fijo):
 > «una hawaiana, una cubana, Salchi locos, 3 dogos clásicos y 3 refrescos:
 > 1 Pepsi y 2 manzanitas» anota las seis líneas. Si el menú pide tamaño y no
 > lo dijeron, se pregunta solo eso. «Sí, pero te faltaron…» en la lista

@@ -1310,6 +1310,105 @@ const listaCorregida83 = formatProductListConfirm(corregido83.items);
 assert(listaCorregida83.includes("¿Están bien estos productos?") && !listaCorregida83.includes("ubicación por GPS"), "después de faltó se vuelve a listar, sin GPS");
 assert(/salchi/i.test(listaCorregida83) && /cl[aá]sico/i.test(listaCorregida83) && /pepsi/i.test(listaCorregida83) && /manzana/i.test(listaCorregida83), "la lista nueva trae lo que faltaba");
 
+assertPedido83(
+  [
+    { nombreProducto: "Hamburguesa Hawaiana", precio: 75 },
+    { nombreProducto: "Hamburguesa Cubana", precio: 80 },
+    { nombreProducto: "Salchi locos 1 pieza", precio: 65 },
+    { nombreProducto: "Dogo Clásico", precio: 35 },
+    { nombreProducto: "Refresco", precio: 20 },
+  ],
+  "salchi locos con sufijo de pieza",
+);
+assertPedido83(
+  [
+    { nombreProducto: "Hamburguesa Hawaiana", precio: 75 },
+    { nombreProducto: "Hamburguesa Cubana", precio: 80 },
+    { nombreProducto: "Salchilocos 315g", precio: 65 },
+    { nombreProducto: "Dogo Clásico", precio: 35 },
+    { nombreProducto: "Refresco", precio: 20 },
+  ],
+  "salchi locos con sufijo de gramos",
+);
+
+const menu85 = [
+  { nombreProducto: "Hamburguesa de Res Chica", precio: 75 },
+  { nombreProducto: "Hamburguesa de Res Grande", precio: 100 },
+  { nombreProducto: "Papas Gajo 315g", precio: 45 },
+  { nombreProducto: "Pepsi", precio: 22 },
+  { nombreProducto: "Manzana", precio: 22 },
+];
+const pedido85 = "Quiero una hamburguesa de res, quiero unas papas, gajo, una Pepsi y una manzanita";
+const anotado85 = applyCatalogSpeech({ base: [], userMessage: pedido85, catalog: menu85 });
+assert(anotado85.applied, "el pedido #85 se anota desde el menú");
+assert(anotado85.items.length === 4, "el pedido #85 son cuatro líneas, no solo res y pepsi");
+const linea85 = (re: RegExp) => anotado85.items.find((item) => re.test(`${item.nombre_producto} ${item.marca ?? ""}`));
+const res85 = linea85(/res/i);
+const papas85 = linea85(/papas gajo/i);
+const pepsi85 = linea85(/pepsi/i);
+const manzana85 = linea85(/manzana/i);
+assert(res85?.cantidad === 1 && !/chica|grande/i.test(res85?.nombre_producto ?? ""), "res es 1 y no inventa el tamaño");
+assert(papas85?.nombre_producto === "Papas Gajo 315g" && papas85.cantidad === 1, "papas gajo entra con el nombre del menú");
+assert(pepsi85?.cantidad === 1 && /pepsi/i.test(pepsi85?.nombre_producto ?? ""), "pepsi es 1");
+assert(manzana85?.cantidad === 1 && /manzana/i.test(manzana85?.nombre_producto ?? ""), "manzanita es la manzana del menú");
+assert(anotado85.question === "¿Hamburguesa de Res, la quieres chica o grande?", "si el menú tiene dos tamaños, se pregunta solo el de la hamburguesa");
+assert((anotado85.reply ?? "").includes("Papas Gajo 315g") && (anotado85.reply ?? "").includes("Pepsi") && (anotado85.reply ?? "").includes("Manzana"), "la lista del #85 trae las cuatro líneas");
+const menu85SinTamano = [
+  { nombreProducto: "Hamburguesa de Res", precio: 80 },
+  { nombreProducto: "Papas Gajo 315g", precio: 45 },
+  { nombreProducto: "Pepsi", precio: 22 },
+  { nombreProducto: "Manzana", precio: 22 },
+];
+const anotado85Cerrado = applyCatalogSpeech({ base: [], userMessage: pedido85, catalog: menu85SinTamano });
+assert(anotado85Cerrado.applied && !anotado85Cerrado.missing && anotado85Cerrado.items.length === 4, "sin tamaños en el menú no se pregunta tamaño");
+assert(!/la quieres|chica|grande/i.test(anotado85Cerrado.reply ?? ""), "el #85 cerrado no pregunta tamaño");
+const lista85 = formatProductListConfirm(anotado85Cerrado.items);
+assert(lista85.includes("¿Están bien estos productos?"), "el #85 cerrado vuelve a listar completo");
+assert(/papas gajo 315g/i.test(lista85) && /manzana/i.test(lista85) && /pepsi/i.test(lista85) && /res/i.test(lista85), "la re-lista trae res, papas gajo, pepsi y manzana");
+assert(!lista85.includes("$35") && !lista85.includes("$10") && !lista85.includes("$25"), "la re-lista del #85 no toca el cargo");
+
+const dosRefrescos = applyCatalogSpeech({
+  base: [],
+  userMessage: "una Pepsi y una manzanita",
+  catalog: [{ nombreProducto: "Refresco Pepsi Coca Seven Sprite Mirinda Manzana", precio: 20 }],
+});
+assert(dosRefrescos.applied && !dosRefrescos.missing && dosRefrescos.items.length === 2, "una pepsi y una manzanita son dos refrescos");
+assert(dosRefrescos.items.every((item) => /refresco/i.test(item.nombre_producto) && item.cantidad === 1), "cada refresco queda en 1");
+assert(dosRefrescos.items.some((item) => /pepsi/i.test(String(item.marca))) && dosRefrescos.items.some((item) => /manzana/i.test(String(item.marca))), "pepsi y manzana no se funden");
+
+const papasConGramos = applyCatalogSpeech({
+  base: [],
+  userMessage: "unas papas gajo",
+  catalog: [{ nombreProducto: "Papas Gajo 315 gramos", precio: 45 }],
+});
+assert(papasConGramos.items[0]?.nombre_producto === "Papas Gajo 315 gramos" && papasConGramos.items[0]?.cantidad === 1, "315 gramos no impide anotar papas gajo");
+const salchiConPieza = applyCatalogSpeech({
+  base: [],
+  userMessage: "Salchi locos",
+  catalog: [{ nombreProducto: "Salchi locos 1 pieza", precio: 65 }],
+});
+assert(/salchi locos/i.test(salchiConPieza.items[0]?.nombre_producto ?? "") && salchiConPieza.items[0]?.cantidad === 1, "1 pieza no impide anotar salchi locos");
+
+const faltaronPapas = "Y te faltaron unas papas gajo";
+assert(classifyProductListReply(faltaronPapas) === "revise", "y te faltaron en la lista se revisa");
+assert(!isYesConfirmation(faltaronPapas), "y te faltaron no es el sí del GPS");
+assert(isComplaintMessage(faltaronPapas), "faltaron sigue siendo queja fuera de la captura");
+assert(!shouldEscalateComplaint(faltaronPapas, { editingOrder: true }), "durante la lista, y te faltaron no avisa al admin");
+assert(shouldEscalateComplaint(faltaronPapas, { editingOrder: false }), "sin pedido en captura, y te faltaron sí avisa al admin");
+const papasEnLaLista = applyCatalogSpeech({
+  base: [
+    { nombre_producto: "Hamburguesa de Res", cantidad: 1 },
+    { nombre_producto: "Pepsi", cantidad: 1 },
+    { nombre_producto: "Manzana", cantidad: 1 },
+  ],
+  userMessage: faltaronPapas,
+  catalog: menu85SinTamano,
+});
+assert(papasEnLaLista.applied && papasEnLaLista.items.length === 4, "y te faltaron unas papas gajo suma la línea y no tira lo demás");
+assert(papasEnLaLista.items.some((item) => item.nombre_producto === "Papas Gajo 315g" && item.cantidad === 1), "las papas gajo entran al pedido");
+const listaConPapas = formatProductListConfirm(papasEnLaLista.items);
+assert(/papas gajo 315g/i.test(listaConPapas) && listaConPapas.includes("¿Están bien estos productos?"), "después de te faltaron se vuelve a listar con las papas");
+
 const pedidoEnGeorge = classifyCustomerTurn({
   message: pedido83,
   lastBotText: "Menú de Hamburguesas Hotdogs George",
