@@ -2,7 +2,15 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 4 de octubre de 2026. En la confirmación del cliente
+> Última actualización: 5 de octubre de 2026. En tiendas que cotizan, «una caja
+> de Sanitas, también un paquete de arroz higiénico de la marca Sam's, y un
+> litro de Pinol» queda en tres líneas: papel higiénico Sanitas (1 caja; faltan
+> los rollos), papel higiénico Sam's (1 paquete; faltan los rollos) y limpiador
+> Pinol (1 litro, ya completo). La pregunta siguiente es solo «el Sanitas, ¿de
+> cuántos rollos?». «arroz higiénico» pegado no se guarda como arroz; arroz y
+> papel por separado sí son dos. El menú fijo (George) no entra. Código en
+> rama, sin merge y sin deploy.
+> Actualización anterior: 4 de octubre de 2026. En la confirmación del cliente
 > (pedido #73), «quiero unas galletas» ya no reenvía el mismo resumen: se
 > queda el mismo pedido y el resumen trae lo que ya estaba más lo nuevo. En
 > tiendas que cotizan, «1 l», «de un litro» y un «1» cuando la pregunta abierta
