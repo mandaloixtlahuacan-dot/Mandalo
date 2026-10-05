@@ -34,6 +34,11 @@ export type PedidoSnapshot = {
     addressValidated?: boolean;
     itemsValidated?: boolean;
     readyForConfirmation?: boolean;
+    // El cliente ya dijo que la lista de productos está bien. Hasta entonces
+    // no se pide GPS, aunque la tienda y los productos ya estén claros.
+    productosConfirmados?: boolean;
+    // El último mensaje al cliente fue «OK, pediste… ¿Están bien estos productos?».
+    awaitingProductConfirm?: boolean;
   };
   raw?: JsonObject;
 };
@@ -456,6 +461,19 @@ export function formatItems(items: PedidoItemInput[]): string {
   return items.map((item) => `- ${formatSpecificItemLine(item)}`).join("\n");
 }
 
+export const ADDRESS_ASK_MESSAGE =
+  "🏠 ¿Me compartes tu ubicación por GPS? Es lo más fácil y rápido.\n\n" +
+  "Si prefieres, también puedes escribirme tu dirección: calle y número, colonia o una referencia clara " +
+  '(ej. "frente a la tortillería", "casa azul").';
+
+export function formatProductListConfirm(items: PedidoItemInput[]): string {
+  return `OK, pediste:\n${formatItems(items)}\n¿Están bien estos productos?`;
+}
+
+export function isProductListConfirmMessage(text: string): boolean {
+  return String(text ?? "").includes("¿Están bien estos productos?");
+}
+
 export function buildCustomerMessage(params: {
   validation: ValidationResult;
   snapshot: PedidoSnapshot;
@@ -486,11 +504,7 @@ export function buildCustomerMessage(params: {
     }
 
     if (first?.field === "direccion") {
-      return (
-        "🏠 ¿Me compartes tu ubicación por GPS? Es lo más fácil y rápido.\n\n" +
-        "Si prefieres, también puedes escribirme tu dirección: calle y número, colonia o una referencia clara " +
-        '(ej. "frente a la tortillería", "casa azul").'
-      );
+      return ADDRESS_ASK_MESSAGE;
     }
 
     return "🧾 Todavía me falta información para continuar con tu pedido.";
@@ -565,10 +579,19 @@ export function createCaptureEngine(deps: CaptureEngineDeps) {
       if (spoken?.applied) {
         validation.validatedItems = { ...validation.validatedItems, items: spoken.items };
         if (!validation.readyForConfirmation && spoken.reply) {
+          const productsConfirmed = mergedSnapshot.flags?.productosConfirmados === true;
+          const needsAddress = !spoken.missing && !validation.validatedAddress?.isValid;
           const reply =
-            !spoken.missing && !validation.validatedAddress?.isValid
-              ? `${spoken.reply}\n\n🏠 ¿Me compartes tu ubicación por GPS? Es lo más fácil y rápido.\n\nSi prefieres, también puedes escribirme tu dirección: calle y número, colonia o una referencia clara (ej. "frente a la tortillería", "casa azul").`
-              : spoken.reply;
+            needsAddress && productsConfirmed
+              ? `${spoken.reply}\n\n${ADDRESS_ASK_MESSAGE}`
+              : needsAddress
+                ? formatProductListConfirm(spoken.items)
+                : spoken.reply;
+          if (needsAddress && !productsConfirmed) {
+            for (const issue of validation.issues) {
+              if (isProductListConfirmMessage(issue.customerQuestion ?? "")) issue.customerQuestion = undefined;
+            }
+          }
           validation.issues.push({
             code: "GENERIC_ITEM_NEEDS_SPEC",
             field: "especificacion_producto",
@@ -583,11 +606,17 @@ export function createCaptureEngine(deps: CaptureEngineDeps) {
           validation.readyForConfirmation = false;
           validation.nextState = "seleccion_productos";
           validation.validatedItems = { ...validation.validatedItems, items: spoken.items, allItemsSpecific: false };
+          for (const issue of validation.issues) {
+            if (isProductListConfirmMessage(issue.customerQuestion ?? "")) issue.customerQuestion = undefined;
+          }
           if (!validation.missingFields.includes("especificacion_producto")) {
             validation.missingFields.push("especificacion_producto");
           }
         }
       }
+
+      const shownQuestion = validation.issues.find((issue) => issue.customerQuestion)?.customerQuestion ?? "";
+      const awaitingProductConfirm = isProductListConfirmMessage(shownQuestion);
 
       const nextSnapshot: PedidoSnapshot = {
         ...snapshotForValidation,
@@ -600,6 +629,8 @@ export function createCaptureEngine(deps: CaptureEngineDeps) {
           addressValidated: Boolean(validation.validatedAddress?.isValid),
           itemsValidated: validation.validatedItems.allItemsSpecific,
           readyForConfirmation: validation.readyForConfirmation,
+          productosConfirmados: mergedSnapshot.flags?.productosConfirmados === true,
+          awaitingProductConfirm,
         },
       };
 

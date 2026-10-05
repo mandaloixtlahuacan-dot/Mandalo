@@ -77,6 +77,8 @@ const STOP = new Set([
   "naranja", "naranjas", "ajo", "ajos", "calabaza", "calabazas",
   "elote", "elotes", "repollo", "col", "brocoli", "chayote", "chayotes",
   "ejote", "ejotes",   "nopal", "nopales", "sandia", "melon", "pina",
+  "azucar", "horchata", "jamaica", "tamarindo", "tank", "tanks", "tanque", "tanques",
+  "quieres",
   "mango", "mangos", "papaya", "papayas", "cebollin", "rabano",
   "betabel", "camote", "camotes", "jicama", "apio", "espinaca",
   "verduraga", "verdolaga", "epazote", "hierbabuena", "guayaba",
@@ -367,6 +369,8 @@ function joinSpanish(bits: string[]): string {
 }
 
 function countUnit(blob: string): string | null {
+  // "dos Tanks/tanques de horchata": el tanque es el paquete del preparado.
+  if (/\b(tanks?|tanques?)\b/.test(blob)) return "paquete";
   const unit = blob.match(/\b(paquetes|paquete|piezas|pieza|frascos|frasco|latas|lata|botellas|botella|cajas|caja|bolsas|bolsa)\b/);
   if (!unit) return null;
   const mapped: Record<string, string> = {
@@ -1010,6 +1014,32 @@ const CATEGORIES: Category[] = [
     },
   },
   {
+    id: "azucar",
+    nombre: "Azúcar",
+    match: /\bazucar\b/,
+    kind: "produce",
+    slots: ["tamano"],
+    filled: (slot, blob, item) =>
+      slot === "tamano" && (/\b(kilo|kilos|kg)\b/.test(blob) || (typeof item.cantidad === "number" && item.cantidad > 0)),
+    ask: () => `Va. El azúcar, ¿de cuántos kilos? ${FOLLOW_LO}`,
+  },
+  {
+    id: "preparado",
+    nombre: "Preparado",
+    match: /\b(tanks?|tanques?)\b/,
+    countSeparate: true,
+    slots: ["cantidad"],
+    label: (blob) => {
+      const text = norm(blob);
+      const flavor = text.match(/\b(horchata|jamaica|tamarindo|limon|mango|fresa|pina|guayaba|melon|sandia)\b/);
+      const wroteTanks = /\btanks?\b/i.test(blob) && !/\btanques?\b/i.test(blob);
+      const unit = wroteTanks ? "Tanks" : "Tanques";
+      return flavor ? `${unit} de ${flavor[1]}` : unit;
+    },
+    filled: (slot, blob, item) => slot === "cantidad" && hasPackageCount(blob, item),
+    ask: () => `Va. Los tanques, ¿cuántos? ${FOLLOW_LOS}`,
+  },
+  {
     id: "papa",
     nombre: "Papa",
     match: /\bpapas?\b/,
@@ -1225,8 +1255,23 @@ function clauseOpensProduct(part: string): boolean {
   return purchaseClause(part) && unknownProductLabel(part) != null;
 }
 
+const STACK_LEAD = new Set([
+  "quiero", "quieres", "dame", "traeme", "manden", "manda", "anota", "anotame",
+  "ocupo", "necesito", "seria", "serian", "tambien", "ademas",
+]);
+
+// "un kilo de azúcar dos Tanks de horchata" no trae coma ni "y" entre los dos.
+// El segundo empieza con cantidad + tanque/kilo: ahí se parte, sin cortar
+// "Quiero un kilo…" (el verbo no es un producto).
+function separateStackedPurchases(message: string): string {
+  return message.replace(
+    /([A-Za-zÁÉÍÓÚÑáéíóúñ]{4,})\s+((?:un|una|uno|unos|unas|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|\d+)\s+(?:tanks?|tanques?|kilos?|kg)\b)/gi,
+    (full, word: string, rest: string) => (STACK_LEAD.has(norm(word)) ? full : `${word}, ${rest}`),
+  );
+}
+
 function splitProductClauses(message: string): string[] {
-  const text = rewriteGrocerySlips(dropAddressTail(message));
+  const text = separateStackedPurchases(rewriteGrocerySlips(dropAddressTail(message)));
   const parts = text
     .split(/\s*(?:,|;|\by\b|\btambi[eé]n\b|\badem[aá]s\b)\s*/i)
     .map((part) => part.trim())
@@ -1474,6 +1519,15 @@ function genericBrandNote(value: string): string | null {
   return /\bgeneric\w*\b/.test(norm(value)) ? "genéricas" : null;
 }
 
+// "Si quieres valle" es Verde Valle dicho de oídas, no una marca "Quieres".
+function riceBrandFrom(extraRaw: string): string | null {
+  const blob = norm(extraRaw);
+  if (/\b(verde valle|quieres valle|valle)\b/.test(blob)) return "Verde Valle";
+  if (/\bmorelos\b/.test(blob)) return "Morelos";
+  if (/\bsos\b/.test(blob)) return "SOS";
+  return null;
+}
+
 function categoryNouns(): Set<string> {
   const nouns = new Set<string>();
   for (const category of CATEGORIES) {
@@ -1508,6 +1562,11 @@ function applyDetail(
   const nouns = categoryNouns();
   const tokens = brandTokens(extra, ignore).filter((token) => !productTokens.has(token) && !nouns.has(token));
   if (category.kind !== "produce" && !spokenBrand(next) && tokens.length) next.marca = displayBrand(extraRaw, tokens);
+  if (category.id === "arroz") {
+    const hinted = riceBrandFrom(extraRaw);
+    if (hinted) next.marca = hinted;
+    else if (/\bquieres\b/.test(norm(next.marca ?? ""))) next.marca = null;
+  }
   if (genericBrandNote(next.marca ?? "")) next.marca = null;
   if (
     category.kind !== "produce" &&
@@ -1564,6 +1623,7 @@ function applyDetail(
       const unit = countUnit(extra);
       if (unit) next.unidad = unit;
     }
+    if (category.id === "refresco" && next.cantidad != null && !clean(next.unidad)) next.unidad = "pieza";
   } else if (next.cantidad == null) {
     const qty = parseQty(extra);
     const bareMl = /\b\d{3}\b/.test(extra) && !/\b(litro|litros|kilo|kilos|rollo|rollos|pieza|piezas|docena)\b/.test(extra);

@@ -238,6 +238,42 @@ export function isNoConfirmation(text: string): boolean {
   return /^no\b/.test(t) || t.includes("no lo quiero") || t.includes("no gracias") || t.includes("mejor no") || t === "ya no";
 }
 
+// "No" y "no está correcto" en la lista de productos o en el primer resumen
+// (confirmacion_cliente) cancelan el pedido. Una corrección con contenido
+// ("no, sepáralos", "quita el frijol") no entra: eso se edita. "cancela" y
+// "pedido nuevo" tampoco: ya los atiende isCancelIntent / isNewOrderIntent
+// antes, desde cualquier punto del flujo. No sustituye a isNoConfirmation
+// en confirmado_tiendas ni en ajuste_producto.
+export function isBareOrderRejection(text: string): boolean {
+  const raw = String(text ?? "").trim();
+  if (!raw) return false;
+  if (/[?¿]/.test(raw) || QUESTION_WORDS_REGEX.test(raw)) return false;
+  if (isCancelIntent(raw) || isNewOrderIntent(raw)) return false;
+
+  const t = normalizeMessageIntentText(raw)
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (NO_HESITATION_PHRASES.some((phrase) => t.includes(phrase))) return false;
+  // "no es" en general es una corrección ("no es eso"), pero "no es correcto"
+  // y "no está correcto" son un rechazo del resumen, no un arreglo.
+  if (/^(no|nel|nop|nope)$/.test(t)) return true;
+  if (/^no (esta|es|estan|son) (correcto|correctos|correcta|correctas|bien)$/.test(t)) return true;
+  if (/^(esta|estan) mal$/.test(t) || t === "incorrecto") return true;
+  if (messageCorrectsOrder(raw)) return false;
+
+  const leftover = t
+    .replace(
+      /\b(no|nel|nop|nope|gracias|quiero|lo|ya|mejor|esta|estan|es|son|correcto|correctos|correcta|correctas|bien|mal|incorrecto|eso)\b/g,
+      " ",
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+  if (leftover.length > 0) return false;
+
+  return /^(no|nel|nop|nope)\b/.test(t) || /^(esta|estan) mal$/.test(t) || t === "incorrecto";
+}
+
 export function normalizeMessageIntentText(text: string): string {
   return String(text ?? "")
     .toLowerCase()

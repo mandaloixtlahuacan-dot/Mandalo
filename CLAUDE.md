@@ -109,6 +109,8 @@ Sistema de delivery automatizado por WhatsApp para **Ixtlahuacán del Río**. Un
 1. Cliente comparte ubicación (PIN GPS) y pide productos (puede ser de varias tiendas)
 2. Bot valida cobertura geográfica → si está fuera, cancela ahí mismo
 3. Cliente confirma el pedido completo
+
+Antes de pedir la ubicación, cuando marca, tamaño y presentación ya quedaron claros, el bot lista los productos («OK, pediste… ¿Están bien estos productos?»). Un SÍ sigue al GPS o a la dirección. Un «No» o «no está correcto» en esa lista, o en el resumen de `confirmacion_cliente`, cancela el pedido abierto. Si el cliente dice que algo se juntó o corrige una línea, se arregla ahí mismo, sin pedir la dirección todavía. El resumen final (ubicación, horario y $35 de envío y servicio) no cambia.
 4. Cada tienda involucrada recibe notificación de su parte del pedido
 5. Tienda revisa inventario:
    - Si tiene todo → confirma precio y disponibilidad

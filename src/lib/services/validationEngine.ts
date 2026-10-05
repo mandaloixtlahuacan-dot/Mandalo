@@ -1,10 +1,12 @@
 import type { OrderState } from "@/lib/orderStateMachine";
 import { isGuidedQuoteItem, prepareQuoteItems, quoteItemNeedsDetail, quoteQuestionForItems } from "@/lib/quoteProductClarity";
-import type {
-  PedidoItemInput,
-  PedidoSnapshot,
-  ValidationIssue,
-  ValidationResult,
+import {
+  ADDRESS_ASK_MESSAGE,
+  formatProductListConfirm,
+  type PedidoItemInput,
+  type PedidoSnapshot,
+  type ValidationIssue,
+  type ValidationResult,
 } from "@/lib/services/captureEngine";
 
 const GENERIC_PRODUCTS = new Set([
@@ -265,12 +267,39 @@ export function validateCaptureForConfirmation(params: {
     missingFields.push("especificacion_producto");
   }
 
-  const nextState = decideNextState({
+  const productsReady =
+    validatedBusiness.isValid && validatedItems.hasItems && validatedItems.allItemsSpecific;
+  const productosConfirmados = params.snapshot.flags?.productosConfirmados === true;
+  const awaitingProductConfirm = params.snapshot.flags?.awaitingProductConfirm === true;
+  // Lista de productos antes del GPS. Si la dirección ya venía de antes y
+  // nadie está esperando esa lista, se sigue al resumen de siempre.
+  const showProductList =
+    productsReady && !productosConfirmados && (!validatedAddress?.isValid || awaitingProductConfirm);
+
+  if (showProductList) {
+    const question = formatProductListConfirm(validatedItems.items);
+    const addressIssue = issues.find((issue) => issue.field === "direccion");
+    if (addressIssue) addressIssue.customerQuestion = question;
+    else {
+      issues.push({
+        code: "ADDRESS_INCOMPLETE",
+        field: "direccion",
+        message: "Falta confirmar los productos antes de pedir la dirección.",
+        customerQuestion: question,
+      });
+    }
+  } else if (productsReady && !validatedAddress?.isValid && productosConfirmados) {
+    const addressIssue = issues.find((issue) => issue.field === "direccion");
+    if (addressIssue && !addressIssue.customerQuestion) addressIssue.customerQuestion = ADDRESS_ASK_MESSAGE;
+  }
+
+  let nextState = decideNextState({
     businessValid: validatedBusiness.isValid,
     addressValid: Boolean(validatedAddress?.isValid),
     hasItems: validatedItems.hasItems,
     allItemsSpecific: validatedItems.allItemsSpecific,
   });
+  if (showProductList) nextState = "seleccion_productos";
 
   return {
     ok: nextState === "confirmacion_cliente",
