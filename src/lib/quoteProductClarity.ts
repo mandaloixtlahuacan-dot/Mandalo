@@ -159,7 +159,9 @@ function displayBrand(original: string, tokens: string[]): string {
       const idx = words.findIndex((word, index) => {
         if (used.has(index)) return false;
         const cleanWord = word.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
-        return norm(cleanWord) === token;
+        const normalized = norm(cleanWord);
+        // "Sam's" se normaliza a "sam s": el token de marca es "sam".
+        return normalized === token || normalized.split(" ")[0] === token;
       });
       if (idx >= 0) {
         used.add(idx);
@@ -971,10 +973,22 @@ function categoryFor(text: string): Category | null {
   if (!haystack) return null;
   for (const category of CATEGORIES) {
     if (!category.match.test(haystack)) continue;
+    if (category.id === "papel" && higienicoModifiesOtherProduct(haystack)) continue;
     if (categoryRejected(category, haystack)) continue;
     return category;
   }
   return null;
+}
+
+// "higiénico" solo es papel cuando no está pegado a otro producto.
+// "papel higiénico" sigue siendo papel. "arroz higiénico" se queda en el arroz:
+// si no, el primer match (papel, antes que arroz) se come la frase y pregunta rollos.
+function higienicoModifiesOtherProduct(haystack: string): boolean {
+  if (/\bpapel\b/.test(haystack)) return false;
+  const match = haystack.match(/\b([a-z]{3,})\s+higienicos?\b/);
+  if (!match) return false;
+  const prev = match[1];
+  return CATEGORIES.some((other) => other.id !== "papel" && other.match.test(prev));
 }
 
 function ignoreSet(ignoreText?: string | null): Set<string> {
@@ -1016,6 +1030,10 @@ function hitsIn(message: string): Hit[] {
       const local = words.slice(Math.max(0, wordIndex - 3), wordIndex + 5).join(" ");
       const tail = haystack.slice(match.index, match.index + 40);
       if (categoryRejected(category, local) || (category.exclude?.test(tail) ?? false)) {
+        if (match.index === re.lastIndex) re.lastIndex += 1;
+        continue;
+      }
+      if (papelHigienicoIsModifier(category, words, wordIndex)) {
         if (match.index === re.lastIndex) re.lastIndex += 1;
         continue;
       }
@@ -1081,18 +1099,54 @@ function segmentStart(words: string[], hitIndex: number): number {
   return index;
 }
 
+function papelHigienicoIsModifier(category: Category, words: string[], wordIndex: number): boolean {
+  if (category.id !== "papel") return false;
+  if (!/^higienicos?$/.test(words[wordIndex] ?? "")) return false;
+  const prev = words[wordIndex - 1] ?? "";
+  if (prev === "papel") return true;
+  return CATEGORIES.some((other) => other.id !== "papel" && other.match.test(prev));
+}
+
+const PURCHASE_UNIT =
+  "cajas?|paquetes?|litros?|kilos?|kg|piezas?|bolsas?|botellas?|frascos?|latas?|rollos?|garrafones?|bidones?";
+
+// "una caja de Sanitas" / "un litro de Pinol": la cantidad va adelante y el
+// nombre no tiene que estar en la lista de categorías. "sería 1 litro" no
+// abre otro producto: no empieza con la cantidad.
+function purchaseClause(part: string): boolean {
+  const text = norm(part);
+  return new RegExp(
+    `^(?:tambien |ademas )?(?:quiero |dame |manden? |mandame |traeme |anota |anotame )?(?:un|una|uno|unos|unas|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|\\d+)\\s+(?:${PURCHASE_UNIT})\\b`,
+  ).test(text);
+}
+
+function unknownProductLabel(clause: string): string | null {
+  const tokens = norm(clause)
+    .split(" ")
+    .filter((token) => token.length >= 3 && !STOP.has(token) && !/^\d+$/.test(token));
+  if (!tokens.length) return null;
+  const label = displayBrand(clause, tokens).trim();
+  return label || null;
+}
+
+function clauseOpensProduct(part: string): boolean {
+  if (hitsIn(part).length > 0) return true;
+  return purchaseClause(part) && unknownProductLabel(part) != null;
+}
+
 function splitProductClauses(message: string): string[] {
   const text = dropAddressTail(message);
   const parts = text
-    .split(/\s*(?:,|;|\by\b)\s*/)
+    .split(/\s*(?:,|;|\by\b|\btambi[eé]n\b|\badem[aá]s\b)\s*/i)
     .map((part) => part.trim())
     .filter((part) => part.length > 0);
   if (!parts.length) return [text];
   // "La leche es entera y sería 1 l": el "y" parte el tamaño del producto.
   // Si el tramo no nombra otro producto, se queda en el anterior.
+  // "un litro de Pinol" sí nombra otro, aunque Pinol no esté en las categorías.
   const merged: string[] = [];
   for (const part of parts) {
-    if (merged.length && !hitsIn(part).length) merged[merged.length - 1] = `${merged[merged.length - 1]} y ${part}`;
+    if (merged.length && !clauseOpensProduct(part)) merged[merged.length - 1] = `${merged[merged.length - 1]} y ${part}`;
     else merged.push(part);
   }
   return merged;
@@ -1140,8 +1194,113 @@ function windowsInClause(message: string): Array<{ category: Category; text: str
   });
 }
 
+function purchaseQtyUnit(blob: string): { cantidad: number; unidad: string } | null {
+  const match = blob.match(
+    new RegExp(
+      `\\b(un|una|uno|unos|unas|\\d+)\\s+(${PURCHASE_UNIT})\\b`,
+    ),
+  );
+  if (!match) return null;
+  const qty = wordToQty(match[1]);
+  if (qty == null || qty <= 0) return null;
+  const singular: Record<string, string> = {
+    cajas: "caja",
+    paquetes: "paquete",
+    litros: "litro",
+    kilos: "kilo",
+    kg: "kilo",
+    piezas: "pieza",
+    bolsas: "bolsa",
+    botellas: "botella",
+    frascos: "frasco",
+    latas: "lata",
+    rollos: "rollo",
+    garrafones: "garrafón",
+    bidones: "bidón",
+  };
+  return { cantidad: qty, unidad: singular[match[2]] ?? match[2] };
+}
+
+function applySpokenPurchase(item: PedidoItemInput, text: string): PedidoItemInput {
+  const purchase = purchaseQtyUnit(norm(text));
+  if (!purchase) return item;
+  return {
+    ...item,
+    cantidad: item.cantidad ?? purchase.cantidad,
+    unidad: purchase.unidad,
+  };
+}
+
+function unknownProductWindow(clause: string): { category: Category; text: string } | null {
+  if (!purchaseClause(clause)) return null;
+  const label = unknownProductLabel(clause);
+  if (!label) return null;
+  return { category: fallbackPackaged(label), text: clause };
+}
+
 function windowsFor(message: string): Array<{ category: Category; text: string }> {
-  return splitProductClauses(message).flatMap((clause) => windowsInClause(clause));
+  return splitProductClauses(message).flatMap((clause) => {
+    const found = windowsInClause(clause);
+    if (found.length) return found;
+    const unknown = unknownProductWindow(clause);
+    return unknown ? [unknown] : [];
+  });
+}
+
+function windowLabel(category: Category, text: string): string {
+  const base = category.label?.(text) ?? category.nombre;
+  if (category.id === "arroz" && /\bhigienicos?\b/.test(norm(text)) && !/\bpapel\b/.test(norm(text))) {
+    return "Arroz higiénico";
+  }
+  return base;
+}
+
+function contentTokens(text: string): string[] {
+  return norm(text)
+    .split(" ")
+    .filter((token) => token.length >= 3 && !STOP.has(token) && !/^\d+$/.test(token));
+}
+
+function itemMatchesWindow(item: PedidoItemInput, window: { category: Category; text: string }): boolean {
+  const current = itemCategory(item);
+  const wanted = windowLabel(window.category, window.text);
+  if (current?.id === window.category.id) {
+    if (current.id !== "verdura") return true;
+    return norm(item.nombre_producto) === norm(wanted);
+  }
+  const stem = (value: string) => {
+    const token = norm(value).split(" ").find((part) => part.length >= 4) ?? "";
+    return token.endsWith("s") ? token.slice(0, -1) : token;
+  };
+  const left = stem(item.nombre_producto);
+  const right = stem(wanted);
+  return left.length >= 4 && left === right;
+}
+
+function windowsTouched(item: PedidoItemInput, windows: Array<{ category: Category; text: string }>): number {
+  const tokens = new Set(contentTokens(`${item.nombre_producto} ${item.marca ?? ""}`));
+  if (!tokens.size) return 0;
+  let count = 0;
+  for (const window of windows) {
+    const bag = new Set(contentTokens(`${window.text} ${windowLabel(window.category, window.text)}`));
+    if ([...tokens].some((token) => bag.has(token))) count += 1;
+  }
+  return count;
+}
+
+function bareInventedPapel(
+  item: PedidoItemInput,
+  message: string,
+  windows: Array<{ category: Category; text: string }>,
+): boolean {
+  if (windows.some((window) => window.category.id === "papel")) return false;
+  if (clean(item.marca) || clean(item.presentacion) || clean(item.notas)) return false;
+  if (item.cantidad != null || clean(item.unidad)) return false;
+  const name = norm(item.nombre_producto);
+  if (name !== "papel" && name !== "papel higienico") return false;
+  const hay = norm(message);
+  if (/\bpapel\b/.test(hay)) return false;
+  return higienicoModifiesOtherProduct(hay);
 }
 
 function missingSlots(category: Category, item: PedidoItemInput, extra = ""): SlotId[] {
@@ -1343,9 +1502,14 @@ export function prepareQuoteItems(
   ignoreText?: string | null,
 ): PedidoItemInput[] {
   const ignore = ignoreSet(ignoreText);
-  const next = items.map((item) => ({ ...item }));
+  let next = items.map((item) => ({ ...item }));
   const message = String(userMessage ?? "").trim();
   const windows = message ? windowsFor(message) : [];
+  if (windows.length > 1) {
+    next = next.filter(
+      (item) => windowsTouched(item, windows) < 2 && !bareInventedPapel(item, message, windows),
+    );
+  }
 
   const agua = CATEGORIES.find((category) => category.id === "agua");
   const flavoredWater =
@@ -1360,27 +1524,21 @@ export function prepareQuoteItems(
   if (windows.length) {
     const boundWindow = windows.length > 1;
     for (const window of windows) {
-      const index = next.findIndex((item) => {
-        const current = itemCategory(item);
-        const wanted = window.category.label?.(window.text) ?? window.category.nombre;
-        if (current?.id === window.category.id) {
-          if (current.id !== "verdura") return true;
-          return norm(item.nombre_producto) === norm(wanted);
-        }
-        // "Papa" a secas cae en papas de bolsa. "un kilo de papas" es la verdura.
-        const stem = (value: string) => {
-          const token = norm(value).split(" ").find((part) => part.length >= 4) ?? "";
-          return token.endsWith("s") ? token.slice(0, -1) : token;
-        };
-        const left = stem(item.nombre_producto);
-        const right = stem(wanted);
-        return left.length >= 4 && left === right;
-      });
+      const label = windowLabel(window.category, window.text);
+      const index = next.findIndex((item) => itemMatchesWindow(item, window));
+      const finish = (item: PedidoItemInput) => {
+        const detailed = applyDetail(item, window.text, ignore, boundWindow);
+        return window.category.id.startsWith("otro:") ? applySpokenPurchase(detailed, window.text) : detailed;
+      };
       if (index === -1) {
-        const label = window.category.label?.(window.text) ?? window.category.nombre;
-        next.push(applyDetail({ nombre_producto: label }, window.text, ignore, boundWindow));
+        next.push(finish({ nombre_producto: label }));
       } else {
-        next[index] = applyDetail(next[index], window.text, ignore, boundWindow);
+        const current = next[index];
+        const base =
+          norm(label) === "arroz higienico" && /^arroz\b/.test(norm(current.nombre_producto))
+            ? { ...current, nombre_producto: label }
+            : current;
+        next[index] = finish(base);
       }
     }
   } else if (!flavoredWater && message && !looksLikeAddress(message) && (norm(message).split(" ").length <= 14 || waiverNote(message))) {

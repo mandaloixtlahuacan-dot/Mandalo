@@ -2,7 +2,13 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 4 de octubre de 2026. En la confirmación del cliente
+> Última actualización: 5 de octubre de 2026. En tiendas que cotizan, un mensaje
+> con varios productos («una caja de Sanitas, también un paquete de arroz
+> higiénico de la marca Sam's, y un litro de Pinol») queda en tres líneas:
+> 1 caja, 1 paquete y 1 litro. La pregunta siguiente es solo de la línea que
+> falta, no un conteo de rollos para los tres nombres pegados. El menú fijo
+> (George) no entra en ese corte. Código en rama, sin merge y sin deploy.
+> Actualización anterior: 4 de octubre de 2026. En la confirmación del cliente
 > (pedido #73), «quiero unas galletas» ya no reenvía el mismo resumen: se
 > queda el mismo pedido y el resumen trae lo que ya estaba más lo nuevo. En
 > tiendas que cotizan, «1 l», «de un litro» y un «1» cuando la pregunta abierta
