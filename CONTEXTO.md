@@ -8,10 +8,10 @@ Sistema de delivery por WhatsApp para Ixtlahuacán del Río. Un solo número ati
 
 ## Tarifa de envío y servicio
 
-Víctor lo confirmó en una prueba en vivo el 2026-10-03. Esta confirmación reemplaza cualquier nota anterior de un servicio fijo de $20 o de un envío fijo de $20.
+Víctor lo cambió el 2026-10-05. Esta tarifa reemplaza el cargo de $35 ($25 repartidor + $10 Mándalo) confirmado el 2026-10-03.
 
-- El cliente paga **$35** en total de envío y servicio.
-- De esos $35, **$25** son para el repartidor y **$10** son para Mándalo (Víctor).
-- Al cliente ese cargo se muestra junto, en una sola línea de $35 de envío y servicio. El desglose se conserva en la base (`servicio_mandalo` / `servicio_repartidor`) y en los mensajes internos.
+- El cliente paga **$25** en total de envío y servicio.
+- De esos $25, **$25** son para el repartidor y **$0** son para Mándalo.
+- Al cliente ese cargo se muestra junto, en una sola línea de $25 de envío y servicio. En la base, `servicio_mandalo` (0) y `servicio_repartidor` (25) suman lo mismo.
 
 El pago del pedido es en efectivo y lo cobra el repartidor.

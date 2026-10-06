@@ -1,5 +1,5 @@
 /**
- * Copy y decisiones deterministas del cliente (filtros, listas, menú, $35).
+ * Copy y decisiones deterministas del cliente (filtros, listas, menú, $25).
  *
  * WhatsApp se lleva mal con listas armadas por la IA: el modelo aplana saltos
  * de línea y, un turno después de elegir tienda, el catálogo a veces todavía
@@ -9,7 +9,8 @@
  * Nichos nuevos (farmacia, ferretería, taquería): agrega un objeto a
  * CUSTOMER_STORE_NICHES y etiqueta la tienda en `tiendas.categoria` con un
  * alias de ese nicho, o con el valor exacto `nicho:<id>`. No hace falta
- * hardcodear el nombre del negocio.
+ * hardcodear el nombre del negocio. Carnicerías ya está: la tienda entra
+ * con `categoria` Carnicerías (o `nicho:carnicerias`).
  */
 
 import { formatMoney, MANDALO_DELIVERY_FEE, MANDALO_SERVICE_FEE } from "@/lib/ordenes";
@@ -69,6 +70,12 @@ export const CUSTOMER_STORE_NICHES: StoreNiche[] = [
       "hotdogs",
       "hotdog",
     ],
+  },
+  {
+    id: "carnicerias",
+    label: "Carnicerías",
+    choicePhrases: ["carnicerias", "carniceria", "de la carniceria", "la carniceria"],
+    categoriaAliases: ["carnicerias", "carniceria", "carnes"],
   },
 ];
 
@@ -163,11 +170,12 @@ export function customerCopySplitsFee(text: string): boolean {
 }
 
 const GREETING_BODY = `¡Hola! Soy Mándalo, tu mandadero en Ixtlahuacán del Río.
-Con gusto pido en la tienda o el restaurante que me digas y te lo llevo a la puerta.
+Con gusto pido en la tienda, el restaurante o la carnicería que me digas y te lo llevo a la puerta.
 
 ¿De dónde quieres?
 1. Abarrotes
-2. Restaurantes`;
+2. Restaurantes
+3. Carnicerías`;
 
 export function buildGreeting(now = new Date()): string {
   void now;
@@ -211,7 +219,7 @@ export function formatNicheStoreList(niche: StoreNiche, stores: UxStore[]): stri
   if (!mine.length) {
     return (
       `Ahorita no tengo ${niche.label.toLowerCase()} activas.\n\n` +
-      `Si quieres, prueba el otro. Responde con el número o el nombre.`
+      `Si quieres, prueba otra. Responde con el número o el nombre.`
     );
   }
 
@@ -256,21 +264,35 @@ export function formatCatalogCategories(store: UxStore, categories: string[]): s
   );
 }
 
-export function formatCatalogMenuCaption(store: UxStore): string {
+export type CatalogMenuImageKind = "george" | "carniceria-la-central";
+
+export function catalogMenuImageKind(store: UxStore): CatalogMenuImageKind | null {
+  if (!store.usaCatalogoFijo) return null;
+  const name = normalizeUxText(store.nombre);
+  if (store.id === 5 || name.includes("george")) return "george";
+  if (name.includes("carniceria") && name.includes("central")) return "carniceria-la-central";
+  return null;
+}
+
+export function formatCatalogMenuCaption(store: UxStore, options?: { photo?: boolean }): string {
+  const photo = options?.photo !== false;
+  const emoji = nicheIdForCategoria(store.categoria) === "carnicerias" ? "🥩" : "🍔";
+  const invite = photo
+    ? "Pídeme lo que se te antoje, como sale en la foto."
+    : "Pídeme lo que se te antoje, con el nombre del menú.";
   const closed = store.abierta
     ? ""
     : `\n\nOjo: está cerrada ahora${store.abreTexto ? ` (${store.abreTexto})` : ""}. Lo armamos y se manda en cuanto abra.`;
   return (
-    `${UX_MENU_IMAGE_MARKER} ${store.nombre} 🍔\n\n` +
-    `Pídeme lo que se te antoje, como sale en la foto.${closed}\n\n` +
+    `${UX_MENU_IMAGE_MARKER} ${store.nombre} ${emoji}\n\n` +
+    `${invite}${closed}\n\n` +
     `${formatCustomerFeeLine()}, aparte.`
   );
 }
 
-/** Foto de menú lista en el repo. Hoy solo George (tienda 5). */
+/** La tienda usa foto de menú cuando el archivo o la URL están. El filtro no depende de eso. */
 export function catalogUsesMenuImage(store: UxStore): boolean {
-  if (!store.usaCatalogoFijo) return false;
-  return store.id === 5 || normalizeUxText(store.nombre).includes("george");
+  return catalogMenuImageKind(store) != null;
 }
 
 export function formatCatalogReceiptFee(subtotal: number | null): string {
@@ -365,6 +387,12 @@ function parseLeadingNumber(message: string): number | null {
   return Number.isInteger(n) && n > 0 ? n : null;
 }
 
+function messageIsBareNicheChoice(message: string): boolean {
+  const text = normalizeUxText(message);
+  if (!text || text.length > 40) return false;
+  return CUSTOMER_STORE_NICHES.some((niche) => niche.choicePhrases.some((phrase) => normalizeUxText(phrase) === text));
+}
+
 function matchNichePhrase(message: string): StoreNiche | null {
   const text = normalizeUxText(message);
   if (!text || text.length > 48) return null;
@@ -437,10 +465,12 @@ const GENERIC_RESTAURANT_TOKENS = new Set([
   "pizzas",
   "restaurante",
   "restaurantes",
+  "carniceria",
+  "carnicerias",
 ]);
 
 function messageNamesRestaurant(message: string, store: UxStore): boolean {
-  if (!isRestaurantStore(store)) return false;
+  if (!isRestaurantStore(store) && store.usaCatalogoFijo !== true) return false;
   const text = normalizeUxText(message);
   const nombre = normalizeUxText(store.nombre);
   if (!text || !nombre) return false;
@@ -561,7 +591,13 @@ export function messageAddsCatalogItems(message: string): boolean {
     /\bseven\b/.test(text) ||
     /\bmirinda\b/.test(text) ||
     /\bmanzanitas?\b/.test(text) ||
-    /\bmanzana\b/.test(text);
+    /\bmanzana\b/.test(text) ||
+    /\b(peinesillo|diezmillo|chamberete|ribeye|chorizo|costilla|cocido|bistec|pastor|pulpa)\b/.test(text) ||
+    /\bcarb[oó]n\b/.test(text) ||
+    /\b(firo|fino)\b/.test(text) ||
+    /\bhot\s*wings?\b/.test(text) ||
+    /\bhot\s*wins?\b/.test(text) ||
+    /\bbbq\b/.test(text);
   const heads = [
     /\bhamburguesas?\b/.test(text),
     /\b(?:hot\s*dogs?|hotdogs?|dogos?|dogo)\b/.test(text),
@@ -611,7 +647,8 @@ export function classifyCustomerTurn(params: {
   }
 
   // "George" a secas cambia de tienda aunque el pedido todavía diga ZAGU.
-  if (storeFromMessage && messageIsStorePickOnly(message, storeFromMessage)) {
+  // "carnicería" a secas es el filtro, no el nombre de la tienda: se lista.
+  if (storeFromMessage && messageIsStorePickOnly(message, storeFromMessage) && !messageIsBareNicheChoice(message)) {
     return { type: "pick_store", store: storeFromMessage };
   }
 
@@ -684,8 +721,19 @@ export function classifyCustomerTurn(params: {
   return { type: "continue" };
 }
 
-export function restaurantCatalogStore(stores: UxStore[], preferred: UxStore | null): UxStore | "list" | null {
+export function restaurantCatalogStore(
+  stores: UxStore[],
+  preferred: UxStore | null,
+  lastBotText = "",
+): UxStore | "list" | null {
   if (preferred?.usaCatalogoFijo) return preferred;
+  const listed = nicheListedInLastBot(lastBotText);
+  if (listed && listed.id !== "restaurantes") {
+    const mine = storesInNiche(stores, listed.id).filter((store) => store.usaCatalogoFijo);
+    if (mine.length === 1) return mine[0];
+    if (mine.length > 1) return "list";
+    return null;
+  }
   const inNiche = storesInNiche(stores, "restaurantes").filter((store) => store.usaCatalogoFijo);
   if (inNiche.length === 1) return inNiche[0];
   if (inNiche.length > 1) return "list";
@@ -739,7 +787,7 @@ export function renderCustomerTurn(turn: CustomerTurn, stores: UxStore[], lastBo
   if (turn.type === "pick_store") return renderPickedStore(turn.store);
   if (turn.type === "ask_menu" || turn.type === "ask_category") {
     const preferred = turn.store;
-    const resolved = preferred ?? restaurantCatalogStore(stores, null);
+    const resolved = preferred ?? restaurantCatalogStore(stores, null, lastBotText);
     const store = resolved && resolved !== "list" ? resolved : null;
     if (!store) {
       const listed = nicheListedInLastBot(lastBotText);

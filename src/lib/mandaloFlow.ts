@@ -1,6 +1,5 @@
-import { readdir, readFile } from "node:fs/promises";
-import path from "node:path";
 import { z } from "zod";
+import { readCatalogMenuPng } from "@/lib/catalogMenuImage";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getChatCompletion, getOpenAIModel } from "@/lib/openaiClient";
 import { buildMandaloSystemPrompt } from "@/lib/mandaloPrompt";
@@ -30,10 +29,12 @@ import {
 import { dispatchCotizacionToStore, finalizeStoreQuote, flagItemUnavailable } from "@/lib/services/storeDispatch";
 import {
   buildGreeting,
-  catalogUsesMenuImage,
+  catalogMenuImageKind,
   classifyCustomerTurn,
   messageAddsCatalogItems,
+  formatCatalogMenu,
   formatCatalogMenuCaption,
+  UX_MENU_MARKER,
   formatCatalogOrderRegistered,
   formatCatalogReceiptFee,
   formatQuoteOrderRegistered,
@@ -647,42 +648,44 @@ async function sendWhatsApp(to: string, body: string): Promise<void> {
   await waapiSendText({ to, body: normalizeWhatsAppText(body) });
 }
 
-const GEORGE_MENU_PATH = path.join(process.cwd(), "public/menus/george.png");
-const GEORGE_MENU_B64_PATH = path.join(process.cwd(), "public/menus/george.png.b64");
-
-async function readGeorgeMenuPng(): Promise<Buffer> {
-  try {
-    return await readFile(GEORGE_MENU_PATH);
-  } catch {
-    // El PNG a veces no entra en el despliegue. El mismo archivo en base64,
-    // entero o partido, sí.
-    let encoded = "";
-    try {
-      encoded = await readFile(GEORGE_MENU_B64_PATH, "utf8");
-    } catch {
-      const names = (await readdir(path.dirname(GEORGE_MENU_B64_PATH)))
-        .filter((name) => /^george\.b64\.\d{2}$/.test(name))
-        .sort();
-      if (!names.length) throw new Error("no está la foto del menú de George");
-      for (const name of names) {
-        encoded += await readFile(path.join(path.dirname(GEORGE_MENU_B64_PATH), name), "utf8");
-      }
-    }
-    return Buffer.from(encoded.replace(/\s+/g, ""), "base64");
-  }
-}
-
 async function sendCatalogMenu(to: string, store: UxStore, caption: string): Promise<void> {
   const text = normalizeWhatsAppText(caption);
-  if (catalogUsesMenuImage(store)) {
-    try {
-      const png = await readGeorgeMenuPng();
-      await waapiSendImage({ to, caption: text, png, filename: "george.png" });
-      return;
-    } catch (e: unknown) {
-      console.error("[mandalo] no se pudo enviar la foto del menú", { message: getErrorMessage(e) });
+  const kind = catalogMenuImageKind(store);
+  if (kind) {
+    const png = await readCatalogMenuPng(kind).catch(() => null);
+    if (png) {
+      try {
+        await waapiSendImage({ to, caption: text, png, filename: `${kind}.png` });
+        return;
+      } catch (e: unknown) {
+        console.error("[mandalo] no se pudo enviar la foto del menú", { message: getErrorMessage(e) });
+      }
+    } else if (kind === "george") {
+      console.error("[mandalo] no está la foto del menú de George");
+    } else {
+      console.warn("[mandalo] Carnicería La Central sin foto de menú; se manda en texto. Víctor puede dejar el PNG o la URL.");
     }
   }
+
+  if (kind === "carniceria-la-central") {
+    const rows = await pedidoRepositoryV2.getProductosTiendaActivos(store.id).catch(() => []);
+    if (rows.length) {
+      const menu = formatCatalogMenu(
+        store.nombre,
+        "Menú",
+        rows.map((row) => ({ nombre: row.nombreProducto, precio: row.precio })),
+      );
+      const closed = store.abierta
+        ? ""
+        : `\n\nOjo: está cerrada ahora${store.abreTexto ? ` (${store.abreTexto})` : ""}. Lo armamos y se manda en cuanto abra.`;
+      const body = menu.includes(UX_MENU_MARKER) ? menu.replace(`\n\n${UX_MENU_MARKER}`, `${closed}\n\n${UX_MENU_MARKER}`) : `${formatCatalogMenuCaption(store, { photo: false })}\n\n${menu}`;
+      await sendWhatsApp(to, body);
+      return;
+    }
+    await sendWhatsApp(to, formatCatalogMenuCaption(store, { photo: false }));
+    return;
+  }
+
   await sendWhatsApp(to, text);
 }
 
@@ -1731,7 +1734,7 @@ async function catalogReplyReplacingMissingMenu(params: {
   if ((turn.type === "ask_menu" || turn.type === "ask_category" || turn.type === "pick_store") && turn.store?.usaCatalogoFijo) {
     store = turn.store;
   } else if (turn.type === "ask_menu" || turn.type === "ask_category") {
-    const only = restaurantCatalogStore(stores, null);
+    const only = restaurantCatalogStore(stores, null, lastBotText);
     if (only && only !== "list") store = only;
   } else if (!hasItems && businessId && !messageAddsCatalogItems(params.mensaje)) {
     store = stores.find((item) => item.id === businessId && item.usaCatalogoFijo) ?? null;

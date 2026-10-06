@@ -64,7 +64,7 @@ Sistema de delivery automatizado por WhatsApp para **Ixtlahuacán del Río**. Un
 - `repartidor_id` (FK, nulo hasta asignar)
 - `estado` (ver máquina de estados)
 - `direccion_entrega` (coordenadas GPS)
-- `servicio_mandalo` (fijo: $20)
+- `servicio_mandalo` (fijo: $0 desde el 5 de octubre de 2026)
 - `servicio_repartidor` (calculado: ver regla financiera)
 - `total_cliente`
 - `created_at`
@@ -94,10 +94,11 @@ Sistema de delivery automatizado por WhatsApp para **Ixtlahuacán del Río**. Un
 
 1. **Cobertura geográfica:** solo Ixtlahuacán del Río. Se valida por radio de distancia (Haversine) desde un punto central del pueblo, usando SIEMPRE ubicación GPS compartida por WhatsApp (no texto libre). Si está fuera del radio, se cancela antes de crear cualquier registro. *(Radio a calibrar con direcciones reales del pueblo — pendiente de definir el valor exacto en km).*
 2. **Precio:**
-   `total_cliente = Σ subtotal_tienda + $10 (Mándalo) + servicio_repartidor`
-   `servicio_repartidor = $25 + $15 × (número de tiendas adicionales más allá de la primera)`
-   *(Ajustado agosto 2026: antes $20/$35 — Mándalo $10 + repartidor $25 = $35 de cargos fijos, en vez de $55.)*
-   Al cliente ese cargo se muestra **junto**, una sola línea de **$35 de envío y servicio**. No se le desglosa $10 + $25. El desglose se conserva en base (`servicio_mandalo` / `servicio_repartidor`) y en mensajes internos.
+   `total_cliente = Σ subtotal_tienda + servicio_mandalo + servicio_repartidor`
+   `servicio_mandalo = $0`
+   `servicio_repartidor = $25`
+   *(Ajustado 5 de octubre de 2026: el cliente paga $25 de envío y servicio. Antes, desde agosto 2026, era Mándalo $10 + repartidor $25 = $35. El recargo de $15 por tienda adicional no está construido.)*
+   Al cliente ese cargo se muestra **junto**, una sola línea de **$25 de envío y servicio**. No se le desglosa. En base, `servicio_mandalo` y `servicio_repartidor` suman 25, igual que el ticket.
 3. **Pago:** solo efectivo, cobrado por el repartidor directamente al cliente.
 4. **Roles fijos por número:** un número registrado como tienda o repartidor NO puede pedir como cliente desde ese mismo número — se comunica manualmente a cada empleado que use un número distinto para pedidos personales. Cualquier número no registrado se trata como cliente.
 5. **Confirmación de productos:** la IA siempre repite/confirma el producto entendido antes de mandarlo a la tienda, para corregir errores de escritura del cliente.
@@ -110,7 +111,7 @@ Sistema de delivery automatizado por WhatsApp para **Ixtlahuacán del Río**. Un
 2. Bot valida cobertura geográfica → si está fuera, cancela ahí mismo
 3. Cliente confirma el pedido completo
 
-Antes de pedir la ubicación, cuando marca, tamaño y presentación ya quedaron claros, el bot lista los productos («OK, pediste… ¿Están bien estos productos?»). Un SÍ limpio sigue al GPS o a la dirección. Un «No» o «no está correcto» en esa lista, o en el resumen de `confirmacion_cliente`, cancela el pedido abierto. Si el cliente dice que algo se juntó, corrige una línea, o agrega («faltó», «agrega», «añade», «también quiero», «solamente te…», aunque empiece con sí), eso no es el SÍ: se anota el cambio, los productos quedan sin confirmar y se vuelve a listar. Lo mismo si ya se estaba pidiendo la ubicación. El GPS espera ese SÍ limpio. El resumen final (ubicación, horario y $35 de envío y servicio) no cambia.
+Antes de pedir la ubicación, cuando marca, tamaño y presentación ya quedaron claros, el bot lista los productos («OK, pediste… ¿Están bien estos productos?»). Un SÍ limpio sigue al GPS o a la dirección. Un «No» o «no está correcto» en esa lista, o en el resumen de `confirmacion_cliente`, cancela el pedido abierto. Si el cliente dice que algo se juntó, corrige una línea, o agrega («faltó», «agrega», «añade», «también quiero», «solamente te…», aunque empiece con sí), eso no es el SÍ: se anota el cambio, los productos quedan sin confirmar y se vuelve a listar. Lo mismo si ya se estaba pidiendo la ubicación. El GPS espera ese SÍ limpio. El resumen final (ubicación, horario y $25 de envío y servicio) no cambia.
 4. Cada tienda involucrada recibe notificación de su parte del pedido
 5. Tienda revisa inventario:
    - Si tiene todo → confirma precio y disponibilidad
@@ -165,7 +166,7 @@ Timeouts **unificados a 10 minutos, con recordatorio a los 5**, en los tres punt
 
 ## 9. Tono y atención al cliente del bot
 
-- Saluda siempre al inicio de la conversación, de forma cálida y personal. Después del saludo, ofrece dos filtros cortos (Tiendas de abarrotes y Restaurantes) antes de listar negocios — no es un menú frío de productos. Nichos futuros (farmacia, ferretería, taquería) se agregan en `CUSTOMER_STORE_NICHES` y en `tiendas.categoria`, sin hardcodear el nombre del negocio.
+- Saluda siempre al inicio de la conversación, de forma cálida y personal. Después del saludo, ofrece tres filtros cortos (Abarrotes, Restaurantes y Carnicerías) antes de listar negocios — no es un menú frío de productos. Nichos futuros (farmacia, ferretería, taquería) se agregan en `CUSTOMER_STORE_NICHES` y en `tiendas.categoria`, sin hardcodear el nombre del negocio.
 - Tono: chavo del pueblo que sale a hacer el mandado. Cercano, corto, con humor ligero. Máximo unos 3–4 emojis por mensaje.
 - Lenguaje simple y sin fricción: debe poder usarlo tanto un abuelo como un adolescente sin confundirse. Evitar jerga técnica, mensajes largos, o pasos innecesarios.
 - Concreto pero amable: mensajes cortos y claros, pero con calidez — el cliente debe sentir confianza de que su pedido va a llegar bien.
