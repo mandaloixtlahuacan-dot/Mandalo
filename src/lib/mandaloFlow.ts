@@ -96,6 +96,7 @@ type TiendaRow = {
   hora_apertura?: unknown;
   hora_cierre?: unknown;
   dias_cerrado?: unknown;
+  horario_por_dia?: unknown;
   usa_catalogo_fijo?: unknown;
 };
 type CourierRow = { id?: unknown; nombre?: unknown; telefono?: unknown; activo?: unknown; vehiculo?: unknown };
@@ -283,6 +284,7 @@ export async function getLLMResponse(params: {
       horaApertura: row.hora_apertura == null ? null : String(row.hora_apertura),
       horaCierre: row.hora_cierre == null ? null : String(row.hora_cierre),
       diasCerrado: parseDiasCerrado(row.dias_cerrado),
+      horarioPorDia: row.horario_por_dia,
     });
 
   let tiendas: TiendaRow[] = [];
@@ -290,7 +292,7 @@ export async function getLLMResponse(params: {
   try {
     const { data, error } = await supabase
       .from("tiendas")
-      .select("id, nombre, categoria, telefono, hora_apertura, hora_cierre, dias_cerrado, usa_catalogo_fijo")
+      .select("id, nombre, categoria, telefono, hora_apertura, hora_cierre, dias_cerrado, horario_por_dia, usa_catalogo_fijo")
       .eq("activa", true)
       .limit(500);
     if (error) throw error;
@@ -316,6 +318,7 @@ export async function getLLMResponse(params: {
       horaApertura: n.hora_apertura == null ? null : String(n.hora_apertura),
       horaCierre: n.hora_cierre == null ? null : String(n.hora_cierre),
       diasCerrado: parseDiasCerrado(n.dias_cerrado),
+      horarioPorDia: n.horario_por_dia,
     });
 
   const tiendas_text = tiendas.length
@@ -485,7 +488,7 @@ type TiendaResolution =
   | { status: "not_found" };
 
 const TIENDA_RESOLUTION_SELECT =
-  "id, nombre, telefono, activa, hora_apertura, hora_cierre, dias_cerrado, usa_catalogo_fijo";
+  "id, nombre, telefono, activa, hora_apertura, hora_cierre, dias_cerrado, horario_por_dia, usa_catalogo_fijo";
 
 function resolveTiendaRow(row: {
   id: unknown;
@@ -495,6 +498,7 @@ function resolveTiendaRow(row: {
   hora_apertura: unknown;
   hora_cierre: unknown;
   dias_cerrado: unknown;
+  horario_por_dia?: unknown;
   usa_catalogo_fijo?: unknown;
 } | null | undefined, fallbackName: string): TiendaResolution {
   if (!row?.telefono || row.activa === false) return { status: "not_found" };
@@ -504,6 +508,7 @@ function resolveTiendaRow(row: {
     horaApertura: row.hora_apertura == null ? null : String(row.hora_apertura),
     horaCierre: row.hora_cierre == null ? null : String(row.hora_cierre),
     diasCerrado: parseDiasCerrado(row.dias_cerrado),
+    horarioPorDia: row.horario_por_dia,
   });
   if (!schedule.withinSchedule) {
     return {
@@ -1121,6 +1126,7 @@ async function handleEsperandoConfirmacionInicial(
     horaApertura: full.tienda.horaApertura,
     horaCierre: full.tienda.horaCierre,
     diasCerrado: full.tienda.diasCerrado,
+    horarioPorDia: full.tienda.horarioPorDia,
   });
   const mandaloSchedule = checkMandaloSchedule();
   const puedeDespacharAhora = schedule.withinSchedule && mandaloSchedule.withinSchedule;
@@ -1647,7 +1653,7 @@ async function loadUxStores(): Promise<UxStore[]> {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("tiendas")
-    .select("id, nombre, categoria, telefono, hora_apertura, hora_cierre, dias_cerrado, usa_catalogo_fijo, activa")
+    .select("id, nombre, categoria, telefono, hora_apertura, hora_cierre, dias_cerrado, horario_por_dia, usa_catalogo_fijo, activa")
     .eq("activa", true)
     .limit(500);
   if (error) throw error;
@@ -1661,6 +1667,7 @@ async function loadUxStores(): Promise<UxStore[]> {
       horaApertura: (row as { hora_apertura?: unknown }).hora_apertura == null ? null : String((row as { hora_apertura?: unknown }).hora_apertura),
       horaCierre: (row as { hora_cierre?: unknown }).hora_cierre == null ? null : String((row as { hora_cierre?: unknown }).hora_cierre),
       diasCerrado: parseDiasCerrado((row as { dias_cerrado?: unknown }).dias_cerrado),
+      horarioPorDia: (row as { horario_por_dia?: unknown }).horario_por_dia,
     });
     stores.push({
       id: Number((row as { id?: unknown }).id),
@@ -1954,6 +1961,7 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
                 horaApertura: full.tienda.horaApertura,
                 horaCierre: full.tienda.horaCierre,
                 diasCerrado: full.tienda.diasCerrado,
+                horarioPorDia: full.tienda.horarioPorDia,
               })
             : null;
           const mandaloSchedule = checkMandaloSchedule();

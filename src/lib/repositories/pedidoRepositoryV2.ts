@@ -263,6 +263,7 @@ export type PedidoFullRecord = {
     estadoTienda: string;
     usaCatalogoFijo: boolean;
     diasCerrado: number[];
+    horarioPorDia: unknown;
   } | null;
   items: Array<{ id: number; nombreProducto: string; cantidad: number | null; disponible: boolean }>;
 };
@@ -277,7 +278,7 @@ export async function getPedidoById(pedidoId: number): Promise<PedidoFullRecord 
     .select(
       "id, estado, cliente_telefono, repartidor_id, direccion_entrega, latitud, longitud, " +
         "servicio_mandalo, servicio_repartidor, total_cliente, metadata_json, " +
-        "pedido_tiendas(id, tienda_id, subtotal_tienda, estado_tienda, tiendas(nombre, telefono, direccion, hora_apertura, hora_cierre, usa_catalogo_fijo, dias_cerrado), pedido_items(id, nombre_producto, cantidad, disponible))",
+        "pedido_tiendas(id, tienda_id, subtotal_tienda, estado_tienda, tiendas(nombre, telefono, direccion, hora_apertura, hora_cierre, usa_catalogo_fijo, dias_cerrado, horario_por_dia), pedido_items(id, nombre_producto, cantidad, disponible))",
     )
     .eq("id", pedidoId)
     .maybeSingle();
@@ -319,6 +320,7 @@ export async function getPedidoById(pedidoId: number): Promise<PedidoFullRecord 
           estadoTienda: String(pt.estado_tienda ?? "pendiente"),
           usaCatalogoFijo: tiendaInfo?.usa_catalogo_fijo === true,
           diasCerrado: parseDiasCerrado(tiendaInfo?.dias_cerrado),
+          horarioPorDia: tiendaInfo?.horario_por_dia ?? null,
         }
       : null,
     items: itemsRaw.map((it) => ({

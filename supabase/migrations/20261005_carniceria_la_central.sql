@@ -1,30 +1,35 @@
 -- Carnicería La Central: tercer filtro (Carnicerías) y menú de precios fijos.
--- Fecha: 2026-10-05
+-- Fecha: 2026-10-05. Horario y teléfono real: 2026-10-06.
 --
 -- Víctor corre este SQL en el SQL Editor. No borra tiendas ni pedidos.
--- Antes de usarla en vivo:
---   1) Cambia el teléfono marcador 520000000000 por el WhatsApp real de la
---      carnicería (formato internacional, sin espacios). Este UPDATE no pisa
---      un teléfono que ya no sea el marcador.
---   2) Pon hora_apertura / hora_cierre reales. En NULL la tienda se trata
---      como siempre abierta.
---   3) La foto oficial ya está en public/menus/carniceria-la-central.png.
---      CARNICERIA_LA_CENTRAL_MENU_IMAGE_URL solo hace falta si esa foto no
---      entra al despliegue.
+-- Teléfono: 5213318527050.
+-- Horario (America/Mexico_City): lunes a sábado 08:00–17:00, jueves cerrado
+-- (dias_cerrado = {4}), domingo 08:00–15:00 en horario_por_dia.
+-- La foto oficial ya está en public/menus/carniceria-la-central.png.
 --
 -- Menú impreso: 19 productos, sin pollo. Carnes, pastor y carbón por kilo.
 -- Salsas por pieza. El carbón del menú se llama Carbón fino (el habla también
 -- acepta firo y carbón). Si este SQL ya se corrió con los nombres viejos,
 -- los UPDATE de abajo los alinean antes de insertar.
 
-insert into public.tiendas (nombre, categoria, telefono, direccion, activa, usa_catalogo_fijo)
+alter table public.tiendas
+  add column if not exists horario_por_dia jsonb;
+
+insert into public.tiendas (
+  nombre, categoria, telefono, direccion, activa, usa_catalogo_fijo,
+  hora_apertura, hora_cierre, dias_cerrado, horario_por_dia
+)
 select
   'Carnicería La Central',
   'Carnicerías',
-  '520000000000',
+  '5213318527050',
   'Ixtlahuacán del Río',
   true,
-  true
+  true,
+  '08:00',
+  '17:00',
+  '{4}',
+  '{"0":{"abre":"08:00","cierra":"15:00"}}'::jsonb
 where not exists (
   select 1 from public.tiendas where nombre ilike 'carnicer_a la central'
 );
@@ -33,7 +38,12 @@ update public.tiendas
 set
   categoria = 'Carnicerías',
   usa_catalogo_fijo = true,
-  activa = true
+  activa = true,
+  telefono = '5213318527050',
+  hora_apertura = '08:00',
+  hora_cierre = '17:00',
+  dias_cerrado = '{4}',
+  horario_por_dia = coalesce(horario_por_dia, '{}'::jsonb) || '{"0":{"abre":"08:00","cierra":"15:00"}}'::jsonb
 where nombre ilike 'carnicer_a la central';
 
 update public.productos_tienda p
@@ -100,9 +110,8 @@ where t.nombre ilike 'carnicer_a la central'
   );
 
 -- Verificación (no cambia datos): una tienda, 19 productos, sin pollo,
--- con Pulpa de puerco y Carbón fino. El teléfono marcador y el horario
--- siguen pendientes de Víctor.
-select t.id, t.nombre, t.categoria, t.telefono, t.usa_catalogo_fijo, t.hora_apertura, t.hora_cierre
+-- teléfono 5213318527050, lun–sáb 08:00–17:00, jueves cerrado, domingo 08:00–15:00.
+select t.id, t.nombre, t.categoria, t.telefono, t.usa_catalogo_fijo, t.hora_apertura, t.hora_cierre, t.dias_cerrado, t.horario_por_dia
 from public.tiendas t
 where t.nombre ilike 'carnicer_a la central';
 
