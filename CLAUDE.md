@@ -41,6 +41,7 @@ Sistema de delivery automatizado por WhatsApp para **Ixtlahuacán del Río**. Un
 - `activa` (bool)
 - `hora_apertura`
 - `hora_cierre`
+- `horario_por_dia` (jsonb, nullable: excepción por día 0–6 con `abre`/`cierra`; si no hay clave, se usan `hora_apertura`/`hora_cierre`)
 
 ### `repartidores`
 - `id` (PK)
@@ -154,7 +155,7 @@ Timeouts **unificados a 10 minutos, con recordatorio a los 5**, en los tres punt
 | Pedido multi-tienda, confirmaciones asíncronas | El repartidor NO recibe el pedido hasta que **todas** las tiendas hayan confirmado precio/disponibilidad — evita confusión sobre cuánto cobrar |
 | Cliente no responde a un ajuste de producto | 10 minutos → se cancela el pedido automáticamente y se notifica al cliente y a la(s) tienda(s) que ya no esperen confirmación |
 | Varios repartidores confirman casi al mismo tiempo | El primero en confirmar se queda con el pedido; a los demás se les avisa "pedido ya tomado". **Nota técnica para implementación:** la asignación debe ser atómica (evitar que dos repartidores queden asignados al mismo pedido por una confirmación simultánea) |
-| Tienda fuera de horario | Se valida automáticamente contra `hora_apertura`/`hora_cierre`. Al listar tiendas disponibles, una cerrada no aparece como opción. Si el cliente la nombra explícitamente de todos modos, el pedido se programa (estado `esperando_apertura_tienda`, Sección 7) en vez de rechazarse — el cliente se entera en el resumen de confirmación, antes de decir SÍ |
+| Tienda fuera de horario | Se valida automáticamente contra `hora_apertura`/`hora_cierre`, y contra `horario_por_dia` si ese día trae otra ventana (si no, la ventana única). Al listar tiendas disponibles, una cerrada no aparece como opción. Si el cliente la nombra explícitamente de todos modos, el pedido se programa (estado `esperando_apertura_tienda`, Sección 7) en vez de rechazarse — el cliente se entera en el resumen de confirmación, antes de decir SÍ |
 | Pedido fuera de la ventana de reparto de Mándalo (por ahora 3pm-9pm) | Mismo mecanismo que una tienda cerrada — se valida con `checkMandaloSchedule` además de `checkTiendaSchedule`, y el pedido se programa (`esperando_apertura_tienda`) si cualquiera de las dos falla. El cliente se entera en el resumen de confirmación, antes de decir SÍ |
 | Tienda/horario de Mándalo programado que nunca abre a la vez | 48 horas desde que el cliente confirmó sin que se cumplan ambas condiciones → se cancela automáticamente, se notifica al cliente y se avisa al admin. Reusa `stateTransitionService.handleOrderTimeoutExpired` (mismo mecanismo que los tres timeouts de 10 min, con un plazo distinto) |
 | Error de escritura del cliente en productos | La IA confirma siempre el producto entendido antes de continuar |

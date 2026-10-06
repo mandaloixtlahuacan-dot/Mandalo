@@ -4,8 +4,10 @@
 // 2026 tras la fase 24/7, ajustado de 3pm-8pm a 3pm-9pm — ver CLAUDE.md
 // Sección 5 regla 6), y cada tienda
 // tiene además su propio horario en base de datos (tiendas.hora_apertura /
-// hora_cierre, columnas `text` libres — ver Fase 1; y tiendas.dias_cerrado,
-// días fijos de descuento — ver migración 20260909). Un pedido fuera de
+// hora_cierre, columnas `text` libres — ver Fase 1; tiendas.dias_cerrado,
+// días fijos de descanso — ver migración 20260909; y tiendas.horario_por_dia,
+// jsonb nullable con la excepción de un día 0–6). Sin esa excepción se usa
+// el mismo abre/cierra de siempre. Un pedido fuera de
 // cualquiera de las dos ventanas se programa (mismo mecanismo,
 // esperando_apertura_tienda) en vez de rechazarse. Los repartidores no
 // tienen columnas de horario en el esquema (CLAUDE.md Sección 4): su
@@ -85,14 +87,47 @@ export function parseDiasCerrado(value: unknown): number[] {
   return value.map((d) => Number(d)).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6);
 }
 
+// Excepción de un día. La clave es el día 0–6. Sin esa clave se usan
+// hora_apertura / hora_cierre. Se aceptan abre/cierra y open/close.
+export type HorarioDia = { abre: string; cierra: string };
+export type HorarioPorDia = Partial<Record<number, HorarioDia>>;
+
+export function parseHorarioPorDia(value: unknown): HorarioPorDia {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const out: HorarioPorDia = {};
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    const day = Number(key);
+    if (!Number.isInteger(day) || day < 0 || day > 6) continue;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const row = raw as Record<string, unknown>;
+    const abre = String(row.abre ?? row.open ?? "").trim();
+    const cierra = String(row.cierra ?? row.close ?? "").trim();
+    if (parseHourToMinutes(abre) == null || parseHourToMinutes(cierra) == null) continue;
+    out[day] = { abre, cierra };
+  }
+  return out;
+}
+
+function hoursForWeekday(weekday: number, params: {
+  horaApertura: string | null;
+  horaCierre: string | null;
+  horarioPorDia: HorarioPorDia;
+}): { abre: string | null; cierra: string | null } {
+  const override = params.horarioPorDia[weekday];
+  if (override) return { abre: override.abre, cierra: override.cierra };
+  return { abre: params.horaApertura, cierra: params.horaCierre };
+}
+
 // Horario completo en una línea para que la IA pueda responder "a qué hora
 // abren/cierran", "qué días tienen servicio", etc. Ej: "todos los días menos
 // el lunes, de 7pm a 12am" / "todos los días, de 8am a 8pm". Vacío si no hay
-// horas usables cargadas.
+// horas usables cargadas. Un día en horario_por_dia se agrega al final; sin
+// ese dato el texto queda igual que antes.
 export function describeHorarioTienda(params: {
   horaApertura: string | null;
   horaCierre: string | null;
   diasCerrado?: number[] | null;
+  horarioPorDia?: unknown;
 }): string {
   const openMin = parseHourToMinutes(params.horaApertura);
   const closeMin = parseHourToMinutes(params.horaCierre);
@@ -112,7 +147,14 @@ export function describeHorarioTienda(params: {
     dias = `todos los días menos ${lista}`;
   }
 
-  return [dias, rango].filter(Boolean).join(", ");
+  const base = [dias, rango].filter(Boolean).join(", ");
+  const extras = Object.entries(parseHorarioPorDia(params.horarioPorDia))
+    .map(([day, hours]) => ({ day: Number(day), hours }))
+    .filter((entry): entry is { day: number; hours: HorarioDia } => entry.hours != null && !cerrados.includes(entry.day))
+    .sort((a, b) => a.day - b.day)
+    .map((entry) => `${DIAS_SEMANA[entry.day]} de ${formatHour12(entry.hours.abre)} a ${formatHour12(entry.hours.cierra)}`);
+  if (!extras.length) return base;
+  return [base, extras.join(", ")].filter(Boolean).join("; ");
 }
 
 // Texto "abre {hoy|mañana|el <día>} a las <hora 12h>" — el primer día de
@@ -121,13 +163,11 @@ export function describeHorarioTienda(params: {
 // cerrada (checkTiendaSchedule devolvió withinSchedule:false).
 function describeProximaApertura(params: {
   horaApertura: string | null;
+  horaCierre: string | null;
   diasCerrado: number[];
+  horarioPorDia: HorarioPorDia;
   now: Date;
 }): string {
-  const openMin = parseHourToMinutes(params.horaApertura);
-  if (openMin == null) return "";
-  const aperturaTexto = formatHour12(params.horaApertura ?? "");
-
   const nowMin = nowInMandaloMinutes(params.now);
   const hoy = weekdayInMandalo(params.now);
   const cerrado = new Set(params.diasCerrado);
@@ -135,6 +175,10 @@ function describeProximaApertura(params: {
   for (let offset = 0; offset < 7; offset++) {
     const dia = (hoy + offset) % 7;
     if (cerrado.has(dia)) continue;
+    const hours = hoursForWeekday(dia, params);
+    const openMin = parseHourToMinutes(hours.abre);
+    if (openMin == null) continue;
+    const aperturaTexto = formatHour12(hours.abre ?? "");
 
     if (offset === 0) {
       if (nowMin < openMin) return `abre hoy a las ${aperturaTexto}`;
@@ -162,12 +206,13 @@ function closedResult(
   horaApertura: string | null,
   horaCierre: string | null,
   diasCerrado: number[],
+  horarioPorDia: HorarioPorDia,
   now: Date,
 ): TiendaScheduleCheck {
   return {
     withinSchedule: false,
     closedReason,
-    abreTexto: describeProximaApertura({ horaApertura, diasCerrado, now }) || "abre pronto",
+    abreTexto: describeProximaApertura({ horaApertura, horaCierre, diasCerrado, horarioPorDia, now }) || "abre pronto",
     horaApertura: String(horaApertura ?? ""),
     horaCierre: String(horaCierre ?? ""),
     diasCerrado,
@@ -180,22 +225,35 @@ export function checkTiendaSchedule(params: {
   horaApertura: string | null;
   horaCierre: string | null;
   diasCerrado?: number[] | null;
+  horarioPorDia?: unknown;
   now?: Date;
 }): TiendaScheduleCheck {
   const now = params.now ?? new Date();
   const diasCerrado = parseDiasCerrado(params.diasCerrado);
+  const horarioPorDia = parseHorarioPorDia(params.horarioPorDia);
+  const weekday = weekdayInMandalo(now);
+  const hasBase = parseHourToMinutes(params.horaApertura) != null && parseHourToMinutes(params.horaCierre) != null;
 
-  const openMin = parseHourToMinutes(params.horaApertura);
-  const closeRaw = parseHourToMinutes(params.horaCierre);
+  // Sin horario base y sin excepción de hoy: siempre abierta, igual que antes
+  // (también si dias_cerrado trae el día: el fail-open iba primero).
+  if (!hasBase && !horarioPorDia[weekday]) return { withinSchedule: true };
+
+  if (diasCerrado.includes(weekday)) {
+    return closedResult("dia", params.horaApertura, params.horaCierre, diasCerrado, horarioPorDia, now);
+  }
+
+  const hours = hoursForWeekday(weekday, {
+    horaApertura: params.horaApertura,
+    horaCierre: params.horaCierre,
+    horarioPorDia,
+  });
+  const openMin = parseHourToMinutes(hours.abre);
+  const closeRaw = parseHourToMinutes(hours.cierra);
   if (openMin == null || closeRaw == null) return { withinSchedule: true };
 
   // "00:00" como hora de cierre = fin del día (medianoche), no "cruza a las
   // 12am" — sin esto, un cierre a medianoche exacta se comporta raro.
   const closeMin = closeRaw === 0 ? 1440 : closeRaw;
-
-  if (diasCerrado.includes(weekdayInMandalo(now))) {
-    return closedResult("dia", params.horaApertura, params.horaCierre, diasCerrado, now);
-  }
 
   const nowMin = nowInMandaloMinutes(now);
   const within =
@@ -204,7 +262,7 @@ export function checkTiendaSchedule(params: {
       : nowMin >= openMin || nowMin < closeMin; // horario que cruza medianoche
 
   if (within) return { withinSchedule: true };
-  return closedResult("hora", params.horaApertura, params.horaCierre, diasCerrado, now);
+  return closedResult("hora", hours.abre, hours.cierra, diasCerrado, horarioPorDia, now);
 }
 
 // Ventana fija de despacho de Mándalo — reusa checkTiendaSchedule pasándole

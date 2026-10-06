@@ -141,6 +141,7 @@ export function createScheduledDispatchWorker() {
                 horaApertura: pedido.tienda.horaApertura,
                 horaCierre: pedido.tienda.horaCierre,
                 diasCerrado: pedido.tienda.diasCerrado,
+                horarioPorDia: pedido.tienda.horarioPorDia,
               })
             : { withinSchedule: true as const };
           const mandaloSchedule = checkMandaloSchedule();

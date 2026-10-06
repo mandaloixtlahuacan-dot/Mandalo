@@ -2,7 +2,16 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 5 de octubre de 2026. El cargo al cliente es **$25 de
+> Última actualización: 6 de octubre de 2026. Carnicería La Central abre
+> lunes a sábado de 8am a 5pm, cierra los jueves, y el domingo de 8am a 3pm.
+> El domingo no cabe en la ventana única: va en `tiendas.horario_por_dia`
+> (día 0, abre/cierra). El resto de las tiendas no trae esa columna llena y
+> sigue igual. El SQL que hay que correr antes de desplegar este código es
+> `supabase/migrations/20261006_tiendas_horario_por_dia.sql` (si el select
+> pide la columna y no existe, fallan las lecturas de tiendas). Teléfono de
+> La Central en ese SQL: 5213318527050. El cargo sigue en $25. Sin merge y
+> sin deploy de este cambio.
+> Actualización anterior: 5 de octubre de 2026. El cargo al cliente es **$25 de
 > envío y servicio** (`servicio_mandalo` 0 + `servicio_repartidor` 25). El
 > ticket de WhatsApp no lo parte y no usa el $35 anterior. Las notas viejas de
 > este archivo que dicen $35 describen la regla de antes de hoy.
@@ -16,9 +25,7 @@
 > coincide con el cargo y no se editó la imagen.
 > El SQL de la tienda está en `supabase/migrations/20261005_carniceria_la_central.sql`
 > y el default del cargo en `supabase/migrations/20261005_cargo_cliente_25.sql`.
-> Víctor los corre. El teléfono `520000000000` es marcador: hay que cambiarlo
-> al WhatsApp real, igual que el horario (en NULL se ve siempre abierta).
-> Código en rama, sin merge y sin deploy.
+> Teléfono y horario de La Central quedaron en el párrafo del 6 de octubre.
 > Actualización anterior del mismo día: Pedido #85 (George, menú fijo):
 > «quiero una hamburguesa de res, unas papas gajo, una Pepsi y una manzanita»
 > anota las cuatro líneas (Papas Gajo aunque el menú diga 315g o 1 pieza;
