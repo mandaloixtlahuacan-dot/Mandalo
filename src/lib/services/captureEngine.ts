@@ -127,6 +127,9 @@ export type CaptureInput = {
   // Menú real de la tienda de precios fijos. Sirve para no anotar un tamaño
   // que el cliente no dijo y para sumar lo que sí nombró.
   catalog?: CatalogPriceRow[] | null;
+  // Pin real de WhatsApp en este turno. Las coordenadas que invente el modelo
+  // no cuentan como ubicación.
+  pinnedLocation?: { latitude: number; longitude: number } | null;
 };
 
 export type CaptureOutput = {
@@ -341,6 +344,7 @@ export function mergeSnapshot(params: {
   forceBusiness?: boolean;
   forceReplaceItems?: boolean;
   clearBusiness?: boolean;
+  pinnedLocation?: { latitude: number; longitude: number } | null;
 }): PedidoSnapshot {
   const current = params.currentSnapshot ?? {};
   const llm = asObject(params.llmOrderState);
@@ -367,8 +371,9 @@ export function mergeSnapshot(params: {
   // dirección de texto anterior — son la fuente de verdad más precisa
   // (Regla de oro #1). Una vez fijadas, se conservan aunque el turno
   // siguiente no las repita (no vienen en cada mensaje).
-  const latitud = toNullableNumber(llm.latitud ?? llm.latitude) ?? current.latitud ?? null;
-  const longitud = toNullableNumber(llm.longitud ?? llm.longitude) ?? current.longitud ?? null;
+  const pin = params.pinnedLocation;
+  const latitud = pin ? pin.latitude : (current.latitud ?? null);
+  const longitud = pin ? pin.longitude : (current.longitud ?? null);
 
   const addressText =
     latitud != null && longitud != null
@@ -605,6 +610,7 @@ export function createCaptureEngine(deps: CaptureEngineDeps) {
         forceBusiness: input.forceBusiness === true,
         forceReplaceItems: input.forceReplaceItems === true,
         clearBusiness: input.clearBusiness === true,
+        pinnedLocation: input.pinnedLocation ?? null,
       });
 
       // La lista anterior manda. Lo que el modelo agregue entra solo si el
@@ -652,12 +658,13 @@ export function createCaptureEngine(deps: CaptureEngineDeps) {
         if (!validation.readyForConfirmation && spoken.reply) {
           const productsConfirmed = !mustReconfirm && mergedSnapshot.flags?.productosConfirmados === true;
           const needsAddress = !spoken.missing && !validation.validatedAddress?.isValid;
+          const note = spoken.aside?.trim() ? `${spoken.aside.trim()}\n\n` : "";
           const reply =
             needsAddress && productsConfirmed
-              ? `${spoken.reply}\n\n${ADDRESS_ASK_MESSAGE}`
-              : needsAddress
-                ? formatProductListConfirm(spoken.items)
-                : spoken.reply;
+              ? `${note}${spoken.reply}\n\n${ADDRESS_ASK_MESSAGE}`
+              : needsAddress && !spoken.missing
+                ? `${note}${formatProductListConfirm(spoken.items)}`
+                : `${note}${spoken.reply ?? ""}`;
           if (needsAddress && !productsConfirmed) {
             for (const issue of validation.issues) {
               if (isProductListConfirmMessage(issue.customerQuestion ?? "")) issue.customerQuestion = undefined;

@@ -235,9 +235,35 @@ export function isYesConfirmation(text: string): boolean {
   if (/[?¿]/.test(raw) || QUESTION_WORDS_REGEX.test(raw)) return false;
   if (messageCorrectsOrder(raw)) return false;
 
-  return /\b(si|sí|ok|va|confirmo|confirmar|dale|de acuerdo|visto bueno)\b/i.test(
-    normalizeMessageIntentText(raw),
-  );
+  // Un emoji solo, o un "ajá", no es el sí. Tampoco una frase que de paso
+  // traiga "si" ("quiero saber si tienen coca"). Tiene que ser la aceptación
+  // completa: sí, ok, va, confirmo, dale, de acuerdo, visto bueno.
+  const stripped = raw.replace(/\p{Extended_Pictographic}/gu, " ").replace(/[¡!.,]+/g, " ").trim();
+  if (!stripped) return false;
+  const core = normalizeMessageIntentText(stripped)
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\b(por favor|porfa|gracias)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return /^(si|ok|va|confirmo|confirmar|dale|de acuerdo|visto bueno)$/.test(core);
+}
+
+export type OrderingGateStep = "product_list" | "final_ticket";
+
+/**
+ * El texto del modelo no mueve el pedido. Solo un sí limpio del cliente
+ * pasa de la lista a la ubicación, o del ticket a la tienda.
+ * `modelClaimsReady` se ignora a propósito: si el modelo dice que ya quedó,
+ * esta función sigue mirando el mensaje del cliente.
+ */
+export function orderingStepAfterCustomer(params: {
+  step: OrderingGateStep;
+  customerMessage: string;
+  modelClaimsReady?: boolean;
+}): "stay" | "location" | "store" {
+  void params.modelClaimsReady;
+  if (!isYesConfirmation(params.customerMessage)) return "stay";
+  return params.step === "product_list" ? "location" : "store";
 }
 
 // Frases de duda/pausa que NO son un rechazo — un cliente que dice "no sé"

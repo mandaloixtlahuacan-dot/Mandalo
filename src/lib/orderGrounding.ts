@@ -1,6 +1,6 @@
 import type { CatalogPriceRow } from "@/lib/catalogQuantities";
 import { applyCatalogSpeech, type CatalogSpeechResult } from "@/lib/catalogOrderSpeech";
-import { dropItemsNamedInRemoval, waiverNote } from "@/lib/quoteProductClarity";
+import { dropItemsNamedInRemoval, rewriteGrocerySlips, waiverNote } from "@/lib/quoteProductClarity";
 import type { PedidoItemInput } from "@/lib/services/captureEngine";
 
 /**
@@ -172,6 +172,46 @@ function retainPriorPlusGrounded(
     kept.push(sanitizeNewItem(item, message));
   }
   return kept;
+}
+
+const TRACE_ALIAS: Record<string, string[]> = {
+  refresco: ["coca", "coquita", "chesco", "pepsi", "sprite", "mirinda"],
+  coca: ["coquita", "chesco"],
+  papa: ["sabrita", "sabritas"],
+  papas: ["sabrita", "sabritas"],
+  tortilla: ["tortillina", "tortillinas"],
+  higienico: ["bano"],
+  marinada: ["marinda", "marinado"],
+  marinad: ["marinda", "marinado"],
+  wings: ["wins", "win"],
+  fino: ["firo"],
+  arrachera: ["arracera"],
+  manzana: ["manzanita", "manzanitas"],
+};
+
+function traceTokens(value: string): string[] {
+  return norm(value)
+    .split(" ")
+    .filter((token) => token.length >= 4 && !/^\d+$/.test(token));
+}
+
+/** Cada línea del pedido tiene que salir de algo que el cliente dijo. */
+export function lineTracesToCustomer(item: PedidoItemInput, customerText: string): boolean {
+  const said = norm(rewriteGrocerySlips(customerText));
+  const tokens = traceTokens(`${item.nombre_producto} ${item.marca ?? ""}`);
+  if (!tokens.length) return true;
+  return tokens.some((token) => {
+    const stem = token.length > 4 && token.endsWith("s") ? token.slice(0, -1) : token;
+    if (said.includes(token) || said.includes(stem)) return true;
+    const aliases = TRACE_ALIAS[token] ?? TRACE_ALIAS[stem] ?? [];
+    return aliases.some((alias) => said.includes(alias));
+  });
+}
+
+export function ungroundedOrderLines(items: PedidoItemInput[], customerText: string): string[] {
+  return items
+    .filter((item) => !lineTracesToCustomer(item, customerText))
+    .map((item) => item.nombre_producto);
 }
 
 export function assembleCapturedItems(params: {

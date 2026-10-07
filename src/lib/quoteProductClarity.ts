@@ -1,3 +1,4 @@
+import { isProductListRequest, isYesConfirmation } from "@/lib/messages";
 import type { PedidoItemInput } from "@/lib/services/captureEngine";
 
 /**
@@ -1081,8 +1082,14 @@ function categoryRejected(category: Category, blob: string): boolean {
 
 // "arroz higiénico" junto, en la misma frase, es papel higiénico mal dicho.
 // "un kilo de arroz y un paquete de papel" no entra: ahí hay dos productos.
-function rewriteGrocerySlips(message: string): string {
-  return message.replace(/\barroz\s+higi[eé]nicos?\b/gi, "papel higiénico");
+export function rewriteGrocerySlips(message: string): string {
+  return message
+    .replace(/\barroz\s+higi[eé]nicos?\b/gi, "papel higiénico")
+    .replace(/\bcoquitas?\b/gi, "coca")
+    .replace(/\bchescos?\b/gi, "refresco")
+    .replace(/\bpapel de ba[nñ]o\b/gi, "papel higiénico")
+    .replace(/\btortillinas?\b/gi, "tortillas")
+    .replace(/\bsabritas?\b/gi, "papas sabritas");
 }
 
 const BRAND_HINTS: Array<{ re: RegExp; id: string }> = [
@@ -2132,7 +2139,7 @@ export function prepareQuoteItems(
 ): PedidoItemInput[] {
   const ignore = ignoreSet(ignoreText);
   let next = tidyQuoteLines(items.map((item) => withoutIntentBrand({ ...item })));
-  const message = String(userMessage ?? "").trim();
+  const message = rewriteGrocerySlips(String(userMessage ?? "").trim());
   const opened = stripAddLead(message);
   const visible = opened ? stripClauses(opened, next) : "";
   const windows = visible ? windowsFor(visible) : [];
@@ -2186,7 +2193,42 @@ export function prepareQuoteItems(
   next = tidyQuoteLines(next.map((item) => scrubItem(item, ignore)));
   next = dropItemsNamedInRemoval(next, message);
   next = renameNegated(next, message);
+  next = keepSpokenMentions(next, message);
   return tidyQuoteLines(next);
+}
+
+const MENTION_NOISE = new Set([
+  "pues", "fijate", "fijese", "oye", "mira", "verdad", "entonces", "tambien",
+  "quiero", "quieres", "quisiera", "medio", "media", "kilo", "kilos", "litro", "litros",
+  "gramo", "gramos", "blanca", "blanco", "morada", "morado", "entera", "enteras",
+  "deslactosada", "grande", "chica", "chico", "mediana", "paquete", "paquetes",
+  "caja", "cajas", "bolsa", "bolsas", "pieza", "piezas", "rollo", "rollos",
+  "misma", "mismo", "gracias", "correcto", "listo",
+]);
+
+function keepSpokenMentions(items: PedidoItemInput[], message: string): PedidoItemInput[] {
+  if (!message.trim() || looksLikeAddress(message) || isYesConfirmation(message) || isProductListRequest(message)) return items;
+  const scan = message
+    .replace(/\bno (?:era|es|son|eran)\b[^,.]*/gi, " ")
+    .replace(/\b(?:quita(?:me|le|lo|r)?|quitar)\b[^,.]*/gi, " ");
+  const next = items.map((item) => ({ ...item }));
+  for (const clause of scan.split(/,|\by\b|\btambien\b/i)) {
+    const tokens = norm(clause)
+      .split(" ")
+      .filter((token) => token.length >= 6 && !STOP.has(token) && !MENTION_NOISE.has(token) && !/^\d+$/.test(token));
+    if (!tokens.length) continue;
+    const covered = next.some((item) => {
+      const blob = norm(`${item.nombre_producto} ${item.marca ?? ""} ${item.presentacion ?? ""}`);
+      return tokens.some((token) => {
+        const stem = token.endsWith("s") && token.length > 4 ? token.slice(0, -1) : token;
+        return blob.includes(token) || blob.includes(stem);
+      });
+    });
+    if (covered) continue;
+    const label = tokens.map((token) => token.charAt(0).toUpperCase() + token.slice(1)).join(" ");
+    next.push({ nombre_producto: label });
+  }
+  return next;
 }
 
 export function quoteQuestionForItems(items: PedidoItemInput[]): string | null {

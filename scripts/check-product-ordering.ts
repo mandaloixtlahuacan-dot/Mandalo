@@ -7,11 +7,12 @@
  */
 import { applyCatalogSpeech } from "../src/lib/catalogOrderSpeech";
 import { CARNICERIA_LA_CENTRAL_PRODUCTOS } from "../src/lib/carniceriaLaCentralCatalog";
-import { assembleCapturedItems } from "../src/lib/orderGrounding";
+import { priceCatalogOrder, type CatalogPriceRow } from "../src/lib/catalogQuantities";
+import { classifyProductListReply, isYesConfirmation, orderingStepAfterCustomer } from "../src/lib/messages";
+import { assembleCapturedItems, ungroundedOrderLines } from "../src/lib/orderGrounding";
 import { MANDALO_DELIVERY_FEE, MANDALO_SERVICE_FEE } from "../src/lib/ordenes";
 import { mergeSnapshot, type PedidoItemInput, type PedidoSnapshot } from "../src/lib/services/captureEngine";
 import { validateCaptureForConfirmation } from "../src/lib/services/validationEngine";
-import type { CatalogPriceRow } from "../src/lib/catalogQuantities";
 
 type StoreKind = "abarrotes" | "george" | "central";
 
@@ -24,6 +25,7 @@ type Step = {
   absent?: RegExp[];
   qty?: Array<{ name: RegExp; n: number }>;
   brand?: Array<{ name: RegExp; re: RegExp }>;
+  unit?: Array<{ name: RegExp; u: string }>;
   specific?: boolean;
   asks?: RegExp;
   noAsk?: boolean;
@@ -114,6 +116,11 @@ function checkStep(step: Step, items: PedidoItemInput[], ask: string | null, spe
     if (!item) errors.push(`sin línea para marca /${brand.name.source}/`);
     else if (!brand.re.test(String(item.marca ?? ""))) errors.push(`marca de /${brand.name.source}/ es "${item.marca ?? ""}"`);
   }
+  for (const unit of step.unit ?? []) {
+    const item = items.find((row) => unit.name.test(blob(row)));
+    if (!item) errors.push(`sin línea para unidad /${unit.name.source}/`);
+    else if (item.unidad !== unit.u) errors.push(`/${unit.name.source}/ unidad ${item.unidad ?? "—"} ≠ ${unit.u}`);
+  }
   if (step.specific != null && specific !== step.specific) {
     errors.push(step.specific ? "todavía pide un dato" : "cerró un producto incompleto");
   }
@@ -158,6 +165,11 @@ function run(scenario: Scenario, mode: "before" | "after"): string[] {
     errors.push(...stepErrors);
     prior = items;
   });
+  if (mode === "after") {
+    const said = scenario.steps.map((step) => step.user).join(" \n ");
+    const loose = ungroundedOrderLines(prior, said);
+    if (loose.length) errors.push(`sin rastro en lo que dijo el cliente: ${loose.join(", ")}`);
+  }
   return errors;
 }
 
@@ -920,18 +932,452 @@ const scenarios: Scenario[] = [
       },
     ],
   },
+  {
+    id: "ge-09 tamaños y un dogo en el mismo mensaje",
+    store: "george",
+    steps: [
+      {
+        user: "una mar y tierra grande y dos dogos clásicos",
+        llm: [{ nombre_producto: "Hamburguesa", cantidad: 1 }],
+        count: 2,
+        has: [/mar y tierra grande/i, /dogo cl[aá]sico/i],
+        qty: [
+          { name: /mar y tierra/i, n: 1 },
+          { name: /dogo/i, n: 2 },
+        ],
+        absent: [/chica/i, /pollo/i],
+      },
+    ],
+  },
+  {
+    id: "ge-10 la IA duplica la cantidad",
+    store: "george",
+    steps: [
+      {
+        user: "dos hamburguesas hawaianas",
+        llm: [{ nombre_producto: "Hamburguesa Hawaiana", cantidad: 4 }],
+        count: 1,
+        has: [/hawaiana/i],
+        qty: [{ name: /hawaiana/i, n: 2 }],
+      },
+    ],
+  },
+  {
+    id: "ge-11 sushi no entra",
+    store: "george",
+    steps: [
+      {
+        user: "un sushi y una cubana",
+        llm: [
+          { nombre_producto: "Sushi", cantidad: 1 },
+          { nombre_producto: "Hamburguesa Cubana", cantidad: 1 },
+        ],
+        count: 1,
+        has: [/cubana/i],
+        absent: [/sushi/i],
+        asks: /no lo manejamos/i,
+      },
+    ],
+  },
+  {
+    id: "ge-12 combo que no está en el menú",
+    store: "george",
+    steps: [
+      {
+        user: "un combo y unas papas gajo",
+        llm: [{ nombre_producto: "Combo", cantidad: 1 }, { nombre_producto: "Papas Gajo", cantidad: 1 }],
+        has: [/papas gajo/i],
+        absent: [/combo/i],
+        asks: /no lo manejamos/i,
+      },
+    ],
+  },
+  {
+    id: "ge-13 voz corrida con dos burgers y papas",
+    store: "george",
+    steps: [
+      {
+        user: "oye fijate que quiero una hawaiana y una cubana y tambien unas papas gajo",
+        llm: [{ nombre_producto: "Hamburguesa", cantidad: 1 }],
+        count: 3,
+        has: [/hawaiana/i, /cubana/i, /papas gajo/i],
+      },
+    ],
+  },
+  {
+    id: "ge-14 quita la cubana después de la lista",
+    store: "george",
+    steps: [
+      {
+        user: "una hawaiana y una cubana",
+        llm: [],
+        count: 2,
+        has: [/hawaiana/i, /cubana/i],
+      },
+      {
+        user: "quita la cubana",
+        llm: [
+          { nombre_producto: "Hamburguesa Hawaiana", cantidad: 1 },
+          { nombre_producto: "Hamburguesa Cubana", cantidad: 1 },
+        ],
+        count: 1,
+        has: [/hawaiana/i],
+        absent: [/cubana/i],
+      },
+    ],
+  },
+  {
+    id: "ge-15 después de la lista agrega un dogo",
+    store: "george",
+    steps: [
+      {
+        user: "una mar y tierra chica",
+        llm: [],
+        has: [/mar y tierra chica/i],
+      },
+      {
+        user: "agrega un dogo de arrachera",
+        llm: [{ nombre_producto: "Hamburguesa Mar y Tierra Chica", cantidad: 1 }],
+        count: 2,
+        has: [/mar y tierra chica/i, /dogo arrachera/i],
+      },
+    ],
+  },
+  {
+    id: "ge-16 plurales de dogos y la IA pone uno",
+    store: "george",
+    steps: [
+      {
+        user: "tres dogos de arrachera",
+        llm: [{ nombre_producto: "Dogo", cantidad: 1 }],
+        count: 1,
+        qty: [{ name: /dogo/i, n: 3 }],
+        absent: [/hamburguesa/i],
+      },
+    ],
+  },
+  {
+    id: "ge-17 typo de hot dog y papas",
+    store: "george",
+    steps: [
+      {
+        user: "un hotdog clasico y papas gajo",
+        llm: [],
+        count: 2,
+        has: [/dogo cl[aá]sico/i, /papas gajo/i],
+      },
+    ],
+  },
+  {
+    id: "ge-18 salchi locos no se parte",
+    store: "george",
+    steps: [
+      {
+        user: "dos salchi locos y una pepsi",
+        llm: [{ nombre_producto: "Salchicha", cantidad: 2 }, { nombre_producto: "Papas", cantidad: 1 }],
+        has: [/salchi locos/i, /pepsi/i],
+        absent: [/salchicha/i],
+        qty: [{ name: /salchi/i, n: 2 }],
+      },
+    ],
+  },
+  {
+    id: "ge-19 el tamaño grande no inventa otra",
+    store: "george",
+    steps: [
+      {
+        user: "una hamburguesa de res",
+        llm: [{ nombre_producto: "Hamburguesa de Res Grande", cantidad: 1 }],
+        asks: /grande|chica/i,
+        absent: [/grande/i],
+      },
+      {
+        user: "la grande",
+        llm: [
+          { nombre_producto: "Hamburguesa de Res Grande", cantidad: 1 },
+          { nombre_producto: "Hamburguesa de Res Chica", cantidad: 1 },
+        ],
+        count: 1,
+        has: [/res grande/i],
+        absent: [/chica/i],
+      },
+    ],
+  },
+  {
+    id: "ge-20 refresco sin marca no se inventa",
+    store: "george",
+    steps: [
+      {
+        user: "una hamburguesa de pollo y un refresco",
+        llm: [
+          { nombre_producto: "Hamburguesa de pollo", cantidad: 1 },
+          { nombre_producto: "Refresco", marca: "Coca", cantidad: 1 },
+        ],
+        has: [/pollo/i, /refresco/i],
+        asks: /marca/i,
+        brand: [{ name: /refresco/i, re: /^$/ }],
+      },
+    ],
+  },
+  {
+    id: "ce-09 medio de arrachera",
+    store: "central",
+    steps: [
+      {
+        user: "medio de arrachera",
+        llm: [{ nombre_producto: "Arrachera", cantidad: 1, unidad: "kilo" }],
+        count: 1,
+        has: [/arrachera marinada/i],
+        qty: [{ name: /arrachera/i, n: 0.5 }],
+        unit: [{ name: /arrachera/i, u: "kilo" }],
+      },
+    ],
+  },
+  {
+    id: "ce-10 kilo y medio de bistec de res",
+    store: "central",
+    steps: [
+      {
+        user: "un kilo y medio de bistec de res",
+        llm: [{ nombre_producto: "Bistec de res", cantidad: 1 }, { nombre_producto: "Arrachera Marinada", cantidad: 1 }],
+        count: 1,
+        has: [/bistec de res/i],
+        absent: [/marinad/i, /arrachera/i],
+        qty: [{ name: /bistec de res/i, n: 1.5 }],
+        unit: [{ name: /bistec/i, u: "kilo" }],
+      },
+    ],
+  },
+  {
+    id: "ce-11 cien pesos de chorizo",
+    store: "central",
+    steps: [
+      {
+        user: "$100 de chorizo",
+        llm: [{ nombre_producto: "Chorizo", cantidad: 100, unidad: "kilo" }],
+        count: 1,
+        has: [/chorizo/i],
+        absent: [/argentino/i],
+        qty: [{ name: /chorizo/i, n: 100 }],
+        unit: [{ name: /chorizo/i, u: "pesos" }],
+      },
+    ],
+  },
+  {
+    id: "ce-12 varias carnes de un jalón",
+    store: "central",
+    steps: [
+      {
+        user: "medio de arrachera, un kilo y medio de bistec de res y $100 de chorizo",
+        llm: [{ nombre_producto: "Pollo", cantidad: 1 }],
+        count: 3,
+        has: [/arrachera marinada/i, /bistec de res/i, /chorizo/i],
+        absent: [/pollo/i, /argentino/i],
+        qty: [
+          { name: /arrachera/i, n: 0.5 },
+          { name: /bistec de res/i, n: 1.5 },
+          { name: /chorizo/i, n: 100 },
+        ],
+      },
+    ],
+  },
+  {
+    id: "ce-13 quinientos gramos de diezmillo",
+    store: "central",
+    steps: [
+      {
+        user: "500 gramos de diezmillo",
+        llm: [{ nombre_producto: "Diezmillo", cantidad: 500 }],
+        count: 1,
+        has: [/diezmillo/i],
+        qty: [{ name: /diezmillo/i, n: 0.5 }],
+        unit: [{ name: /diezmillo/i, u: "kilo" }],
+      },
+    ],
+  },
+  {
+    id: "ce-14 pollo no lo manejamos",
+    store: "central",
+    steps: [
+      {
+        user: "un kilo de arrachera y un pollo",
+        llm: [
+          { nombre_producto: "Arrachera Marinada", cantidad: 1 },
+          { nombre_producto: "Pollo", cantidad: 1 },
+        ],
+        has: [/arrachera/i],
+        absent: [/pollo/i],
+        asks: /no lo manejamos/i,
+      },
+    ],
+  },
+  {
+    id: "ce-15 arrachera marinda",
+    store: "central",
+    steps: [
+      {
+        user: "una arrachera marinda",
+        llm: [{ nombre_producto: "Arrachera", cantidad: 1 }],
+        count: 1,
+        has: [/arrachera marinada/i],
+        qty: [{ name: /arrachera/i, n: 1 }],
+      },
+    ],
+  },
+  {
+    id: "ce-16 sin marinar cuando no hay ese corte",
+    store: "central",
+    steps: [
+      {
+        user: "arrachera que no este marinada",
+        llm: [{ nombre_producto: "Arrachera Marinada", cantidad: 1 }],
+        count: 0,
+        absent: [/arrachera/i],
+        asks: /no la manejamos/i,
+      },
+    ],
+  },
+  {
+    id: "ce-17 bistec de puerco sí, el marinado no",
+    store: "central",
+    steps: [
+      {
+        user: "bistec de puerco, no marinado",
+        llm: [{ nombre_producto: "Bistec de puerco marinado", cantidad: 1 }],
+        count: 1,
+        has: [/bistec de puerco/i],
+        absent: [/marinado/i],
+      },
+    ],
+  },
+  {
+    id: "ce-18 quita el chorizo",
+    store: "central",
+    steps: [
+      {
+        user: "un kilo de chorizo y un diezmillo",
+        llm: [],
+        count: 2,
+        has: [/chorizo/i, /diezmillo/i],
+      },
+      {
+        user: "quita el chorizo",
+        llm: [
+          { nombre_producto: "Chorizo", cantidad: 1, unidad: "kilo" },
+          { nombre_producto: "Diezmillo", cantidad: 1 },
+        ],
+        count: 1,
+        has: [/diezmillo/i],
+        absent: [/chorizo/i],
+      },
+    ],
+  },
+  {
+    id: "ce-19 después agrega carbón",
+    store: "central",
+    steps: [
+      {
+        user: "un chamberete",
+        llm: [],
+        has: [/chamberete/i],
+      },
+      {
+        user: "agrega carbón firo",
+        llm: [{ nombre_producto: "Chamberete", cantidad: 1 }],
+        count: 2,
+        has: [/chamberete/i, /carb[oó]n fino/i],
+        absent: [/pollo/i],
+      },
+    ],
+  },
+  {
+    id: "ce-20 voz corrida con varias carnes",
+    store: "central",
+    steps: [
+      {
+        user: "oye fijate que quiero medio de arrachera y un kilo de diezmillo y tambien cien pesos de chorizo",
+        llm: [{ nombre_producto: "Pollo", cantidad: 1 }, { nombre_producto: "Chorizo Argentino", cantidad: 100 }],
+        count: 3,
+        has: [/arrachera marinada/i, /diezmillo/i, /chorizo/i],
+        absent: [/pollo/i, /argentino/i],
+        qty: [
+          { name: /arrachera/i, n: 0.5 },
+          { name: /diezmillo/i, n: 1 },
+          { name: /chorizo/i, n: 100 },
+        ],
+      },
+    ],
+  },
+  {
+    id: "ab-24 coquita no se pierde",
+    store: "abarrotes",
+    steps: [
+      {
+        user: "una coquita de 2 litros",
+        llm: [],
+        has: [/refresco|coca/i],
+        absent: [/coquita/i],
+        qty: [{ name: /refresco|coca/i, n: 1 }],
+      },
+    ],
+  },
+  {
+    id: "ab-25 chesco, papel de baño, zote, tortillinas y sabritas",
+    store: "abarrotes",
+    steps: [
+      {
+        user: "un chesco, papel de baño, jabón zote, unas tortillinas y unas sabritas",
+        llm: [{ nombre_producto: "Coca", cantidad: 2 }],
+        has: [/refresco/i, /papel/i, /jab[oó]n/i, /tortilla/i, /papa/i],
+        brand: [{ name: /jab[oó]n/i, re: /zote/i }],
+      },
+    ],
+  },
+  {
+    id: "ab-26 la cantidad no se dobla",
+    store: "abarrotes",
+    steps: [
+      {
+        user: "dos coquitas de 2 litros",
+        llm: [{ nombre_producto: "Coca", marca: "Coca", presentacion: "2 litros", cantidad: 4, unidad: "pieza" }],
+        count: 1,
+        has: [/refresco|coca/i],
+        qty: [{ name: /refresco|coca/i, n: 2 }],
+      },
+    ],
+  },
+  {
+    id: "ab-27 chicharrones no se tiran",
+    store: "abarrotes",
+    steps: [
+      {
+        user: "unos chicharrones",
+        llm: [],
+        has: [/chicharron/i],
+        specific: false,
+      },
+    ],
+  },
 ];
 
 function tally(mode: "before" | "after") {
   const failed: Array<{ id: string; errors: string[] }> = [];
+  const byStore: Record<StoreKind, { passed: number; total: number }> = {
+    abarrotes: { passed: 0, total: 0 },
+    george: { passed: 0, total: 0 },
+    central: { passed: 0, total: 0 },
+  };
   for (const scenario of scenarios) {
+    byStore[scenario.store].total += 1;
     const errors = run(scenario, mode);
     if (errors.length) failed.push({ id: scenario.id, errors });
+    else byStore[scenario.store].passed += 1;
   }
   return {
     total: scenarios.length,
     passed: scenarios.length - failed.length,
     failed,
+    byStore,
   };
 }
 
@@ -952,7 +1398,13 @@ console.log(
   `Escenarios: ${counts.abarrotes} abarrotes, ${counts.george} George, ${counts.central} La Central (total ${scenarios.length}).`,
 );
 console.log(`Antes (merge confía en el modelo): ${before.passed}/${before.total}`);
+console.log(
+  `  abarrotes ${before.byStore.abarrotes.passed}/${before.byStore.abarrotes.total}, George ${before.byStore.george.passed}/${before.byStore.george.total}, La Central ${before.byStore.central.passed}/${before.byStore.central.total}`,
+);
 console.log(`Después (anclado a lo dicho): ${after.passed}/${after.total}`);
+console.log(
+  `  abarrotes ${after.byStore.abarrotes.passed}/${after.byStore.abarrotes.total}, George ${after.byStore.george.passed}/${after.byStore.george.total}, La Central ${after.byStore.central.passed}/${after.byStore.central.total}`,
+);
 
 if (after.failed.length) {
   for (const fail of after.failed) {
@@ -961,3 +1413,70 @@ if (after.failed.length) {
   }
   process.exit(1);
 }
+
+const ambiguous = ["ok pero cambia la coca", "ajá", "👍", "¿sí?", "quiero saber si tienen coca", "ok, y también un dogo"];
+for (const message of ambiguous) {
+  if (isYesConfirmation(message)) throw new Error(`"${message}" se tomó como sí`);
+  if (orderingStepAfterCustomer({ step: "product_list", customerMessage: message, modelClaimsReady: true }) !== "stay") {
+    throw new Error(`"${message}" avanzó a la ubicación aunque el modelo dijo que ya estaba`);
+  }
+  if (orderingStepAfterCustomer({ step: "final_ticket", customerMessage: message, modelClaimsReady: true }) !== "stay") {
+    throw new Error(`"${message}" avanzó a la tienda aunque el modelo dijo que ya estaba`);
+  }
+  if (classifyProductListReply(message) === "confirm") throw new Error(`"${message}" confirmó la lista`);
+}
+for (const clean of ["SÍ", "ok", "va", "confirmo", "dale", "de acuerdo"]) {
+  if (orderingStepAfterCustomer({ step: "product_list", customerMessage: clean, modelClaimsReady: false }) !== "location") {
+    throw new Error(`"${clean}" no sigue a la ubicación`);
+  }
+  if (orderingStepAfterCustomer({ step: "final_ticket", customerMessage: clean, modelClaimsReady: false }) !== "store") {
+    throw new Error(`"${clean}" no sigue a la tienda`);
+  }
+}
+
+const inventedPin = mergeSnapshot({
+  currentSnapshot: { businessId: 1, businessName: "ZAGU", items: [] },
+  llmOrderState: { latitud: 20.86, longitud: -103.24, address_text: "pin inventado", items: [] },
+});
+if (inventedPin.latitud != null || inventedPin.longitud != null) {
+  throw new Error("el modelo inventó coordenadas y se guardaron");
+}
+const realPin = mergeSnapshot({
+  currentSnapshot: { businessId: 1, businessName: "ZAGU", items: [] },
+  llmOrderState: { latitud: 1, longitud: 1, items: [] },
+  pinnedLocation: { latitude: 20.865, longitude: -103.24 },
+});
+if (realPin.latitud !== 20.865 || realPin.longitud !== -103.24) {
+  throw new Error("el pin real no se guardó");
+}
+
+const cien = applyCatalogSpeech({
+  base: [],
+  userMessage: "$100 de chorizo",
+  catalog: central,
+});
+const ticketCien = priceCatalogOrder(cien.items, central);
+if (ticketCien.subtotal !== 100) {
+  throw new Error(`$100 de chorizo se cobró ${ticketCien.subtotal}, no $100`);
+}
+const medioKilo = applyCatalogSpeech({
+  base: [],
+  userMessage: "medio de arrachera",
+  catalog: central,
+});
+const ticketMedio = priceCatalogOrder(medioKilo.items, central);
+if (ticketMedio.subtotal !== 140) {
+  throw new Error(`medio de arrachera se cobró ${ticketMedio.subtotal}, no $140`);
+}
+
+const listoSinSi = validateCaptureForConfirmation({
+  snapshot: { businessId: 1, businessName: "ZAGU", items: [{ nombre_producto: "Leche", marca: "Lala", presentacion: "entera", cantidad: 2, unidad: "litros" }] },
+  items: [{ nombre_producto: "Leche", marca: "Lala", presentacion: "entera", cantidad: 2, unidad: "litros" }],
+  quoteStore: true,
+  userMessage: "tu pedido está confirmado",
+});
+if (listoSinSi.readyForConfirmation || listoSinSi.nextState !== "seleccion_productos") {
+  throw new Error("el texto del modelo cerró el pedido sin ubicación ni sí");
+}
+
+console.log("El sí sucio, el pin inventado y el precio por peso o por medio kilo quedaron bloqueados.");

@@ -2,13 +2,15 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 7 de octubre de 2026. Fase de productos: el merge ya no
-> se queda con líneas que el modelo agregó y el cliente no dijo. La lista
-> anterior sigue; una línea nueva entra solo si el nombre está en el mensaje.
-> En menú fijo se lee el mensaje contra el catálogo, sin arrastrar extras.
-> «pues fíjate que quiero dos leches…» ya no guarda «Pues Fíjate» como marca.
-> El cargo sigue en $25. Sin merge y sin deploy. Escenarios en
-> `scripts/check-product-ordering.ts` (23 abarrotes, 8 George, 8 La Central).
+> Última actualización: 7 de octubre de 2026. Fase de productos, segunda pasada:
+> George y La Central se probaron como pedido hablado (kilo y medio, medio,
+> gramos, $100 de chorizo, marinado o no, lo que no está en el menú). Un sí
+> sucio (ok pero, ajá, emoji, pregunta) no pasa a la ubicación ni a la tienda.
+> Las coordenadas que invente el modelo no cuentan como pin. Coquita, chesco,
+> papel de baño, jabón zote, tortillinas y sabritas no se tiran. El cargo sigue
+> en $25. Sin merge y sin deploy. Escenarios en
+> `scripts/check-product-ordering.ts` (27 abarrotes, 20 George, 20 La Central:
+> 67/67). La pasada anterior, en el mismo archivo, era 23 + 8 + 8.
 > Actualización anterior: 6 de octubre de 2026. Carnicería La Central abre
 > lunes a sábado de 8am a 5pm, cierra los jueves, y el domingo de 8am a 3pm.
 > El domingo no cabe en la ventana única: va en `tiendas.horario_por_dia`

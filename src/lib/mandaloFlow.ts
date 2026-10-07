@@ -78,6 +78,7 @@ import {
   isNewOrderIntent,
   isNoConfirmation,
   isYesConfirmation,
+  orderingStepAfterCustomer,
   normalizeMessageIntentText as normalizeText,
   parseIncomingWhatsAppMessage,
   saveChatMessage as guardarMensajeChat,
@@ -1131,7 +1132,7 @@ async function handleEsperandoConfirmacionInicial(
   const mandaloSchedule = checkMandaloSchedule();
   const puedeDespacharAhora = schedule.withinSchedule && mandaloSchedule.withinSchedule;
 
-  if (!isYesConfirmation(mensaje)) {
+  if (orderingStepAfterCustomer({ step: "final_ticket", customerMessage: mensaje }) !== "store") {
     if (isBareOrderRejection(mensaje)) {
       await cancelOpenPedido(pedido, telefono, "cliente_rechazo_confirmacion_inicial");
       const msg = `De acuerdo, cancelé tu pedido #${pedido.id}. No se te cobra nada. 🙏\n\nCuando quieras hacer uno nuevo, aquí estoy. 🛒`;
@@ -2184,6 +2185,7 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
     forceReplaceItems,
     quoteStore: !usaCatalogoFijo,
     catalog: catalogRows,
+    pinnedLocation: ubicacionCoords,
   });
 
   console.log("[captureEngine] pedido:", {
