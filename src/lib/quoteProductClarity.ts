@@ -83,6 +83,8 @@ const STOP = new Set([
   "ejote", "ejotes",   "nopal", "nopales", "sandia", "melon", "pina",
   "azucar", "horchata", "jamaica", "tamarindo", "tank", "tanks", "tanque", "tanques",
   "quieres",
+  "pues", "fijate", "fijese", "oye", "mira", "verdad", "veras", "anda",
+  "enteras", "enteros", "leches",
   "mango", "mangos", "papaya", "papayas", "cebollin", "rabano",
   "betabel", "camote", "camotes", "jicama", "apio", "espinaca",
   "verduraga", "verdolaga", "epazote", "hierbabuena", "guayaba",
@@ -242,7 +244,7 @@ function lecheTipo(blob: string): string | null {
   if (/\borganica\b/.test(blob)) return "orgánica";
   if (/\b(chocolate|chocolatada)\b/.test(blob)) return "chocolate";
   if (/\bfresa\b/.test(blob)) return "fresa";
-  if (/\bentera\b/.test(blob)) return "entera";
+  if (/\benteras?\b/.test(blob)) return "entera";
   return null;
 }
 
@@ -263,6 +265,9 @@ function litrosPhrase(blob: string): string | null {
   if (ml) return `${ml[1]} ml`;
   const withQty = blob.match(new RegExp(`\\b(${LITER_QTY})\\s*(?:${LITER_UNIT})\\b`));
   if (withQty) return literPhraseFromQty(wordToQty(withQty[1]));
+  // "dos leches … de litro": el número va en el producto, no pegado a la unidad.
+  const counted = blob.match(/\b(dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|\d+)\s+\w*leches?\b/);
+  if (counted && /\blitro\b/.test(blob)) return literPhraseFromQty(wordToQty(counted[1]));
   if (/\blitros?\b/.test(blob)) return "1 litro";
   if (/^(?:de\s+)?(?:l|lt|lts)$/.test(blob)) return "1 litro";
   return null;
@@ -1493,7 +1498,13 @@ function windowLabel(category: Category, text: string): string {
 function shelfName(category: Category, currentName: string | null | undefined, label: string): string {
   if (category.id.startsWith("otro:") || category.id === "verdura") return clean(currentName) || label;
   const current = clean(currentName);
-  if (current && category.match.test(norm(current))) return current;
+  if (current && category.match.test(norm(current))) {
+    const tokens = norm(current).split(" ").filter(Boolean);
+    // "Papas" por kilo es la papa suelta. El plural solo se queda pidiendo
+    // marca, como si fueran de bolsa. Un nombre más largo se conserva.
+    if (category.kind === "produce" && tokens.length === 1) return category.label?.(norm(current)) ?? category.nombre;
+    return current;
+  }
   return label;
 }
 
@@ -1617,7 +1628,10 @@ function categoryNouns(): Set<string> {
   const nouns = new Set<string>();
   for (const category of CATEGORIES) {
     for (const token of norm(category.nombre).split(" ")) {
-      if (token.length >= 4) nouns.add(token);
+      if (token.length >= 4) {
+        nouns.add(token);
+        if (!token.endsWith("s")) nouns.add(`${token}s`);
+      }
     }
   }
   return nouns;

@@ -1,7 +1,7 @@
 import { formatPreConfirmFeeNote } from "@/lib/customerUx";
 import { messageCorrectsOrder } from "@/lib/messages";
-import { reconcileCatalogQuantities, type CatalogPriceRow } from "@/lib/catalogQuantities";
-import { applyCatalogSpeech } from "@/lib/catalogOrderSpeech";
+import type { CatalogPriceRow } from "@/lib/catalogQuantities";
+import { assembleCapturedItems } from "@/lib/orderGrounding";
 import type { OrderState } from "@/lib/orderStateMachine";
 import { normalizePhone } from "@/lib/roles";
 import { resolveMapsLink } from "@/lib/services/geo";
@@ -607,22 +607,19 @@ export function createCaptureEngine(deps: CaptureEngineDeps) {
         clearBusiness: input.clearBusiness === true,
       });
 
-      // En menú fijo la IA a veces reenvía el producto sin cantidad (o en 1)
-      // cuando el cliente manda la ubicación o agrega otro. La cantidad dicha
-      // y la que ya estaba anotada se conservan. Las tiendas que cotizan no
-      // pasan por aquí: ahí "cuántos" sigue siendo una pregunta.
-      const reconciledItems = input.quoteStore
-        ? mergedSnapshot.items ?? []
-        : reconcileCatalogQuantities(priorSnapshot?.items ?? [], mergedSnapshot.items ?? [], input.userMessage);
-      const spoken =
-        !input.quoteStore && input.catalog?.length
-          ? applyCatalogSpeech({
-              base: reconciledItems,
-              userMessage: input.userMessage,
-              catalog: input.catalog,
-            })
-          : null;
-      const itemsForValidation = spoken?.applied ? spoken.items : reconciledItems;
+      // La lista anterior manda. Lo que el modelo agregue entra solo si el
+      // cliente lo dijo en este mensaje (o, en menú fijo, si el catálogo lo
+      // reconoce en esas palabras). Cambiar de tienda sí reemplaza la lista.
+      const priorItems =
+        input.forceReplaceItems === true || input.clearBusiness === true ? [] : (priorSnapshot?.items ?? []);
+      const assembled = assembleCapturedItems({
+        prior: priorItems,
+        incoming: mergedSnapshot.items ?? [],
+        userMessage: input.userMessage ?? "",
+        catalog: input.quoteStore ? undefined : input.catalog,
+      });
+      const spoken = assembled.catalogSpeech;
+      const itemsForValidation = assembled.items;
       const revisesProducts = messageCorrectsOrder(input.userMessage);
       const productsWereConfirmed = mergedSnapshot.flags?.productosConfirmados === true;
       const noAddressYet =
