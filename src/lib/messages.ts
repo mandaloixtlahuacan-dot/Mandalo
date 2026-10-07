@@ -191,11 +191,16 @@ const ORDER_CHANGE_REGEX =
 const ADD_PRODUCT_REGEX =
   /\b(falto\w*|faltaron|faltan|faltaba|faltaban|agrega\w*|anade\w*|anadir|tambien quiero|solamente te)\b|\b(?:te|me|le|nos|les) falta\w*/;
 
+// Sumar una pieza, cambiar la cantidad o decir «ya no quiero este» también
+// corrige la lista. «Otra vez la lista» no entra: «otra» no va seguida de «vez».
+const LIST_EDIT_REGEX =
+  /\botr[oa]s?\b(?!\s+vez)|\b(?:una|otro|otra)\s+mas\b|\bagregale\b|\bponle\b|\bsumale\b|\bya no quiero\b|\bque sean\b|\bmejor sean\b|\bdejalo en\b|\bdejala en\b/;
+
 export function messageCorrectsOrder(text: string): boolean {
   const raw = String(text ?? "").trim();
   if (!raw) return false;
   const normalized = normalizeMessageIntentText(raw);
-  return ORDER_CHANGE_REGEX.test(normalized) || ADD_PRODUCT_REGEX.test(normalized);
+  return ORDER_CHANGE_REGEX.test(normalized) || ADD_PRODUCT_REGEX.test(normalized) || LIST_EDIT_REGEX.test(normalized);
 }
 
 // "pásame la lista" / "otra vez la lista" pide el mandado anotado, no el menú

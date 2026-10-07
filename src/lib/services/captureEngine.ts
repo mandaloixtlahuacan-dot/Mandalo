@@ -625,6 +625,7 @@ export function createCaptureEngine(deps: CaptureEngineDeps) {
         catalog: input.quoteStore ? undefined : input.catalog,
       });
       const spoken = assembled.catalogSpeech;
+      const assistNote = assembled.assistNote;
       const itemsForValidation = assembled.items;
       const revisesProducts = messageCorrectsOrder(input.userMessage);
       const productsWereConfirmed = mergedSnapshot.flags?.productosConfirmados === true;
@@ -690,6 +691,20 @@ export function createCaptureEngine(deps: CaptureEngineDeps) {
           if (!validation.missingFields.includes("especificacion_producto")) {
             validation.missingFields.push("especificacion_producto");
           }
+        }
+      }
+
+      if (assistNote && !spoken?.question?.includes("Te refieres")) {
+        const issue = validation.issues.find((row) => row.customerQuestion);
+        if (issue?.customerQuestion && !issue.customerQuestion.includes("Te refieres")) {
+          issue.customerQuestion = `${assistNote}\n\n${issue.customerQuestion}`;
+        } else if (!issue) {
+          validation.issues.push({
+            code: "GENERIC_ITEM_NEEDS_SPEC",
+            field: "especificacion_producto",
+            message: "El modelo propuso un producto y hay que confirmarlo.",
+            customerQuestion: `${assistNote}\n\n${formatProductListConfirm(validation.validatedItems.items)}`,
+          });
         }
       }
 

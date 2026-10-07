@@ -1,4 +1,5 @@
 import { isProductListRequest, isYesConfirmation } from "@/lib/messages";
+import { applyCustomerEdits, planCustomerEdits, wordsAreClose, type AddedLine } from "@/lib/orderEdits";
 import type { PedidoItemInput } from "@/lib/services/captureEngine";
 
 /**
@@ -2132,6 +2133,10 @@ function pickDetailIndex(items: PedidoItemInput[], message: string, ignore: Set<
   return first;
 }
 
+export function groceryNamesClause(clause: string): boolean {
+  return windowsFor(clause).length > 0;
+}
+
 export function prepareQuoteItems(
   items: PedidoItemInput[],
   userMessage?: string | null,
@@ -2140,6 +2145,17 @@ export function prepareQuoteItems(
   const ignore = ignoreSet(ignoreText);
   let next = tidyQuoteLines(items.map((item) => withoutIntentBrand({ ...item })));
   const message = rewriteGrocerySlips(String(userMessage ?? "").trim());
+  const editPlan = planCustomerEdits(message);
+  if (editPlan.editsOnly) {
+    return tidyQuoteLines(
+      applyCustomerEdits({
+        prior: items.map((item) => ({ ...item })),
+        working: next,
+        plan: editPlan,
+        resolveAddition: groceryAddition,
+      }).items,
+    );
+  }
   const opened = stripAddLead(message);
   const visible = opened ? stripClauses(opened, next) : "";
   const windows = visible ? windowsFor(visible) : [];
@@ -2194,7 +2210,34 @@ export function prepareQuoteItems(
   next = dropItemsNamedInRemoval(next, message);
   next = renameNegated(next, message);
   next = keepSpokenMentions(next, message);
+  const plan = planCustomerEdits(message);
+  if (plan.ops.length) {
+    next = applyCustomerEdits({
+      prior: items.map((item) => ({ ...item })),
+      working: next,
+      plan,
+      resolveAddition: groceryAddition,
+    }).items;
+  }
   return tidyQuoteLines(next);
+}
+
+function groceryAddition(phrase: string): AddedLine {
+  const windows = windowsFor(phrase);
+  if (windows.length === 1) {
+    const window = windows[0];
+    const label = windowLabel(window.category, window.text);
+    const named = { nombre_producto: shelfName(window.category, label, label) };
+    return { item: applyDetail(named, window.text, new Set(), false), aside: null };
+  }
+  const tokens = norm(phrase)
+    .split(" ")
+    .filter((token) => token.length >= 3 && !STOP.has(token));
+  if (!tokens.length) return { item: null, aside: null };
+  return {
+    item: { nombre_producto: tokens.map((token) => token.charAt(0).toUpperCase() + token.slice(1)).join(" "), cantidad: 1 },
+    aside: null,
+  };
 }
 
 const MENTION_NOISE = new Set([
@@ -2221,7 +2264,8 @@ function keepSpokenMentions(items: PedidoItemInput[], message: string): PedidoIt
       const blob = norm(`${item.nombre_producto} ${item.marca ?? ""} ${item.presentacion ?? ""}`);
       return tokens.some((token) => {
         const stem = token.endsWith("s") && token.length > 4 ? token.slice(0, -1) : token;
-        return blob.includes(token) || blob.includes(stem);
+        if (blob.includes(token) || blob.includes(stem)) return true;
+        return blob.split(" ").some((word) => wordsAreClose(word, token) || wordsAreClose(word, stem));
       });
     });
     if (covered) continue;

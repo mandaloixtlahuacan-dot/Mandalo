@@ -5,9 +5,8 @@ import { getChatCompletion, getOpenAIModel } from "@/lib/openaiClient";
 import { buildMandaloSystemPrompt } from "@/lib/mandaloPrompt";
 import { normalizeWhatsAppText, waapiSendImage, waapiSendText } from "@/lib/waapi";
 import { detectActorByPhone, ensureMxWhatsappIntl, normalizePhone } from "@/lib/roles";
-import { applyCatalogSpeech } from "@/lib/catalogOrderSpeech";
 import { priceCatalogOrder, type CatalogPriceRow } from "@/lib/catalogQuantities";
-import { dropItemsNamedInRemoval } from "@/lib/quoteProductClarity";
+import { assembleCapturedItems } from "@/lib/orderGrounding";
 import { ADDRESS_ASK_MESSAGE, buildCustomerMessage, createCaptureEngine, dispatchItemAlreadyShowsQty, extractCandidateItems, formatProductListConfirm, isProductListConfirmMessage, type PedidoItemInput } from "@/lib/services/captureEngine";
 import * as pedidoRepositoryV2 from "@/lib/repositories/pedidoRepositoryV2";
 import { getAdminPhone } from "@/lib/repositories/configRepository";
@@ -820,17 +819,24 @@ async function reviseFixedCatalogProductList(
   pedido: PedidoV2Record,
   full: PedidoFullRecord,
   ubicacionCoords: Coordinates | null,
-): Promise<JsonObject> {
-  await guardarMensajeChat({ telefono, texto: String(mensaje ?? ""), estado: "cliente" }).catch(() => {});
+): Promise<JsonObject | null> {
   const catalog =
     full.tienda?.tiendaId != null
       ? await pedidoRepositoryV2.getProductosTiendaActivos(full.tienda.tiendaId).catch(() => [])
       : [];
   const base = (pedido.snapshot_json.items ?? []).map((item) => ({ ...item }));
-  const spoken = applyCatalogSpeech({ base, userMessage: mensaje, catalog });
-  const items = dropItemsNamedInRemoval(spoken.applied ? spoken.items : base, mensaje);
-  const missing = spoken.applied && spoken.missing;
-  const msg = missing && spoken.reply ? spoken.reply : formatProductListConfirm(items);
+  const assembled = assembleCapturedItems({ prior: base, incoming: [], userMessage: mensaje, catalog });
+  const spoken = assembled.catalogSpeech;
+  const items = assembled.items;
+  const sameList = JSON.stringify(base) === JSON.stringify(items);
+  if (sameList && spoken?.applied !== true) return null;
+  await guardarMensajeChat({ telefono, texto: String(mensaje ?? ""), estado: "cliente" }).catch(() => {});
+  const missing = spoken?.applied === true && spoken.missing;
+  const note = spoken?.aside?.trim();
+  const msg =
+    missing && spoken?.reply
+      ? spoken.reply
+      : [note, formatProductListConfirm(items)].filter(Boolean).join("\n\n");
   const snapshot = {
     ...pedido.snapshot_json,
     items,
@@ -881,7 +887,9 @@ async function handleAwaitingProductList(
   if (replyKind === "revise") {
     const full = await pedidoRepositoryV2.getPedidoById(pedido.id).catch(() => null);
     if (full?.tienda?.usaCatalogoFijo === true) {
-      return reviseFixedCatalogProductList(telefono, mensaje, pedido, full, ubicacionCoords);
+      const revised = await reviseFixedCatalogProductList(telefono, mensaje, pedido, full, ubicacionCoords);
+      if (revised) return revised;
+      return null;
     }
   }
 

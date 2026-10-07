@@ -1,6 +1,7 @@
 import type { CatalogPriceRow } from "@/lib/catalogQuantities";
 import { applyCatalogSpeech, type CatalogSpeechResult } from "@/lib/catalogOrderSpeech";
-import { dropItemsNamedInRemoval, rewriteGrocerySlips, waiverNote } from "@/lib/quoteProductClarity";
+import { applyCustomerEdits, planCustomerEdits, wordsAreClose, type AddedLine } from "@/lib/orderEdits";
+import { dropItemsNamedInRemoval, groceryNamesClause, rewriteGrocerySlips, waiverNote } from "@/lib/quoteProductClarity";
 import type { PedidoItemInput } from "@/lib/services/captureEngine";
 
 /**
@@ -208,10 +209,256 @@ export function lineTracesToCustomer(item: PedidoItemInput, customerText: string
   });
 }
 
-export function ungroundedOrderLines(items: PedidoItemInput[], customerText: string): string[] {
+export function ungroundedOrderLines(
+  items: PedidoItemInput[],
+  customerText: string,
+  assistedNames: string[] = [],
+): string[] {
   return items
-    .filter((item) => !lineTracesToCustomer(item, customerText))
+    .filter((item) => !lineTracesToCustomer(item, customerText) && !assistedLine(item, assistedNames))
     .map((item) => item.nombre_producto);
+}
+
+function assistedLine(item: PedidoItemInput, assistedNames: string[]): boolean {
+  const hay = norm(`${item.nombre_producto} ${item.marca ?? ""}`);
+  return assistedNames.some((name) => {
+    const wanted = norm(name);
+    if (!wanted) return false;
+    if (hay.includes(wanted) || wanted.includes(norm(item.nombre_producto))) return true;
+    return wanted.split(" ").some((token) => token.length >= 5 && hay.split(" ").some((word) => word.startsWith(token.slice(0, 5)) || token.startsWith(word.slice(0, 5))));
+  });
+}
+
+const CLAUSE_SKIP = new Set([
+  "pues", "fijate", "fijese", "oye", "mira", "verdad", "entonces", "tambien", "quiero", "quiere",
+  "quisiera", "queria", "dame", "ponme", "para", "como", "esta", "este", "eso", "esa", "ese",
+  "solo", "nomas", "porfa", "favor", "gracias", "bueno", "hola", "buenas", "pero", "bien",
+  "quita", "quitar", "cambia", "cambiar", "kilo", "kilos", "medio", "media", "gramo", "gramos",
+  "peso", "pesos", "pieza", "piezas", "litro", "litros", "lata", "latas", "grande", "grandes",
+  "chica", "chico", "chicas", "mediana", "mediano", "blanca", "blanco", "morada", "morado",
+  "negra", "negro", "roja", "rojo", "faltaron", "faltan", "faltaba", "unos", "unas",
+  "entera", "enteras", "enteros", "quieres", "como", "fijate",
+]);
+
+const HARD_OFF = new Set(["sushi", "pizza", "pescado", "camaron", "camarones", "combo", "combos", "taco", "tacos", "pollo", "pollos"]);
+
+const DRINK_BRANDS = ["pepsi", "coca", "sprite", "manzana", "manzanita", "mirinda", "seven"];
+
+function menuBlob(catalog: CatalogPriceRow[]): string {
+  return norm(catalog.map((row) => row.nombreProducto).join(" "));
+}
+
+function menuHas(catalog: CatalogPriceRow[], token: string): boolean {
+  const hay = menuBlob(catalog);
+  const stem = token.length > 4 && token.endsWith("s") ? token.slice(0, -1) : token;
+  if (hay.includes(token) || (stem.length >= 4 && hay.includes(stem))) return true;
+  return hay.split(" ").some((word) => wordsAreClose(word, token) || wordsAreClose(word, stem));
+}
+
+function hardOff(token: string, catalog: CatalogPriceRow[]): boolean {
+  if (!catalog.length || !HARD_OFF.has(token)) return false;
+  return !menuHas(catalog, token);
+}
+
+function clauseTokens(clause: string): string[] {
+  return norm(rewriteGrocerySlips(clause))
+    .split(" ")
+    .filter((token) => token.length >= 4 && !CLAUSE_SKIP.has(token) && !/^\d+$/.test(token));
+}
+
+function tokenCovered(token: string, items: PedidoItemInput[]): boolean {
+  const stem = token.length > 4 && token.endsWith("s") ? token.slice(0, -1) : token;
+  const aliases = TRACE_ALIAS[token] ?? TRACE_ALIAS[stem] ?? [];
+  return items.some((item) => {
+    const hay = norm(`${item.nombre_producto} ${item.marca ?? ""}`);
+    if (hay.includes(token) || (stem.length >= 4 && hay.includes(stem))) return true;
+    if (aliases.some((alias) => hay.includes(alias))) return true;
+    return hay.split(" ").some((word) => wordsAreClose(word, token));
+  });
+}
+
+function openClauses(message: string, items: PedidoItemInput[]): string[] {
+  const plan = planCustomerEdits(message);
+  const source = plan.ops.length ? plan.remainder : norm(message);
+  if (!source.trim()) return [];
+  const open: string[] = [];
+  for (const clause of source.split(/,|\by\b|\btambien\b/)) {
+    const tokens = clauseTokens(clause);
+    if (!tokens.length) continue;
+    if (tokens.every((token) => tokenCovered(token, items))) continue;
+    open.push(clause.trim());
+  }
+  return open;
+}
+
+function fuzzyMenuRow(clause: string, catalog: CatalogPriceRow[]): CatalogPriceRow | null {
+  const tokens = clauseTokens(clause).filter((token) => token.length >= 5);
+  const hits: CatalogPriceRow[] = [];
+  for (const row of catalog) {
+    const words = norm(row.nombreProducto).split(" ").filter((word) => word.length >= 5);
+    const close = tokens.some((token) => words.some((word) => word !== token && wordsAreClose(word, token)));
+    if (close) hits.push(row);
+  }
+  const names = [...new Set(hits.map((row) => row.nombreProducto))];
+  if (names.length !== 1) return null;
+  return hits[0];
+}
+
+function asMenuItem(item: PedidoItemInput, catalog: CatalogPriceRow[]): PedidoItemInput | null {
+  if (!item.nombre_producto?.trim()) return null;
+  if (!catalog.length) return { ...item };
+  if (modifierOnlyName(item)) return null;
+  const name = norm(`${item.nombre_producto} ${item.marca ?? ""}`);
+  const row = catalog.find((candidate) => {
+    const label = norm(candidate.nombreProducto);
+    return label === norm(item.nombre_producto) || label.includes(norm(item.nombre_producto)) || norm(item.nombre_producto).includes(label);
+  });
+  if (row) return { ...item, nombre_producto: row.nombreProducto };
+  const brand = DRINK_BRANDS.find((candidate) => name.includes(candidate));
+  if (brand && (menuHas(catalog, "refresco") || menuHas(catalog, brand))) {
+    const brandRow = catalog.find((candidate) => norm(candidate.nombreProducto).includes(brand));
+    if (brandRow) return { ...item, nombre_producto: brandRow.nombreProducto };
+    return { nombre_producto: "Refresco", marca: brand === "manzanita" ? "Manzana" : titleWord(brand), cantidad: item.cantidad ?? 1 };
+  }
+  if (clauseTokens(item.nombre_producto).some((token) => menuHas(catalog, token))) return { ...item };
+  return null;
+}
+
+function titleWord(word: string): string {
+  return word.charAt(0).toUpperCase() + word.slice(1);
+}
+
+function catalogAddition(phrase: string, catalog: CatalogPriceRow[]): AddedLine {
+  const spoken = applyCatalogSpeech({ base: [], userMessage: phrase, catalog });
+  if (spoken.aside && spoken.items.length === 0) return { item: null, aside: spoken.aside };
+  if (spoken.applied && spoken.items.length === 1) return { item: spoken.items[0], aside: null };
+  if (spoken.applied && spoken.items.length > 1) {
+    return { item: null, aside: `¿Te refieres a ${spoken.items.map((item) => item.nombre_producto).join(" o a ")}?` };
+  }
+  return { item: null, aside: null };
+}
+
+function dropRefusal(aside: string | null, words: string[]): string | null {
+  if (!aside) return null;
+  let next = aside;
+  for (const word of words) {
+    const titled = titleWord(word);
+    next = next.replace(new RegExp(`\\b${titled} no lo manejamos\\.?`, "gi"), " ");
+  }
+  next = next.replace(/\s+/g, " ").trim();
+  return next || null;
+}
+
+function restatesClause(clause: string, item: PedidoItemInput): boolean {
+  const said = norm(rewriteGrocerySlips(clause));
+  return norm(`${item.nombre_producto} ${item.marca ?? ""}`)
+    .split(" ")
+    .filter((token) => token.length >= 4)
+    .some((token) => {
+      const stem = token.endsWith("s") && token.length > 4 ? token.slice(0, -1) : token;
+      return said.includes(token) || said.includes(stem);
+    });
+}
+
+function slangTokens(clause: string, items: PedidoItemInput[]): string[] {
+  return clauseTokens(clause).filter((token) => token.length >= 6 && !tokenCovered(token, items));
+}
+
+function absorbModelReading(params: {
+  items: PedidoItemInput[];
+  incoming: PedidoItemInput[];
+  prior: PedidoItemInput[];
+  userMessage: string;
+  catalog: CatalogPriceRow[];
+  aside: string | null;
+}): { items: PedidoItemInput[]; note: string | null; assistedNames: string[]; aside: string | null } {
+  const items = params.items.map((item) => ({ ...item }));
+  const open = openClauses(params.userMessage, items);
+  if (!open.length) return { items, note: null, assistedNames: [], aside: params.aside };
+
+  const soft = open.filter((clause) => !clauseTokens(clause).some((token) => hardOff(token, params.catalog)));
+  const refusedMarinade = /sin marinar/.test(norm(params.aside ?? ""));
+  const suggestions = params.incoming
+    .map((item) => asMenuItem(item, params.catalog))
+    .filter((item): item is PedidoItemInput => item != null)
+    .filter((item) => !items.some((previous) => sameLine(previous, item)))
+    .filter((item) => !params.prior.some((previous) => sameLine(previous, item)))
+    .filter((item) => !(refusedMarinade && /marinad/.test(norm(item.nombre_producto))))
+    .filter((item) => !(soft.length === 1 && restatesClause(soft[0], item)));
+  if (!soft.length || !suggestions.length) return { items, note: null, assistedNames: [], aside: params.aside };
+  if (!params.catalog.length && soft.every((clause) => groceryNamesClause(clause))) {
+    return { items, note: null, assistedNames: [], aside: params.aside };
+  }
+
+  const assistedNames: string[] = [];
+  const cleared: string[] = [];
+  let note: string | null = null;
+
+  const accept = (clause: string, item: PedidoItemInput, certain: boolean) => {
+    const next = sanitizeNewItem(item, params.userMessage);
+    if (next.cantidad == null) next.cantidad = 1;
+    items.push(next);
+    assistedNames.push(next.nombre_producto);
+    cleared.push(...clauseTokens(clause));
+    if (!certain && !lineTracesToCustomer(next, params.userMessage)) {
+      const label = [next.nombre_producto, next.marca].filter(Boolean).join(" ");
+      note = `¿Te refieres a ${label}?`;
+    }
+  };
+
+  if (soft.length === 1 && suggestions.length > 1) {
+    const labels = [...new Set(suggestions.map((item) => [item.nombre_producto, item.marca].filter(Boolean).join(" ")))];
+    return {
+      items,
+      note: `¿Te refieres a ${labels.slice(0, 3).join(" o a ")}?`,
+      assistedNames: [],
+      aside: params.aside,
+    };
+  }
+
+  if (soft.length === 1 && suggestions.length === 1) {
+    const slang = slangTokens(soft[0], items);
+    const hay = norm(`${suggestions[0].nombre_producto} ${suggestions[0].marca ?? ""}`);
+    const related = clauseTokens(soft[0]).some((token) => hay.includes(token) || hay.split(" ").some((word) => wordsAreClose(word, token)));
+    if (!related && slang.length !== 1) return { items, note: null, assistedNames: [], aside: params.aside };
+    if (!related && !params.catalog.length && groceryNamesClause(soft[0])) {
+      return { items, note: null, assistedNames: [], aside: params.aside };
+    }
+    const fuzzy = params.catalog.length ? fuzzyMenuRow(soft[0], params.catalog) : null;
+    const chosen = fuzzy ? { ...suggestions[0], nombre_producto: fuzzy.nombreProducto, marca: null } : suggestions[0];
+    accept(soft[0], chosen, fuzzy != null && lineTracesToCustomer({ nombre_producto: fuzzy.nombreProducto }, params.userMessage));
+    return { items, note, assistedNames, aside: dropRefusal(params.aside, cleared) };
+  }
+
+  const used = new Set<number>();
+  for (const clause of soft) {
+    const fuzzy = params.catalog.length ? fuzzyMenuRow(clause, params.catalog) : null;
+    if (fuzzy) {
+      accept(clause, { nombre_producto: fuzzy.nombreProducto, cantidad: 1 }, true);
+      continue;
+    }
+    let best = -1;
+    let bestScore = 0;
+    suggestions.forEach((item, index) => {
+      if (used.has(index)) return;
+      const hay = norm(`${item.nombre_producto} ${item.marca ?? ""}`);
+      const score = clauseTokens(clause).reduce((sum, token) => sum + (hay.includes(token) || hay.split(" ").some((word) => wordsAreClose(word, token)) ? 1 : 0), 0);
+      if (score > bestScore) {
+        best = index;
+        bestScore = score;
+      }
+    });
+    if (best >= 0 && (bestScore > 0 || soft.length === suggestions.length)) {
+      used.add(best);
+      accept(clause, suggestions[best], bestScore > 0 && lineTracesToCustomer(suggestions[best], params.userMessage));
+    }
+  }
+  return { items, note, assistedNames, aside: dropRefusal(params.aside, cleared) };
+}
+
+function listQuestion(note: string | null): string | null {
+  const parts = [note?.trim(), "¿Están bien estos productos?"].filter(Boolean);
+  return parts.join("\n") || null;
 }
 
 export function assembleCapturedItems(params: {
@@ -219,22 +466,89 @@ export function assembleCapturedItems(params: {
   incoming: PedidoItemInput[];
   userMessage: string;
   catalog?: CatalogPriceRow[] | null;
-}): { items: PedidoItemInput[]; catalogSpeech: CatalogSpeechResult | null } {
+}): { items: PedidoItemInput[]; catalogSpeech: CatalogSpeechResult | null; assistedNames: string[]; assistNote: string | null } {
   const message = String(params.userMessage ?? "");
   const prior = params.prior ?? [];
   const incoming = params.incoming ?? [];
   const catalog = params.catalog ?? [];
+  const plan = planCustomerEdits(message);
+
+  if (catalog.length && plan.ops.length) {
+    const structural = { ...plan, ops: plan.ops.filter((op) => op.kind !== "remove") };
+    const removals = { ...plan, ops: plan.ops.filter((op) => op.kind === "remove"), editsOnly: true, remainder: "" };
+    const edited = applyCustomerEdits({
+      prior,
+      working: prior.map((item) => ({ ...item })),
+      plan: structural,
+      catalog,
+      resolveAddition: (phrase) => catalogAddition(phrase, catalog),
+    });
+    let items = edited.items;
+    let spoken: CatalogSpeechResult | null = null;
+    if (!plan.editsOnly && plan.remainder.trim()) {
+      spoken = applyCatalogSpeech({ base: items.map((item) => ({ ...item })), userMessage: plan.remainder, catalog });
+      if (spoken.applied) items = spoken.items.map((item) => ({ ...item }));
+    }
+    if (removals.ops.length) {
+      items = applyCustomerEdits({ prior: items, working: items, plan: removals, catalog }).items;
+    }
+    items = dropItemsNamedInRemoval(items, message);
+    const asideOnly = spoken?.missing === true && spoken.aside != null && spoken.question === spoken.aside;
+    const absorbed = absorbModelReading({
+      items,
+      incoming,
+      prior,
+      userMessage: message,
+      catalog,
+      aside: [edited.note, spoken?.aside].filter(Boolean).join(" ") || null,
+    });
+    const missing = spoken?.missing === true && !(asideOnly && absorbed.aside == null && absorbed.assistedNames.length > 0);
+    const note = absorbed.note ?? (absorbed.aside?.trim() ? absorbed.aside : null);
+    return {
+      items: absorbed.items,
+      assistedNames: absorbed.assistedNames,
+      assistNote: absorbed.note,
+      catalogSpeech: {
+        applied: true,
+        missing,
+        items: absorbed.items,
+        reply: missing ? spoken?.reply ?? null : null,
+        question: missing ? spoken?.question ?? note : listQuestion(note),
+        aside: note,
+      },
+    };
+  }
 
   if (catalog.length) {
     const spoken = applyCatalogSpeech({ base: prior.map((item) => ({ ...item })), userMessage: message, catalog });
     if (spoken.applied) {
-      const items = dropItemsNamedInRemoval(spoken.items, message);
-      return { items, catalogSpeech: { ...spoken, items } };
+      const dropped = dropItemsNamedInRemoval(spoken.items, message);
+      const asideOnly = spoken.missing && spoken.aside != null && spoken.question === spoken.aside;
+      const absorbed = absorbModelReading({ items: dropped, incoming, prior, userMessage: message, catalog, aside: spoken.aside });
+      const resolved = asideOnly && absorbed.assistedNames.length > 0;
+      const missing = spoken.missing && !resolved;
+      const note = [absorbed.note, absorbed.aside].filter(Boolean).join("\n") || null;
+      return {
+        items: absorbed.items,
+        assistedNames: absorbed.assistedNames,
+        assistNote: absorbed.note,
+        catalogSpeech: {
+          ...spoken,
+          missing,
+          items: absorbed.items,
+          question: resolved || absorbed.note ? listQuestion(note) : spoken.question,
+          aside: note,
+          reply: spoken.reply,
+        },
+      };
     }
   }
 
-  return {
-    items: dropItemsNamedInRemoval(retainPriorPlusGrounded(prior, incoming, message), message),
-    catalogSpeech: null,
-  };
+  if (plan.editsOnly) {
+    return { items: prior.map((item) => ({ ...item })), catalogSpeech: null, assistedNames: [], assistNote: null };
+  }
+
+  const grounded = dropItemsNamedInRemoval(retainPriorPlusGrounded(prior, incoming, message), message);
+  const absorbed = absorbModelReading({ items: grounded, incoming, prior, userMessage: message, catalog, aside: null });
+  return { items: absorbed.items, catalogSpeech: null, assistedNames: absorbed.assistedNames, assistNote: absorbed.note };
 }

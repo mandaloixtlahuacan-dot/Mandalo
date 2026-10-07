@@ -15,6 +15,7 @@ import { mergeSnapshot, type PedidoItemInput, type PedidoSnapshot } from "../src
 import { validateCaptureForConfirmation } from "../src/lib/services/validationEngine";
 
 type StoreKind = "abarrotes" | "george" | "central";
+type ScenarioKind = "add" | "remove" | "add-one" | "qty" | "replace" | "slang" | "off-menu" | "confirm";
 
 type Step = {
   user: string;
@@ -29,11 +30,14 @@ type Step = {
   specific?: boolean;
   asks?: RegExp;
   noAsk?: boolean;
+  /** Un sí mezclado con un cambio no avanza a la ubicación. */
+  stays?: boolean;
 };
 
 type Scenario = {
   id: string;
   store: StoreKind;
+  kind?: ScenarioKind;
   catalog?: CatalogPriceRow[];
   steps: Step[];
 };
@@ -132,6 +136,7 @@ function checkStep(step: Step, items: PedidoItemInput[], ask: string | null, spe
 
 function run(scenario: Scenario, mode: "before" | "after"): string[] {
   let prior: PedidoItemInput[] = [];
+  const assisted: string[] = [];
   const errors: string[] = [];
   scenario.steps.forEach((step, index) => {
     const incoming = merged(prior, step.llm, scenario.store);
@@ -139,18 +144,20 @@ function run(scenario: Scenario, mode: "before" | "after"): string[] {
     let ask: string | null = null;
     let specific = false;
     if (scenario.store === "abarrotes") {
-      const source =
-        mode === "after"
-          ? assembleCapturedItems({ prior, incoming, userMessage: step.user }).items
-          : incoming;
+      const assembled =
+        mode === "after" ? assembleCapturedItems({ prior, incoming, userMessage: step.user }) : null;
+      const source = assembled?.items ?? incoming;
+      if (assembled) assisted.push(...assembled.assistedNames);
       const validation = quoteTurn(source, step.user);
       items = validation.validatedItems.items;
       specific = validation.validatedItems.allItemsSpecific;
-      ask = validation.issues.find((issue) => issue.customerQuestion)?.customerQuestion ?? null;
+      const question = validation.issues.find((issue) => issue.customerQuestion)?.customerQuestion ?? null;
+      ask = assembled?.assistNote ? [assembled.assistNote, question].filter(Boolean).join("\n") : question;
     } else {
       const catalog = scenario.catalog ?? (scenario.store === "central" ? central : george);
       if (mode === "after") {
         const assembled = assembleCapturedItems({ prior, incoming, userMessage: step.user, catalog });
+        assisted.push(...assembled.assistedNames);
         items = assembled.items;
         ask = assembled.catalogSpeech?.question ?? null;
         specific = assembled.catalogSpeech != null && !assembled.catalogSpeech.missing;
@@ -161,16 +168,29 @@ function run(scenario: Scenario, mode: "before" | "after"): string[] {
         specific = spoken.applied && !spoken.missing;
       }
     }
+    if (step.stays && orderingStepAfterCustomer({ step: "product_list", customerMessage: step.user, modelClaimsReady: true }) !== "stay") {
+      errors.push(`turno ${index + 1} («${step.user.slice(0, 48)}»): un sí con cambio avanzó a la ubicación`);
+    }
     const stepErrors = checkStep(step, items, ask, specific).map((error) => `turno ${index + 1} («${step.user.slice(0, 48)}»): ${error}`);
     errors.push(...stepErrors);
     prior = items;
   });
   if (mode === "after") {
     const said = scenario.steps.map((step) => step.user).join(" \n ");
-    const loose = ungroundedOrderLines(prior, said);
+    const loose = ungroundedOrderLines(prior, said, assisted);
     if (loose.length) errors.push(`sin rastro en lo que dijo el cliente: ${loose.join(", ")}`);
   }
   return errors;
+}
+
+function kindOf(scenario: Scenario): ScenarioKind {
+  if (scenario.kind) return scenario.kind;
+  const id = scenario.id;
+  if (/sushi|pollo no|combo|no lo manejamos|sin marinar/.test(id)) return "off-menu";
+  if (/quita|ya no/.test(id)) return "remove";
+  if (/typo|marinda|coquita|chesco|voz|firo|wins|slang|gringa|sabrit/.test(id)) return "slang";
+  if (/cantidad no se dobla|kilo|medio|pesos|gramos/.test(id)) return "qty";
+  return "add";
 }
 
 const scenarios: Scenario[] = [
@@ -1358,6 +1378,487 @@ const scenarios: Scenario[] = [
       },
     ],
   },
+  {
+    id: "ab-28 ya no quiero las papas",
+    store: "abarrotes",
+    kind: "remove",
+    steps: [
+      {
+        user: "un kilo de papas y un kilo de jitomate",
+        llm: [],
+        count: 2,
+        has: [/papa/i, /jitomate/i],
+      },
+      {
+        user: "ya no quiero las papas",
+        llm: [
+          { nombre_producto: "Papa", cantidad: 1, unidad: "kilo" },
+          { nombre_producto: "Jitomate", cantidad: 1 },
+        ],
+        count: 1,
+        has: [/jitomate/i],
+        absent: [/papa/i],
+        asks: /Están bien estos productos/i,
+      },
+    ],
+  },
+  {
+    id: "ab-29 otra coca suma una",
+    store: "abarrotes",
+    kind: "add-one",
+    steps: [
+      {
+        user: "una coca de 2 litros",
+        llm: [{ nombre_producto: "Coca", marca: "Coca", presentacion: "2 litros", cantidad: 1, unidad: "pieza" }],
+        has: [/coca|refresco/i],
+        qty: [{ name: /coca|refresco/i, n: 1 }],
+      },
+      {
+        user: "agrégale otro refresco",
+        llm: [{ nombre_producto: "Coca", marca: "Coca", presentacion: "2 litros", cantidad: 1, unidad: "pieza" }],
+        count: 1,
+        qty: [{ name: /coca|refresco/i, n: 2 }],
+        asks: /Están bien estos productos/i,
+      },
+      {
+        user: "y una más",
+        llm: [],
+        qty: [{ name: /coca|refresco/i, n: 3 }],
+        asks: /Están bien estos productos/i,
+      },
+    ],
+  },
+  {
+    id: "ab-30 que sean 3 cocas",
+    store: "abarrotes",
+    kind: "qty",
+    steps: [
+      {
+        user: "una coca de 2 litros",
+        llm: [{ nombre_producto: "Coca", marca: "Coca", presentacion: "2 litros", cantidad: 1, unidad: "pieza" }],
+        qty: [{ name: /coca|refresco/i, n: 1 }],
+      },
+      {
+        user: "que sean 3",
+        llm: [{ nombre_producto: "Coca", cantidad: 1 }],
+        count: 1,
+        qty: [{ name: /coca|refresco/i, n: 3 }],
+        asks: /Están bien estos productos/i,
+      },
+    ],
+  },
+  {
+    id: "ab-31 cámbiame la pepsi por manzanita",
+    store: "abarrotes",
+    kind: "replace",
+    steps: [
+      {
+        user: "una pepsi de lata",
+        llm: [{ nombre_producto: "Pepsi", marca: "Pepsi", presentacion: "lata", cantidad: 1, unidad: "pieza" }],
+        has: [/pepsi|refresco/i],
+      },
+      {
+        user: "cámbiame la Pepsi por manzanita",
+        llm: [
+          { nombre_producto: "Pepsi", marca: "Pepsi", cantidad: 1 },
+          { nombre_producto: "Manzanita", marca: "Manzanita", cantidad: 1 },
+        ],
+        count: 1,
+        has: [/manzanita|manzana/i],
+        absent: [/pepsi/i],
+        asks: /Están bien estos productos/i,
+      },
+    ],
+  },
+  {
+    id: "ab-32 varios cambios y un sí que no cierra",
+    store: "abarrotes",
+    kind: "confirm",
+    steps: [
+      {
+        user: "una coca de 2 litros y unas papas sabritas",
+        llm: [],
+        has: [/coca|refresco/i, /papa|sabrita/i],
+      },
+      {
+        user: "sí, pero quita las papas",
+        llm: [],
+        stays: true,
+        has: [/coca|refresco/i],
+        absent: [/papa|sabrita/i],
+        asks: /Están bien estos productos/i,
+      },
+      {
+        user: "otra coca",
+        llm: [],
+        stays: true,
+        qty: [{ name: /coca|refresco/i, n: 2 }],
+      },
+    ],
+  },
+  {
+    id: "ab-33 sabritón lo propone el modelo",
+    store: "abarrotes",
+    kind: "slang",
+    steps: [
+      {
+        user: "un sabriton",
+        llm: [{ nombre_producto: "Sabritas", marca: "Sabritas", cantidad: 1 }],
+        has: [/sabrita/i],
+        absent: [/coca/i],
+        asks: /Te refieres a/i,
+      },
+    ],
+  },
+  {
+    id: "ab-34 y una más no adivina si hay dos",
+    store: "abarrotes",
+    kind: "add-one",
+    steps: [
+      {
+        user: "una coca de 2 litros y una pepsi de lata",
+        llm: [],
+        count: 2,
+      },
+      {
+        user: "y una más",
+        llm: [],
+        count: 2,
+        qty: [
+          { name: /coca/i, n: 1 },
+          { name: /pepsi/i, n: 1 },
+        ],
+        asks: /Una más de cuál/i,
+      },
+    ],
+  },
+  {
+    id: "ge-21 quita las papas",
+    store: "george",
+    kind: "remove",
+    steps: [
+      {
+        user: "una hawaiana y unas papas gajo",
+        llm: [],
+        count: 2,
+      },
+      {
+        user: "quita las papas",
+        llm: [
+          { nombre_producto: "Hamburguesa Hawaiana", cantidad: 1 },
+          { nombre_producto: "Papas Gajo", cantidad: 1 },
+        ],
+        count: 1,
+        has: [/hawaiana/i],
+        absent: [/papa/i],
+        asks: /Están bien estos productos/i,
+      },
+    ],
+  },
+  {
+    id: "ge-22 otra coca y una más",
+    store: "george",
+    kind: "add-one",
+    catalog: george85,
+    steps: [
+      {
+        user: "una hamburguesa de res chica y una pepsi",
+        llm: [],
+        count: 2,
+        qty: [{ name: /pepsi/i, n: 1 }],
+      },
+      {
+        user: "otra pepsi",
+        llm: [],
+        qty: [{ name: /pepsi/i, n: 2 }],
+        asks: /Están bien estos productos/i,
+      },
+      {
+        user: "y una más",
+        llm: [],
+        asks: /Una más de cuál/i,
+        qty: [
+          { name: /res/i, n: 1 },
+          { name: /pepsi/i, n: 2 },
+        ],
+      },
+    ],
+  },
+  {
+    id: "ge-23 que sean 3 y cámbiamela a grande",
+    store: "george",
+    kind: "qty",
+    steps: [
+      {
+        user: "una mar y tierra chica",
+        llm: [],
+        has: [/mar y tierra chica/i],
+        qty: [{ name: /mar y tierra/i, n: 1 }],
+      },
+      {
+        user: "que sean 3",
+        llm: [{ nombre_producto: "Hamburguesa Mar y Tierra Chica", cantidad: 1 }],
+        qty: [{ name: /mar y tierra/i, n: 3 }],
+        asks: /Están bien estos productos/i,
+      },
+      {
+        user: "cambiala a grande",
+        llm: [],
+        has: [/mar y tierra grande/i],
+        absent: [/chica/i],
+        qty: [{ name: /mar y tierra/i, n: 3 }],
+        asks: /Están bien estos productos/i,
+      },
+    ],
+  },
+  {
+    id: "ge-24 cámbiame la pepsi por manzanita",
+    store: "george",
+    kind: "replace",
+    catalog: george85,
+    steps: [
+      {
+        user: "una pepsi y unas papas gajo",
+        llm: [],
+        count: 2,
+        has: [/pepsi/i, /papa/i],
+      },
+      {
+        user: "cámbiame la Pepsi por manzanita",
+        llm: [
+          { nombre_producto: "Pepsi", cantidad: 1 },
+          { nombre_producto: "Manzana", cantidad: 1 },
+        ],
+        count: 2,
+        has: [/manzana/i, /papa/i],
+        absent: [/pepsi/i],
+        asks: /Están bien estos productos/i,
+      },
+    ],
+  },
+  {
+    id: "ge-25 sí pero quita, y luego otra",
+    store: "george",
+    kind: "confirm",
+    steps: [
+      {
+        user: "una hawaiana y una cubana",
+        llm: [],
+        count: 2,
+      },
+      {
+        user: "sí, pero quita la cubana",
+        llm: [],
+        stays: true,
+        count: 1,
+        has: [/hawaiana/i],
+        absent: [/cubana/i],
+        asks: /Están bien estos productos/i,
+      },
+      {
+        user: "agrega un dogo clásico",
+        llm: [{ nombre_producto: "Hamburguesa Hawaiana", cantidad: 1 }],
+        count: 2,
+        has: [/hawaiana/i, /dogo cl[aá]sico/i],
+      },
+    ],
+  },
+  {
+    id: "ge-26 la gringa la encuentra el modelo",
+    store: "george",
+    kind: "slang",
+    steps: [
+      {
+        user: "la gringa",
+        llm: [{ nombre_producto: "Hamburguesa Hawaiana", cantidad: 1 }],
+        count: 1,
+        has: [/hawaiana/i],
+        absent: [/gringa/i],
+        asks: /Te refieres a Hamburguesa Hawaiana/i,
+      },
+    ],
+  },
+  {
+    id: "ge-27 chesco no se vuelve pepsi en silencio",
+    store: "george",
+    kind: "slang",
+    catalog: george85,
+    steps: [
+      {
+        user: "un chesco",
+        llm: [{ nombre_producto: "Pepsi", cantidad: 1 }],
+        has: [/pepsi/i],
+        asks: /Te refieres a/i,
+      },
+    ],
+  },
+  {
+    id: "ge-28 sushi no se cambia por otra cosa",
+    store: "george",
+    kind: "off-menu",
+    steps: [
+      {
+        user: "un sushi",
+        llm: [{ nombre_producto: "Salchi locos", cantidad: 1 }],
+        count: 0,
+        absent: [/salchi|sushi/i],
+        asks: /no lo manejamos/i,
+      },
+    ],
+  },
+  {
+    id: "ce-21 ya no quiero el chorizo",
+    store: "central",
+    kind: "remove",
+    steps: [
+      {
+        user: "un kilo de chorizo y un diezmillo",
+        llm: [],
+        count: 2,
+      },
+      {
+        user: "ya no quiero el chorizo",
+        llm: [
+          { nombre_producto: "Chorizo", cantidad: 1, unidad: "kilo" },
+          { nombre_producto: "Diezmillo", cantidad: 1 },
+        ],
+        count: 1,
+        has: [/diezmillo/i],
+        absent: [/chorizo/i],
+        asks: /Están bien estos productos/i,
+      },
+    ],
+  },
+  {
+    id: "ce-22 agrégale otro chorizo",
+    store: "central",
+    kind: "add-one",
+    steps: [
+      {
+        user: "un kilo de chorizo",
+        llm: [],
+        qty: [{ name: /chorizo/i, n: 1 }],
+        unit: [{ name: /chorizo/i, u: "kilo" }],
+      },
+      {
+        user: "agrégale otro chorizo",
+        llm: [{ nombre_producto: "Chorizo", cantidad: 1, unidad: "kilo" }],
+        count: 1,
+        qty: [{ name: /chorizo/i, n: 2 }],
+        asks: /Están bien estos productos/i,
+      },
+      {
+        user: "y una más",
+        llm: [],
+        qty: [{ name: /chorizo/i, n: 3 }],
+      },
+    ],
+  },
+  {
+    id: "ce-23 que sean 2 kilos",
+    store: "central",
+    kind: "qty",
+    steps: [
+      {
+        user: "un kilo de bistec de res",
+        llm: [],
+        qty: [{ name: /bistec de res/i, n: 1 }],
+      },
+      {
+        user: "que sean 2 kilos",
+        llm: [{ nombre_producto: "Bistec de res", cantidad: 1 }],
+        qty: [{ name: /bistec de res/i, n: 2 }],
+        unit: [{ name: /bistec de res/i, u: "kilo" }],
+        asks: /Están bien estos productos/i,
+      },
+    ],
+  },
+  {
+    id: "ce-24 cámbiame el chorizo por diezmillo",
+    store: "central",
+    kind: "replace",
+    steps: [
+      {
+        user: "un kilo de chorizo y una salsa bbq",
+        llm: [],
+        count: 2,
+        has: [/chorizo/i, /bbq|salsa/i],
+      },
+      {
+        user: "cámbiame el chorizo por diezmillo",
+        llm: [
+          { nombre_producto: "Chorizo", cantidad: 1 },
+          { nombre_producto: "Diezmillo", cantidad: 1 },
+        ],
+        count: 2,
+        has: [/diezmillo/i, /bbq|salsa/i],
+        absent: [/chorizo/i],
+        asks: /Están bien estos productos/i,
+      },
+    ],
+  },
+  {
+    id: "ce-25 sí pero quita y luego suma",
+    store: "central",
+    kind: "confirm",
+    steps: [
+      {
+        user: "un diezmillo y un chorizo",
+        llm: [],
+        count: 2,
+      },
+      {
+        user: "sí, pero quita el chorizo",
+        llm: [],
+        stays: true,
+        count: 1,
+        has: [/diezmillo/i],
+        absent: [/chorizo/i],
+      },
+      {
+        user: "agrega carbón fino",
+        llm: [],
+        count: 2,
+        has: [/diezmillo/i, /carb[oó]n fino/i],
+      },
+    ],
+  },
+  {
+    id: "ce-26 pollo no se sustituye por pulpa",
+    store: "central",
+    kind: "off-menu",
+    steps: [
+      {
+        user: "un pollo",
+        llm: [{ nombre_producto: "Pulpa de puerco", cantidad: 1 }],
+        count: 0,
+        absent: [/pulpa|pollo/i],
+        asks: /no lo manejamos/i,
+      },
+    ],
+  },
+  {
+    id: "ce-27 y una más con dos carnes pregunta cuál",
+    store: "central",
+    kind: "add-one",
+    steps: [
+      {
+        user: "un chorizo y un diezmillo",
+        llm: [],
+        count: 2,
+      },
+      {
+        user: "y una más",
+        llm: [],
+        count: 2,
+        qty: [
+          { name: /chorizo/i, n: 1 },
+          { name: /diezmillo/i, n: 1 },
+        ],
+        asks: /Una más de cuál/i,
+      },
+    ],
+  },
 ];
 
 function tally(mode: "before" | "after") {
@@ -1367,17 +1868,32 @@ function tally(mode: "before" | "after") {
     george: { passed: 0, total: 0 },
     central: { passed: 0, total: 0 },
   };
+  const byKind: Record<ScenarioKind, { passed: number; total: number }> = {
+    add: { passed: 0, total: 0 },
+    remove: { passed: 0, total: 0 },
+    "add-one": { passed: 0, total: 0 },
+    qty: { passed: 0, total: 0 },
+    replace: { passed: 0, total: 0 },
+    slang: { passed: 0, total: 0 },
+    "off-menu": { passed: 0, total: 0 },
+    confirm: { passed: 0, total: 0 },
+  };
   for (const scenario of scenarios) {
     byStore[scenario.store].total += 1;
+    byKind[kindOf(scenario)].total += 1;
     const errors = run(scenario, mode);
     if (errors.length) failed.push({ id: scenario.id, errors });
-    else byStore[scenario.store].passed += 1;
+    else {
+      byStore[scenario.store].passed += 1;
+      byKind[kindOf(scenario)].passed += 1;
+    }
   }
   return {
     total: scenarios.length,
     passed: scenarios.length - failed.length,
     failed,
     byStore,
+    byKind,
   };
 }
 
@@ -1405,6 +1921,12 @@ console.log(`Después (anclado a lo dicho): ${after.passed}/${after.total}`);
 console.log(
   `  abarrotes ${after.byStore.abarrotes.passed}/${after.byStore.abarrotes.total}, George ${after.byStore.george.passed}/${after.byStore.george.total}, La Central ${after.byStore.central.passed}/${after.byStore.central.total}`,
 );
+const kindLine = (mode: typeof before) =>
+  (Object.keys(mode.byKind) as ScenarioKind[])
+    .map((kind) => `${kind} ${mode.byKind[kind].passed}/${mode.byKind[kind].total}`)
+    .join(", ");
+console.log(`Antes por tipo: ${kindLine(before)}`);
+console.log(`Después por tipo: ${kindLine(after)}`);
 
 if (after.failed.length) {
   for (const fail of after.failed) {
@@ -1414,7 +1936,19 @@ if (after.failed.length) {
   process.exit(1);
 }
 
-const ambiguous = ["ok pero cambia la coca", "ajá", "👍", "¿sí?", "quiero saber si tienen coca", "ok, y también un dogo"];
+const ambiguous = [
+  "ok pero cambia la coca",
+  "ajá",
+  "👍",
+  "¿sí?",
+  "quiero saber si tienen coca",
+  "ok, y también un dogo",
+  "sí, pero quita el chorizo",
+  "sí pero agrégale otra coca",
+  "ok y una más",
+  "sí, cámbiame la pepsi por manzanita",
+  "que sean 3",
+];
 for (const message of ambiguous) {
   if (isYesConfirmation(message)) throw new Error(`"${message}" se tomó como sí`);
   if (orderingStepAfterCustomer({ step: "product_list", customerMessage: message, modelClaimsReady: true }) !== "stay") {
