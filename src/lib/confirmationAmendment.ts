@@ -1,8 +1,7 @@
-import { applyCatalogSpeech } from "@/lib/catalogOrderSpeech";
 import type { CatalogPriceRow } from "@/lib/catalogQuantities";
+import { assembleCapturedItems } from "@/lib/orderGrounding";
 import { formatPreConfirmFeeNote } from "@/lib/customerUx";
 import { isBareOrderRejection, isCancelIntent, isNewOrderIntent, isYesConfirmation } from "@/lib/messages";
-import { dropItemsNamedInRemoval } from "@/lib/quoteProductClarity";
 import { formatItems, type PedidoItemInput, type PedidoSnapshot } from "@/lib/services/captureEngine";
 import { resolveMapsLink } from "@/lib/services/geo";
 import { validateCaptureForConfirmation } from "@/lib/services/validationEngine";
@@ -86,14 +85,16 @@ export function planConfirmationAmendment(params: {
     let missing = false;
     let question: string | null = null;
     if (params.catalog?.length) {
-      const spoken = applyCatalogSpeech({ base: items, userMessage: message, catalog: params.catalog });
-      if (spoken.applied) {
-        items = spoken.items;
-        missing = spoken.missing;
-        question = spoken.question;
-      }
+      const assembled = assembleCapturedItems({
+        prior: items,
+        incoming: [],
+        userMessage: message,
+        catalog: params.catalog,
+      });
+      items = assembled.items;
+      missing = assembled.catalogSpeech?.missing === true;
+      question = assembled.catalogSpeech?.question ?? null;
     }
-    items = dropItemsNamedInRemoval(items, message);
     if (itemSignature(items) === itemSignature(current)) return { kind: "keep" };
     const readyForConfirmation = !missing && items.length > 0 && placeReady;
     return {

@@ -1,3 +1,5 @@
+import { isProductListRequest, isYesConfirmation } from "@/lib/messages";
+import { applyCustomerEdits, planCustomerEdits, wordsAreClose, type AddedLine } from "@/lib/orderEdits";
 import type { PedidoItemInput } from "@/lib/services/captureEngine";
 
 /**
@@ -83,6 +85,8 @@ const STOP = new Set([
   "ejote", "ejotes",   "nopal", "nopales", "sandia", "melon", "pina",
   "azucar", "horchata", "jamaica", "tamarindo", "tank", "tanks", "tanque", "tanques",
   "quieres",
+  "pues", "fijate", "fijese", "oye", "mira", "verdad", "veras", "anda",
+  "enteras", "enteros", "leches",
   "mango", "mangos", "papaya", "papayas", "cebollin", "rabano",
   "betabel", "camote", "camotes", "jicama", "apio", "espinaca",
   "verduraga", "verdolaga", "epazote", "hierbabuena", "guayaba",
@@ -242,7 +246,7 @@ function lecheTipo(blob: string): string | null {
   if (/\borganica\b/.test(blob)) return "orgánica";
   if (/\b(chocolate|chocolatada)\b/.test(blob)) return "chocolate";
   if (/\bfresa\b/.test(blob)) return "fresa";
-  if (/\bentera\b/.test(blob)) return "entera";
+  if (/\benteras?\b/.test(blob)) return "entera";
   return null;
 }
 
@@ -263,6 +267,9 @@ function litrosPhrase(blob: string): string | null {
   if (ml) return `${ml[1]} ml`;
   const withQty = blob.match(new RegExp(`\\b(${LITER_QTY})\\s*(?:${LITER_UNIT})\\b`));
   if (withQty) return literPhraseFromQty(wordToQty(withQty[1]));
+  // "dos leches … de litro": el número va en el producto, no pegado a la unidad.
+  const counted = blob.match(/\b(dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|\d+)\s+\w*leches?\b/);
+  if (counted && /\blitro\b/.test(blob)) return literPhraseFromQty(wordToQty(counted[1]));
   if (/\blitros?\b/.test(blob)) return "1 litro";
   if (/^(?:de\s+)?(?:l|lt|lts)$/.test(blob)) return "1 litro";
   return null;
@@ -1076,8 +1083,14 @@ function categoryRejected(category: Category, blob: string): boolean {
 
 // "arroz higiénico" junto, en la misma frase, es papel higiénico mal dicho.
 // "un kilo de arroz y un paquete de papel" no entra: ahí hay dos productos.
-function rewriteGrocerySlips(message: string): string {
-  return message.replace(/\barroz\s+higi[eé]nicos?\b/gi, "papel higiénico");
+export function rewriteGrocerySlips(message: string): string {
+  return message
+    .replace(/\barroz\s+higi[eé]nicos?\b/gi, "papel higiénico")
+    .replace(/\bcoquitas?\b/gi, "coca")
+    .replace(/\bchescos?\b/gi, "refresco")
+    .replace(/\bpapel de ba[nñ]o\b/gi, "papel higiénico")
+    .replace(/\btortillinas?\b/gi, "tortillas")
+    .replace(/\bsabritas?\b/gi, "papas sabritas");
 }
 
 const BRAND_HINTS: Array<{ re: RegExp; id: string }> = [
@@ -1493,7 +1506,13 @@ function windowLabel(category: Category, text: string): string {
 function shelfName(category: Category, currentName: string | null | undefined, label: string): string {
   if (category.id.startsWith("otro:") || category.id === "verdura") return clean(currentName) || label;
   const current = clean(currentName);
-  if (current && category.match.test(norm(current))) return current;
+  if (current && category.match.test(norm(current))) {
+    const tokens = norm(current).split(" ").filter(Boolean);
+    // "Papas" por kilo es la papa suelta. El plural solo se queda pidiendo
+    // marca, como si fueran de bolsa. Un nombre más largo se conserva.
+    if (category.kind === "produce" && tokens.length === 1) return category.label?.(norm(current)) ?? category.nombre;
+    return current;
+  }
   return label;
 }
 
@@ -1617,7 +1636,10 @@ function categoryNouns(): Set<string> {
   const nouns = new Set<string>();
   for (const category of CATEGORIES) {
     for (const token of norm(category.nombre).split(" ")) {
-      if (token.length >= 4) nouns.add(token);
+      if (token.length >= 4) {
+        nouns.add(token);
+        if (!token.endsWith("s")) nouns.add(`${token}s`);
+      }
     }
   }
   return nouns;
@@ -2111,6 +2133,10 @@ function pickDetailIndex(items: PedidoItemInput[], message: string, ignore: Set<
   return first;
 }
 
+export function groceryNamesClause(clause: string): boolean {
+  return windowsFor(clause).length > 0;
+}
+
 export function prepareQuoteItems(
   items: PedidoItemInput[],
   userMessage?: string | null,
@@ -2118,7 +2144,18 @@ export function prepareQuoteItems(
 ): PedidoItemInput[] {
   const ignore = ignoreSet(ignoreText);
   let next = tidyQuoteLines(items.map((item) => withoutIntentBrand({ ...item })));
-  const message = String(userMessage ?? "").trim();
+  const message = rewriteGrocerySlips(String(userMessage ?? "").trim());
+  const editPlan = planCustomerEdits(message);
+  if (editPlan.editsOnly) {
+    return tidyQuoteLines(
+      applyCustomerEdits({
+        prior: items.map((item) => ({ ...item })),
+        working: next,
+        plan: editPlan,
+        resolveAddition: groceryAddition,
+      }).items,
+    );
+  }
   const opened = stripAddLead(message);
   const visible = opened ? stripClauses(opened, next) : "";
   const windows = visible ? windowsFor(visible) : [];
@@ -2172,7 +2209,70 @@ export function prepareQuoteItems(
   next = tidyQuoteLines(next.map((item) => scrubItem(item, ignore)));
   next = dropItemsNamedInRemoval(next, message);
   next = renameNegated(next, message);
+  next = keepSpokenMentions(next, message);
+  const plan = planCustomerEdits(message);
+  if (plan.ops.length) {
+    next = applyCustomerEdits({
+      prior: items.map((item) => ({ ...item })),
+      working: next,
+      plan,
+      resolveAddition: groceryAddition,
+    }).items;
+  }
   return tidyQuoteLines(next);
+}
+
+function groceryAddition(phrase: string): AddedLine {
+  const windows = windowsFor(phrase);
+  if (windows.length === 1) {
+    const window = windows[0];
+    const label = windowLabel(window.category, window.text);
+    const named = { nombre_producto: shelfName(window.category, label, label) };
+    return { item: applyDetail(named, window.text, new Set(), false), aside: null };
+  }
+  const tokens = norm(phrase)
+    .split(" ")
+    .filter((token) => token.length >= 3 && !STOP.has(token));
+  if (!tokens.length) return { item: null, aside: null };
+  return {
+    item: { nombre_producto: tokens.map((token) => token.charAt(0).toUpperCase() + token.slice(1)).join(" "), cantidad: 1 },
+    aside: null,
+  };
+}
+
+const MENTION_NOISE = new Set([
+  "pues", "fijate", "fijese", "oye", "mira", "verdad", "entonces", "tambien",
+  "quiero", "quieres", "quisiera", "medio", "media", "kilo", "kilos", "litro", "litros",
+  "gramo", "gramos", "blanca", "blanco", "morada", "morado", "entera", "enteras",
+  "deslactosada", "grande", "chica", "chico", "mediana", "paquete", "paquetes",
+  "caja", "cajas", "bolsa", "bolsas", "pieza", "piezas", "rollo", "rollos",
+  "misma", "mismo", "gracias", "correcto", "listo",
+]);
+
+function keepSpokenMentions(items: PedidoItemInput[], message: string): PedidoItemInput[] {
+  if (!message.trim() || looksLikeAddress(message) || isYesConfirmation(message) || isProductListRequest(message)) return items;
+  const scan = message
+    .replace(/\bno (?:era|es|son|eran)\b[^,.]*/gi, " ")
+    .replace(/\b(?:quita(?:me|le|lo|r)?|quitar)\b[^,.]*/gi, " ");
+  const next = items.map((item) => ({ ...item }));
+  for (const clause of scan.split(/,|\by\b|\btambien\b/i)) {
+    const tokens = norm(clause)
+      .split(" ")
+      .filter((token) => token.length >= 6 && !STOP.has(token) && !MENTION_NOISE.has(token) && !/^\d+$/.test(token));
+    if (!tokens.length) continue;
+    const covered = next.some((item) => {
+      const blob = norm(`${item.nombre_producto} ${item.marca ?? ""} ${item.presentacion ?? ""}`);
+      return tokens.some((token) => {
+        const stem = token.endsWith("s") && token.length > 4 ? token.slice(0, -1) : token;
+        if (blob.includes(token) || blob.includes(stem)) return true;
+        return blob.split(" ").some((word) => wordsAreClose(word, token) || wordsAreClose(word, stem));
+      });
+    });
+    if (covered) continue;
+    const label = tokens.map((token) => token.charAt(0).toUpperCase() + token.slice(1)).join(" ");
+    next.push({ nombre_producto: label });
+  }
+  return next;
 }
 
 export function quoteQuestionForItems(items: PedidoItemInput[]): string | null {

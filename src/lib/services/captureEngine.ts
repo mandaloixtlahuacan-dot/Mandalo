@@ -1,7 +1,7 @@
 import { formatPreConfirmFeeNote } from "@/lib/customerUx";
 import { messageCorrectsOrder } from "@/lib/messages";
-import { reconcileCatalogQuantities, type CatalogPriceRow } from "@/lib/catalogQuantities";
-import { applyCatalogSpeech } from "@/lib/catalogOrderSpeech";
+import type { CatalogPriceRow } from "@/lib/catalogQuantities";
+import { assembleCapturedItems } from "@/lib/orderGrounding";
 import type { OrderState } from "@/lib/orderStateMachine";
 import { normalizePhone } from "@/lib/roles";
 import { resolveMapsLink } from "@/lib/services/geo";
@@ -127,6 +127,9 @@ export type CaptureInput = {
   // Menú real de la tienda de precios fijos. Sirve para no anotar un tamaño
   // que el cliente no dijo y para sumar lo que sí nombró.
   catalog?: CatalogPriceRow[] | null;
+  // Pin real de WhatsApp en este turno. Las coordenadas que invente el modelo
+  // no cuentan como ubicación.
+  pinnedLocation?: { latitude: number; longitude: number } | null;
 };
 
 export type CaptureOutput = {
@@ -341,6 +344,7 @@ export function mergeSnapshot(params: {
   forceBusiness?: boolean;
   forceReplaceItems?: boolean;
   clearBusiness?: boolean;
+  pinnedLocation?: { latitude: number; longitude: number } | null;
 }): PedidoSnapshot {
   const current = params.currentSnapshot ?? {};
   const llm = asObject(params.llmOrderState);
@@ -367,8 +371,9 @@ export function mergeSnapshot(params: {
   // dirección de texto anterior — son la fuente de verdad más precisa
   // (Regla de oro #1). Una vez fijadas, se conservan aunque el turno
   // siguiente no las repita (no vienen en cada mensaje).
-  const latitud = toNullableNumber(llm.latitud ?? llm.latitude) ?? current.latitud ?? null;
-  const longitud = toNullableNumber(llm.longitud ?? llm.longitude) ?? current.longitud ?? null;
+  const pin = params.pinnedLocation;
+  const latitud = pin ? pin.latitude : (current.latitud ?? null);
+  const longitud = pin ? pin.longitude : (current.longitud ?? null);
 
   const addressText =
     latitud != null && longitud != null
@@ -605,24 +610,23 @@ export function createCaptureEngine(deps: CaptureEngineDeps) {
         forceBusiness: input.forceBusiness === true,
         forceReplaceItems: input.forceReplaceItems === true,
         clearBusiness: input.clearBusiness === true,
+        pinnedLocation: input.pinnedLocation ?? null,
       });
 
-      // En menú fijo la IA a veces reenvía el producto sin cantidad (o en 1)
-      // cuando el cliente manda la ubicación o agrega otro. La cantidad dicha
-      // y la que ya estaba anotada se conservan. Las tiendas que cotizan no
-      // pasan por aquí: ahí "cuántos" sigue siendo una pregunta.
-      const reconciledItems = input.quoteStore
-        ? mergedSnapshot.items ?? []
-        : reconcileCatalogQuantities(priorSnapshot?.items ?? [], mergedSnapshot.items ?? [], input.userMessage);
-      const spoken =
-        !input.quoteStore && input.catalog?.length
-          ? applyCatalogSpeech({
-              base: reconciledItems,
-              userMessage: input.userMessage,
-              catalog: input.catalog,
-            })
-          : null;
-      const itemsForValidation = spoken?.applied ? spoken.items : reconciledItems;
+      // La lista anterior manda. Lo que el modelo agregue entra solo si el
+      // cliente lo dijo en este mensaje (o, en menú fijo, si el catálogo lo
+      // reconoce en esas palabras). Cambiar de tienda sí reemplaza la lista.
+      const priorItems =
+        input.forceReplaceItems === true || input.clearBusiness === true ? [] : (priorSnapshot?.items ?? []);
+      const assembled = assembleCapturedItems({
+        prior: priorItems,
+        incoming: mergedSnapshot.items ?? [],
+        userMessage: input.userMessage ?? "",
+        catalog: input.quoteStore ? undefined : input.catalog,
+      });
+      const spoken = assembled.catalogSpeech;
+      const assistNote = assembled.assistNote;
+      const itemsForValidation = assembled.items;
       const revisesProducts = messageCorrectsOrder(input.userMessage);
       const productsWereConfirmed = mergedSnapshot.flags?.productosConfirmados === true;
       const noAddressYet =
@@ -655,12 +659,13 @@ export function createCaptureEngine(deps: CaptureEngineDeps) {
         if (!validation.readyForConfirmation && spoken.reply) {
           const productsConfirmed = !mustReconfirm && mergedSnapshot.flags?.productosConfirmados === true;
           const needsAddress = !spoken.missing && !validation.validatedAddress?.isValid;
+          const note = spoken.aside?.trim() ? `${spoken.aside.trim()}\n\n` : "";
           const reply =
             needsAddress && productsConfirmed
-              ? `${spoken.reply}\n\n${ADDRESS_ASK_MESSAGE}`
-              : needsAddress
-                ? formatProductListConfirm(spoken.items)
-                : spoken.reply;
+              ? `${note}${spoken.reply}\n\n${ADDRESS_ASK_MESSAGE}`
+              : needsAddress && !spoken.missing
+                ? `${note}${formatProductListConfirm(spoken.items)}`
+                : `${note}${spoken.reply ?? ""}`;
           if (needsAddress && !productsConfirmed) {
             for (const issue of validation.issues) {
               if (isProductListConfirmMessage(issue.customerQuestion ?? "")) issue.customerQuestion = undefined;
@@ -686,6 +691,20 @@ export function createCaptureEngine(deps: CaptureEngineDeps) {
           if (!validation.missingFields.includes("especificacion_producto")) {
             validation.missingFields.push("especificacion_producto");
           }
+        }
+      }
+
+      if (assistNote && !spoken?.question?.includes("Te refieres")) {
+        const issue = validation.issues.find((row) => row.customerQuestion);
+        if (issue?.customerQuestion && !issue.customerQuestion.includes("Te refieres")) {
+          issue.customerQuestion = `${assistNote}\n\n${issue.customerQuestion}`;
+        } else if (!issue) {
+          validation.issues.push({
+            code: "GENERIC_ITEM_NEEDS_SPEC",
+            field: "especificacion_producto",
+            message: "El modelo propuso un producto y hay que confirmarlo.",
+            customerQuestion: `${assistNote}\n\n${formatProductListConfirm(validation.validatedItems.items)}`,
+          });
         }
       }
 

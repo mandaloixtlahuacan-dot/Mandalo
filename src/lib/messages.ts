@@ -191,11 +191,16 @@ const ORDER_CHANGE_REGEX =
 const ADD_PRODUCT_REGEX =
   /\b(falto\w*|faltaron|faltan|faltaba|faltaban|agrega\w*|anade\w*|anadir|tambien quiero|solamente te)\b|\b(?:te|me|le|nos|les) falta\w*/;
 
+// Sumar una pieza, cambiar la cantidad o decir «ya no quiero este» también
+// corrige la lista. «Otra vez la lista» no entra: «otra» no va seguida de «vez».
+const LIST_EDIT_REGEX =
+  /\botr[oa]s?\b(?!\s+vez)|\b(?:una|otro|otra)\s+mas\b|\bagregale\b|\bponle\b|\bsumale\b|\bya no quiero\b|\bque sean\b|\bmejor sean\b|\bdejalo en\b|\bdejala en\b/;
+
 export function messageCorrectsOrder(text: string): boolean {
   const raw = String(text ?? "").trim();
   if (!raw) return false;
   const normalized = normalizeMessageIntentText(raw);
-  return ORDER_CHANGE_REGEX.test(normalized) || ADD_PRODUCT_REGEX.test(normalized);
+  return ORDER_CHANGE_REGEX.test(normalized) || ADD_PRODUCT_REGEX.test(normalized) || LIST_EDIT_REGEX.test(normalized);
 }
 
 // "pásame la lista" / "otra vez la lista" pide el mandado anotado, no el menú
@@ -235,9 +240,35 @@ export function isYesConfirmation(text: string): boolean {
   if (/[?¿]/.test(raw) || QUESTION_WORDS_REGEX.test(raw)) return false;
   if (messageCorrectsOrder(raw)) return false;
 
-  return /\b(si|sí|ok|va|confirmo|confirmar|dale|de acuerdo|visto bueno)\b/i.test(
-    normalizeMessageIntentText(raw),
-  );
+  // Un emoji solo, o un "ajá", no es el sí. Tampoco una frase que de paso
+  // traiga "si" ("quiero saber si tienen coca"). Tiene que ser la aceptación
+  // completa: sí, ok, va, confirmo, dale, de acuerdo, visto bueno.
+  const stripped = raw.replace(/\p{Extended_Pictographic}/gu, " ").replace(/[¡!.,]+/g, " ").trim();
+  if (!stripped) return false;
+  const core = normalizeMessageIntentText(stripped)
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\b(por favor|porfa|gracias)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return /^(si|ok|va|confirmo|confirmar|dale|de acuerdo|visto bueno)$/.test(core);
+}
+
+export type OrderingGateStep = "product_list" | "final_ticket";
+
+/**
+ * El texto del modelo no mueve el pedido. Solo un sí limpio del cliente
+ * pasa de la lista a la ubicación, o del ticket a la tienda.
+ * `modelClaimsReady` se ignora a propósito: si el modelo dice que ya quedó,
+ * esta función sigue mirando el mensaje del cliente.
+ */
+export function orderingStepAfterCustomer(params: {
+  step: OrderingGateStep;
+  customerMessage: string;
+  modelClaimsReady?: boolean;
+}): "stay" | "location" | "store" {
+  void params.modelClaimsReady;
+  if (!isYesConfirmation(params.customerMessage)) return "stay";
+  return params.step === "product_list" ? "location" : "store";
 }
 
 // Frases de duda/pausa que NO son un rechazo — un cliente que dice "no sé"

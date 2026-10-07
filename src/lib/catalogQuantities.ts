@@ -250,23 +250,36 @@ function lineLabel(nombre: string, qty: number): string {
   return `${formatCount(qty)} ${base}`;
 }
 
+function moneyWorth(item: { cantidad?: number | null; unidad?: string | null; presentacion?: string | null }): number | null {
+  if (item.unidad === "pesos") return numericQty(item.cantidad);
+  const presentation = String(item.presentacion ?? "").trim();
+  const match = presentation.match(/^\$(\d+(?:\.\d+)?)$/);
+  return match ? Number(match[1]) : null;
+}
+
 export function priceCatalogOrder(
-  items: Array<{ nombre_producto?: string | null; cantidad?: number | null }>,
+  items: Array<{ nombre_producto?: string | null; cantidad?: number | null; unidad?: string | null; presentacion?: string | null }>,
   catalog: CatalogPriceRow[],
 ): { lines: string[]; subtotal: number | null } {
   let subtotal = 0;
   let complete = items.length > 0;
   const lines = items.map((item) => {
     const nombre = String(item.nombre_producto ?? "").trim();
+    const pesos = moneyWorth(item);
+    if (pesos != null) {
+      subtotal += pesos;
+      return `- ${nombre} — ${formatMoney(pesos)}`;
+    }
     const qty = numericQty(item.cantidad) ?? 1;
     const match = matchCatalogProduct(catalog, nombre);
+    const weighed = item.unidad === "kilo" && qty !== 1 ? `${formatCount(qty)} kg ${nombre}` : lineLabel(nombre, qty);
     if (!match) {
       complete = false;
-      return `- ${lineLabel(nombre, qty)}`;
+      return `- ${weighed}`;
     }
     const lineTotal = match.precio * qty;
     subtotal += lineTotal;
-    return `- ${lineLabel(nombre, qty)} — ${formatMoney(lineTotal)}`;
+    return `- ${weighed} — ${formatMoney(lineTotal)}`;
   });
   return { lines, subtotal: complete ? subtotal : null };
 }

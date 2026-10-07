@@ -1,5 +1,6 @@
 import type { OrderState } from "@/lib/orderStateMachine";
 import { isProductListRequest, messageCorrectsOrder } from "@/lib/messages";
+import { pendingEditNote } from "@/lib/orderEdits";
 import { isGuidedQuoteItem, prepareQuoteItems, quoteItemNeedsDetail, quoteQuestionForItems } from "@/lib/quoteProductClarity";
 import {
   ADDRESS_ASK_MESSAGE,
@@ -285,7 +286,8 @@ export function validateCaptureForConfirmation(params: {
       (!productosConfirmados && (!validatedAddress?.isValid || awaitingProductConfirm)));
 
   if (showProductList) {
-    const question = formatProductListConfirm(validatedItems.items);
+    const clarify = pendingEditNote(params.userMessage ?? "", validatedItems.items);
+    const question = clarify ? `${clarify}\n\n${formatProductListConfirm(validatedItems.items)}` : formatProductListConfirm(validatedItems.items);
     const addressIssue = issues.find((issue) => issue.field === "direccion");
     if (addressIssue) addressIssue.customerQuestion = question;
     else {
