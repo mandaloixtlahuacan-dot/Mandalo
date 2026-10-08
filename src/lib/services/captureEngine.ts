@@ -1,4 +1,4 @@
-import { formatPreConfirmFeeNote } from "@/lib/customerUx";
+import { formatHowToEditList, formatPreConfirmFeeNote } from "@/lib/customerUx";
 import { messageCorrectsOrder } from "@/lib/messages";
 import type { CatalogPriceRow } from "@/lib/catalogQuantities";
 import { assembleCapturedItems } from "@/lib/orderGrounding";
@@ -40,6 +40,8 @@ export type PedidoSnapshot = {
     productosConfirmados?: boolean;
     // El último mensaje al cliente fue «OK, pediste… ¿Están bien estos productos?».
     awaitingProductConfirm?: boolean;
+    // Correcciones seguidas que no cambiaron la lista. Al llegar a 2 se dice cómo reiniciar.
+    correccionesSinCambio?: number;
   };
   raw?: JsonObject;
 };
@@ -98,6 +100,7 @@ export type ValidationResult = {
     issues: ValidationIssue[];
   };
   readyForConfirmation: boolean;
+  correccionesSinCambio?: number;
 };
 
 export type CaptureInput = {
@@ -531,7 +534,7 @@ export const ADDRESS_ASK_MESSAGE =
   '(ej. "frente a la tortillería", "casa azul").';
 
 export function formatProductListConfirm(items: PedidoItemInput[]): string {
-  return `OK, pediste:\n${formatItems(items)}\n¿Están bien estos productos?`;
+  return `OK, pediste:\n${formatItems(items)}\n¿Están bien estos productos?\n\n${formatHowToEditList()}`;
 }
 
 export function isProductListConfirmMessage(text: string): boolean {

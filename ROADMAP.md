@@ -2,7 +2,19 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 7 de octubre de 2026. Fase de productos, tercera pasada:
+> Última actualización: 8 de octubre de 2026. Pedido 102 (Abarrotes Agua Santa):
+> una Coca y una Maruchan no se juntan en una sola línea. «Quítame…» borra
+> solo la línea que coincide y no se vuelve producto. «Mal», «aparte» y
+> «error» no se guardan como marca. El pedido de abarrotes pide cada
+> producto aparte, con el ejemplo de Coca, Pinol y tortillas. Al listar
+> («OK, pediste…») se dice cómo quitar, cambiar o agregar. «Reiniciar» o
+> «cancelar» se ofrecen solo si dos correcciones seguidas no mueven la
+> lista, y sí reinician el pedido. Maruchan sigue reconociéndose. El cargo
+> sigue en $25. Sin merge y sin deploy. Escenarios en
+> `scripts/check-product-ordering.ts`: 46 abarrotes, 29 George, 28 La Central
+> (103/103). En el modo viejo, el mismo archivo da 36/103. La pasada anterior
+> (89 escenarios) sigue adentro y pasa.
+> Actualización anterior: 7 de octubre de 2026. Fase de productos, tercera pasada:
 > el modelo puede ayudar a reconocer jerga, voz a texto y faltas, pero no
 > agrega lo que el cliente no pidió. Si la lectura no es segura, pregunta
 > «¿te refieres a X?». Antes del sí se puede quitar, sumar otra pieza, cambiar
