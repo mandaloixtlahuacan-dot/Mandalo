@@ -1,5 +1,6 @@
 import type { CatalogPriceRow } from "@/lib/catalogQuantities";
 import { applyCatalogSpeech, type CatalogSpeechResult } from "@/lib/catalogOrderSpeech";
+import { stripBotDecorations } from "@/lib/messageStyle";
 import { applyCustomerEdits, planCustomerEdits, wordsAreClose, type AddedLine } from "@/lib/orderEdits";
 import { dropItemsNamedInRemoval, groceryNamesClause, rewriteGrocerySlips, waiverNote } from "@/lib/quoteProductClarity";
 import type { PedidoItemInput } from "@/lib/services/captureEngine";
@@ -470,7 +471,7 @@ export function assembleCapturedItems(params: {
   userMessage: string;
   catalog?: CatalogPriceRow[] | null;
 }): { items: PedidoItemInput[]; catalogSpeech: CatalogSpeechResult | null; assistedNames: string[]; assistNote: string | null } {
-  const message = String(params.userMessage ?? "");
+  const message = stripBotDecorations(String(params.userMessage ?? ""));
   const prior = params.prior ?? [];
   const incoming = params.incoming ?? [];
   const catalog = params.catalog ?? [];

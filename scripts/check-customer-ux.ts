@@ -96,13 +96,17 @@ assert(nicheIdForCategoria("taqueria") === null, "taquería queda fuera hasta qu
 const greeting = buildGreeting(new Date("2026-10-02T20:00:00Z"));
 assert(
   greeting ===
-    `¡Hola! Soy Mándalo, tu mandadero en Ixtlahuacán del Río.
+    `👋 *¡Hola! Soy Mándalo, tu mandadero en Ixtlahuacán del Río.*
+
 Con gusto pido en la tienda, el restaurante o la carnicería que me digas y te lo llevo a la puerta.
 
-¿De dónde quieres?
-1. Abarrotes
-2. Restaurantes
-3. Carnicerías`,
+*¿De dónde quieres?*
+
+1. *Abarrotes*
+
+2. *Restaurantes*
+
+3. *Carnicerías*`,
   "el saludo es el texto aprobado",
 );
 assert(buildGreeting(new Date("2026-10-02T15:00:00Z")) === greeting, "de mañana el saludo no cambia");
@@ -110,7 +114,7 @@ assert(buildGreeting(new Date("2026-10-03T05:00:00Z")) === greeting, "de noche e
 assert(!greeting.includes("Tiendas de abarrotes"), "el saludo ya no lista Tiendas de abarrotes");
 assert(!greeting.includes("Tú dime el antojo y yo lo consigo."), "ya no usa el saludo de mandadero por hora");
 assert(!greeting.includes("$35") && !greeting.includes("$25") && !greeting.includes("efectivo") && !greeting.includes("Abro de"), "el saludo no trae precio, horario ni pago");
-assert(greeting.trimEnd().endsWith("3. Carnicerías"), "el saludo termina en las tres opciones");
+assert(greeting.replace(/\*/g, "").trimEnd().endsWith("3. Carnicerías"), "el saludo termina en las tres opciones");
 assert(!greeting.includes("Pícale al número o al nombre."), "ya no pide picarle al número");
 assert(greeting.includes("\n"), "el saludo trae saltos de línea");
 assert(!customerCopySplitsFee(greeting), "el saludo no parte el cargo");
@@ -200,7 +204,7 @@ const picked = classifyCustomerTurn({
 assert(picked.type === "pick_store" && picked.type === "pick_store" && picked.store.nombre.includes("George"), "1 en la lista elige a George");
 
 const categories = formatCatalogCategories(george, ["Hamburguesas", "Hotdogs"]);
-assert(categories.includes("1. Hamburguesas"), "categorías en líneas");
+assert(categories.includes("1. *Hamburguesas*"), "categorías en líneas");
 assert(!replyClaimsMissingMenu(categories), "la plantilla no dice que falta el menú");
 assert(replyClaimsMissingMenu("Aún no tengo el menú cargado"), "detecta el texto prohibido");
 
@@ -370,8 +374,12 @@ function blamesZagu(text: string): boolean {
 
 const zaguAck = formatAbarrotesStoreAck(zagu);
 assert(zaguAck.includes("Va, de ZAGU"), "el aviso de abarrotes sigue anclando la tienda");
-assert(emojiCount(zaguAck) <= 2 && emojiCount(greeting) === 0, "el saludo no lleva emoji y el aviso no se satura");
-assert(emojiCount(listed) <= 2 && emojiCount(caption) >= 1 && emojiCount(caption) <= 2, "la lista y el menú llevan pocos emojis");
+function emojisPerLine(text: string): number {
+  return Math.max(0, ...text.split("\n").map((line) => (line.match(/\p{Extended_Pictographic}/gu) ?? []).length));
+}
+assert(emojiCount(greeting) === 1, "el saludo lleva un emoji");
+assert(emojisPerLine(zaguAck) <= 2, "cada línea del aviso lleva a lo mucho la palomita y un emoji");
+assert(emojisPerLine(listed) <= 1 && emojiCount(caption) >= 1 && emojisPerLine(caption) <= 2, "la lista y el menú no amontonan emojis");
 
 const pickedMenu = renderCustomerTurn(picked, stores, listed);
 assert(pickedMenu?.kind === "menu" && pickedMenu.store.id === george.id, "elegir el restaurante de la lista manda el menú al momento");
@@ -1222,7 +1230,7 @@ const marYTierra = applyCatalogSpeech({
 assert(marYTierra.applied && marYTierra.missing, "mar y tierra se anota y sigue faltando el tamaño");
 assert(!/chica|grande/i.test(marYTierra.items[0]?.nombre_producto ?? ""), "no guarda chica si el cliente no la dijo");
 assert(marYTierra.items[0]?.cantidad === 1, "una cuenta como 1 pieza");
-const lineaMar = marYTierra.reply?.split("\n").find((line) => line.startsWith("•")) ?? "";
+const lineaMar = marYTierra.reply?.split("\n").find((line) => line.startsWith("✅")) ?? "";
 assert(/1 pieza/.test(lineaMar) && !/chica|grande/i.test(lineaMar), "la línea anota la pieza y no el tamaño");
 assert(/¿La quieres chica o grande\?/.test(marYTierra.reply ?? ""), "pregunta solo el tamaño");
 assert(!/solo una|cuánt|de qué marca/i.test(marYTierra.reply ?? ""), "no vuelve a preguntar la cantidad que ya dijo");
@@ -1935,7 +1943,8 @@ const preguntaJitomate = buildCustomerMessage({
 });
 assert(preguntaJitomate.includes("¿Están bien estos productos?"), "un producto ya claro también se confirma antes del GPS");
 assert(!preguntaJitomate.includes("ubicación por GPS"), "el jitomate listo no pide GPS todavía");
-assert(formatProductListConfirm(jitomateSinDireccion.validatedItems.items).includes("- "), "la lista va en viñetas");
+assert(formatProductListConfirm(jitomateSinDireccion.validatedItems.items).includes("✅ "), "la lista va en viñetas");
+assert(formatProductListConfirm(jitomateSinDireccion.validatedItems.items).includes("\n\n✅ "), "hay aire entre los bloques de la lista");
 
 const jitomateConfirmado = validateCaptureForConfirmation({
   snapshot: {

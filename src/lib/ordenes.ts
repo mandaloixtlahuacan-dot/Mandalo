@@ -112,9 +112,10 @@ export function extraerComandoNoDisponible(texto: string): { ordenId: number; pr
 // no lo que la tienda escribió.
 export function mensajeClienteProductoNoDisponible(tiendaNombre: string | null | undefined, nombreProducto: string): string {
   return (
-    `📦 *${tiendaNombre ?? "La tienda"}* no tiene disponible:\n"${nombreProducto}"\n\n` +
+    `🏪 *${tiendaNombre ?? "La tienda"}* no tiene disponible:\n\n` +
+    `*"${nombreProducto}"*\n\n` +
     `¿Quieres continuar tu pedido sin este producto, o prefieres cambiarlo por otro?\n\n` +
-    `Responde "sin él" para quitarlo, o dime el producto por el que lo cambias. 🙏`
+    `Responde *"sin él"* para quitarlo, o dime el producto por el que lo cambias.`
   );
 }
 
@@ -126,9 +127,10 @@ export function mensajeTiendaProductoNoEncontrado(
   ejemploProducto: string,
 ): string {
   return (
-    `No encontré "${productoTexto}" en el pedido #${ordenId}.\n\n` +
-    `Productos del pedido:\n${lineas}\n\n` +
-    `Escribe el nombre tal como aparece arriba, ej: ORDEN #${ordenId} NO_DISPONIBLE ${ejemploProducto}`
+    `🏪 *No encontré "${productoTexto}" en el pedido #${ordenId}.*\n\n` +
+    `🛒 *Tu pedido*\n\n${lineas}\n\n` +
+    `*Escribe el nombre tal como aparece arriba.*\n\n` +
+    `ORDEN #${ordenId} NO_DISPONIBLE ${ejemploProducto}`
   );
 }
 

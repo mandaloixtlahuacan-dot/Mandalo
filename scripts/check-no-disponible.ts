@@ -96,9 +96,9 @@ assert(!isYesConfirmation("OK, pero te equivocaste"), "ok con corrección no es 
 const alCliente = mensajeClienteProductoNoDisponible("ZAGU", "Mayonesa McCormick");
 assert(
   alCliente ===
-    `📦 *ZAGU* no tiene disponible:\n"Mayonesa McCormick"\n\n` +
+    `🏪 *ZAGU* no tiene disponible:\n\n*"Mayonesa McCormick"*\n\n` +
       `¿Quieres continuar tu pedido sin este producto, o prefieres cambiarlo por otro?\n\n` +
-      `Responde "sin él" para quitarlo, o dime el producto por el que lo cambias. 🙏`,
+      `Responde *"sin él"* para quitarlo, o dime el producto por el que lo cambias.`,
   "el aviso al cliente conserva tienda, producto guardado y la opción de quitar o cambiar",
 );
 assert(mensajeClienteProductoNoDisponible(null, "Coca").includes("*La tienda*"), "sin nombre de tienda usa La tienda");

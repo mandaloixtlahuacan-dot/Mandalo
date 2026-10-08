@@ -154,7 +154,7 @@ export function createCourierCommandParser() {
           ok: false,
           action: "invalid",
           courierMessage:
-            "⚠️ Comando inválido.\n\nUsa uno de estos formatos:\n#CONFIRMO 123\n#RECOGI 123\n#ENTREGADO 123",
+            "🛵 *Comando inválido.*\n\nUsa uno de estos formatos:\n\n#CONFIRMO 123\n\n#RECOGI 123\n\n#ENTREGADO 123",
         };
       }
 
@@ -164,7 +164,7 @@ export function createCourierCommandParser() {
           ok: false,
           action: "invalid",
           courierMessage:
-            "⚠️ No pude validar tu número como repartidor activo. Usa tu número registrado o contacta al administrador.",
+            "🛵 No pude validar tu número como repartidor activo.\n\nUsa tu número registrado o contacta al administrador.",
         };
       }
 

@@ -1,4 +1,5 @@
 import type { CatalogPriceRow } from "@/lib/catalogQuantities";
+import { stripBotDecorations } from "@/lib/messageStyle";
 import type { PedidoItemInput } from "@/lib/services/captureEngine";
 
 /**
@@ -263,7 +264,7 @@ export function stripRemovalPhrases(message: string): string {
 
 export function planCustomerEdits(message: string): EditPlan {
   const ops: EditOp[] = [];
-  let rest = norm(message);
+  let rest = norm(stripBotDecorations(message));
 
   rest = blank(
     rest,

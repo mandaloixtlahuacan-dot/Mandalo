@@ -13,7 +13,9 @@ import { classifyProductListReply, isCancelIntent, isNewOrderIntent, isYesConfir
 import { pickRemoval } from "../src/lib/orderEdits";
 import { assembleCapturedItems, ungroundedOrderLines } from "../src/lib/orderGrounding";
 import { MANDALO_DELIVERY_FEE, MANDALO_SERVICE_FEE } from "../src/lib/ordenes";
+import { formatCheckedLine, stripBotDecorations } from "../src/lib/messageStyle";
 import { prepareQuoteItems } from "../src/lib/quoteProductClarity";
+import { formatSpecificItemLine } from "../src/lib/services/captureEngine";
 import { mergeSnapshot, type PedidoItemInput, type PedidoSnapshot } from "../src/lib/services/captureEngine";
 import { validateCaptureForConfirmation } from "../src/lib/services/validationEngine";
 
@@ -2125,6 +2127,24 @@ const scenarios: Scenario[] = [
     ],
   },
   {
+    id: "ab-47 copiar la línea con palomita",
+    store: "abarrotes",
+    kind: "remove",
+    start: [
+      { nombre_producto: "Coca-Cola", presentacion: "2 litros", cantidad: 1, unidad: "pieza" },
+      { nombre_producto: "Pinol", presentacion: "1 litro", cantidad: 1, unidad: "pieza" },
+    ],
+    steps: [
+      {
+        user: `quita ${formatCheckedLine(formatSpecificItemLine({ nombre_producto: "Coca-Cola", presentacion: "2 litros", cantidad: 1, unidad: "pieza" }))}`,
+        llm: [],
+        count: 1,
+        absent: [/coca|refresco/i],
+        has: [/pinol/i],
+      },
+    ],
+  },
+  {
     id: "ab-44 varios productos con y sin comas",
     store: "abarrotes",
     kind: "add",
@@ -2313,6 +2333,19 @@ const picked = pickRemoval(
   "refresco coca cola maruchan habanero",
 );
 if (picked.ambiguous || picked.index !== 0) throw new Error("la línea combinada no fue la única que coincidió");
+const copiedLine = formatCheckedLine(formatSpecificItemLine(coca));
+const copied = stripBotDecorations(`quita ${copiedLine}`);
+if (/\p{Extended_Pictographic}/u.test(copied) || copied.includes("*")) {
+  throw new Error(`la línea copiada conservó adorno: ${copied}`);
+}
+if (!/coca/i.test(copied)) throw new Error("la línea copiada perdió el producto");
+const copiedAway = prepareQuoteItems(
+  [coca, { nombre_producto: "Pinol", presentacion: "1 litro", cantidad: 1, unidad: "pieza" }],
+  `quita ${copiedLine}`,
+);
+if (copiedAway.some((item) => /coca|refresco/i.test(item.nombre_producto)) || !copiedAway.some((item) => /pinol/i.test(item.nombre_producto))) {
+  throw new Error(`copiar la palomita no quitó la Coca: ${copiedAway.map((item) => item.nombre_producto).join(" | ")}`);
+}
 
 const before = tally("before");
 const after = tally("after");

@@ -1,4 +1,5 @@
 import { formatHowToEditList, formatPreConfirmFeeNote } from "@/lib/customerUx";
+import { formatCheckedLine, formatCheckedLines, joinBlocks } from "@/lib/messageStyle";
 import { messageCorrectsOrder } from "@/lib/messages";
 import type { CatalogPriceRow } from "@/lib/catalogQuantities";
 import { assembleCapturedItems } from "@/lib/orderGrounding";
@@ -524,17 +525,18 @@ export function dispatchItemAlreadyShowsQty(nombreProducto: string, cantidad: nu
 }
 
 export function formatItems(items: PedidoItemInput[]): string {
-  if (!items.length) return "- Sin productos definidos";
-  return items.map((item) => `- ${formatSpecificItemLine(item)}`).join("\n");
+  if (!items.length) return "🛍️ Sin productos definidos";
+  return joinBlocks(items.map((item) => formatCheckedLine(formatSpecificItemLine(item), item.nombre_producto)));
 }
 
 export const ADDRESS_ASK_MESSAGE =
-  "🏠 ¿Me compartes tu ubicación por GPS? Es lo más fácil y rápido.\n\n" +
+  "📍 *¿Me compartes tu ubicación por GPS?*\n\n" +
+  "Es lo más fácil y rápido.\n\n" +
   "Si prefieres, también puedes escribirme tu dirección: calle y número, colonia o una referencia clara " +
   '(ej. "frente a la tortillería", "casa azul").';
 
 export function formatProductListConfirm(items: PedidoItemInput[]): string {
-  return `OK, pediste:\n${formatItems(items)}\n¿Están bien estos productos?\n\n${formatHowToEditList()}`;
+  return `OK, pediste:\n\n🛒 *Tu pedido*\n\n${formatItems(items)}\n\n*¿Están bien estos productos?*\n\n${formatHowToEditList()}`;
 }
 
 export function isProductListConfirmMessage(text: string): boolean {
@@ -554,7 +556,7 @@ export function buildCustomerMessage(params: {
     const first = validation.issues[0];
 
     if (first?.field === "negocio") {
-      return "🛒 Dime de qué tienda y yo lo consigo.\n\nCon el nombre como lo conoces basta.";
+      return "🏪 Dime de qué tienda y yo lo consigo.\n\nCon el nombre como lo conoces basta.";
     }
 
     const quoteQuestion = validation.issues.find((issue) => issue.customerQuestion)?.customerQuestion;
@@ -564,9 +566,11 @@ export function buildCustomerMessage(params: {
       return (
         "🛒 Antes de avanzar, necesito que especifiques mejor tus productos.\n\n" +
         "Ejemplos:\n" +
-        "- Takis Fuego 56g\n" +
-        "- Salchicha FUD 500g\n" +
-        "- Mayonesa McCormick 1L"
+        joinBlocks([
+          formatCheckedLine("Takis Fuego 56g"),
+          formatCheckedLine("Salchicha FUD 500g"),
+          formatCheckedLine("Mayonesa McCormick 1L"),
+        ])
       );
     }
 
@@ -574,20 +578,23 @@ export function buildCustomerMessage(params: {
       return ADDRESS_ASK_MESSAGE;
     }
 
-    return "🧾 Todavía me falta información para continuar con tu pedido.";
+    return "🧾 Todavía me falta información para continuar con tu pedido.\n\nDime el dato que falta y seguimos.";
   }
 
   const fee = params.feeNote?.trim() || formatPreConfirmFeeNote("cotiza_tienda");
 
+  const productos = formatCheckedLines(
+    (params.pricedLines?.trim() || formatItems(items)).split("\n"),
+  );
   return (
-    "🧾 Este es tu pedido:\n\n" +
-    `Tienda: ${formatBusiness(snapshot)}\n\n` +
-    "🛒 Productos:\n" +
-    `${params.pricedLines?.trim() || formatItems(items)}\n\n` +
+    "🧾 *Este es tu pedido:*\n\n" +
+    `🏪 *Tienda: ${formatBusiness(snapshot)}*\n\n` +
+    "🛒 *Tu pedido*\n\n" +
+    `${productos}\n\n` +
     `${fee}\n\n` +
-    "🏠 Entrega:\n" +
+    "📍 *Entrega:*\n" +
     `${formatAddress(snapshot)}\n\n` +
-    "Si todo está correcto, responde: SÍ"
+    "Si todo está correcto, responde: *SÍ*"
   );
 }
 

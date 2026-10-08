@@ -49,7 +49,7 @@ async function handleDispatch(pedido: PedidoFullRecord, summary: ScheduledDispat
       destinatarioId: null,
       telefonoDestino: ensureMxWhatsappIntl(pedido.clienteTelefono),
       payload: {
-        body: `📦 Tu pedido #${pedido.id} ya se envió a *${pedido.tienda?.nombre ?? "la tienda"}*. Te aviso en cuanto confirme el precio.`,
+        body: `🧾 *Pedido #${pedido.id}*\n\nYa se envió a *${pedido.tienda?.nombre ?? "la tienda"}*.\n\nTe aviso en cuanto confirme el precio.`,
       },
       idempotencyKey: `pedido:${pedido.id}:esperando_apertura:dispatched:v1`,
     });
@@ -104,7 +104,7 @@ async function handleExpired(
     destinatarioId: null,
     telefonoDestino: ensureMxWhatsappIntl(pedido.clienteTelefono),
     payload: {
-      body: `⚠️ Tu pedido #${pedido.id} a *${tiendaNombre}* se canceló: la tienda no abrió a tiempo.\n\nCuando quieras, puedes hacer un nuevo pedido. 🙏`,
+      body: `⏰ *Pedido #${pedido.id}*\n\nSe canceló: *${tiendaNombre}* no abrió a tiempo.\n\nCuando quieras, puedes hacer un nuevo pedido.`,
     },
     idempotencyKey: `pedido:${pedido.id}:esperando_apertura:expired:v1`,
   });
