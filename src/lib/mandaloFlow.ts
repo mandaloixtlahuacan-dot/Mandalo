@@ -8,6 +8,7 @@ import { detectActorByPhone, ensureMxWhatsappIntl, normalizePhone } from "@/lib/
 import { priceCatalogOrder, type CatalogPriceRow } from "@/lib/catalogQuantities";
 import { assembleCapturedItems } from "@/lib/orderGrounding";
 import { formatNameQtyLine, joinBlocks } from "@/lib/messageStyle";
+import { storeKindFromCategoria, type StoreKind } from "@/lib/customerUx";
 import { ADDRESS_ASK_MESSAGE, buildCustomerMessage, createCaptureEngine, dispatchItemAlreadyShowsQty, extractCandidateItems, formatProductListConfirm, isProductListConfirmMessage, type PedidoItemInput } from "@/lib/services/captureEngine";
 import * as pedidoRepositoryV2 from "@/lib/repositories/pedidoRepositoryV2";
 import { getAdminPhone } from "@/lib/repositories/configRepository";
@@ -842,7 +843,7 @@ async function reviseFixedCatalogProductList(
   const msg =
     missing && spoken?.reply
       ? spoken.reply
-      : [note, formatProductListConfirm(items)].filter(Boolean).join("\n\n");
+      : [note, formatProductListConfirm(items, pedido.snapshot_json.storeKind ?? "abarrotes")].filter(Boolean).join("\n\n");
   const snapshot = {
     ...pedido.snapshot_json,
     items,
@@ -919,7 +920,7 @@ async function handleAwaitingProductList(
       longitud: snapshot.longitud ?? null,
       tiendaId: snapshot.businessId ?? null,
     });
-    const msg = formatProductListConfirm(items);
+    const msg = formatProductListConfirm(items, pedido.snapshot_json.storeKind ?? "abarrotes");
     await sendWhatsApp(telefono, msg);
     await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
     return { ok: true, role: "cliente", accion: "lista_reenviada", pedidoId: pedido.id };
@@ -946,9 +947,11 @@ async function handleAwaitingProductList(
       knownZoneNames,
       quoteStore: true,
       userMessage: mensaje,
+      priorItems: pedido.snapshot_json.items ?? [],
+      storeKind: pedido.snapshot_json.storeKind ?? "abarrotes",
     });
     const question = validation.issues.find((issue) => issue.customerQuestion)?.customerQuestion ?? "";
-    const listText = question || formatProductListConfirm(validation.validatedItems.items);
+    const listText = question || formatProductListConfirm(validation.validatedItems.items, pedido.snapshot_json.storeKind ?? "abarrotes");
     const nextSnapshot = {
       ...snapshot,
       items: validation.validatedItems.items,
@@ -1731,6 +1734,7 @@ async function rememberStoreChoice(
       items: [],
     },
     feeNote: formatPreConfirmFeeNote(store.usaCatalogoFijo ? "catalogo" : "cotiza_tienda"),
+    storeKind: storeKindFromCategoria(store.categoria),
   });
 }
 
@@ -1985,6 +1989,12 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
         // porque depende de qué tienda y a qué hora abre, así que se arma
         // dinámico aquí en vez de vivir en TRACKING_MESSAGES.
         let trackingBody = TRACKING_MESSAGES[openPedido.estado] ?? "Tu pedido sigue en proceso.\n\nTe aviso en cuanto haya una actualización.";
+        if (openPedido.estado === "pendiente_tiendas") {
+          const full = await pedidoRepositoryV2.getPedidoById(openPedido.id);
+          if (full?.tienda?.usaCatalogoFijo) {
+            trackingBody = "⏰ *Tu pedido ya está anotado.*\n\nEl menú trae el precio. En un momento te mando el total.";
+          }
+        }
         if (openPedido.estado === "esperando_apertura_tienda") {
           const full = await pedidoRepositoryV2.getPedidoById(openPedido.id);
           const tiendaNombre = full?.tienda?.nombre ?? "la tienda";
@@ -2160,9 +2170,16 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
 
   let forceBusiness = false;
   let forceReplaceItems = false;
+  let storeKind: StoreKind | null = null;
   try {
     const uxStores = await loadUxStores();
     const mentioned = storeMentionedInMessage(mensaje, uxStores);
+    const kindId = Number(
+      (llmOrderState as { business_id?: unknown } | null)?.business_id ??
+        (currentOrderState as { businessId?: unknown }).businessId,
+    );
+    const currentStore = uxStores.find((store) => store.id === (mentioned?.id ?? kindId));
+    if (currentStore) storeKind = storeKindFromCategoria(currentStore.categoria);
     const currentId = Number((currentOrderState as { businessId?: unknown }).businessId);
     if (mentioned && (!Number.isFinite(currentId) || currentId <= 0 || mentioned.id !== currentId)) {
       const text = normalizeUxText(mensaje);
@@ -2216,6 +2233,7 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
     forceReplaceItems,
     quoteStore: !usaCatalogoFijo,
     catalog: catalogRows,
+    storeKind,
     pinnedLocation: ubicacionCoords,
   });
 

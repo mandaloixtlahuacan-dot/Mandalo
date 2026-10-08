@@ -1274,7 +1274,13 @@ const dogosVagos = applyCatalogSpeech({
   userMessage: "dos dogos",
   catalog: menuGeorge,
 });
-assert(!dogosVagos.applied, "dos dogos sin sabor no eligen uno al azar");
+assert(
+  dogosVagos.applied &&
+    dogosVagos.missing &&
+    /dogo/i.test(dogosVagos.question ?? "") &&
+    !dogosVagos.items.some((item) => /cl[aá]sico|arrachera/i.test(item.nombre_producto)),
+  "dos dogos sin sabor preguntan cuál, no eligen uno",
+);
 
 const pedido83 =
   "una hamburguesa hawaiana, una hamburguesa cubana, Salchi locos, 3 Dogos clásicos y 3 refrescos: 1 Pepsi y 2 manzanitas";
@@ -1613,7 +1619,13 @@ const pollo = applyCatalogSpeech({
 });
 assert(!pollo.applied || !pollo.items.some((item) => /pollo/i.test(item.nombre_producto)), "pollo no matchea el menú");
 const bistecVago = applyCatalogSpeech({ base: [], userMessage: "un bistec", catalog: menuCentral });
-assert(!bistecVago.applied, "bistec solo no escoge un corte");
+assert(
+  bistecVago.applied &&
+    bistecVago.missing &&
+    /bistec/i.test(bistecVago.question ?? "") &&
+    !bistecVago.items.some((item) => /res|puerco/i.test(item.nombre_producto)),
+  "bistec solo pregunta el corte, no escoge uno",
+);
 const desdeZagu = classifyCustomerTurn({
   message: "Carnicerías",
   lastBotText: "Va, de ZAGU. Dime qué se te antoja.",

@@ -174,8 +174,26 @@ function spokenBrand(item: PedidoItemInput): string | null {
   return marca;
 }
 
+const PROTECTED_BRANDS = [
+  ["santa", "clara"],
+  ["coca", "cola"],
+  ["kool", "aid"],
+];
+
+function protectedBrandTokens(blob: string): Set<string> {
+  const words = blob.split(" ").filter(Boolean);
+  const keep = new Set<string>();
+  for (const phrase of PROTECTED_BRANDS) {
+    for (let index = 0; index + phrase.length <= words.length; index += 1) {
+      if (phrase.every((part, offset) => words[index + offset] === part)) phrase.forEach((part) => keep.add(part));
+    }
+  }
+  return keep;
+}
+
 function brandTokens(blob: string, ignore: Set<string>): string[] {
-  const tokens = blob.split(" ").filter((token) => token.length >= 3 && !/^\d+$/.test(token) && !STOP.has(token) && !ignore.has(token));
+  const keep = protectedBrandTokens(blob);
+  const tokens = blob.split(" ").filter((token) => token.length >= 3 && !/^\d+$/.test(token) && !STOP.has(token) && (!ignore.has(token) || keep.has(token)));
   if (/\b1\s*2\s*3\b|\b123\b/.test(blob)) tokens.unshift("1-2-3");
   return tokens;
 }
@@ -189,23 +207,33 @@ function niceWord(word: string): string {
 function displayBrand(original: string, tokens: string[]): string {
   const words = original.split(/\s+/);
   const used = new Set<number>();
-  return tokens
-    .map((token) => {
-      if (token === "1-2-3") return token;
-      const idx = words.findIndex((word, index) => {
-        if (used.has(index)) return false;
-        const cleanWord = word.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
-        const normalized = norm(cleanWord);
-        // "Sam's" se normaliza a "sam s": el token de marca es "sam".
-        return normalized === token || normalized.split(" ")[0] === token;
-      });
-      if (idx >= 0) {
-        used.add(idx);
-        return niceWord(words[idx].replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, ""));
+  const consumed = new Set<string>();
+  const parts: string[] = [];
+  for (const token of tokens) {
+    if (token === "1-2-3") {
+      parts.push(token);
+      continue;
+    }
+    if (consumed.has(token)) continue;
+    const idx = words.findIndex((word, index) => {
+      if (used.has(index)) return false;
+      const cleanWord = word.replace(/^[^\p{L}\p{N}-]+|[^\p{L}\p{N}-]+$/gu, "");
+      const normalized = norm(cleanWord);
+      // "Sam's" se normaliza a "sam s": el token de marca es "sam".
+      return normalized === token || normalized.split(" ")[0] === token;
+    });
+    if (idx >= 0) {
+      used.add(idx);
+      const cleanWord = words[idx].replace(/^[^\p{L}\p{N}-]+|[^\p{L}\p{N}-]+$/gu, "");
+      if (cleanWord.includes("-")) {
+        for (const part of norm(cleanWord).split(" ")) if (part) consumed.add(part);
       }
-      return niceWord(token);
-    })
-    .join(" ");
+      parts.push(niceWord(cleanWord));
+      continue;
+    }
+    parts.push(niceWord(token));
+  }
+  return parts.join(" ");
 }
 
 const QTY_WORDS: Record<string, number> = {
@@ -1331,7 +1359,7 @@ function papelHigienicoIsModifier(category: Category, words: string[], wordIndex
 }
 
 const PURCHASE_UNIT =
-  "cajas?|paquetes?|litros?|kilos?|kg|piezas?|bolsas?|botellas?|frascos?|latas?|rollos?|garrafones?|bidones?";
+  "cajas?|paquetes?|sobres?|litros?|kilos?|kg|piezas?|bolsas?|botellas?|frascos?|latas?|rollos?|garrafones?|bidones?";
 
 // "una caja de Sanitas" / "un litro de Pinol": la cantidad va adelante y el
 // nombre no tiene que estar en la lista de categorías. "sería 1 litro" no
@@ -1540,6 +1568,8 @@ function purchaseQtyUnit(blob: string): { cantidad: number; unidad: string } | n
   const singular: Record<string, string> = {
     cajas: "caja",
     paquetes: "paquete",
+    sobres: "sobre",
+    sobre: "sobre",
     litros: "litro",
     kilos: "kilo",
     kg: "kilo",
@@ -1621,8 +1651,31 @@ function articleProductWindow(clause: string): { category: Category; text: strin
   return { category: fallbackPackaged(label), text: clause };
 }
 
+function flavoredDrinkWindow(clause: string): { category: Category; text: string } | null {
+  const text = norm(clause);
+  const match = text.match(
+    /\b(tang|boing|zuko|kool\s*aid|koolaid|jarritos?|tasks?)\s+de\s+(naranja|mango|uva|uvas|tamarindo|pina|fresa|limon|guayaba|manzana)\b/,
+  );
+  if (!match) return null;
+  const raw = match[1].replace(/\s+/g, " ");
+  const pretty = raw === "kool aid" || raw === "koolaid" ? "Kool-Aid" : raw === "jarrito" || raw === "jarritos" ? "Jarrito" : niceWord(raw);
+  return { category: fallbackPackaged(pretty), text: clause };
+}
+
+function applyFlavor(item: PedidoItemInput, text: string): PedidoItemInput {
+  const match = norm(text).match(
+    /\b(?:tang|boing|zuko|kool\s*aid|koolaid|jarritos?|tasks?)\s+de\s+(naranja|mango|uva|uvas|tamarindo|pina|fresa|limon|guayaba|manzana)\b/,
+  );
+  if (!match) return item;
+  const flavor = match[1] === "uvas" ? "uva" : match[1];
+  const accented: Record<string, string> = { pina: "piña", limon: "limón" };
+  return { ...item, presentacion: clean(item.presentacion) ?? (accented[flavor] ?? niceWord(flavor)) };
+}
+
 function windowsFor(message: string): Array<{ category: Category; text: string }> {
   return splitProductClauses(message).flatMap((clause) => {
+    const flavored = flavoredDrinkWindow(clause);
+    if (flavored) return [flavored];
     const found = windowsInClause(clause);
     if (found.length) return found;
     const unknown = unknownProductWindow(clause) ?? measuredUnknownWindow(clause) ?? articleProductWindow(clause);
@@ -1714,12 +1767,13 @@ function missingSlots(category: Category, item: PedidoItemInput, extra = ""): Sl
 }
 
 function scrubItem(item: PedidoItemInput, ignore: Set<string>): PedidoItemInput {
+  const keep = protectedBrandTokens(norm([item.nombre_producto, item.marca, item.presentacion, item.notas].filter(Boolean).join(" ")));
   const scrub = (value?: string | null): string | null => {
     const text = clean(value);
     if (!text) return null;
     const kept = text.split(/\s+/).filter((word) => {
       const token = norm(word);
-      return token.length > 0 && !ignore.has(token);
+      return token.length > 0 && (!ignore.has(token) || keep.has(token));
     });
     return kept.join(" ") || null;
   };
@@ -1852,9 +1906,10 @@ function applyDetail(
   ignore: Set<string>,
   boundWindow = false,
 ): PedidoItemInput {
+  const keepBrand = protectedBrandTokens(norm(extraRaw));
   const extra = norm(extraRaw)
     .split(" ")
-    .filter((token) => !ignore.has(token))
+    .filter((token) => !ignore.has(token) || keepBrand.has(token))
     .join(" ");
   const category = categoryFor(`${itemText(item)} ${extra}`) ?? itemCategory(item);
   if (!category) return scrubItem(item, ignore);
@@ -2037,6 +2092,9 @@ function fallbackPackaged(nombre: string): Category {
     filled: (slot, blob, item) => {
       const ownWords = norm(item.nombre_producto).split(" ").filter((token) => token.length >= 3 && !STOP.has(token));
       if (slot === "marca") {
+        if (/^(tang|tangs|zuko|zukos|boing|boings|kool aid|koolaid|jarrito|jarritos|task|tasks|tank|tanks)$/.test(norm(item.nombre_producto))) {
+          return true;
+        }
         const own = new Set(ownWords);
         if (brandTokens(blob, own).length > 0) return true;
         return ownWords.length >= 2;
@@ -2044,7 +2102,8 @@ function fallbackPackaged(nombre: string): Category {
       // "Frutos rojos Fusi" ya dice qué bajar. No se pregunta tamaño de más.
       if (slot === "tamano") {
         if (base.filled(slot, blob, item)) return true;
-        if (/\b(caja|cajas|paquete|paquetes)\b/.test(blob)) return true;
+        if (/\b(caja|cajas|paquete|paquetes|sobre|sobres)\b/.test(blob)) return true;
+        if (/\b(sobre|sobres)\b/.test(norm(item.unidad ?? ""))) return true;
         return ownWords.filter((token) => token.length >= 4).length >= 2;
       }
       return base.filled(slot, blob, item);
@@ -2190,9 +2249,10 @@ function tidyQuoteLines(items: PedidoItemInput[]): PedidoItemInput[] {
 }
 
 export function dropItemsNamedInRemoval(items: PedidoItemInput[], message: string): PedidoItemInput[] {
-  let next = items;
-  for (const target of removalTargets(message)) {
-    const picked = pickRemoval(next, target);
+  let next = items.map((item) => ({ ...item }));
+  for (const op of planCustomerEdits(message).ops) {
+    if (op.kind !== "remove" || op.mode === "ask" || op.mode === "one") continue;
+    const picked = pickRemoval(next, op.target);
     if (picked.index == null) continue;
     next = next.filter((_, index) => index !== picked.index);
   }
@@ -2294,6 +2354,27 @@ export function groceryNamesClause(clause: string): boolean {
   return windowsFor(clause).some((window) => !window.category.id.startsWith("otro:"));
 }
 
+/** Si un nombre claro se cayó antes del ticket, se vuelve a poner desde lo que el cliente ya dijo. */
+export function restoreNamedFromHistory(
+  items: PedidoItemInput[],
+  messages: string[],
+  ignoreText?: string | null,
+): PedidoItemInput[] {
+  const next = items.map((item) => ({ ...item }));
+  const history = messages.filter((message) => message.trim());
+  for (const message of history) {
+    for (const item of prepareQuoteItems([], message, ignoreText)) {
+      const token = norm(item.nombre_producto);
+      if (token.length < 4) continue;
+      const present = next.some((row) => norm(`${row.nombre_producto} ${row.marca ?? ""} ${row.presentacion ?? ""}`).includes(token));
+      if (present) continue;
+      if (dropItemsNamedInRemoval([item], history.join(" ")).length === 0) continue;
+      next.push(item);
+    }
+  }
+  return next;
+}
+
 export function prepareQuoteItems(
   items: PedidoItemInput[],
   userMessage?: string | null,
@@ -2343,7 +2424,8 @@ export function prepareQuoteItems(
           nombre_producto: shelfName(window.category, item.nombre_producto, label),
         };
         const detailed = applyDetail(named, window.text, ignore, boundWindow);
-        return window.category.id.startsWith("otro:") ? applySpokenPurchase(detailed, window.text) : detailed;
+        const purchased = window.category.id.startsWith("otro:") ? applySpokenPurchase(detailed, window.text) : detailed;
+        return window.category.id.startsWith("otro:") ? applyFlavor(purchased, window.text) : purchased;
       };
       let resolved = index;
       if (resolved === -1 && window.category.id.startsWith("otro:")) {
@@ -2413,18 +2495,27 @@ const MENTION_NOISE = new Set([
   "gramo", "gramos", "blanca", "blanco", "morada", "morado", "entera", "enteras",
   "deslactosada", "grande", "chica", "chico", "mediana", "paquete", "paquetes",
   "caja", "cajas", "bolsa", "bolsas", "pieza", "piezas", "rollo", "rollos",
-  "misma", "mismo", "gracias", "correcto", "listo",
+  "sobre", "sobres", "misma", "mismo", "gracias", "correcto", "listo",
+  "seria", "serian", "seran", "agrega", "agregame",
+  "google", "maps", "https", "http", "www", "whatsapp", "location",
 ]);
+
+const KEEP_NAMED = new Set(["tang", "tangs", "zuko", "zukos", "boing", "boings", "tank", "tanks", "task", "tasks"]);
 
 function keepSpokenMentions(items: PedidoItemInput[], message: string): PedidoItemInput[] {
   if (!message.trim() || looksLikeAddress(message) || isYesConfirmation(message) || isProductListRequest(message)) return items;
+  if (/https?:\/\/|maps\.google|goo\.gl|whatsapp/i.test(message)) return items;
   const scan = stripRemovalPhrases(message)
     .replace(/\bno (?:era|es|son|eran)\b[^,.]*/gi, " ");
   const next = items.map((item) => ({ ...item }));
   for (const clause of scan.split(/,|\by\b|\btambien\b/i)) {
     const tokens = norm(clause)
       .split(" ")
-      .filter((token) => token.length >= 6 && !STOP.has(token) && !MENTION_NOISE.has(token) && !/^\d+$/.test(token));
+      .filter((token) => {
+        if (/^\d+$/.test(token) || MENTION_NOISE.has(token)) return false;
+        if (KEEP_NAMED.has(token)) return true;
+        return token.length >= 6 && !STOP.has(token);
+      });
     if (!tokens.length) continue;
     const covered = next.some((item) => {
       const blob = norm(`${item.nombre_producto} ${item.marca ?? ""} ${item.presentacion ?? ""}`);

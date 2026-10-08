@@ -1,8 +1,10 @@
+import { specExampleLines, summaryStoreLabel, type StoreKind } from "@/lib/categoryCopy";
 import { formatHowToEditList, formatPreConfirmFeeNote } from "@/lib/customerUx";
 import { formatCheckedLine, formatCheckedLines, joinBlocks } from "@/lib/messageStyle";
-import { messageCorrectsOrder } from "@/lib/messages";
+import { isYesConfirmation, messageCorrectsOrder } from "@/lib/messages";
 import type { CatalogPriceRow } from "@/lib/catalogQuantities";
 import { assembleCapturedItems } from "@/lib/orderGrounding";
+import { restoreNamedFromHistory } from "@/lib/quoteProductClarity";
 import type { OrderState } from "@/lib/orderStateMachine";
 import { normalizePhone } from "@/lib/roles";
 import { resolveMapsLink } from "@/lib/services/geo";
@@ -32,6 +34,10 @@ export type PedidoSnapshot = {
   latitud?: number | null;
   longitud?: number | null;
   items?: PedidoItemInput[] | null;
+  /** Categoría de la tienda elegida. La copia del pedido sale de aquí. */
+  storeKind?: import("@/lib/categoryCopy").StoreKind | null;
+  /** Lo que el cliente ya dijo de productos en este pedido, para no perder un nombre. */
+  productMessages?: string[] | null;
   flags?: {
     addressValidated?: boolean;
     itemsValidated?: boolean;
@@ -131,6 +137,8 @@ export type CaptureInput = {
   // Menú real de la tienda de precios fijos. Sirve para no anotar un tamaño
   // que el cliente no dijo y para sumar lo que sí nombró.
   catalog?: CatalogPriceRow[] | null;
+  // abarrotes | restaurante | carniceria. No se infiere del menú fijo.
+  storeKind?: StoreKind | null;
   // Pin real de WhatsApp en este turno. Las coordenadas que invente el modelo
   // no cuentan como ubicación.
   pinnedLocation?: { latitude: number; longitude: number } | null;
@@ -182,6 +190,8 @@ export type ValidationEngineDeps = {
     knownZoneNames?: string[];
     quoteStore?: boolean;
     userMessage?: string | null;
+    priorItems?: PedidoItemInput[] | null;
+    storeKind?: StoreKind | null;
   }): ValidationResult;
 };
 
@@ -535,8 +545,9 @@ export const ADDRESS_ASK_MESSAGE =
   "Si prefieres, también puedes escribirme tu dirección: calle y número, colonia o una referencia clara " +
   '(ej. "frente a la tortillería", "casa azul").';
 
-export function formatProductListConfirm(items: PedidoItemInput[]): string {
-  return `OK, pediste:\n\n🛒 *Tu pedido*\n\n${formatItems(items)}\n\n*¿Están bien estos productos?*\n\n${formatHowToEditList()}`;
+export function formatProductListConfirm(items: PedidoItemInput[], kind: StoreKind = "abarrotes"): string {
+  const names = items.map((item) => item.nombre_producto);
+  return `OK, pediste:\n\n🛒 *Tu pedido*\n\n${formatItems(items)}\n\n*¿Están bien estos productos?*\n\n${formatHowToEditList(kind, names)}`;
 }
 
 export function isProductListConfirmMessage(text: string): boolean {
@@ -549,8 +560,10 @@ export function buildCustomerMessage(params: {
   items: PedidoItemInput[];
   feeNote?: string | null;
   pricedLines?: string | null;
+  storeKind?: StoreKind | null;
 }): string {
   const { validation, snapshot, items } = params;
+  const kind = params.storeKind ?? snapshot.storeKind ?? "abarrotes";
 
   if (!validation.ok) {
     const first = validation.issues[0];
@@ -566,11 +579,7 @@ export function buildCustomerMessage(params: {
       return (
         "🛒 Antes de avanzar, necesito que especifiques mejor tus productos.\n\n" +
         "Ejemplos:\n" +
-        joinBlocks([
-          formatCheckedLine("Takis Fuego 56g"),
-          formatCheckedLine("Salchicha FUD 500g"),
-          formatCheckedLine("Mayonesa McCormick 1L"),
-        ])
+        joinBlocks(specExampleLines(kind).map((line) => formatCheckedLine(line)))
       );
     }
 
@@ -588,7 +597,7 @@ export function buildCustomerMessage(params: {
   );
   return (
     "🧾 *Este es tu pedido:*\n\n" +
-    `🏪 *Tienda: ${formatBusiness(snapshot)}*\n\n` +
+    `${summaryStoreLabel(kind)} ${formatBusiness(snapshot)}*\n\n` +
     "🛒 *Tu pedido*\n\n" +
     `${productos}\n\n` +
     `${fee}\n\n` +
@@ -636,7 +645,7 @@ export function createCaptureEngine(deps: CaptureEngineDeps) {
       });
       const spoken = assembled.catalogSpeech;
       const assistNote = assembled.assistNote;
-      const itemsForValidation = assembled.items;
+      let itemsForValidation = assembled.items;
       const revisesProducts = messageCorrectsOrder(input.userMessage);
       const productsWereConfirmed = mergedSnapshot.flags?.productosConfirmados === true;
       const noAddressYet =
@@ -656,12 +665,22 @@ export function createCaptureEngine(deps: CaptureEngineDeps) {
 
       // itemsForValidation ya viene fusionado (turno actual + lo ya capturado
       // antes) — validamos sobre esa lista completa, no solo lo del turno.
+      const kind = input.storeKind ?? priorSnapshot?.storeKind ?? null;
+      if (input.pinnedLocation && input.quoteStore) {
+        itemsForValidation = restoreNamedFromHistory(
+          itemsForValidation,
+          priorSnapshot?.productMessages ?? [],
+          snapshotForValidation.businessName,
+        );
+      }
       const validation = validationEngine.validateCaptureForConfirmation({
         snapshot: snapshotForValidation,
         items: itemsForValidation,
         knownZoneNames: input.knownZoneNames ?? [],
         quoteStore: input.quoteStore === true,
         userMessage: input.userMessage,
+        priorItems,
+        storeKind: kind,
       });
 
       if (spoken?.applied) {
@@ -674,7 +693,7 @@ export function createCaptureEngine(deps: CaptureEngineDeps) {
             needsAddress && productsConfirmed
               ? `${note}${spoken.reply}\n\n${ADDRESS_ASK_MESSAGE}`
               : needsAddress && !spoken.missing
-                ? `${note}${formatProductListConfirm(spoken.items)}`
+                ? `${note}${formatProductListConfirm(spoken.items, kind ?? "abarrotes")}`
                 : `${note}${spoken.reply ?? ""}`;
           if (needsAddress && !productsConfirmed) {
             for (const issue of validation.issues) {
@@ -713,7 +732,7 @@ export function createCaptureEngine(deps: CaptureEngineDeps) {
             code: "GENERIC_ITEM_NEEDS_SPEC",
             field: "especificacion_producto",
             message: "El modelo propuso un producto y hay que confirmarlo.",
-            customerQuestion: `${assistNote}\n\n${formatProductListConfirm(validation.validatedItems.items)}`,
+            customerQuestion: `${assistNote}\n\n${formatProductListConfirm(validation.validatedItems.items, kind ?? "abarrotes")}`,
           });
         }
       }
@@ -721,8 +740,14 @@ export function createCaptureEngine(deps: CaptureEngineDeps) {
       const shownQuestion = validation.issues.find((issue) => issue.customerQuestion)?.customerQuestion ?? "";
       const awaitingProductConfirm = isProductListConfirmMessage(shownQuestion);
 
+      const said = String(input.userMessage ?? "").trim();
+      const productMessages = [...(priorSnapshot?.productMessages ?? [])];
+      if (said && !input.pinnedLocation && !isYesConfirmation(said)) productMessages.push(said);
+
       const nextSnapshot: PedidoSnapshot = {
         ...snapshotForValidation,
+        ...(kind ? { storeKind: kind } : {}),
+        productMessages: productMessages.slice(-12),
         // Persistimos la versión validada/normalizada (nombres limpios, items
         // sin nombre descartados) para no volver a arrastrar basura en el
         // siguiente turno.

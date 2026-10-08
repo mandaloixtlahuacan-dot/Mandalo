@@ -1,5 +1,6 @@
 import type { CatalogPriceRow } from "@/lib/catalogQuantities";
 import { assembleCapturedItems } from "@/lib/orderGrounding";
+import { summaryStoreLabel } from "@/lib/categoryCopy";
 import { formatPreConfirmFeeNote } from "@/lib/customerUx";
 import { isBareOrderRejection, isCancelIntent, isNewOrderIntent, isYesConfirmation } from "@/lib/messages";
 import { formatCheckedLines } from "@/lib/messageStyle";
@@ -62,7 +63,7 @@ export function renderPedidoSummary(params: {
   const fee = params.feeNote?.trim() || formatPreConfirmFeeNote("cotiza_tienda");
   return (
     `🧾 *Pedido #${params.pedidoId}*\n\n` +
-    `🏪 *Tienda: ${tienda}*\n\n` +
+    `${summaryStoreLabel(snapshot.storeKind ?? "abarrotes")} ${tienda}*\n\n` +
     `🛒 *Tu pedido*\n\n${items}\n\n` +
     `${fee}\n\n` +
     `📍 *Entrega:*\n${direccion}`

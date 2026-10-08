@@ -49,7 +49,9 @@ async function handleDispatch(pedido: PedidoFullRecord, summary: ScheduledDispat
       destinatarioId: null,
       telefonoDestino: ensureMxWhatsappIntl(pedido.clienteTelefono),
       payload: {
-        body: `🧾 *Pedido #${pedido.id}*\n\nYa se envió a *${pedido.tienda?.nombre ?? "la tienda"}*.\n\nTe aviso en cuanto confirme el precio.`,
+        body: pedido.tienda?.usaCatalogoFijo
+          ? `🧾 *Pedido #${pedido.id}*\n\nYa se envió a *${pedido.tienda?.nombre ?? "la tienda"}*.\n\nEl menú ya trae el precio. Te mando el total para que lo confirmes.`
+          : `🧾 *Pedido #${pedido.id}*\n\nYa se envió a *${pedido.tienda?.nombre ?? "la tienda"}*.\n\nTe aviso en cuanto confirme el precio.`,
       },
       idempotencyKey: `pedido:${pedido.id}:esperando_apertura:dispatched:v1`,
     });

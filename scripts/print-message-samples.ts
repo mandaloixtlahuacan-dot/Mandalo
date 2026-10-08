@@ -15,16 +15,18 @@ import {
   formatCatalogOrderRegistered,
   formatCatalogReceiptFee,
   formatCustomerQuoteMessage,
+  formatHowToEditList,
   formatNicheStoreList,
+  formatNoFixedMenu,
   formatPreConfirmFeeNote,
   formatQuoteOrderRegistered,
   formatStuckCorrection,
   type UxStore,
 } from "../src/lib/customerUx";
-import { formatNameQtyLine, joinBlocks } from "../src/lib/messageStyle";
+import { formatCheckedLine, formatNameQtyLine, joinBlocks } from "../src/lib/messageStyle";
 import { mensajeClienteProductoNoDisponible, mensajeTiendaProductoNoEncontrado } from "../src/lib/ordenes";
 import { quoteQuestionForItems } from "../src/lib/quoteProductClarity";
-import { ADDRESS_ASK_MESSAGE, buildCustomerMessage, formatProductListConfirm } from "../src/lib/services/captureEngine";
+import { ADDRESS_ASK_MESSAGE, buildCustomerMessage, formatProductListConfirm, formatSpecificItemLine } from "../src/lib/services/captureEngine";
 import { validateCaptureForConfirmation } from "../src/lib/services/validationEngine";
 
 function section(title: string, body: string) {
@@ -96,8 +98,20 @@ section(
   quoteQuestionForItems([{ nombre_producto: "Leche", cantidad: 1 }]) ?? "(sin pregunta)",
 );
 section("ABARROTES — OK, pediste", formatProductListConfirm(pedidoAbarrotes));
+section("ABARROTES — ayuda para corregir", formatHowToEditList());
 section("ABARROTES — corrección que no movió la lista", formatStuckCorrection(1));
 section("ABARROTES — segunda corrección, ya dice reiniciar", formatStuckCorrection(2));
+section(
+  "ABARROTES — atorado, con la lista",
+  formatStuckCorrection(1, {
+    itemLines: [
+      "✅ 🥤 *Coca-Cola, 2 litros, x2*",
+      "✅ 🧼 *Pinol, 1 litro, x1*",
+      "✅ 🛍️ *Tang, 3 sobres*",
+    ],
+    itemNames: ["Coca-Cola", "Pinol", "Tang"],
+  }),
+);
 section("ABARROTES — ubicación", ADDRESS_ASK_MESSAGE);
 
 const snapshot = {
@@ -231,6 +245,48 @@ section(
 );
 section("GEORGE — menú", formatCatalogMenuCaption(george));
 section("GEORGE — lo que anotó", georgeSpeech.reply ?? georgeSpeech.question ?? "(sin respuesta)");
+const pedidoGeorge = [
+  { nombre_producto: "Hamburguesa de Camarón Grande", cantidad: 1 },
+  { nombre_producto: "Hamburguesa Hawaiana Grande", cantidad: 1 },
+  { nombre_producto: "Salchilocos 310g", cantidad: 1 },
+  { nombre_producto: "Dogo Clásico", cantidad: 3 },
+  { nombre_producto: "Refresco (Pepsi, Seven, Coca, Mirinda o Manzana)", marca: "Pepsi", cantidad: 2 },
+];
+section("GEORGE — OK, pediste", formatProductListConfirm(pedidoGeorge, "restaurante"));
+section(
+  "GEORGE — ayuda para corregir",
+  formatHowToEditList("restaurante", ["Hamburguesa de Camarón Grande", "Hamburguesa Hawaiana Grande", "Dogo Clásico"]),
+);
+section(
+  "GEORGE — atorado, con la lista",
+  formatStuckCorrection(1, {
+    kind: "restaurante",
+    itemLines: pedidoGeorge.map((item) => formatCheckedLine(formatSpecificItemLine(item), item.nombre_producto)),
+    itemNames: pedidoGeorge.map((item) => item.nombre_producto),
+  }),
+);
+section("GEORGE — sin menú fijo", formatNoFixedMenu("Hamburguesas Hotdogs George", "restaurante"));
+const preguntaHamburguesa = applyCatalogSpeech({
+  base: [],
+  userMessage: "Quiero una hamburguesa",
+  catalog: [
+    { nombreProducto: "Hamburguesa de Res Chica", precio: 60 },
+    { nombreProducto: "Hamburguesa de Res Grande", precio: 100 },
+    { nombreProducto: "Hamburguesa de Pollo Chica", precio: 70 },
+    { nombreProducto: "Hamburguesa de Pollo Grande", precio: 110 },
+    { nombreProducto: "Hamburguesa de Camarón Chica", precio: 90 },
+    { nombreProducto: "Hamburguesa de Camarón Grande", precio: 130 },
+    { nombreProducto: "Hamburguesa Hawaiana Chica", precio: 90 },
+    { nombreProducto: "Hamburguesa Hawaiana Grande", precio: 120 },
+    { nombreProducto: "Hamburguesa Cubana Chica", precio: 90 },
+    { nombreProducto: "Hamburguesa Cubana Grande", precio: 120 },
+    { nombreProducto: "Hamburguesa Mar y Tierra Chica", precio: 90 },
+    { nombreProducto: "Hamburguesa Mar y Tierra Grande", precio: 140 },
+    { nombreProducto: "Hamburguesa de Arrachera Chica", precio: 70 },
+    { nombreProducto: "Hamburguesa de Arrachera Grande", precio: 100 },
+  ],
+});
+section("GEORGE — cuál hamburguesa", preguntaHamburguesa.question ?? preguntaHamburguesa.reply ?? "(sin pregunta)");
 const georgeTicket = renderPedidoSummary({
   pedidoId: 85,
   snapshot: {
@@ -267,6 +323,21 @@ section(
 );
 section("LA CENTRAL — menú, cerrada", formatCatalogMenuCaption(central));
 section("LA CENTRAL — lo que anotó", centralSpeech.reply ?? centralSpeech.question ?? "(sin respuesta)");
+const pedidoCentral = [
+  { nombre_producto: "Bistec de res", cantidad: 1, unidad: "kilo" },
+  { nombre_producto: "Chorizo", cantidad: 0.5, unidad: "kilo" },
+];
+section("LA CENTRAL — OK, pediste", formatProductListConfirm(pedidoCentral, "carniceria"));
+section("LA CENTRAL — ayuda para corregir", formatHowToEditList("carniceria", ["Chorizo", "Bistec de res"]));
+section(
+  "LA CENTRAL — atorado, con la lista",
+  formatStuckCorrection(1, {
+    kind: "carniceria",
+    itemLines: ["✅ 🥩 *Bistec de res, 1 kilo*", "✅ 🥩 *Chorizo, 0.5 kilos*"],
+    itemNames: ["Bistec de res", "Chorizo"],
+  }),
+);
+section("LA CENTRAL — sin menú fijo", formatNoFixedMenu("Carnicería La Central", "carniceria"));
 const centralPrice = priceCatalogOrder(centralSpeech.items, centralCatalog);
 section(
   "LA CENTRAL — ticket",

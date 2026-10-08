@@ -32,7 +32,7 @@ export type CatalogSpeechResult = {
 };
 
 type AnchorKind = "hamburguesa" | "dogo" | "refresco" | "product";
-type Gap = "tamano" | "cantidad" | "marca";
+type Gap = "tamano" | "cantidad" | "marca" | "tipo";
 
 const QTY: Record<string, number> = {
   un: 1,
@@ -59,6 +59,8 @@ const FILLER = new Set([
   "el", "los", "las", "y", "e", "o", "con", "sin", "para", "que", "un", "una", "uno",
   "unos", "unas", "al", "lo", "ya", "es", "son", "esa", "ese", "eso",
   "oye", "mira", "pues", "fijate", "fijese", "verdad", "este", "esta", "nomas", "solo",
+  "seria", "serian", "seran", "agrega", "agregame", "agregale", "anade", "anademe",
+  "quieta", "quita", "kita", "cambia", "cambiar",
 ]);
 
 const SIZE_WORDS = ["chica", "chico", "mediana", "mediano", "grande", "sencilla", "sencillo", "doble", "triple"];
@@ -88,6 +90,9 @@ type SpokenLine = {
   label: string;
   distinct: string[];
   nameTokens: string[];
+  /** Palabra que agrupa varias filas (hamburguesa, dogo, bistec). */
+  head: string;
+  options: string[];
 };
 
 function norm(value: string): string {
@@ -295,6 +300,12 @@ function fillerBetween(raw: string): boolean {
   return parts.every((word) => FILLER.has(word) || QTY[word] != null);
 }
 
+/** Entre «hamburguesa» y «camarón» puede ir el tamaño: «hamburguesa grande de camarón». */
+function bridgeBetween(raw: string): boolean {
+  const parts = norm(raw).split(" ").filter(Boolean);
+  return parts.every((word) => FILLER.has(word) || QTY[word] != null || SIZE_WORDS.includes(word));
+}
+
 function wordSpans(text: string): Array<{ word: string; index: number; end: number }> {
   const spans: Array<{ word: string; index: number; end: number }> = [];
   for (const match of text.matchAll(/\S+/g)) {
@@ -376,7 +387,7 @@ function spansOf(text: string, families: Family[] = []): Array<{ kind: AnchorKin
       prev &&
       (prev.kind === "hamburguesa" || prev.kind === "dogo") &&
       hit.kind === "product" &&
-      fillerBetween(text.slice(prev.end, hit.index)) &&
+      bridgeBetween(text.slice(prev.end, hit.index)) &&
       nickContinues(text.slice(hit.index, hit.end), prev.kind, families)
     ) {
       prev.end = hit.end;
@@ -439,6 +450,9 @@ function scoreFamily(family: Family, span: { kind: AnchorKind | null; text: stri
   if (span.kind && span.kind !== "product" && family.nameTokens.includes(span.kind)) score += 3;
   if (span.kind === "dogo" && family.nameTokens.includes("hamburguesa")) score -= 8;
   if (span.kind === "hamburguesa" && family.nameTokens.includes("dogo")) score -= 8;
+  // «hamburguesa … hawaiana» no puede caer en la Torta Hawaiana.
+  if (span.kind === "hamburguesa" && !family.nameTokens.includes("hamburguesa")) return 0;
+  if (span.kind === "dogo" && !family.nameTokens.includes("dogo")) return 0;
   if (span.kind === "refresco" && (family.nameTokens.includes("hamburguesa") || family.nameTokens.includes("dogo"))) score -= 8;
   const said = norm(span.text);
   if (/\bclasicos?\b/.test(said) && /\bclasico\b/.test(family.key)) score += 1;
@@ -576,6 +590,126 @@ function looseScore(family: Family, spanText: string, families: Family[]): numbe
   return spoken.length * 2 + 3;
 }
 
+const FAMILY_HEADS = [
+  "hamburguesa",
+  "dogo",
+  "torta",
+  "sincronizada",
+  "quesadilla",
+  "alitas",
+  "papas",
+  "bistec",
+  "costilla",
+  "chorizo",
+  "salsa",
+  "refresco",
+];
+
+function familyHead(family: Family): string {
+  return family.nameTokens.find((token) => FAMILY_HEADS.includes(token)) ?? family.nameTokens[0] ?? "";
+}
+
+function titleHead(head: string): string {
+  if (head === "papas") return "Papas";
+  if (head === "alitas") return "Alitas";
+  return head.charAt(0).toUpperCase() + head.slice(1);
+}
+
+function shortOption(family: Family, head: string): string {
+  const stripped = family.unsizedName.replace(new RegExp(`^${head}\\s+`, "i"), "").trim();
+  const label = stripped || family.unsizedName;
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function optionLine(labels: string[]): string {
+  const unique = labels.filter((label, index) => labels.findIndex((other) => other.toLowerCase() === label.toLowerCase()) === index);
+  if (unique.length <= 1) return unique[0] ?? "";
+  return `${unique.slice(0, -1).join(", ")} o ${unique[unique.length - 1]}`;
+}
+
+function saidTokens(span: { kind: AnchorKind | null; text: string }): Set<string> {
+  const said = new Set(words(span.text));
+  if (span.kind === "hamburguesa") said.add("hamburguesa");
+  if (span.kind === "dogo") said.add("dogo");
+  if (span.kind === "refresco") said.add("refresco");
+  return said;
+}
+
+/** Varias filas comparten la palabra (hamburguesa, dogo, bistec) y ninguna quedó única. */
+function pendingFamilyLine(
+  span: { kind: AnchorKind | null; text: string; qty: number | null; unidad?: string | null; presentacion?: string | null },
+  pool: Family[],
+  tied: Family[] = [],
+): SpokenLine | null {
+  const said = saidTokens(span);
+  const groups = new Map<string, Family[]>();
+  const source = tied.length > 1 ? tied : pool;
+  for (const family of source) {
+    if (isBrandListDrink(family)) continue;
+    let head = familyHead(family);
+    if (head !== "dogo" && family.key.replace(/\s+/g, "").includes("dogo") && said.has("dogo")) head = "dogo";
+    if (!head || !said.has(head)) continue;
+    const list = groups.get(head) ?? [];
+    list.push(family);
+    groups.set(head, list);
+  }
+  let best: { head: string; families: Family[] } | null = null;
+  for (const [head, families] of groups) {
+    if (families.length < 2) continue;
+    if (!best || families.length > best.families.length) best = { head, families };
+  }
+  if (!best) return null;
+  const complete = best.families.filter((family) => {
+    const distinct = family.distinct.filter((token) => token !== best?.head && token.length >= 3);
+    return distinct.length > 0 && distinct.every((token) => tokenHit(token, said));
+  });
+  if (complete.length === 1 && tied.length === 0) return null;
+  const sizes = SIZE_WORDS.filter((size) => best.families.some((family) => family.sizes.includes(size)));
+  const spokenSize = sizeIn(span.text);
+  const gaps: Gap[] = ["tipo"];
+  if (sizes.length > 1 && !spokenSize) gaps.push("tamano");
+  const cantidad = span.qty ?? (uncountedPlural(span) ? null : 1);
+  if (cantidad == null) gaps.push("cantidad");
+  return {
+    familyKey: best.head,
+    nombre: titleHead(best.head),
+    marca: null,
+    cantidad,
+    unidad: span.unidad ?? null,
+    presentacion: span.presentacion ?? null,
+    gaps,
+    sizeAsk: sizes.join(" o "),
+    label: titleHead(best.head),
+    distinct: [],
+    nameTokens: [best.head],
+    head: best.head,
+    options: best.families.map((family) => shortOption(family, best.head)),
+  };
+}
+
+function rowChoiceLine(family: Family, span: { text: string; qty: number | null; unidad?: string | null; presentacion?: string | null }): SpokenLine | null {
+  if (family.rows.length < 2 || family.sizes.length > 0 || isBrandListDrink(family)) return null;
+  const head = familyHead(family);
+  const cantidad = span.qty ?? (uncountedPlural({ text: span.text, qty: span.qty }) ? null : 1);
+  const gaps: Gap[] = ["tipo"];
+  if (cantidad == null) gaps.push("cantidad");
+  return {
+    familyKey: family.key,
+    nombre: titleHead(head || family.unsizedName),
+    marca: null,
+    cantidad,
+    unidad: span.unidad ?? null,
+    presentacion: span.presentacion ?? null,
+    gaps,
+    sizeAsk: "",
+    label: titleHead(head || "opción"),
+    distinct: family.distinct,
+    nameTokens: family.nameTokens,
+    head: head,
+    options: family.rows.map((row) => row.nombreProducto),
+  };
+}
+
 function lineFromSpan(
   span: { kind: AnchorKind | null; text: string; qty: number | null; unidad?: string | null; presentacion?: string | null },
   catalog: Family[],
@@ -589,8 +723,11 @@ function lineFromSpan(
     })
     .filter((entry) => entry.score > 0)
     .sort((a, b) => b.score - a.score);
-  if (!ranked.length) return null;
-  if (ranked.length > 1 && ranked[0].score === ranked[1].score) return null;
+  const tied = ranked.length > 1 && ranked[0].score === ranked[1].score;
+  if (!ranked.length || tied) {
+    const pending = pendingFamilyLine(span, pool, tied ? ranked.filter((entry) => entry.score === ranked[0].score).map((entry) => entry.family) : []);
+    return pending;
+  }
   const family = ranked[0].family;
   const spokenSize = sizeIn(span.text);
   const wantedSize = spokenSize === "chico" ? "chica" : spokenSize === "mediano" ? "mediana" : spokenSize;
@@ -607,6 +744,8 @@ function lineFromSpan(
   if (needsBrand) gaps.push("marca");
   const cantidad = span.qty ?? (uncountedPlural(span) ? null : 1);
   if (cantidad == null) gaps.push("cantidad");
+  const pieceChoice = !needsSize && !sizedRow ? rowChoiceLine(family, span) : null;
+  if (pieceChoice) return pieceChoice;
   const single = family.rows.length === 1 ? family.rows[0].nombreProducto : family.unsizedName;
   return {
     familyKey: brandList ? "refresco" : family.key,
@@ -620,6 +759,8 @@ function lineFromSpan(
     label: brandList ? "Refresco" : family.unsizedName,
     distinct: brandList ? [] : family.distinct,
     nameTokens: brandList ? ["refresco"] : family.nameTokens,
+    head: brandList ? "refresco" : familyHead(family),
+    options: [],
   };
 }
 
@@ -659,6 +800,15 @@ function itemLine(item: CatalogSpeechItem): string {
   return formatCheckedLine(name);
 }
 
+function headEmoji(head: string): string {
+  if (head === "hamburguesa") return "🍔";
+  if (head === "dogo") return "🌭";
+  if (head === "papas") return "🍟";
+  if (head === "refresco") return "🥤";
+  if (["bistec", "costilla", "chorizo", "salsa", "arrachera"].includes(head)) return "🥩";
+  return "🍽️";
+}
+
 function questionFor(lines: SpokenLine[], itemCount: number): string | null {
   const pending = lines.filter((line) => line.gaps.length);
   if (!pending.length) return null;
@@ -667,7 +817,16 @@ function questionFor(lines: SpokenLine[], itemCount: number): string | null {
       const size = line.gaps.includes("tamano");
       const brand = line.gaps.includes("marca");
       const qty = line.gaps.includes("cantidad");
-      const who = itemCount > 1 ? `${line.label}, ` : "";
+      const tipo = line.gaps.includes("tipo");
+      const who = itemCount > 1 && !tipo ? `${line.label}, ` : "";
+      if (tipo) {
+        const several = (line.cantidad ?? 1) > 1;
+        const asked = line.head === "papas" || line.head.endsWith("s") ? line.head : `${line.head}s`;
+        const ask = several ? `*¿Cuáles ${asked}? (pueden ser distintas)*` : `${headEmoji(line.head)} *¿Cuál ${line.head}?*`;
+        const options = optionLine(line.options);
+        const sizeLine = size && line.sizeAsk ? `\n\n*¿${line.sizeAsk.charAt(0).toUpperCase()}${line.sizeAsk.slice(1)}?*` : "";
+        return `${ask}\n\n${options}${sizeLine}`;
+      }
       if (size && qty && !brand) return who ? `¿${who}la quieres ${line.sizeAsk}, y cuántas?` : `¿La quieres ${line.sizeAsk}, y cuántas?`;
       if (size && !brand) return who ? `¿${who}la quieres ${line.sizeAsk}?` : `¿La quieres ${line.sizeAsk}?`;
       if (brand && qty) return who ? `¿${who}de qué marca y cuántas? Por ejemplo Pepsi, Coca o Seven.` : "¿De qué marca y cuántas? Por ejemplo Pepsi, Coca o Seven.";
@@ -679,14 +838,40 @@ function questionFor(lines: SpokenLine[], itemCount: number): string | null {
     .join("\n\n");
 }
 
+/** Si la lista tiene un tipo pendiente, el cliente puede contestar sin repetir la palabra. */
+function prefixPendingHeads(text: string, base: CatalogSpeechItem[], families: Family[]): string {
+  const heads = base
+    .filter((item) => norm(item.notas ?? "") === "falta tipo")
+    .map((item) => norm(item.nombre_producto))
+    .filter((head) => FAMILY_HEADS.includes(head));
+  if (!heads.length) return text;
+  const headAlt = FAMILY_HEADS.map((head) => (head.endsWith("s") ? head : `${head}s?`)).join("|");
+  const parts = text.split(new RegExp(`(\\s*,\\s*|\\s+\\by\\b\\s+|\\s+(?=(?:${headAlt})\\b))`));
+  return parts
+    .map((part) => {
+      if (/^\s*,\s*$/.test(part) || /^\s+y\s+$/.test(part) || !part.trim()) return part;
+      const said = new Set(words(part));
+      if (heads.some((head) => said.has(head))) return part;
+      const head = heads.find((candidate) =>
+        families.some(
+          (family) =>
+            familyHead(family) === candidate &&
+            family.distinct.some((token) => token !== candidate && tokenHit(token, said)),
+        ),
+      );
+      return head ? `${head} ${part}` : part;
+    })
+    .join("");
+}
+
 export function applyCatalogSpeech(params: {
   base: CatalogSpeechItem[];
   userMessage: string;
   catalog: CatalogPriceRow[];
 }): CatalogSpeechResult {
   const base = params.base.map((item) => ({ ...item }));
-  const text = norm(stripBotDecorations(params.userMessage));
   const families = familiesOf(params.catalog);
+  const text = prefixPendingHeads(norm(stripBotDecorations(params.userMessage)), base, families);
   if (!text || !families.length) return { applied: false, missing: false, items: base, reply: null, question: null, aside: null };
 
   const fromAnchors = spansOf(text, families)
@@ -701,10 +886,26 @@ export function applyCatalogSpeech(params: {
 
   const items = base;
   for (const line of spoken) {
-    const index = items.findIndex((item) => sameFamily(item, line));
+    let index = items.findIndex((item) => sameFamily(item, line) && norm(item.notas ?? "") !== "falta tipo");
+    if (index < 0 && line.head) {
+      index = items.findIndex((item) => norm(item.notas ?? "") === "falta tipo" && norm(item.nombre_producto) === line.head);
+    }
+    if (index < 0) index = items.findIndex((item) => sameFamily(item, line));
     const previous = index >= 0 ? items[index] : null;
-    const cantidad = line.cantidad ?? (typeof previous?.cantidad === "number" ? previous.cantidad : null);
-    if (line.cantidad == null && cantidad != null) {
+    const adding = /^(?:agrega\w*|a[nñ]ade\w*|a[nñ]adir)\b/.test(norm(stripBotDecorations(params.userMessage)));
+    const addingOnto =
+      adding &&
+      previous != null &&
+      norm(previous.notas ?? "") !== "falta tipo" &&
+      !line.gaps.includes("tipo") &&
+      !line.gaps.includes("tamano") &&
+      norm(previous.nombre_producto) === norm(line.nombre);
+    let cantidad = line.cantidad ?? (typeof previous?.cantidad === "number" ? previous.cantidad : null);
+    if (addingOnto) {
+      const extra = line.cantidad ?? 1;
+      const base = typeof previous.cantidad === "number" && previous.cantidad > 0 ? previous.cantidad : 1;
+      cantidad = base + extra;
+    } else if (line.cantidad == null && cantidad != null) {
       line.gaps = line.gaps.filter((gap) => gap !== "cantidad");
     }
     if (line.marca == null && previous?.marca) line.marca = previous.marca;
@@ -719,6 +920,8 @@ export function applyCatalogSpeech(params: {
       ...(line.marca ? { marca: line.marca } : {}),
       ...(unidad ? { unidad } : {}),
     };
+    if (line.gaps.includes("tipo")) next.notas = "falta tipo";
+    else if (norm(next.notas ?? "") === "falta tipo") delete next.notas;
     if (line.presentacion) next.presentacion = line.presentacion;
     else if (line.unidad) delete next.presentacion;
     if (cantidad == null) delete next.cantidad;
@@ -729,10 +932,24 @@ export function applyCatalogSpeech(params: {
     else items.push(next);
   }
 
-  const missing = spoken.some((line) => line.gaps.length);
-  const hole = questionFor(spoken, items.length);
+  // «una hamburguesa, mar y tierra chica» es una sola. Si en el mismo mensaje
+  // ya quedó la de mar y tierra, no se pregunta otra vez cuál hamburguesa.
+  const answered = new Set(spoken.filter((line) => line.head && !line.gaps.includes("tipo")).map((line) => line.head));
+  if (answered.size) {
+    for (let index = items.length - 1; index >= 0; index -= 1) {
+      if (norm(items[index]?.notas ?? "") !== "falta tipo") continue;
+      if (answered.has(norm(items[index]?.nombre_producto ?? ""))) items.splice(index, 1);
+    }
+  }
+  const open = spoken.filter((line) => !(line.head && line.gaps.includes("tipo") && answered.has(line.head)));
+
+  const missing = open.some((line) => line.gaps.length) || items.some((item) => norm(item.notas ?? "") === "falta tipo");
+  const hole = questionFor(open, items.length);
   const question = [hole, aside].filter(Boolean).join(" ") || null;
-  const reply = `🛒 *Anoto:*\n\n${joinBlocks(items.map(itemLine))}${question ? `\n\n${question}` : ""}`;
+  const shown = items.filter((item) => norm(item.notas ?? "") !== "falta tipo");
+  const reply = shown.length
+    ? `🛒 *Anoto:*\n\n${joinBlocks(shown.map(itemLine))}${question ? `\n\n${question}` : ""}`
+    : question;
   return { applied: true, missing, items, reply, question, aside };
 }
 
