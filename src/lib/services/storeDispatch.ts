@@ -14,6 +14,7 @@ import {
 import { buildOrderTimeoutMetadata } from "@/lib/services/orderTimeouts";
 import { matchCatalogProduct, priceCatalogOrder } from "@/lib/catalogQuantities";
 import { formatCustomerQuoteMessage } from "@/lib/customerUx";
+import { formatCheckedLines, formatNameQtyLine, joinBlocks } from "@/lib/messageStyle";
 import { dispatchItemAlreadyShowsQty } from "@/lib/services/captureEngine";
 import { calculateFinalPrice, MANDALO_DELIVERY_FEE, MANDALO_SERVICE_FEE, mensajeClienteProductoNoDisponible } from "@/lib/ordenes";
 import { saveChatMessage as guardarMensajeChat } from "@/lib/messages";
@@ -27,14 +28,13 @@ import type { OrderState } from "@/lib/orderStateMachine";
 // de esas dos funciones dentro de mandaloFlow.ts sin ganar nada; son unas
 // líneas triviales, más simple duplicarlas aquí que orquestar el import.
 function formatItemsForDispatch(items: Array<{ nombreProducto: string; cantidad: number | null }>): string {
-  if (!items.length) return "(sin productos)";
-  return items
-    .map((it) => {
+  if (!items.length) return "🛍️ *Sin productos*";
+  return joinBlocks(
+    items.map((it) => {
       const name = it.nombreProducto.trim() || "producto";
-      if (it.cantidad == null || dispatchItemAlreadyShowsQty(name, it.cantidad)) return `- ${name}`;
-      return `- ${name} x${it.cantidad}`;
-    })
-    .join("\n");
+      return formatNameQtyLine(name, it.cantidad, it.cantidad != null && dispatchItemAlreadyShowsQty(name, it.cantidad));
+    }),
+  );
 }
 
 function logStoreDispatch(params: {
@@ -210,10 +210,10 @@ async function dispatchCatalogoFijo(
 
   const tiendaTelefono = ensureMxWhatsappIntl(pedido.tienda.telefono);
   const aviso =
-    `📦 Nuevo pedido #${pedido.id} (catálogo, ya cobrado automático)\n\n` +
-    `${pedido.direccionEntrega ? `Dirección: ${pedido.direccionEntrega}\n` : ""}` +
-    `Pedido:\n${priced.lines.join("\n")}\n\n` +
-    `Ya no hace falta que cotices — prepáralo en cuanto puedas. 🙏`;
+    `🏪 *Nuevo pedido #${pedido.id}*\n\n` +
+    `Ya trae precio del menú. Prepáralo en cuanto puedas.\n\n` +
+    `${pedido.direccionEntrega ? `📍 *Entrega:*\n${pedido.direccionEntrega}\n\n` : ""}` +
+    `🛒 *Pedido*\n\n${formatCheckedLines(priced.lines)}`;
 
   logStoreDispatch({
     orderId: pedido.id,
@@ -282,11 +282,11 @@ export async function dispatchCotizacionToStore(
 
   const tiendaTelefono = ensureMxWhatsappIntl(pedido.tienda.telefono);
   const encabezado =
-    `COTIZAR. ORDEN #${pedido.id}\n` +
-    `${pedido.direccionEntrega ? `Dirección: ${pedido.direccionEntrega}\n` : ""}` +
-    `Pedido:\n${formatItemsForDispatch(pedido.items)}\n\n` +
-    `Responde así: ORDEN #${pedido.id} PRECIO 150\n\n` +
-    `¿Te falta algún producto? Responde: ORDEN #${pedido.id} NO_DISPONIBLE nombre del producto`;
+    `🏪 *Cotizar. ORDEN #${pedido.id}*\n\n` +
+    `${pedido.direccionEntrega ? `📍 *Entrega:*\n${pedido.direccionEntrega}\n\n` : ""}` +
+    `🛒 *Pedido*\n\n${formatItemsForDispatch(pedido.items)}\n\n` +
+    `*Responde así:*\nORDEN #${pedido.id} PRECIO 150\n\n` +
+    `¿Te falta algún producto?\n\n*Responde:*\nORDEN #${pedido.id} NO_DISPONIBLE nombre del producto`;
 
   logStoreDispatch({
     orderId: pedido.id,

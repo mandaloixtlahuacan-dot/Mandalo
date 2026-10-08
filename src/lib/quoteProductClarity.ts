@@ -1,3 +1,4 @@
+import { presentFollowUp, stripBotDecorations } from "@/lib/messageStyle";
 import { isProductListRequest, isYesConfirmation } from "@/lib/messages";
 import {
   applyCustomerEdits,
@@ -2300,7 +2301,7 @@ export function prepareQuoteItems(
 ): PedidoItemInput[] {
   const ignore = ignoreSet(ignoreText);
   let next = tidyQuoteLines(items.map((item) => ({ ...item })));
-  const message = rewriteGrocerySlips(String(userMessage ?? "").trim());
+  const message = rewriteGrocerySlips(stripBotDecorations(String(userMessage ?? "")));
   const editPlan = planCustomerEdits(message);
   if (editPlan.editsOnly) {
     return tidyQuoteLines(
@@ -2446,7 +2447,7 @@ export function quoteQuestionForItems(items: PedidoItemInput[]): string | null {
     if (!category) continue;
     const missing = missingSlots(category, item);
     if (!missing.length) continue;
-    return category.ask(missing, item, blobOf(item));
+    return presentFollowUp(category.ask(missing, item, blobOf(item)));
   }
   return null;
 }

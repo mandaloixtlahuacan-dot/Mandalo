@@ -3,6 +3,7 @@ import { ensureMxWhatsappIntl } from "@/lib/roles";
 import { getPedidoById, setPedidoEstado, type PedidoFullRecord } from "@/lib/repositories/pedidoRepositoryV2";
 import * as outboxRepository from "@/lib/repositories/outboxRepository";
 import { formatCourierCancelNotice } from "@/lib/customerUx";
+import { formatNameQtyLine, joinBlocks } from "@/lib/messageStyle";
 import { dispatchItemAlreadyShowsQty } from "@/lib/services/captureEngine";
 import { createStateTransitionService } from "@/lib/services/stateTransitionService";
 import { orderTimeoutFieldNames, type OrderTimeoutKind } from "@/lib/services/orderTimeouts";
@@ -35,14 +36,13 @@ function toNullableNumber(value: unknown): number | null {
 }
 
 function formatPedidoItems(items: Array<{ nombreProducto: string; cantidad: number | null }>): string {
-  if (!items.length) return "- Sin productos definidos";
-  return items
-    .map((item) => {
+  if (!items.length) return "🛍️ *Sin productos*";
+  return joinBlocks(
+    items.map((item) => {
       const name = item.nombreProducto.trim() || "producto";
-      if (item.cantidad == null || dispatchItemAlreadyShowsQty(name, item.cantidad)) return `- ${name}`;
-      return `- ${name} x${item.cantidad}`;
-    })
-    .join("\n");
+      return formatNameQtyLine(name, item.cantidad, item.cantidad != null && dispatchItemAlreadyShowsQty(name, item.cantidad));
+    }),
+  );
 }
 
 type OutboundNotice = {
@@ -72,11 +72,12 @@ const TIMEOUT_CONFIGS: TimeoutKindConfig[] = [
       return {
         telefono: ensureMxWhatsappIntl(pedido.tienda.telefono),
         body:
-          `⏰ Recordatorio: el pedido #${pedido.id} sigue esperando tu precio.\n\n` +
-          `Pedido:\n${formatPedidoItems(pedido.items)}\n\n` +
-          `Tienes 5 minutos antes de que se cancele automáticamente.\n\n` +
-          `Responde así: ORDEN #${pedido.id} PRECIO 150\n\n` +
-          `¿Te falta algún producto? Responde: ORDEN #${pedido.id} NO_DISPONIBLE nombre del producto`,
+          `⏰ *Recordatorio*\n\n` +
+          `El pedido #${pedido.id} sigue esperando tu precio.\n\n` +
+          `🛒 *Pedido*\n\n${formatPedidoItems(pedido.items)}\n\n` +
+          `Tienes *5 minutos* antes de que se cancele.\n\n` +
+          `*Responde así:*\nORDEN #${pedido.id} PRECIO 150\n\n` +
+          `¿Te falta algún producto?\n\n*Responde:*\nORDEN #${pedido.id} NO_DISPONIBLE nombre del producto`,
         tipoMensaje: "cotizacion_tienda",
         destinatarioTipo: "negocio",
         destinatarioId: pedido.tienda.tiendaId,
@@ -86,7 +87,7 @@ const TIMEOUT_CONFIGS: TimeoutKindConfig[] = [
       const notices: OutboundNotice[] = [
         {
           telefono: ensureMxWhatsappIntl(pedido.clienteTelefono),
-          body: `⚠️ Tu pedido #${pedido.id} se canceló porque la tienda no respondió a tiempo.\n\n¿Quieres pedir de otro negocio? 🛒`,
+          body: `🧾 *Pedido #${pedido.id}*\n\nSe canceló porque la tienda no respondió a tiempo.\n\n¿Quieres pedir de otro negocio?`,
           tipoMensaje: "notificacion_cliente",
           destinatarioTipo: "cliente",
           destinatarioId: null,
@@ -95,7 +96,7 @@ const TIMEOUT_CONFIGS: TimeoutKindConfig[] = [
       if (pedido.tienda?.telefono) {
         notices.push({
           telefono: ensureMxWhatsappIntl(pedido.tienda.telefono),
-          body: `El pedido #${pedido.id} se canceló por falta de respuesta a tiempo. Ya no es necesario cotizarlo.`,
+          body: `🏪 *Pedido #${pedido.id}*\n\nSe canceló por falta de respuesta a tiempo. Ya no es necesario cotizarlo.`,
           tipoMensaje: "cotizacion_tienda",
           destinatarioTipo: "negocio",
           destinatarioId: pedido.tienda.tiendaId,
@@ -114,8 +115,9 @@ const TIMEOUT_CONFIGS: TimeoutKindConfig[] = [
       return {
         telefono: ensureMxWhatsappIntl(pedido.clienteTelefono),
         body:
-          `⏰ Tu pedido #${pedido.id} está por vencer.\n\n` +
-          `Responde *SÍ* en los próximos 5 minutos para confirmarlo, o se cancelará automáticamente.`,
+          `⏰ *Pedido #${pedido.id}*\n\n` +
+          `Está por vencer.\n\n` +
+          `Responde *SÍ* en los próximos *5 minutos* para confirmarlo, o se cancelará.`,
         tipoMensaje: "notificacion_cliente",
         destinatarioTipo: "cliente",
         destinatarioId: null,
@@ -125,7 +127,7 @@ const TIMEOUT_CONFIGS: TimeoutKindConfig[] = [
       const notices: OutboundNotice[] = [
         {
           telefono: ensureMxWhatsappIntl(pedido.clienteTelefono),
-          body: `⚠️ Tu pedido #${pedido.id} se canceló porque no confirmaste el precio final a tiempo.\n\nCuando quieras, puedes hacer un nuevo pedido. 🙏`,
+          body: `🧾 *Pedido #${pedido.id}*\n\nSe canceló porque no confirmaste el precio final a tiempo.\n\nCuando quieras, puedes hacer un nuevo pedido.`,
           tipoMensaje: "notificacion_cliente",
           destinatarioTipo: "cliente",
           destinatarioId: null,
@@ -134,7 +136,7 @@ const TIMEOUT_CONFIGS: TimeoutKindConfig[] = [
       if (pedido.tienda?.telefono) {
         notices.push({
           telefono: ensureMxWhatsappIntl(pedido.tienda.telefono),
-          body: `El pedido #${pedido.id} se canceló: el cliente no confirmó a tiempo. Ya no es necesario prepararlo.`,
+          body: `🏪 *Pedido #${pedido.id}*\n\nSe canceló: el cliente no confirmó a tiempo. Ya no es necesario prepararlo.`,
           tipoMensaje: "cotizacion_tienda",
           destinatarioTipo: "negocio",
           destinatarioId: pedido.tienda.tiendaId,
@@ -154,7 +156,7 @@ const TIMEOUT_CONFIGS: TimeoutKindConfig[] = [
       if (!courierPhone) return null;
       return {
         telefono: ensureMxWhatsappIntl(courierPhone),
-        body: `⏰ Recordatorio: tienes 5 minutos más para aceptar el pedido #${pedido.id} con #CONFIRMO ${pedido.id}, o se cancelará.`,
+        body: `⏰ *Pedido #${pedido.id}*\n\nTienes *5 minutos* más para aceptarlo, o se cancelará.\n\n*Responde:*\n#CONFIRMO ${pedido.id}`,
         tipoMensaje: "dispatch_repartidor",
         destinatarioTipo: "repartidor",
         destinatarioId: toNullableNumber(pedido.metadata.current_courier_id),
@@ -165,8 +167,9 @@ const TIMEOUT_CONFIGS: TimeoutKindConfig[] = [
         {
           telefono: ensureMxWhatsappIntl(pedido.clienteTelefono),
           body:
-            `⚠️ Por ahora no tenemos repartidores disponibles para tu pedido #${pedido.id}, así que lo cancelamos.\n\n` +
-            `En cuanto haya uno libre, puedes volver a pedir. 🙏`,
+            `🛵 *Pedido #${pedido.id}*\n\n` +
+            `Por ahora no tenemos repartidores disponibles, así que lo cancelamos.\n\n` +
+            `En cuanto haya uno libre, puedes volver a pedir.`,
           tipoMensaje: "notificacion_cliente",
           destinatarioTipo: "cliente",
           destinatarioId: null,
@@ -175,7 +178,7 @@ const TIMEOUT_CONFIGS: TimeoutKindConfig[] = [
       if (pedido.tienda?.telefono) {
         notices.push({
           telefono: ensureMxWhatsappIntl(pedido.tienda.telefono),
-          body: `El pedido #${pedido.id} se canceló: no hubo repartidor disponible a tiempo. Ya no es necesario prepararlo.`,
+          body: `🏪 *Pedido #${pedido.id}*\n\nSe canceló: no hubo repartidor disponible a tiempo. Ya no es necesario prepararlo.`,
           tipoMensaje: "cotizacion_tienda",
           destinatarioTipo: "negocio",
           destinatarioId: pedido.tienda.tiendaId,
@@ -205,8 +208,9 @@ const TIMEOUT_CONFIGS: TimeoutKindConfig[] = [
       return {
         telefono: ensureMxWhatsappIntl(pedido.clienteTelefono),
         body:
-          `⏰ Tu pedido #${pedido.id} sigue esperando tu decisión sobre "${itemNombre}".\n\n` +
-          `Responde en los próximos 5 minutos: escribe "sin él" para continuar sin ese producto, o dime por cuál lo cambio — si no, se cancelará.`,
+          `⏰ *Pedido #${pedido.id}*\n\n` +
+          `Sigue esperando tu decisión sobre *"${itemNombre}"*.\n\n` +
+          `Responde en los próximos *5 minutos*: escribe *sin él* para continuar sin ese producto, o dime por cuál lo cambio. Si no, se cancelará.`,
         tipoMensaje: "notificacion_cliente",
         destinatarioTipo: "cliente",
         destinatarioId: null,
@@ -217,7 +221,7 @@ const TIMEOUT_CONFIGS: TimeoutKindConfig[] = [
       const notices: OutboundNotice[] = [
         {
           telefono: ensureMxWhatsappIntl(pedido.clienteTelefono),
-          body: `⚠️ Tu pedido #${pedido.id} se canceló: no respondiste a tiempo sobre "${itemNombre}".\n\nCuando quieras, puedes hacer un nuevo pedido. 🙏`,
+          body: `🧾 *Pedido #${pedido.id}*\n\nSe canceló: no respondiste a tiempo sobre *"${itemNombre}"*.\n\nCuando quieras, puedes hacer un nuevo pedido.`,
           tipoMensaje: "notificacion_cliente",
           destinatarioTipo: "cliente",
           destinatarioId: null,
@@ -226,7 +230,7 @@ const TIMEOUT_CONFIGS: TimeoutKindConfig[] = [
       if (pedido.tienda?.telefono) {
         notices.push({
           telefono: ensureMxWhatsappIntl(pedido.tienda.telefono),
-          body: `El pedido #${pedido.id} se canceló: el cliente no respondió a tiempo sobre "${itemNombre}". Ya no es necesario prepararlo.`,
+          body: `🏪 *Pedido #${pedido.id}*\n\nSe canceló: el cliente no respondió a tiempo sobre "${itemNombre}". Ya no es necesario prepararlo.`,
           tipoMensaje: "cotizacion_tienda",
           destinatarioTipo: "negocio",
           destinatarioId: pedido.tienda.tiendaId,

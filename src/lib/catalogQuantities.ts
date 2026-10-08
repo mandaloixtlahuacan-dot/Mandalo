@@ -243,10 +243,12 @@ function formatCount(qty: number): string {
   return String(Math.round(qty * 100) / 100);
 }
 
-function lineLabel(nombre: string, qty: number): string {
+/** Cantidad y unidad siempre visibles: «1 kg Chorizo», «0.5 kg Arrachera», «1 Hamburguesa». */
+function ticketLabel(nombre: string, qty: number, unidad?: string | null): string {
   const cleaned = nombre.replace(new RegExp(`(?:,\\s*)?x\\s*${formatCount(qty).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`, "i"), "").trim();
   const base = cleaned || nombre;
-  if (qty === 1) return base;
+  if (unidad === "kilo") return `${formatCount(qty)} kg ${base}`;
+  if (unidad === "pesos") return `$${formatCount(qty)} de ${base}`;
   return `${formatCount(qty)} ${base}`;
 }
 
@@ -268,11 +270,11 @@ export function priceCatalogOrder(
     const pesos = moneyWorth(item);
     if (pesos != null) {
       subtotal += pesos;
-      return `- ${nombre} — ${formatMoney(pesos)}`;
+      return `- ${ticketLabel(nombre, pesos, "pesos")} — ${formatMoney(pesos)}`;
     }
     const qty = numericQty(item.cantidad) ?? 1;
     const match = matchCatalogProduct(catalog, nombre);
-    const weighed = item.unidad === "kilo" && qty !== 1 ? `${formatCount(qty)} kg ${nombre}` : lineLabel(nombre, qty);
+    const weighed = ticketLabel(nombre, qty, item.unidad);
     if (!match) {
       complete = false;
       return `- ${weighed}`;

@@ -2,6 +2,7 @@ import type { CatalogPriceRow } from "@/lib/catalogQuantities";
 import { assembleCapturedItems } from "@/lib/orderGrounding";
 import { formatPreConfirmFeeNote } from "@/lib/customerUx";
 import { isBareOrderRejection, isCancelIntent, isNewOrderIntent, isYesConfirmation } from "@/lib/messages";
+import { formatCheckedLines } from "@/lib/messageStyle";
 import { formatItems, type PedidoItemInput, type PedidoSnapshot } from "@/lib/services/captureEngine";
 import { resolveMapsLink } from "@/lib/services/geo";
 import { validateCaptureForConfirmation } from "@/lib/services/validationEngine";
@@ -53,9 +54,19 @@ export function renderPedidoSummary(params: {
   const direccionBase = String(snapshot.addressText ?? "").trim() || "(sin dirección)";
   const mapsLink = resolveMapsLink({ latitud: snapshot.latitud ?? null, longitud: snapshot.longitud ?? null });
   const direccion = mapsLink ? `${direccionBase}\n${mapsLink}` : direccionBase;
-  const items = params.pricedLines?.trim() || formatItems(params.items ?? snapshot.items ?? []);
+  const rawItems = params.pricedLines?.trim() || formatItems(params.items ?? snapshot.items ?? []);
+  const itemLines = rawItems.split("\n").map((line) => line.trim()).filter(Boolean);
+  const items = itemLines.every((line) => line.startsWith("🛍️") && !line.startsWith("✅"))
+    ? rawItems
+    : formatCheckedLines(itemLines);
   const fee = params.feeNote?.trim() || formatPreConfirmFeeNote("cotiza_tienda");
-  return `🧾 Pedido #${params.pedidoId}\n\nTienda: ${tienda}\n\n🛒 Productos:\n${items}\n\n${fee}\n\n🏠 Entrega:\n${direccion}`;
+  return (
+    `🧾 *Pedido #${params.pedidoId}*\n\n` +
+    `🏪 *Tienda: ${tienda}*\n\n` +
+    `🛒 *Tu pedido*\n\n${items}\n\n` +
+    `${fee}\n\n` +
+    `📍 *Entrega:*\n${direccion}`
+  );
 }
 
 /**
@@ -151,7 +162,7 @@ export function confirmationCustomerMessage(params: {
   });
   const schedule = params.scheduleNote?.trim() ? `\n\n${params.scheduleNote.trim()}` : "";
   if (params.readyForConfirmation) {
-    return `${body}${schedule}\n\n¿Es correcto? Responde *SÍ* para confirmar. ✅`;
+    return `${body}${schedule}\n\n¿Es correcto? Responde *SÍ* para confirmar.`;
   }
   const question = params.question?.trim();
   return question ? `${body}${schedule}\n\n${question}` : `${body}${schedule}`;

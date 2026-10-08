@@ -8,6 +8,7 @@
  */
 
 import type { CatalogPriceRow } from "@/lib/catalogQuantities";
+import { formatCheckedLine, joinBlocks, stripBotDecorations } from "@/lib/messageStyle";
 
 export type CatalogSpeechItem = {
   nombre_producto: string;
@@ -649,13 +650,13 @@ function pieceLabel(qty: number): string {
 
 function itemLine(item: CatalogSpeechItem): string {
   const name = [item.nombre_producto, item.marca].filter(Boolean).join(" ");
-  if (item.unidad === "pesos" && typeof item.cantidad === "number") return `• ${name} — $${item.cantidad}`;
+  if (item.unidad === "pesos" && typeof item.cantidad === "number") return formatCheckedLine(`${name} — $${item.cantidad}`);
   if (item.unidad === "kilo" && typeof item.cantidad === "number" && item.cantidad > 0) {
     const shown = Number.isInteger(item.cantidad) ? String(item.cantidad) : String(Math.round(item.cantidad * 1000) / 1000);
-    return `• ${name} — ${shown} ${item.cantidad === 1 ? "kilo" : "kilos"}`;
+    return formatCheckedLine(`${name} — ${shown} ${item.cantidad === 1 ? "kilo" : "kilos"}`);
   }
-  if (typeof item.cantidad === "number" && item.cantidad > 0) return `• ${name} — ${pieceLabel(item.cantidad)}`;
-  return `• ${name}`;
+  if (typeof item.cantidad === "number" && item.cantidad > 0) return formatCheckedLine(`${name} — ${pieceLabel(item.cantidad)}`);
+  return formatCheckedLine(name);
 }
 
 function questionFor(lines: SpokenLine[], itemCount: number): string | null {
@@ -675,7 +676,7 @@ function questionFor(lines: SpokenLine[], itemCount: number): string | null {
       return null;
     })
     .filter((line): line is string => Boolean(line))
-    .join(" ");
+    .join("\n\n");
 }
 
 export function applyCatalogSpeech(params: {
@@ -684,7 +685,7 @@ export function applyCatalogSpeech(params: {
   catalog: CatalogPriceRow[];
 }): CatalogSpeechResult {
   const base = params.base.map((item) => ({ ...item }));
-  const text = norm(params.userMessage);
+  const text = norm(stripBotDecorations(params.userMessage));
   const families = familiesOf(params.catalog);
   if (!text || !families.length) return { applied: false, missing: false, items: base, reply: null, question: null, aside: null };
 
@@ -731,7 +732,7 @@ export function applyCatalogSpeech(params: {
   const missing = spoken.some((line) => line.gaps.length);
   const hole = questionFor(spoken, items.length);
   const question = [hole, aside].filter(Boolean).join(" ") || null;
-  const reply = `Anoto:\n${items.map(itemLine).join("\n")}${question ? `\n\n${question}` : ""}`;
+  const reply = `🛒 *Anoto:*\n\n${joinBlocks(items.map(itemLine))}${question ? `\n\n${question}` : ""}`;
   return { applied: true, missing, items, reply, question, aside };
 }
 
@@ -795,7 +796,7 @@ function noticeFor(text: string, lines: SpokenLine[], families: Family[]): strin
   const parts: string[] = [];
   const off = offMenuWords(text, lines, families);
   const refused = refusedCuts(text, families, lines);
-  if (off.length) parts.push(`${off.join(" y ")} no lo manejamos.`);
-  if (refused.length) parts.push(`${refused.join(" y ")} sin marinar no la manejamos.`);
+  if (off.length) parts.push(`🛍️ ${off.map((name) => `*${name}*`).join(" y ")} no lo manejamos.`);
+  if (refused.length) parts.push(`🥩 ${refused.map((name) => `*${name}*`).join(" y ")} sin marinar no la manejamos.`);
   return parts.length ? parts.join(" ") : null;
 }

@@ -7,6 +7,7 @@ import { normalizeWhatsAppText, waapiSendImage, waapiSendText } from "@/lib/waap
 import { detectActorByPhone, ensureMxWhatsappIntl, normalizePhone } from "@/lib/roles";
 import { priceCatalogOrder, type CatalogPriceRow } from "@/lib/catalogQuantities";
 import { assembleCapturedItems } from "@/lib/orderGrounding";
+import { formatNameQtyLine, joinBlocks } from "@/lib/messageStyle";
 import { ADDRESS_ASK_MESSAGE, buildCustomerMessage, createCaptureEngine, dispatchItemAlreadyShowsQty, extractCandidateItems, formatProductListConfirm, isProductListConfirmMessage, type PedidoItemInput } from "@/lib/services/captureEngine";
 import * as pedidoRepositoryV2 from "@/lib/repositories/pedidoRepositoryV2";
 import { getAdminPhone } from "@/lib/repositories/configRepository";
@@ -172,14 +173,13 @@ function isOrderTrackingQuestion(text: string): boolean {
 }
 
 function formatItemsForMessage(items: Array<{ nombreProducto: string; cantidad: number | null }>): string {
-  if (!items.length) return "(sin productos)";
-  return items
-    .map((it) => {
+  if (!items.length) return "🛍️ *Sin productos*";
+  return joinBlocks(
+    items.map((it) => {
       const name = it.nombreProducto.trim() || "producto";
-      if (it.cantidad == null || dispatchItemAlreadyShowsQty(name, it.cantidad)) return `- ${name}`;
-      return `- ${name} x${it.cantidad}`;
-    })
-    .join("\n");
+      return formatNameQtyLine(name, it.cantidad, it.cantidad != null && dispatchItemAlreadyShowsQty(name, it.cantidad));
+    }),
+  );
 }
 
 // Flags ligeros en memoria: solo se usan para no re-preguntar "¿continuar o
@@ -687,8 +687,9 @@ async function sendCatalogMenu(to: string, store: UxStore, caption: string): Pro
       );
       const closed = store.abierta
         ? ""
-        : `\n\nOjo: está cerrada ahora${store.abreTexto ? ` (${store.abreTexto})` : ""}. Lo armamos y se manda en cuanto abra.`;
-      const body = menu.includes(UX_MENU_MARKER) ? menu.replace(`\n\n${UX_MENU_MARKER}`, `${closed}\n\n${UX_MENU_MARKER}`) : `${formatCatalogMenuCaption(store, { photo: false })}\n\n${menu}`;
+        : `\n\n⏰ *Ojo:* está cerrada ahora${store.abreTexto ? ` (${store.abreTexto})` : ""}.\n\nLo armamos y se manda en cuanto abra.`;
+      const marker = `*${UX_MENU_MARKER}*`;
+      const body = menu.includes(marker) ? menu.replace(`\n\n${marker}`, `${closed}\n\n${marker}`) : `${formatCatalogMenuCaption(store, { photo: false })}\n\n${menu}`;
       await sendWhatsApp(to, body);
       return;
     }
@@ -746,7 +747,7 @@ async function cancelOpenPedido(pedido: PedidoV2Record, telefono: string, reason
           destinatarioTipo: "negocio",
           destinatarioId: businessId,
           telefonoDestino: tiendaTelefono,
-          payload: { body: `El pedido #${pedido.id} fue cancelado por el cliente. Ya no hace falta que le des seguimiento.` },
+          payload: { body: `🏪 *Pedido #${pedido.id}*\n\nEl cliente lo canceló. Ya no hace falta que le des seguimiento.` },
           idempotencyKey: `pedido:${pedido.id}:cliente_cancelo:aviso_tienda:v1`,
         })
         .catch((e: unknown) => {
@@ -988,7 +989,7 @@ async function handleAwaitingProductList(
 
   if (replyKind === "cancel") {
     await cancelOpenPedido(pedido, telefono, "cliente_rechazo_productos");
-    const msg = `De acuerdo, cancelé tu pedido #${pedido.id}. No se te cobra nada. 🙏\n\nCuando quieras hacer uno nuevo, aquí estoy. 🛒`;
+    const msg = `✅ *Pedido #${pedido.id} cancelado.*\n\nNo se te cobra nada.\n\nCuando quieras hacer uno nuevo, aquí estoy.`;
     await sendWhatsApp(telefono, msg);
     await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
     return { ok: true, role: "cliente", accion: "rechazo_productos", pedidoId: pedido.id };
@@ -1133,7 +1134,7 @@ async function handleEsperandoConfirmacionInicial(
       actorTipo: "sistema",
     });
 
-    const msg = "⚠️ No pude identificar la tienda para tu pedido.\nDime el nombre exacto del negocio y seguimos. 🛒";
+    const msg = "🏪 No pude identificar la tienda para tu pedido.\n\nDime el *nombre exacto* del negocio y seguimos.";
     await sendWhatsApp(telefono, msg);
     await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
     return { ok: true, role: "cliente", stage: "seleccion_productos", pedidoId: pedido.id };
@@ -1151,7 +1152,7 @@ async function handleEsperandoConfirmacionInicial(
   if (orderingStepAfterCustomer({ step: "final_ticket", customerMessage: mensaje }) !== "store") {
     if (isBareOrderRejection(mensaje)) {
       await cancelOpenPedido(pedido, telefono, "cliente_rechazo_confirmacion_inicial");
-      const msg = `De acuerdo, cancelé tu pedido #${pedido.id}. No se te cobra nada. 🙏\n\nCuando quieras hacer uno nuevo, aquí estoy. 🛒`;
+      const msg = `✅ *Pedido #${pedido.id} cancelado.*\n\nNo se te cobra nada.\n\nCuando quieras hacer uno nuevo, aquí estoy.`;
       await sendWhatsApp(telefono, msg);
       await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
       return { ok: true, role: "cliente", accion: "rechazo_confirmacion_inicial", pedidoId: pedido.id };
@@ -1242,7 +1243,7 @@ async function handleEsperandoConfirmacionInicial(
       }
     }
 
-    const msg = `${buildResumenPedido({ ...pedido, snapshot_json: snapshot }, feeNote, pricedLines)}${avisoCerrada}\n\n¿Es correcto? Responde *SÍ* para confirmar. ✅`;
+    const msg = `${buildResumenPedido({ ...pedido, snapshot_json: snapshot }, feeNote, pricedLines)}${avisoCerrada}\n\n¿Es correcto? Responde *SÍ* para confirmar.`;
     await sendWhatsApp(telefono, msg);
     await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
     return { ok: true, role: "cliente", stage: "confirmacion_cliente", pedidoId: pedido.id };
@@ -1269,13 +1270,13 @@ async function handleEsperandoConfirmacionInicial(
       });
     } catch (e: unknown) {
       console.error("[mandalo] no se pudo programar el pedido para apertura de tienda", { pedidoId: full.id, message: getErrorMessage(e) });
-      const msg = "⚠️ Hubo un problema al programar tu pedido.\n\nInténtalo de nuevo respondiendo *SÍ*. Si vuelve a fallar, avísame.";
+      const msg = "⏰ Hubo un problema al programar tu pedido.\n\nInténtalo de nuevo respondiendo *SÍ*. Si vuelve a fallar, avísame.";
       await sendWhatsApp(telefono, msg);
       await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
       return { ok: true, role: "cliente", stage: "confirmacion_cliente", pedidoId: pedido.id };
     }
 
-    const msgCliente = `✅ Pedido #${full.id} programado.\n\n${describeWhyWaiting({ tiendaNombre: full.tienda.nombre ?? "la tienda", tiendaSchedule: schedule, mandaloSchedule })}. Te aviso apenas se mande. 📦`;
+    const msgCliente = `⏰ *Pedido #${full.id} programado.*\n\n${describeWhyWaiting({ tiendaNombre: full.tienda.nombre ?? "la tienda", tiendaSchedule: schedule, mandaloSchedule })}.\n\nTe aviso apenas se mande.`;
     await sendWhatsApp(telefono, msgCliente);
     await guardarMensajeChat({ telefono, texto: msgCliente, estado: "bot" }).catch(() => {});
     return { ok: true, role: "cliente", stage: "esperando_apertura_tienda", pedidoId: full.id };
@@ -1289,7 +1290,7 @@ async function handleEsperandoConfirmacionInicial(
   );
 
   if (!dispatchResult.ok) {
-    const msg = "⚠️ Hubo un problema al registrar tu pedido para enviarlo a la tienda.\n\nInténtalo de nuevo respondiendo *SÍ*. Si vuelve a fallar, avísame.";
+    const msg = "🏪 Hubo un problema al registrar tu pedido para enviarlo a la tienda.\n\nInténtalo de nuevo respondiendo *SÍ*. Si vuelve a fallar, avísame.";
     await sendWhatsApp(telefono, msg);
     await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
     return { ok: true, role: "cliente", stage: "confirmacion_cliente", pedidoId: pedido.id };
@@ -1318,15 +1319,16 @@ async function handleConfirmadoTiendas(telefono: string, mensaje: string, pedido
         telefono,
         "cliente_rechazo_precio_final",
       );
-      const msg = `De acuerdo, no confirmamos tu pedido #${pedido.id} — no se te cobra nada. 🙏\n\nCuando quieras hacer un pedido nuevo, aquí estoy. 🛒`;
+      const msg = `🧾 *Pedido #${pedido.id}*\n\nDe acuerdo, no lo confirmamos. No se te cobra nada.\n\nCuando quieras hacer un pedido nuevo, aquí estoy.`;
       await sendWhatsApp(telefono, msg);
       await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
       return { ok: true, role: "cliente", accion: "rechazo_precio_final", pedidoId: pedido.id };
     }
 
     const msg =
-      `Tu pedido #${pedido.id} sigue esperando tu confirmación.\n\n` +
-      `Total a pagar: ${formatMoney(pedido.totalCliente ?? 0)}\n\n` +
+      `🧾 *Pedido #${pedido.id}*\n\n` +
+      `Sigue esperando tu confirmación.\n\n` +
+      `💵 *Total a pagar: ${formatMoney(pedido.totalCliente ?? 0)}*\n\n` +
       `¿Confirmas? Responde *SÍ* para continuar, o dime si ya no lo quieres.`;
     await sendWhatsApp(telefono, msg);
     await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
@@ -1335,7 +1337,7 @@ async function handleConfirmadoTiendas(telefono: string, mensaje: string, pedido
 
   if (!pedido.items.length) {
     console.error("Error: Intento de enviar pedido vacío", { pedidoId: pedido.id });
-    const msg = "⚠️ Estoy teniendo un problema para recuperar tu lista de productos, y prefiero no enviar un pedido incompleto.\nDame un momento y te confirmo en breve. 🙏";
+    const msg = "🧾 No pude recuperar tu lista de productos, y prefiero no enviar un pedido incompleto.\n\nDame un momento y te confirmo en breve.";
     await sendWhatsApp(telefono, msg);
     await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
     return { ok: false, role: "cliente", error: "PEDIDO_VACIO", pedidoId: pedido.id };
@@ -1344,7 +1346,7 @@ async function handleConfirmadoTiendas(telefono: string, mensaje: string, pedido
   const repartidor = await findActiveCourier();
   if (!repartidor) {
     if (pedido.tienda?.telefono) {
-      const aviso = "Pedido confirmado por el cliente, pero no hay repartidores activos disponibles.";
+      const aviso = `🏪 *Pedido #${pedido.id}*\n\nEl cliente ya confirmó, pero no hay repartidores activos disponibles.`;
       const tiendaTelefono = ensureMxWhatsappIntl(pedido.tienda.telefono);
       logBusinessDispatch({ orderId: pedido.id, tiendaId: pedido.tienda.tiendaId, tiendaNombre: pedido.tienda.nombre, tiendaTelefono, to: tiendaTelefono, body: aviso });
       await outboxRepository.enqueueOutboundMessage({
@@ -1357,7 +1359,7 @@ async function handleConfirmadoTiendas(telefono: string, mensaje: string, pedido
         idempotencyKey: `pedido:${pedido.id}:store_notice_no_courier:v1`,
       });
     }
-    const msg = `⚠️ Pedido #${pedido.id}: por ahora no tengo repartidores activos disponibles.\nEn cuanto haya uno libre, te aviso. 🙏`;
+    const msg = `🛵 *Pedido #${pedido.id}*\n\nPor ahora no tengo repartidores activos disponibles.\n\nEn cuanto haya uno libre, te aviso.`;
     await sendWhatsApp(telefono, msg);
     await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
     return { ok: true, role: "cliente", stage: "confirmado_tiendas", pedidoId: pedido.id };
@@ -1368,16 +1370,17 @@ async function handleConfirmadoTiendas(telefono: string, mensaje: string, pedido
   const mapsLink = resolveMapsLink({ latitud: pedido.latitud, longitud: pedido.longitud });
 
   const msgRepartidor =
-    `Hola ${repartidorNombre}, tienes un nuevo pedido 📦\n\n` +
-    `Pedido #${pedido.id} — ${pedido.tienda?.nombre ?? "la tienda"}\n\n` +
-    `Recoger en:\n${pedido.tienda?.direccion || "(sin dirección de tienda registrada, confirma con la tienda)"}\n\n` +
-    `Entregar en:\n${pedido.direccionEntrega || "(sin dirección)"}\n` +
-    `${mapsLink ? `Mapa: ${mapsLink}\n` : ""}\n` +
-    `Productos:\n${formatItemsForMessage(pedido.items)}\n\n` +
-    `${pedido.totalCliente != null ? `*Cobrar: ${formatMoney(pedido.totalCliente)}*\n` : ""}` +
-    `Tel. cliente: ${telefono}\n\n` +
-    `Responde con: #CONFIRMO ${pedido.id}\n` +
-    `Luego: #RECOGI ${pedido.id} y #ENTREGADO ${pedido.id}`;
+    `🛵 *Hola ${repartidorNombre}, tienes un nuevo pedido*\n\n` +
+    `🧾 *Pedido #${pedido.id}*\n\n` +
+    `🏪 *${pedido.tienda?.nombre ?? "la tienda"}*\n\n` +
+    `📍 *Recoger en:*\n${pedido.tienda?.direccion || "(sin dirección de tienda registrada, confirma con la tienda)"}\n\n` +
+    `📍 *Entregar en:*\n${pedido.direccionEntrega || "(sin dirección)"}\n` +
+    `${mapsLink ? `${mapsLink}\n` : ""}\n` +
+    `🛒 *Productos:*\n\n${formatItemsForMessage(pedido.items)}\n\n` +
+    `${pedido.totalCliente != null ? `💵 *Cobrar: ${formatMoney(pedido.totalCliente)}*\n\n` : ""}` +
+    `*Tel. cliente:* ${telefono}\n\n` +
+    `*Responde con:*\n#CONFIRMO ${pedido.id}\n\n` +
+    `*Luego:*\n#RECOGI ${pedido.id}\n\n#ENTREGADO ${pedido.id}`;
 
   logCourierDispatch({ orderId: pedido.id, courierName: repartidorNombre, courierPhone: repartidorTelefono, customerPhone: telefono, mapsLink, body: msgRepartidor });
 
@@ -1418,14 +1421,18 @@ async function handleConfirmadoTiendas(telefono: string, mensaje: string, pedido
     });
   } catch (e: unknown) {
     console.error("[mandalo] no se pudo encolar o transicionar dispatch a repartidor", { pedidoId: pedido.id, message: getErrorMessage(e) });
-    const msg = "No pude registrar tu pedido para enviarlo al repartidor. Inténtalo de nuevo en un momento. 🛵";
+    const msg = "🛵 No pude registrar tu pedido para enviarlo al repartidor.\n\nInténtalo de nuevo en un momento.";
     await sendWhatsApp(telefono, msg);
     await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
     return { ok: true, role: "cliente", stage: "confirmado_tiendas", pedidoId: pedido.id };
   }
 
   const etaText = formatEstimatedArrival(20);
-  const msgCliente = `✅ Pedido #${pedido.id} confirmado.\nLlegará aproximadamente a las ${etaText}.\n\nEstamos coordinando tu entrega con *${repartidorNombre}*.\nTe avisaré en cuanto confirme. 📦`;
+  const msgCliente =
+    `✅ *Pedido #${pedido.id} confirmado*\n\n` +
+    `Llegará aproximadamente a las ${etaText}.\n\n` +
+    `🛵 Estamos coordinando tu entrega con *${repartidorNombre}*.\n\n` +
+    `Te aviso en cuanto confirme.`;
   await sendWhatsApp(telefono, msgCliente);
   await guardarMensajeChat({ telefono, texto: msgCliente, estado: "bot" }).catch(() => {});
   return { ok: true, role: "cliente", stage: "dispatch_repartidor_pendiente", pedidoId: pedido.id };
@@ -1530,7 +1537,7 @@ async function extractReplacementProduct(params: { itemNombre: string; mensaje: 
 async function handleAjusteProducto(telefono: string, mensaje: string, pedido: PedidoFullRecord): Promise<JsonObject> {
   if (!pedido.tienda) {
     console.error("[mandalo] ajuste_producto sin tienda vinculada", { pedidoId: pedido.id });
-    const msg = "⚠️ Hubo un problema con tu pedido. Ya avisé a nuestro equipo. 🙏";
+    const msg = "🧾 Hubo un problema con tu pedido.\n\nYa avisé a nuestro equipo.";
     await sendWhatsApp(telefono, msg);
     await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
     return { ok: true, role: "cliente", stage: "ajuste_producto", pedidoId: pedido.id };
@@ -1552,7 +1559,7 @@ async function handleAjusteProducto(telefono: string, mensaje: string, pedido: P
     await pedidoRepositoryV2.setPedidoTiendaEstado({ pedidoTiendaId, estadoTienda: "pendiente" });
     const fresh = await pedidoRepositoryV2.getPedidoById(pedido.id);
     if (!fresh) {
-      const msg = "⚠️ Hubo un problema al actualizar tu pedido. Inténtalo de nuevo en un momento.";
+      const msg = "🧾 Hubo un problema al actualizar tu pedido.\n\nInténtalo de nuevo en un momento.";
       await sendWhatsApp(telefono, msg);
       await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
       return { ok: true, role: "cliente", stage: "ajuste_producto", pedidoId: pedido.id };
@@ -1566,8 +1573,8 @@ async function handleAjusteProducto(telefono: string, mensaje: string, pedido: P
     );
 
     const msg = dispatchResult.ok
-      ? `${resumenCambio}\n\nTu pedido ahora es:\n${formatItemsForMessage(fresh.items)}\n\nLe avisé a *${pedido.tienda?.nombre ?? "la tienda"}* para que confirme el nuevo precio. 🧾`
-      : `${resumenCambio}\n\nHubo un problema al avisarle a la tienda — dame un momento y lo reintento. 🙏`;
+      ? `${resumenCambio}\n\n🛒 *Tu pedido*\n\n${formatItemsForMessage(fresh.items)}\n\nLe avisé a *${pedido.tienda?.nombre ?? "la tienda"}* para que confirme el nuevo precio.`
+      : `${resumenCambio}\n\nHubo un problema al avisarle a la tienda. Dame un momento y lo reintento.`;
     await sendWhatsApp(telefono, msg);
     await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
     return { ok: true, role: "cliente", accion: "ajuste_resuelto", pedidoId: pedido.id };
@@ -1584,14 +1591,14 @@ async function handleAjusteProducto(telefono: string, mensaje: string, pedido: P
         "sin_productos_tras_ajuste",
       );
       const msg =
-        `De acuerdo, quité "${itemNombre}" — pero era el único producto de tu pedido #${pedido.id}, así que lo cancelé. 🙏\n\n` +
-        `Cuando quieras, hacemos uno nuevo. 🛒`;
+        `De acuerdo, quité *"${itemNombre}"*.\n\nEra el único producto de tu pedido #${pedido.id}, así que lo cancelé.\n\n` +
+        `Cuando quieras, hacemos uno nuevo.`;
       await sendWhatsApp(telefono, msg);
       await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
       return { ok: true, role: "cliente", accion: "cancelado_sin_productos", pedidoId: pedido.id };
     }
 
-    return reDispatchTrasAjuste(`✅ Listo, quité "${itemNombre}" de tu pedido #${pedido.id}.`);
+    return reDispatchTrasAjuste(`✅ *Listo.*\n\nQuité *"${itemNombre}"* de tu pedido #${pedido.id}.`);
   }
 
   // Si ya le habíamos propuesto un producto de reemplazo a este mismo item,
@@ -1605,7 +1612,9 @@ async function handleAjusteProducto(telefono: string, mensaje: string, pedido: P
         estado: pedido.estado,
         metadataPatch: { product_adjustment_pending_replacement: null },
       });
-      return reDispatchTrasAjuste(`✅ Listo, cambié "${itemNombre}" por "${pending.nombreProducto}" en tu pedido #${pedido.id}.`);
+      return reDispatchTrasAjuste(
+        `✅ *Listo*\n\nCambié "${itemNombre}" por "${pending.nombreProducto}" en tu pedido #${pedido.id}.`,
+      );
     }
 
     if (isNoConfirmation(mensaje)) {
@@ -1614,7 +1623,7 @@ async function handleAjusteProducto(telefono: string, mensaje: string, pedido: P
         estado: pedido.estado,
         metadataPatch: { product_adjustment_pending_replacement: null },
       });
-      const msg = `Ok, dime otra vez por cuál producto cambio "${itemNombre}".`;
+      const msg = `🛒 Ok, dime otra vez por cuál producto cambio "${itemNombre}".`;
       await sendWhatsApp(telefono, msg);
       await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
       return { ok: true, role: "cliente", stage: "ajuste_producto", pedidoId: pedido.id };
@@ -1625,7 +1634,7 @@ async function handleAjusteProducto(telefono: string, mensaje: string, pedido: P
 
   const nuevoTexto = String(mensaje ?? "").trim();
   if (!nuevoTexto) {
-    const msg = `Dime "sin él" para quitar "${itemNombre}" de tu pedido, o el nombre del producto por el que lo cambio.`;
+    const msg = `🛒 Dime "sin él" para quitar "${itemNombre}" de tu pedido, o el nombre del producto por el que lo cambio.`;
     await sendWhatsApp(telefono, msg);
     await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
     return { ok: true, role: "cliente", stage: "ajuste_producto", pedidoId: pedido.id };
@@ -1635,7 +1644,9 @@ async function handleAjusteProducto(telefono: string, mensaje: string, pedido: P
   const candidateText = candidate ? formatCandidateProductText(candidate) : "";
 
   if (!candidateText) {
-    const msg = `No logré identificar el producto en tu mensaje. Escríbeme solo el nombre del producto por el que cambio "${itemNombre}" (ej. "Coca-Cola 600ml"), o "sin él" para quitarlo.`;
+    const msg =
+      `🛒 No logré identificar el producto en tu mensaje.\n\n` +
+      `Escríbeme solo el nombre del producto por el que cambio *"${itemNombre}"* (ej. "Coca-Cola 600ml"), o *"sin él"* para quitarlo.`;
     await sendWhatsApp(telefono, msg);
     await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
     return { ok: true, role: "cliente", stage: "ajuste_producto", pedidoId: pedido.id };
@@ -1651,7 +1662,8 @@ async function handleAjusteProducto(telefono: string, mensaje: string, pedido: P
 
   const cantidadTexto = candidate?.cantidad != null ? ` x${candidate.cantidad}` : "";
   const msg =
-    `Entendí que en vez de "${itemNombre}" quieres:\n\n*${candidateText}${cantidadTexto}*\n\n` +
+    `🛒 Entendí que en vez de "${itemNombre}" quieres:\n\n` +
+    `*${candidateText}${cantidadTexto}*\n\n` +
     `¿Es correcto? Responde *SÍ* para confirmarlo, o dime el producto correcto.`;
   await sendWhatsApp(telefono, msg);
   await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
@@ -1659,11 +1671,11 @@ async function handleAjusteProducto(telefono: string, mensaje: string, pedido: P
 }
 
 const TRACKING_MESSAGES: Partial<Record<OrderState, string>> = {
-  pendiente_tiendas: "Estoy esperando el precio de la tienda para tu pedido ✨\nEn cuanto me lo confirmen, te aviso con el total. ✅",
-  dispatch_repartidor_pendiente: "Tu pedido está confirmado, buscando repartidor. 🛍️",
-  repartidor_asignado: "Tu pedido ya va con el repartidor, en camino a recogerlo. 🛵",
-  recogiendo: "El repartidor ya recogió tu pedido y va en camino. 🛵",
-  en_camino_cliente: "Tu pedido ya va con el repartidor. En cuanto haya una actualización, te aviso. 🛵",
+  pendiente_tiendas: "⏰ *Estoy esperando el precio de la tienda.*\n\nEn cuanto me lo confirmen, te aviso con el total.",
+  dispatch_repartidor_pendiente: "🛵 *Tu pedido está confirmado.*\n\nEstoy buscando repartidor.",
+  repartidor_asignado: "🛵 *Tu pedido ya va con el repartidor*, en camino a recogerlo.",
+  recogiendo: "🛵 *El repartidor ya recogió tu pedido* y va en camino.",
+  en_camino_cliente: "🛵 *Tu pedido ya va con el repartidor.*\n\nEn cuanto haya una actualización, te aviso.",
 };
 
 async function loadUxStores(): Promise<UxStore[]> {
@@ -1836,8 +1848,8 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
   // mismo, antes de tocar la base de datos (ni leer ni crear ningún registro de pedido).
   if (ubicacionCoords && !isWithinCoverageArea(ubicacionCoords)) {
     const msg =
-      "📍 Por ahora Mándalo solo cubre entregas dentro de Ixtlahuacán del Río, y tu ubicación " +
-      "quedó fuera de esa zona.\n\nEn cuanto ampliemos la cobertura te avisamos. ¡Gracias por tu interés! 🙏";
+      "📍 *Por ahora Mándalo solo cubre entregas dentro de Ixtlahuacán del Río.*\n\n" +
+      "Tu ubicación quedó fuera de esa zona.\n\nEn cuanto ampliemos la cobertura te avisamos. ¡Gracias por tu interés!";
     await sendWhatsApp(telefono, msg);
     await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
     return { ok: true, role: "cliente", accion: "rechazado_fuera_de_zona" };
@@ -1873,7 +1885,7 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
       .catch((e: unknown) => {
         console.error("[mandalo] no se pudo escalar queja al admin", { message: getErrorMessage(e) });
       });
-    const msg = "🙏 Ya avisé a nuestro equipo de lo que pasó. Te van a contactar directo para resolverlo.\n\nGracias por avisarnos.";
+    const msg = "🙏 Ya avisé a nuestro equipo de lo que pasó.\n\nTe van a contactar directo para resolverlo.\n\nGracias por avisarnos.";
     await sendWhatsApp(telefono, msg);
     await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
     return { ok: true, role: "cliente", accion: "queja_escalada" };
@@ -1918,7 +1930,10 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
         .catch((e: unknown) => {
           console.error("[mandalo] no se pudo escalar cancelación tardía al admin", { message: getErrorMessage(e) });
         });
-      const msg = `⚠️ Tu pedido #${openPedido.id} ya está en proceso avanzado, así que no puedo cancelarlo yo solo.\n\nYa avisé a nuestro equipo — te van a contactar directo. 🙏`;
+      const msg =
+        `🧾 *Pedido #${openPedido.id}*\n\n` +
+        `Ya está en proceso avanzado, así que no puedo cancelarlo yo solo.\n\n` +
+        `Ya avisé a nuestro equipo. Te van a contactar directo.`;
       await sendWhatsApp(telefono, msg);
       await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
       return { ok: true, role: "cliente", accion: "cancelacion_escalada", pedidoId: openPedido.id };
@@ -1931,8 +1946,8 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
     }
     setSessionFlag(telefono, { pedido_en_proceso: true });
     const msg = wantsNewOrder
-      ? `¡Entendido! Pedido anterior cancelado.\n\n${buildGreeting()}`
-      : "✅ Listo, cancelé tu pedido.\n\nCuando quieras hacer uno nuevo, aquí estoy. 🛒";
+      ? `✅ *Pedido anterior cancelado.*\n\n${buildGreeting()}`
+      : "✅ *Listo, cancelé tu pedido.*\n\nCuando quieras hacer uno nuevo, aquí estoy.";
     await sendWhatsApp(telefono, msg);
     await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
     return { ok: true, role: "cliente", accion: wantsNewOrder ? "hard_reset" : "cancelado_por_cliente" };
@@ -1969,7 +1984,7 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
         // interpretar isYesConfirmation. El mensaje no puede ser estático
         // porque depende de qué tienda y a qué hora abre, así que se arma
         // dinámico aquí en vez de vivir en TRACKING_MESSAGES.
-        let trackingBody = TRACKING_MESSAGES[openPedido.estado] ?? "Tu pedido sigue en proceso. Te aviso en cuanto haya una actualización. 📦";
+        let trackingBody = TRACKING_MESSAGES[openPedido.estado] ?? "Tu pedido sigue en proceso.\n\nTe aviso en cuanto haya una actualización.";
         if (openPedido.estado === "esperando_apertura_tienda") {
           const full = await pedidoRepositoryV2.getPedidoById(openPedido.id);
           const tiendaNombre = full?.tienda?.nombre ?? "la tienda";
@@ -1984,10 +1999,10 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
           const mandaloSchedule = checkMandaloSchedule();
           const sigueEsperando = (schedule && !schedule.withinSchedule) || !mandaloSchedule.withinSchedule;
           trackingBody = sigueEsperando
-            ? `Sigue programado. ${describeWhyWaiting({ tiendaNombre, tiendaSchedule: schedule ?? { withinSchedule: true }, mandaloSchedule })}. Te lo mando en cuanto se pueda. 🕗`
-            : `*${tiendaNombre}* ya debería estar abierta — en un momento te aviso que se mandó tu pedido. 📦`;
+            ? `Sigue programado.\n\n${describeWhyWaiting({ tiendaNombre, tiendaSchedule: schedule ?? { withinSchedule: true }, mandaloSchedule })}.\n\nTe lo mando en cuanto se pueda.`
+            : `*${tiendaNombre}* ya debería estar abierta.\n\nEn un momento te aviso que se mandó tu pedido.`;
         }
-        const trackingMsg = `Pedido #${openPedido.id}: ${trackingBody}`;
+        const trackingMsg = `🧾 *Pedido #${openPedido.id}*\n\n${trackingBody}`;
         await sendWhatsApp(telefono, trackingMsg);
         await guardarMensajeChat({ telefono, texto: trackingMsg, estado: "bot" }).catch(() => {});
         return { ok: true, role: "cliente", stage: openPedido.estado, pedidoId: openPedido.id };
@@ -2309,19 +2324,19 @@ async function handleTiendaProductoNoDisponible(
 ): Promise<JsonObject> {
   const pedido = await pedidoRepositoryV2.getPedidoById(ordenId);
   if (!pedido) {
-    const msg = `⚠️ No encontré el pedido ${ordenId}. Verifica el número e intenta de nuevo.`;
+    const msg = `🏪 No encontré el pedido *#${ordenId}*.\n\nVerifica el número e intenta de nuevo.`;
     await sendWhatsApp(telefono, msg);
     return { ok: true, role: "tienda", ordenId, error: "PEDIDO_NO_ENCONTRADO" };
   }
 
   if (!pedido.tienda || pedido.tienda.tiendaId !== tiendaId) {
-    const msg = "⚠️ Ese pedido no corresponde a tu negocio. Verifica el número de orden.";
+    const msg = "🏪 Ese pedido no corresponde a tu negocio.\n\nVerifica el número de orden.";
     await sendWhatsApp(telefono, msg);
     return { ok: true, role: "tienda", ordenId, error: "TIENDA_NO_CORRESPONDE" };
   }
 
   if (pedido.estado !== "pendiente_tiendas") {
-    const msg = `Ese pedido ya no está esperando cotización (estado actual: ${pedido.estado}).`;
+    const msg = `🏪 Ese pedido ya no está esperando cotización.\n\nEstado actual: *${pedido.estado}*.`;
     await sendWhatsApp(telefono, msg);
     return { ok: true, role: "tienda", ordenId, error: "ESTADO_INVALIDO" };
   }
@@ -2342,7 +2357,7 @@ async function handleTiendaProductoNoDisponible(
 
   await sendWhatsApp(
     telefono,
-    `Recibido, gracias — ya le avisé al cliente que "${item.nombreProducto}" no está disponible. En cuanto me diga qué hacer, seguimos. 🙏`,
+    `✅ *Recibido, gracias.*\n\nYa le avisé al cliente que *"${item.nombreProducto}"* no está disponible.\n\nEn cuanto me diga qué hacer, seguimos.`,
   );
 
   return { ok: true, role: "tienda", ordenId, accion: "producto_no_disponible", itemId: item.id };
@@ -2364,19 +2379,19 @@ async function handleTiendaMessage(telefono: string, mensaje: string, tiendaId: 
 
   const pedido = await pedidoRepositoryV2.getPedidoById(ordenId);
   if (!pedido) {
-    const msg = `⚠️ No encontré el pedido ${ordenId}. Verifica el número e intenta de nuevo.`;
+    const msg = `🏪 No encontré el pedido *#${ordenId}*.\n\nVerifica el número e intenta de nuevo.`;
     await sendWhatsApp(telefono, msg);
     return { ok: true, role: "tienda", ordenId, error: "PEDIDO_NO_ENCONTRADO" };
   }
 
   if (!pedido.tienda || pedido.tienda.tiendaId !== tiendaId) {
-    const msg = "⚠️ Ese pedido no corresponde a tu negocio. Verifica el número de orden.";
+    const msg = "🏪 Ese pedido no corresponde a tu negocio.\n\nVerifica el número de orden.";
     await sendWhatsApp(telefono, msg);
     return { ok: true, role: "tienda", ordenId, error: "TIENDA_NO_CORRESPONDE" };
   }
 
   if (pedido.estado !== "pendiente_tiendas") {
-    const msg = `Ese pedido ya no está esperando cotización (estado actual: ${pedido.estado}).`;
+    const msg = `🏪 Ese pedido ya no está esperando cotización.\n\nEstado actual: *${pedido.estado}*.`;
     await sendWhatsApp(telefono, msg);
     return { ok: true, role: "tienda", ordenId, error: "ESTADO_INVALIDO" };
   }
@@ -2387,7 +2402,7 @@ async function handleTiendaMessage(telefono: string, mensaje: string, tiendaId: 
   // Confirmación corta a la tienda misma — sin esto, el dueño manda el precio
   // y no vuelve a saber nada, no tiene forma de confirmar que su mensaje se
   // procesó bien (a diferencia del repartidor, que sí recibe un ack aquí abajo).
-  await sendWhatsApp(telefono, `Recibido, gracias — ya le avisé al cliente el total del pedido #${ordenId}.`);
+  await sendWhatsApp(telefono, `✅ *Recibido, gracias.*\n\nYa le avisé al cliente el total del pedido *#${ordenId}*.`);
 
   return { ok: true, role: "tienda", ordenId, total };
 }
@@ -2408,7 +2423,7 @@ async function handleRepartidorMessage(telefono: string, mensaje: string): Promi
 
   if (parseResult.action === "confirmed") {
     if (telefonoCliente) {
-      const msgCliente = `✅ Pedido #${parseResult.pedidoId}: ¡Excelente! *${parseResult.courierName}* aceptó tu pedido.\nEn cuanto lo recoja, te aviso. 📦`;
+      const msgCliente = `✅ *Pedido #${parseResult.pedidoId}*\n\n¡Excelente! *${parseResult.courierName}* aceptó tu pedido.\n\nEn cuanto lo recoja, te aviso.`;
       await outboxRepository.enqueueOutboundMessage({
         pedidoId: parseResult.pedidoId,
         tipoMensaje: "notificacion_cliente",
@@ -2421,7 +2436,7 @@ async function handleRepartidorMessage(telefono: string, mensaje: string): Promi
     }
 
     if (parseResult.tiendaTelefono) {
-      const msgTienda = `El pedido #${parseResult.pedidoId} ha sido tomado por el repartidor ${parseResult.courierName}.`;
+      const msgTienda = `🛵 *Pedido #${parseResult.pedidoId}*\n\nLo tomó el repartidor *${parseResult.courierName}*.`;
       const tiendaTelefono = ensureMxWhatsappIntl(parseResult.tiendaTelefono);
       logBusinessDispatch({ orderId: parseResult.pedidoId, tiendaId: parseResult.tiendaId, tiendaNombre: parseResult.tiendaNombre, tiendaTelefono, to: tiendaTelefono, body: msgTienda });
       await outboxRepository.enqueueOutboundMessage({
@@ -2435,14 +2450,14 @@ async function handleRepartidorMessage(telefono: string, mensaje: string): Promi
       });
     }
 
-    const ack = `✅ Aceptación registrada para el pedido ${parseResult.pedidoId}.`;
+    const ack = `✅ *Aceptación registrada*\n\nPedido *#${parseResult.pedidoId}*.`;
     await sendWhatsApp(telefono, ack);
     return { ok: true, role: "repartidor", accion: "aceptado", ordenId: parseResult.pedidoId, repartidorNombre: parseResult.courierName };
   }
 
   if (parseResult.action === "picked_up") {
     if (telefonoCliente) {
-      const msgCliente = `📦 Pedido #${parseResult.pedidoId}: ¡${parseResult.courierName} ya tiene tu pedido y está en camino!`;
+      const msgCliente = `🛵 *Pedido #${parseResult.pedidoId}*\n\n*${parseResult.courierName}* ya tiene tu pedido y está en camino.`;
       await outboxRepository.enqueueOutboundMessage({
         pedidoId: parseResult.pedidoId,
         tipoMensaje: "notificacion_cliente",
@@ -2453,14 +2468,14 @@ async function handleRepartidorMessage(telefono: string, mensaje: string): Promi
       });
       await guardarMensajeChat({ telefono: telefonoCliente, texto: msgCliente, estado: "bot" }).catch(() => {});
     }
-    const ack = `✅ Recogida registrada para el pedido ${parseResult.pedidoId}.`;
+    const ack = `✅ *Recogida registrada*\n\nPedido *#${parseResult.pedidoId}*.`;
     await sendWhatsApp(telefono, ack);
     return { ok: true, role: "repartidor", accion: "en_camino", ordenId: parseResult.pedidoId };
   }
 
   // delivered
   if (telefonoCliente) {
-    const msgCliente = `✅ Pedido #${parseResult.pedidoId} entregado. ¡Gracias por tu compra y por confiar en nosotros! Buen provecho. 🙌`;
+    const msgCliente = `✅ *Pedido #${parseResult.pedidoId} entregado.*\n\n¡*Gracias por tu compra y por confiar en nosotros*!\n\nBuen provecho.`;
     await outboxRepository.enqueueOutboundMessage({
       pedidoId: parseResult.pedidoId,
       tipoMensaje: "notificacion_cliente",
@@ -2471,7 +2486,7 @@ async function handleRepartidorMessage(telefono: string, mensaje: string): Promi
     });
     await guardarMensajeChat({ telefono: telefonoCliente, texto: msgCliente, estado: "bot" }).catch(() => {});
   }
-  const ack = `✅ Entrega registrada para el pedido ${parseResult.pedidoId}.`;
+  const ack = `✅ *Entrega registrada*\n\nPedido *#${parseResult.pedidoId}*.`;
   await sendWhatsApp(telefono, ack);
 
   // Reporte semanal (brief sección 5): contador agregado, no guarda nada del

@@ -2,7 +2,17 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 8 de octubre de 2026. Pedido 102 (Abarrotes Agua Santa):
+> Última actualización: 8 de octubre de 2026. Solo cambió cómo se ven los
+> mensajes de WhatsApp: títulos, nombre de la tienda, productos, precios,
+> la línea de $25 y las instrucciones van en *negrita*; cada producto o
+> opción va en su propia línea, con una línea en blanco entre varios.
+> El pedido, el parser y el cargo no cambian. Si el cliente copia una
+> línea con palomita, el bot lee el producto y no el adorno. El texto
+> completo de muestra está en `docs/mensajes-muestra.txt`. Sin merge y
+> sin deploy. Escenarios en `scripts/check-product-ordering.ts`: 47
+> abarrotes, 29 George, 28 La Central (104/104). El 103 anterior sigue
+> adentro y pasa. En el modo viejo, el mismo archivo da 37/104.
+> Actualización anterior: 8 de octubre de 2026. Pedido 102 (Abarrotes Agua Santa):
 > una Coca y una Maruchan no se juntan en una sola línea. «Quítame…» borra
 > solo la línea que coincide y no se vuelve producto. «Mal», «aparte» y
 > «error» no se guardan como marca. El pedido de abarrotes pide cada

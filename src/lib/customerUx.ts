@@ -13,6 +13,7 @@
  * con `categoria` Carnicerías (o `nicho:carnicerias`).
  */
 
+import { formatCheckedLine, formatCheckedLines, joinBlocks } from "@/lib/messageStyle";
 import { formatMoney, MANDALO_DELIVERY_FEE, MANDALO_SERVICE_FEE } from "@/lib/ordenes";
 
 export const CUSTOMER_FACING_FEE = MANDALO_SERVICE_FEE + MANDALO_DELIVERY_FEE;
@@ -119,26 +120,26 @@ export function normalizeUxText(text: string): string {
 }
 
 export function formatCustomerFeeLine(): string {
-  return `Envío y servicio: ${formatMoney(CUSTOMER_FACING_FEE)}`;
+  return `*Envío y servicio: ${formatMoney(CUSTOMER_FACING_FEE)}*`;
 }
 
 export function formatPreConfirmFeeNote(mode: "catalogo" | "cotiza_tienda"): string {
   if (mode === "catalogo") return formatCustomerFeeLine();
-  return `La tienda cotiza tus productos, más ${formatMoney(CUSTOMER_FACING_FEE)} de envío y servicio.`;
+  return `*La tienda cotiza tus productos, más ${formatMoney(CUSTOMER_FACING_FEE)} de envío y servicio.*`;
 }
 
 export function formatCatalogOrderRegistered(pedidoId: number, tiendaNombre: string): string {
   const tienda = tiendaNombre.trim() || "la tienda";
-  return `📩 Pedido #${pedidoId} ya quedó con *${tienda}*.\n\nTe mando el total para que lo confirmes con un SÍ.`;
+  return `🧾 *Pedido #${pedidoId}*\n\nYa quedó con *${tienda}*.\n\nTe mando el total para que lo confirmes con un SÍ.`;
 }
 
 export function formatQuoteOrderRegistered(pedidoId: number, tiendaNombre: string): string {
   const tienda = tiendaNombre.trim() || "la tienda";
-  return `📩 Pedido #${pedidoId} ya va para *${tienda}*.\n\nTe aviso en cuanto la tienda confirme el precio.`;
+  return `🧾 *Pedido #${pedidoId}*\n\nYa va para *${tienda}*.\n\nTe aviso en cuanto la tienda confirme el precio.`;
 }
 
 export function formatCourierCancelNotice(pedidoId: number): string {
-  return `El pedido #${pedidoId} se canceló. Ya no hace falta que lo recojas.`;
+  return `🛵 *Pedido #${pedidoId}*\n\nSe canceló. Ya no hace falta que lo recojas.`;
 }
 
 export function formatCustomerQuoteMessage(params: {
@@ -149,16 +150,15 @@ export function formatCustomerQuoteMessage(params: {
   itemLines?: string[] | null;
 }): string {
   const tienda = params.tiendaNombre.trim() || "la tienda";
-  const lines = (params.itemLines ?? []).map((line) => line.trim()).filter(Boolean);
-  const productos = lines.length ? `${lines.join("\n")}\n` : "";
+  const productos = formatCheckedLines(params.itemLines ?? []);
   return (
-    `Este es el total de tu pedido en *${tienda}*:\n\n` +
-    `Pedido #${params.pedidoId}\n` +
-    productos +
-    `Subtotal: ${formatMoney(params.subtotal)}\n` +
-    `${formatCustomerFeeLine()}\n` +
-    `*Total a pagar: ${formatMoney(params.total)}*\n\n` +
-    `¿Confirmas tu pedido? Responde *SÍ* ✅`
+    `🧾 *Este es el total de tu pedido en ${tienda}*\n\n` +
+    `*Pedido #${params.pedidoId}*\n\n` +
+    (productos ? `🛒 *Tu pedido*\n\n${productos}\n\n` : "") +
+    `*Subtotal: ${formatMoney(params.subtotal)}*\n\n` +
+    `${formatCustomerFeeLine()}\n\n` +
+    `💵 *Total a pagar: ${formatMoney(params.total)}*\n\n` +
+    `¿Confirmas tu pedido? Responde *SÍ*`
   );
 }
 
@@ -169,13 +169,17 @@ export function customerCopySplitsFee(text: string): boolean {
   return mentionsServiceSlice && mentionsDeliverySlice;
 }
 
-const GREETING_BODY = `¡Hola! Soy Mándalo, tu mandadero en Ixtlahuacán del Río.
+const GREETING_BODY = `👋 *¡Hola! Soy Mándalo, tu mandadero en Ixtlahuacán del Río.*
+
 Con gusto pido en la tienda, el restaurante o la carnicería que me digas y te lo llevo a la puerta.
 
-¿De dónde quieres?
-1. Abarrotes
-2. Restaurantes
-3. Carnicerías`;
+*¿De dónde quieres?*
+
+1. *Abarrotes*
+
+2. *Restaurantes*
+
+3. *Carnicerías*`;
 
 export function buildGreeting(now = new Date()): string {
   void now;
@@ -224,64 +228,81 @@ export function formatNicheStoreList(niche: StoreNiche, stores: UxStore[]): stri
   }
 
   const lines = mine.map((store, index) => {
-    if (store.abierta) return `${index + 1}. ${store.nombre}`;
+    if (store.abierta) return `${index + 1}. *${store.nombre}*`;
     const when = store.abreTexto ? `, ${store.abreTexto}` : "";
-    return `${index + 1}. ${store.nombre} (cerrada${when})`;
+    return `${index + 1}. *${store.nombre}* (cerrada${when})`;
   });
 
   const fee =
     niche.id === "abarrotes"
-      ? `La tienda cotiza tus productos, más ${formatMoney(CUSTOMER_FACING_FEE)} de envío y servicio.`
-      : `El menú trae precio, más ${formatMoney(CUSTOMER_FACING_FEE)} de envío y servicio.`;
+      ? `*La tienda cotiza tus productos, más ${formatMoney(CUSTOMER_FACING_FEE)} de envío y servicio.*`
+      : `*El menú trae precio, más ${formatMoney(CUSTOMER_FACING_FEE)} de envío y servicio.*`;
 
-  return `${niche.label}:\n\n${lines.join("\n")}\n\n${fee}\n\n${UX_STORE_LIST_MARKER} 👀`;
+  return `🏪 *${niche.label}:*\n\n${joinBlocks(lines)}\n\n${fee}\n\n*${UX_STORE_LIST_MARKER}*`;
 }
 
 export function formatNicheSwitchList(niche: StoreNiche, stores: UxStore[]): string {
-  return `Va, soltamos la tienda anterior. 🛵\n\n${formatNicheStoreList(niche, stores)}`;
+  return `🛵 Va, soltamos la tienda anterior.\n\n${formatNicheStoreList(niche, stores)}`;
 }
 
 export const ABARROTES_PRODUCT_REQUEST =
-  "Mándame cada producto por separado, con marca, tamaño y cuántos. Ejemplo:\n" +
-  "2 Coca-Cola de 600 ml\n" +
-  "1 Pinol de 1 litro\n" +
-  "1 kg de tortillas";
+  "Mándame cada producto por separado, con marca, tamaño y cuántos.\n\n" +
+  "*Ejemplo:*\n\n" +
+  joinBlocks([
+    formatCheckedLine("2 Coca-Cola de 600 ml"),
+    formatCheckedLine("1 Pinol de 1 litro"),
+    formatCheckedLine("1 kg de tortillas"),
+  ]);
 
 export function formatHowToEditList(): string {
   return [
-    "Si algo está mal, dime: quita el Pinol / cambia la Coca a 2 litros / agrega 1 jabón Zote.",
+    "Si algo está mal, dime:",
+    "",
+    "*quita el Pinol*",
+    "",
+    "*cambia la Coca a 2 litros*",
+    "",
+    "*agrega 1 jabón Zote*",
+    "",
     "Para que lo lea bien, cada producto va aparte, con marca, tamaño y cuántos.",
-    "Ejemplo: 2 Coca-Cola de 600 ml.",
+    "",
+    "*Ejemplo:*",
+    "",
+    formatCheckedLine("2 Coca-Cola de 600 ml"),
   ].join("\n");
 }
 
 /** Cuando una corrección no movió la lista. El reinicio solo sale después de 2 intentos. */
 export function formatStuckCorrection(failedCount: number): string {
-  const lines = [formatHowToEditList(), "Si la lista ya está bien, responde sí."];
+  const lines = [formatHowToEditList(), "Si la lista ya está bien, responde *sí*."];
   if (failedCount >= 2) {
-    lines.push("Si seguimos atorados, escribe reiniciar o cancelar y armamos el pedido de nuevo.");
+    lines.push("Si seguimos atorados, escribe *reiniciar* o *cancelar* y armamos el pedido de nuevo.");
   }
-  return lines.join("\n");
+  return lines.join("\n\n");
+}
+
+function closedStoreNote(store: UxStore, follow: string): string {
+  if (store.abierta) return "";
+  const when = store.abreTexto ? ` (${store.abreTexto})` : "";
+  return `\n\n⏰ Ojo: está cerrada ahora${when}.\n\n${follow}`;
 }
 
 export function formatAbarrotesStoreAck(store: UxStore): string {
-  const closed = store.abierta
-    ? ""
-    : `\n\nOjo: está cerrada ahora${store.abreTexto ? ` (${store.abreTexto})` : ""}. Lo armamos igual y se manda en cuanto abra.`;
+  const closed = closedStoreNote(store, "Lo armamos igual y se manda en cuanto abra.");
   return (
-    `Va, de ${store.nombre}. ${ABARROTES_PRODUCT_REQUEST}${closed}\n\n` +
-    `La tienda cotiza y se suman ${formatMoney(CUSTOMER_FACING_FEE)} de envío y servicio. 🛒`
+    `🏪 *Va, de ${store.nombre}.*\n\n` +
+    `${ABARROTES_PRODUCT_REQUEST}${closed}\n\n` +
+    `*La tienda cotiza y se suman ${formatMoney(CUSTOMER_FACING_FEE)} de envío y servicio.*`
   );
 }
 
 export function formatCatalogCategories(store: UxStore, categories: string[]): string {
-  const closed = store.abierta
-    ? ""
-    : `\n\nOjo: está cerrada ahora${store.abreTexto ? ` (${store.abreTexto})` : ""}. Lo armamos igual y se manda en cuanto abra.`;
-  const lines = categories.map((category, index) => `${index + 1}. ${category}`).join("\n");
+  const closed = closedStoreNote(store, "Lo armamos igual y se manda en cuanto abra.");
+  const lines = joinBlocks(categories.map((category, index) => `${index + 1}. *${category}*`));
   return (
-    `Va, de ${store.nombre}. Te armo el mandado.${closed}\n\n` +
-    `${UX_CATEGORY_MARKER}\n\n` +
+    `🏪 *Va, de ${store.nombre}.*\n\n` +
+    `Te armo el mandado.${closed}\n\n` +
+    `*${UX_CATEGORY_MARKER}*\n\n` +
     `${lines}\n\n` +
     `${formatCustomerFeeLine()}, aparte del menú.`
   );
@@ -303,11 +324,9 @@ export function formatCatalogMenuCaption(store: UxStore, options?: { photo?: boo
   const invite = photo
     ? "Pídeme lo que se te antoje, como sale en la foto."
     : "Pídeme lo que se te antoje, con el nombre del menú.";
-  const closed = store.abierta
-    ? ""
-    : `\n\nOjo: está cerrada ahora${store.abreTexto ? ` (${store.abreTexto})` : ""}. Lo armamos y se manda en cuanto abra.`;
+  const closed = closedStoreNote(store, "Lo armamos y se manda en cuanto abra.");
   return (
-    `${UX_MENU_IMAGE_MARKER} ${store.nombre} ${emoji}\n\n` +
+    `${emoji} *${UX_MENU_IMAGE_MARKER} ${store.nombre}*\n\n` +
     `${invite}${closed}\n\n` +
     `${formatCustomerFeeLine()}, aparte.`
   );
@@ -321,7 +340,7 @@ export function catalogUsesMenuImage(store: UxStore): boolean {
 export function formatCatalogReceiptFee(subtotal: number | null): string {
   const base = formatCustomerFeeLine();
   if (subtotal == null) return base;
-  return `${base}\nTotal: ${formatMoney(subtotal + CUSTOMER_FACING_FEE)}`;
+  return `${base}\n\n*Total: ${formatMoney(subtotal + CUSTOMER_FACING_FEE)}*`;
 }
 
 export function isRunningTotalQuestion(message: string): boolean {
@@ -339,14 +358,14 @@ export function formatRunningTotal(params: {
   catalog: boolean;
 }): string {
   if (!params.catalog) {
-    return `De ${params.storeName} la tienda cotiza los productos.\n\n${formatCustomerFeeLine()}\n\nEl total te lo paso cuando ella responda. 🙌`;
+    return `🧾 De ${params.storeName} la tienda cotiza los productos.\n\n${formatCustomerFeeLine()}\n\nEl total te lo paso cuando ella responda.`;
   }
   if (!params.lines.length) {
-    return `Todavía no anoto nada de ${params.storeName}. Dime qué se te antoja y te armo la cuenta. 🍔`;
+    return `🛒 Todavía no anoto nada de ${params.storeName}.\n\nDime qué se te antoja y te armo la cuenta.`;
   }
   const total =
-    params.subtotal == null ? "" : `\nTotal por ahora: ${formatMoney(params.subtotal + CUSTOMER_FACING_FEE)}`;
-  return `Llevas de ${params.storeName}:\n${params.lines.join("\n")}\n\n${formatCustomerFeeLine()}${total}`;
+    params.subtotal == null ? "" : `\n\n💵 *Total por ahora: ${formatMoney(params.subtotal + CUSTOMER_FACING_FEE)}*`;
+  return `🛒 *Llevas de ${params.storeName}:*\n\n${joinBlocks(params.lines)}\n\n${formatCustomerFeeLine()}${total}`;
 }
 
 export function storeMentionedInMessage(message: string, stores: UxStore[]): UxStore | null {
@@ -354,12 +373,12 @@ export function storeMentionedInMessage(message: string, stores: UxStore[]): UxS
 }
 
 export function formatCatalogMenu(storeName: string, category: string, items: Array<{ nombre: string; precio: number }>): string {
-  const lines = items.map((item) => `- ${item.nombre} — ${formatMoney(item.precio)}`).join("\n");
-  return `${category} en ${storeName}:\n\n${lines}\n\n${formatCustomerFeeLine()}, aparte.\n\n${UX_MENU_MARKER}`;
+  const lines = joinBlocks(items.map((item) => formatCheckedLine(`${item.nombre} — ${formatMoney(item.precio)}`)));
+  return `🛒 *${category} en ${storeName}:*\n\n${lines}\n\n${formatCustomerFeeLine()}, aparte.\n\n*${UX_MENU_MARKER}*`;
 }
 
 export function formatNoFixedMenu(storeName: string): string {
-  return `${storeName} es de abarrotes. ${ABARROTES_PRODUCT_REQUEST}\n\n${formatCustomerFeeLine()}. 🛒`;
+  return `🏪 *${storeName}* es de abarrotes.\n\n${ABARROTES_PRODUCT_REQUEST}\n\n${formatCustomerFeeLine()}.`;
 }
 
 export function replyBlamesStoreForMissingMenu(text: string, storeName: string): boolean {
@@ -502,7 +521,8 @@ function messageNamesRestaurant(message: string, store: UxStore): boolean {
 }
 
 export function lastBotAskedForNiche(lastBot: string): boolean {
-  if (lastBot.includes("¿De dónde quieres?") && lastBot.includes("1. Abarrotes") && lastBot.includes("2. Restaurantes")) {
+  const plain = lastBot.replace(/\*/g, "");
+  if (plain.includes("¿De dónde quieres?") && plain.includes("1. Abarrotes") && plain.includes("2. Restaurantes")) {
     return true;
   }
   const asked =
@@ -558,9 +578,9 @@ export function categoryChosenFromLastBot(lastBot: string, message: string): str
   if (!lastBot.includes(UX_CATEGORY_MARKER)) return null;
   const asNumber = parseLeadingNumber(message);
   if (asNumber == null) return null;
-  const line = lastBot.split("\n").find((row) => row.startsWith(`${asNumber}. `));
+  const line = lastBot.split("\n").find((row) => row.replace(/\*/g, "").startsWith(`${asNumber}. `));
   if (!line) return null;
-  return line.slice(`${asNumber}. `.length).trim() || null;
+  return line.slice(`${asNumber}. `.length).replace(/\*/g, "").trim() || null;
 }
 
 export function matchCategoriasEnTexto(categorias: string[], texto: string): string[] {
