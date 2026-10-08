@@ -293,11 +293,11 @@ const storeItems = [
 const storeLines = joinBlocks(storeItems.map((item) => formatNameQtyLine(item.nombreProducto, item.cantidad, false)));
 section(
   "TIENDA — cotizar",
-  `🏪 *Cotizar. ORDEN #102*\n\n📍 *Entrega:*\nCalle Hidalgo 12, frente a la tortillería\n\n🛒 *Tu pedido*\n\n${storeLines}\n\n*Responde así:*\nORDEN #102 PRECIO 150\n\n¿Te falta algún producto?\n\n*Responde:*\nORDEN #102 NO_DISPONIBLE nombre del producto`,
+  `🏪 *Cotizar. ORDEN #102*\n\n📍 *Entrega:*\nCalle Hidalgo 12, frente a la tortillería\n\n🛒 *Pedido*\n\n${storeLines}\n\n*Responde así:*\nORDEN #102 PRECIO 150\n\n¿Te falta algún producto?\n\n*Responde:*\nORDEN #102 NO_DISPONIBLE nombre del producto`,
 );
 section(
   "TIENDA — recordatorio",
-  `⏰ *Recordatorio*\n\nEl pedido #102 sigue esperando tu precio.\n\n🛒 *Tu pedido*\n\n${storeLines}\n\nTienes *5 minutos* antes de que se cancele.\n\n*Responde así:*\nORDEN #102 PRECIO 150\n\n¿Te falta algún producto?\n\n*Responde:*\nORDEN #102 NO_DISPONIBLE nombre del producto`,
+  `⏰ *Recordatorio*\n\nEl pedido #102 sigue esperando tu precio.\n\n🛒 *Pedido*\n\n${storeLines}\n\nTienes *5 minutos* antes de que se cancele.\n\n*Responde así:*\nORDEN #102 PRECIO 150\n\n¿Te falta algún producto?\n\n*Responde:*\nORDEN #102 NO_DISPONIBLE nombre del producto`,
 );
 section(
   "TIENDA — producto no encontrado",

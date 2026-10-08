@@ -1188,7 +1188,18 @@ const unaSola = reconcileCatalogQuantities(
   "mejor una hamburguesa de pollo",
 );
 assert(unaSola[0]?.cantidad === 1, "si pide una, la cantidad baja a 1");
+assert(priceCatalogOrder(unaSola, georgeCatalog).lines[0]?.includes("1 Hamburguesa de pollo"), "una pieza muestra la cantidad 1");
 assert(priceCatalogOrder(unaSola, georgeCatalog).lines[0]?.includes("$55"), "una hamburguesa se cobra a precio de una");
+const kiloChorizo = priceCatalogOrder(
+  [{ nombre_producto: "Chorizo", cantidad: 1, unidad: "kilo" }],
+  [{ nombreProducto: "Chorizo", precio: 115 }],
+);
+assert(kiloChorizo.lines[0]?.includes("1 kg Chorizo — $115"), "un kilo muestra 1 kg y el precio");
+const mediaArrachera = priceCatalogOrder(
+  [{ nombre_producto: "Arrachera Marinada", cantidad: 0.5, unidad: "kilo" }],
+  [{ nombreProducto: "Arrachera Marinada", precio: 280 }],
+);
+assert(mediaArrachera.lines[0]?.includes("0.5 kg Arrachera Marinada — $140"), "medio kilo muestra 0.5 kg y el precio");
 
 const plural = priceCatalogOrder([{ nombre_producto: "Hamburguesas de pollo", cantidad: 2 }], georgeCatalog);
 assert(plural.subtotal === 110, "el plural del menú sigue encontrando el precio de dos");

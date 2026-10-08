@@ -128,7 +128,7 @@ export function mensajeTiendaProductoNoEncontrado(
 ): string {
   return (
     `🏪 *No encontré "${productoTexto}" en el pedido #${ordenId}.*\n\n` +
-    `🛒 *Tu pedido*\n\n${lineas}\n\n` +
+    `🛒 *Pedido*\n\n${lineas}\n\n` +
     `*Escribe el nombre tal como aparece arriba.*\n\n` +
     `ORDEN #${ordenId} NO_DISPONIBLE ${ejemploProducto}`
   );

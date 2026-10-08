@@ -2,7 +2,7 @@
 
 Solo presentación. El pedido, los precios y el cargo de **$25 de envío y servicio** no cambian.
 
-Cómo se lee: un asterisco abre y cierra la negrita de WhatsApp (`*así*`). Cada producto va en su línea, con una línea en blanco antes del siguiente. La palomita marca lo confirmado y el emoji dice qué es. Los comandos de tienda y repartidor (`ORDEN #…`, `#CONFIRMO`, `#RECOGI`, `#ENTREGADO`) van sin negrita, para copiarlos igual.
+Cómo se lee: un asterisco abre y cierra la negrita de WhatsApp (`*así*`). Cada producto va en su línea, con una línea en blanco antes del siguiente. La palomita marca lo confirmado y el emoji dice qué es. En el ticket, cada renglón trae cantidad, producto y precio. Los comandos de tienda y repartidor (`ORDEN #…`, `#CONFIRMO`, `#RECOGI`, `#ENTREGADO`) van sin negrita, para copiarlos igual.
 
 El mismo texto, sin formato de esta página, está en `docs/mensajes-muestra.txt`.
 
@@ -446,11 +446,11 @@ GEORGE — ticket
 
 🛒 *Tu pedido*
 
-✅ 🍔 *Hamburguesa de Res Chica — $75*
+✅ 🍔 *1 Hamburguesa de Res Chica — $75*
 
-✅ 🌭 *Dogo clásico — $40*
+✅ 🌭 *1 Dogo clásico — $40*
 
-✅ 🍟 *Papas Gajo 315g — $45*
+✅ 🍟 *1 Papas Gajo 315g — $45*
 
 *Envío y servicio: $25*
 
@@ -518,7 +518,7 @@ LA CENTRAL — lo que anotó
 
 🛒 *Anoto:*
 
-✅ 🌭 *Chorizo — 1 kilo*
+✅ 🥩 *Chorizo — 1 kilo*
 
 ✅ 🥩 *Arrachera Marinada — 0.5 kilos*
 
@@ -533,7 +533,7 @@ LA CENTRAL — ticket
 
 🛒 *Tu pedido*
 
-✅ 🌭 *Chorizo — $115*
+✅ 🥩 *1 kg Chorizo — $115*
 
 ✅ 🥩 *0.5 kg Arrachera Marinada — $140*
 
@@ -556,7 +556,7 @@ TIENDA — cotizar
 📍 *Entrega:*
 Calle Hidalgo 12, frente a la tortillería
 
-🛒 *Tu pedido*
+🛒 *Pedido*
 
 ✅ 🥤 *Coca-Cola 2 litros x2*
 
@@ -583,7 +583,7 @@ TIENDA — recordatorio
 
 El pedido #102 sigue esperando tu precio.
 
-🛒 *Tu pedido*
+🛒 *Pedido*
 
 ✅ 🥤 *Coca-Cola 2 litros x2*
 
@@ -610,7 +610,7 @@ TIENDA — producto no encontrado
 
 🏪 *No encontré "kétchup" en el pedido #102.*
 
-🛒 *Tu pedido*
+🛒 *Pedido*
 
 ✅ 🥤 *Coca-Cola 2 litros x2*
 

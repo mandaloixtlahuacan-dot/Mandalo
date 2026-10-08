@@ -18,7 +18,7 @@ type EmojiRule = { emoji: string; test: RegExp };
 
 // El orden importa: "papas gajo" es 🍟, no verdura; "manzanita" es refresco, no fruta.
 const PRODUCT_EMOJI_RULES: EmojiRule[] = [
-  { emoji: "🌭", test: /\b(hot\s*dogs?|hotdogs?|dogos?|dogo|chorizos?)\b/ },
+  { emoji: "🌭", test: /\b(hot\s*dogs?|hotdogs?|dogos?|dogo|salchichas?)\b/ },
   { emoji: "🍔", test: /\b(hamburguesas?|burger)\b/ },
   { emoji: "🍟", test: /\b(papas?\s+gajo|papas?\s+a\s+la\s+francesa|papas?\s+francesas?|salchi\s*locos)\b/ },
   { emoji: "🌮", test: /\bpastor\b/ },
@@ -36,7 +36,7 @@ const PRODUCT_EMOJI_RULES: EmojiRule[] = [
   { emoji: "🍅", test: /\b(verduras?|jitomates?|tomates?|cebollas?|cebollin|chiles?|lechugas?|cilantro|perejil|zanahorias?|pepinos?|aguacates?|ajos?|calabazas?|elotes?|repollo|coles?|brocoli|chayotes?|ejotes?|nopales?|papas?)\b/ },
   { emoji: "🧀", test: /\b(jamon|queso|quesos|lacteo|lacteos|crema)\b/ },
   { emoji: "🫙", test: /\b(salsas?|salsa|catsup|ketchup|mayonesa|mostaza|aceite)\b/ },
-  { emoji: "🥩", test: /\b(carne|carnes|bistec|bisteces|diezmillo|pulpa|costilla|costillas|res|puerco|arrachera|ribeye|chamberete|cocido|peinesillo|molida)\b/ },
+  { emoji: "🥩", test: /\b(carne|carnes|bistec|bisteces|diezmillo|pulpa|costilla|costillas|res|puerco|arrachera|ribeye|chamberete|cocido|peinesillo|molida|chorizos?)\b/ },
 ];
 
 const DEFAULT_PRODUCT_EMOJI = "🛍️";

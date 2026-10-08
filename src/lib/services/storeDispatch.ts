@@ -213,7 +213,7 @@ async function dispatchCatalogoFijo(
     `🏪 *Nuevo pedido #${pedido.id}*\n\n` +
     `Ya trae precio del menú. Prepáralo en cuanto puedas.\n\n` +
     `${pedido.direccionEntrega ? `📍 *Entrega:*\n${pedido.direccionEntrega}\n\n` : ""}` +
-    `🛒 *Tu pedido*\n\n${formatCheckedLines(priced.lines)}`;
+    `🛒 *Pedido*\n\n${formatCheckedLines(priced.lines)}`;
 
   logStoreDispatch({
     orderId: pedido.id,
@@ -284,7 +284,7 @@ export async function dispatchCotizacionToStore(
   const encabezado =
     `🏪 *Cotizar. ORDEN #${pedido.id}*\n\n` +
     `${pedido.direccionEntrega ? `📍 *Entrega:*\n${pedido.direccionEntrega}\n\n` : ""}` +
-    `🛒 *Tu pedido*\n\n${formatItemsForDispatch(pedido.items)}\n\n` +
+    `🛒 *Pedido*\n\n${formatItemsForDispatch(pedido.items)}\n\n` +
     `*Responde así:*\nORDEN #${pedido.id} PRECIO 150\n\n` +
     `¿Te falta algún producto?\n\n*Responde:*\nORDEN #${pedido.id} NO_DISPONIBLE nombre del producto`;
 

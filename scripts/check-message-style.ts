@@ -40,7 +40,8 @@ const cases: Array<[string, string | null, string]> = [
   ["papa", null, "🍅"],
   ["bistec", null, "🥩"],
   ["pastor", "carnes", "🌮"],
-  ["chorizo", null, "🌭"],
+  ["chorizo", null, "🥩"],
+  ["salchicha", null, "🌭"],
   ["carbón fino", null, "🔥"],
   ["salsa", null, "🫙"],
   ["manzanita", null, "🥤"],
@@ -139,6 +140,8 @@ const alCliente = mensajeClienteProductoNoDisponible("ZAGU", "Mayonesa");
 assert(alCliente.includes('*"Mayonesa"*'), "el faltante va en negrita");
 assert(alCliente.includes('*"sin él"*'), "la instrucción de quitarlo va en negrita");
 const aLaTienda = mensajeTiendaProductoNoEncontrado(12, "kétchup", "- Mayonesa x1\n\n- Coca x2", "Mayonesa");
+assert(aLaTienda.includes("🛒 *Pedido*"), "a la tienda el encabezado es Pedido");
+assert(!aLaTienda.includes("Tu pedido"), "a la tienda no se le dice tu pedido");
 assert(aLaTienda.includes('No encontré "kétchup"'), "el aviso a la tienda conserva la frase");
 assert(aLaTienda.includes("ORDEN #12 NO_DISPONIBLE Mayonesa"), "el comando a la tienda se copia sin asteriscos");
 assert(!/ORDEN #\d+ NO_DISPONIBLE \*/.test(aLaTienda), "el comando no abre negrita");

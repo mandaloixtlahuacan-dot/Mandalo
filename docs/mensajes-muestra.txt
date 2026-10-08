@@ -437,11 +437,11 @@ GEORGE — ticket
 
 🛒 *Tu pedido*
 
-✅ 🍔 *Hamburguesa de Res Chica — $75*
+✅ 🍔 *1 Hamburguesa de Res Chica — $75*
 
-✅ 🌭 *Dogo clásico — $40*
+✅ 🌭 *1 Dogo clásico — $40*
 
-✅ 🍟 *Papas Gajo 315g — $45*
+✅ 🍟 *1 Papas Gajo 315g — $45*
 
 *Envío y servicio: $25*
 
@@ -509,7 +509,7 @@ LA CENTRAL — lo que anotó
 
 🛒 *Anoto:*
 
-✅ 🌭 *Chorizo — 1 kilo*
+✅ 🥩 *Chorizo — 1 kilo*
 
 ✅ 🥩 *Arrachera Marinada — 0.5 kilos*
 
@@ -524,7 +524,7 @@ LA CENTRAL — ticket
 
 🛒 *Tu pedido*
 
-✅ 🌭 *Chorizo — $115*
+✅ 🥩 *1 kg Chorizo — $115*
 
 ✅ 🥩 *0.5 kg Arrachera Marinada — $140*
 
@@ -547,7 +547,7 @@ TIENDA — cotizar
 📍 *Entrega:*
 Calle Hidalgo 12, frente a la tortillería
 
-🛒 *Tu pedido*
+🛒 *Pedido*
 
 ✅ 🥤 *Coca-Cola 2 litros x2*
 
@@ -574,7 +574,7 @@ TIENDA — recordatorio
 
 El pedido #102 sigue esperando tu precio.
 
-🛒 *Tu pedido*
+🛒 *Pedido*
 
 ✅ 🥤 *Coca-Cola 2 litros x2*
 
@@ -601,7 +601,7 @@ TIENDA — producto no encontrado
 
 🏪 *No encontré "kétchup" en el pedido #102.*
 
-🛒 *Tu pedido*
+🛒 *Pedido*
 
 ✅ 🥤 *Coca-Cola 2 litros x2*
 

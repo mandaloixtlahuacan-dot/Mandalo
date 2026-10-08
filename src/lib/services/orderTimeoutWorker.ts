@@ -74,7 +74,7 @@ const TIMEOUT_CONFIGS: TimeoutKindConfig[] = [
         body:
           `⏰ *Recordatorio*\n\n` +
           `El pedido #${pedido.id} sigue esperando tu precio.\n\n` +
-          `🛒 *Tu pedido*\n\n${formatPedidoItems(pedido.items)}\n\n` +
+          `🛒 *Pedido*\n\n${formatPedidoItems(pedido.items)}\n\n` +
           `Tienes *5 minutos* antes de que se cancele.\n\n` +
           `*Responde así:*\nORDEN #${pedido.id} PRECIO 150\n\n` +
           `¿Te falta algún producto?\n\n*Responde:*\nORDEN #${pedido.id} NO_DISPONIBLE nombre del producto`,
