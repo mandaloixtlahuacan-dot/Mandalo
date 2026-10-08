@@ -109,7 +109,6 @@ section(
       "✅ 🧼 *Pinol, 1 litro, x1*",
       "✅ 🛍️ *Tang, 3 sobres*",
     ],
-    itemNames: ["Coca-Cola", "Pinol", "Tang"],
   }),
 );
 section("ABARROTES — ubicación", ADDRESS_ASK_MESSAGE);
@@ -255,14 +254,13 @@ const pedidoGeorge = [
 section("GEORGE — OK, pediste", formatProductListConfirm(pedidoGeorge, "restaurante"));
 section(
   "GEORGE — ayuda para corregir",
-  formatHowToEditList("restaurante", ["Hamburguesa de Camarón Grande", "Hamburguesa Hawaiana Grande", "Dogo Clásico"]),
+  formatHowToEditList("restaurante"),
 );
 section(
   "GEORGE — atorado, con la lista",
   formatStuckCorrection(1, {
     kind: "restaurante",
     itemLines: pedidoGeorge.map((item) => formatCheckedLine(formatSpecificItemLine(item), item.nombre_producto)),
-    itemNames: pedidoGeorge.map((item) => item.nombre_producto),
   }),
 );
 section("GEORGE — sin menú fijo", formatNoFixedMenu("Hamburguesas Hotdogs George", "restaurante"));
@@ -328,13 +326,12 @@ const pedidoCentral = [
   { nombre_producto: "Chorizo", cantidad: 0.5, unidad: "kilo" },
 ];
 section("LA CENTRAL — OK, pediste", formatProductListConfirm(pedidoCentral, "carniceria"));
-section("LA CENTRAL — ayuda para corregir", formatHowToEditList("carniceria", ["Chorizo", "Bistec de res"]));
+section("LA CENTRAL — ayuda para corregir", formatHowToEditList("carniceria"));
 section(
   "LA CENTRAL — atorado, con la lista",
   formatStuckCorrection(1, {
     kind: "carniceria",
     itemLines: ["✅ 🥩 *Bistec de res, 1 kilo*", "✅ 🥩 *Chorizo, 0.5 kilos*"],
-    itemNames: ["Bistec de res", "Chorizo"],
   }),
 );
 section("LA CENTRAL — sin menú fijo", formatNoFixedMenu("Carnicería La Central", "carniceria"));

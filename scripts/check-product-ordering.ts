@@ -8,14 +8,14 @@
 import { applyCatalogSpeech } from "../src/lib/catalogOrderSpeech";
 import { CARNICERIA_LA_CENTRAL_PRODUCTOS } from "../src/lib/carniceriaLaCentralCatalog";
 import { priceCatalogOrder, type CatalogPriceRow } from "../src/lib/catalogQuantities";
-import { ABARROTES_PRODUCT_REQUEST, formatStuckCorrection } from "../src/lib/customerUx";
+import { ABARROTES_PRODUCT_REQUEST, formatHowToEditList, formatStuckCorrection } from "../src/lib/customerUx";
 import { classifyProductListReply, isCancelIntent, isNewOrderIntent, isYesConfirmation, orderingStepAfterCustomer } from "../src/lib/messages";
 import { pickRemoval } from "../src/lib/orderEdits";
 import { assembleCapturedItems, ungroundedOrderLines } from "../src/lib/orderGrounding";
 import { MANDALO_DELIVERY_FEE, MANDALO_SERVICE_FEE } from "../src/lib/ordenes";
 import { formatCheckedLine, stripBotDecorations } from "../src/lib/messageStyle";
 import { prepareQuoteItems } from "../src/lib/quoteProductClarity";
-import { formatSpecificItemLine } from "../src/lib/services/captureEngine";
+import { formatProductListConfirm, formatSpecificItemLine } from "../src/lib/services/captureEngine";
 import { mergeSnapshot, type PedidoItemInput, type PedidoSnapshot } from "../src/lib/services/captureEngine";
 import { validateCaptureForConfirmation } from "../src/lib/services/validationEngine";
 
@@ -2081,7 +2081,7 @@ const scenarios: Scenario[] = [
         user: "te equivocaste",
         llm: [],
         count: 2,
-        asks: /quita el Pinol/i,
+        asks: /Solo es un ejemplo, no está en tu pedido/i,
         asksNot: /OK, pediste/i,
       },
       {
@@ -2302,11 +2302,99 @@ if (!ABARROTES_PRODUCT_REQUEST.includes("2 Coca-Cola de 600 ml")) throw new Erro
 if (!ABARROTES_PRODUCT_REQUEST.includes("1 Pinol de 1 litro")) throw new Error("el ejemplo de abarrotes no trae Pinol");
 if (!ABARROTES_PRODUCT_REQUEST.includes("1 kg de tortillas")) throw new Error("falta el ejemplo de tortillas");
 if (/maruchan/i.test(ABARROTES_PRODUCT_REQUEST)) throw new Error("el ejemplo de abarrotes no debe usar Maruchan");
-if (!formatStuckCorrection(1).includes("quita el Pinol") || formatStuckCorrection(1).includes("reiniciar")) {
+if (!formatStuckCorrection(1).includes("quita la leche") || formatStuckCorrection(1).includes("reiniciar")) {
   throw new Error("la primera corrección sin cambio no debe hablar de reiniciar");
+}
+if (!formatStuckCorrection(1).includes("marca, tamaño y cuántos")) {
+  throw new Error("la corrección sin cambio perdió la ayuda larga");
+}
+if (/pinol|coca|zote/i.test(`${formatHowToEditList()}\n${formatStuckCorrection(1)}\n${formatStuckCorrection(2)}`)) {
+  throw new Error("la ayuda de abarrotes sigue usando Pinol, Coca o Zote");
 }
 if (!formatStuckCorrection(2).includes("reiniciar") || !formatStuckCorrection(2).includes("cancelar")) {
   throw new Error("la segunda corrección sin cambio tiene que decir cómo reiniciar");
+}
+
+function helpAfterConfirm(message: string): string {
+  const marker = "*¿Están bien estos productos?*";
+  const at = message.indexOf(marker);
+  return at === -1 ? message : message.slice(at + marker.length);
+}
+
+const pedidoConNombres = formatProductListConfirm([
+  { nombre_producto: "Croquetas Perron", cantidad: 1, unidad: "kilo" },
+  { nombre_producto: "Frijol negro", cantidad: 2, unidad: "kilo" },
+  { nombre_producto: "Agua Ciel", presentacion: "1 litro", cantidad: 1 },
+  { nombre_producto: "Monster", presentacion: "lata", cantidad: 1 },
+]);
+const ayudaCorta = helpAfterConfirm(pedidoConNombres);
+const ayudaDeOtroPedido = helpAfterConfirm(
+  formatProductListConfirm([{ nombre_producto: "Leche Lala", cantidad: 2, unidad: "litro" }]),
+);
+if (ayudaCorta !== ayudaDeOtroPedido) throw new Error("la ayuda cambia según los productos del cliente");
+if (!/leche/i.test(ayudaCorta) || !/ejemplo/i.test(ayudaCorta)) throw new Error("la ayuda de abarrotes no usa el ejemplo de la leche");
+if (ayudaCorta.includes("✅")) throw new Error("la ayuda corta trae palomita");
+if (/Croquetas Perron|Frijol negro|Agua Ciel|Monster|Pinol|marca, tamaño y cuántos|reiniciar/i.test(ayudaCorta)) {
+  throw new Error(`la primera confirmación mezcla el pedido o la ayuda larga: ${ayudaCorta}`);
+}
+if (formatHowToEditList() !== ayudaCorta.trim()) throw new Error("la confirmación no usa la ayuda corta");
+
+const ayudaGeorge = helpAfterConfirm(
+  formatProductListConfirm(
+    [
+      { nombre_producto: "Hamburguesa de Res Grande", cantidad: 2 },
+      { nombre_producto: "Dogo de Pollo", cantidad: 2 },
+      { nombre_producto: "Papas Gajo 315g", cantidad: 1 },
+    ],
+    "restaurante",
+  ),
+);
+if (!/ejemplo/i.test(ayudaGeorge) || !/quita las papas/.test(ayudaGeorge) || !/agrega 1 refresco/.test(ayudaGeorge)) {
+  throw new Error("George no tiene su ejemplo fijo");
+}
+if (/Hamburguesa de Res Grande|Dogo de Pollo|Papas Gajo|Pinol|leche Lala/.test(ayudaGeorge) || ayudaGeorge.includes("✅")) {
+  throw new Error(`la ayuda de George usa el pedido: ${ayudaGeorge}`);
+}
+
+const ayudaCarne = helpAfterConfirm(
+  formatProductListConfirm(
+    [
+      { nombre_producto: "Bistec de res", cantidad: 1, unidad: "kilo" },
+      { nombre_producto: "Chorizo", cantidad: 0.5, unidad: "kilo" },
+    ],
+    "carniceria",
+  ),
+);
+if (!/ejemplo/i.test(ayudaCarne) || !/carbón/.test(ayudaCarne) || !/pastor/.test(ayudaCarne)) {
+  throw new Error("La Central no tiene su ejemplo fijo");
+}
+if (/Bistec de res|Chorizo|Pinol|leche Lala|nombre del menú/.test(ayudaCarne) || ayudaCarne.includes("✅")) {
+  throw new Error(`la ayuda de carnicería usa el pedido: ${ayudaCarne}`);
+}
+if (!/corte y los kilos/.test(formatStuckCorrection(2, { kind: "carniceria" })) || !formatStuckCorrection(2, { kind: "carniceria" }).includes("reiniciar")) {
+  throw new Error("la ayuda larga de carnicería no sale al atorarse");
+}
+
+const EXAMPLE_LABEL = "Solo es un ejemplo, no está en tu pedido";
+const ejemplosPorCategoria: Array<["abarrotes" | "restaurante" | "carniceria", string[], string[]]> = [
+  ["abarrotes", ["cambia la leche Lala a 2 litros", "quita la leche"], ["quita la leche", "cambia la leche Lala a 2 litros", "agrega 1 leche Lala de 1 litro"]],
+  ["restaurante", ["quita las papas", "agrega 1 refresco"], ["quita las papas", "cambia la hamburguesa a grande", "agrega 1 refresco"]],
+  ["carniceria", ["cambia el carbón a 2 bolsas", "quita el pastor"], ["quita el pastor", "cambia el carbón a 2 bolsas", "agrega 1 kilo de carne"]],
+];
+for (const [kind, cortos, largos] of ejemplosPorCategoria) {
+  const corta = formatHowToEditList(kind);
+  const larga = formatStuckCorrection(1, { kind });
+  const segunda = formatStuckCorrection(2, { kind });
+  for (const text of [corta, larga, segunda]) {
+    if (text.includes("✅")) throw new Error(`la ayuda de ${kind} trae palomita`);
+  }
+  const cortaDesde = corta.indexOf(EXAMPLE_LABEL);
+  const largaDesde = larga.indexOf(EXAMPLE_LABEL);
+  if (cortaDesde < 0 || largaDesde < 0) throw new Error(`la ayuda de ${kind} no marca el ejemplo`);
+  if (cortos.some((ejemplo) => corta.indexOf(ejemplo) < cortaDesde)) throw new Error(`un ejemplo corto de ${kind} va antes de la etiqueta`);
+  if (largos.some((ejemplo) => larga.indexOf(ejemplo) < largaDesde)) throw new Error(`un ejemplo largo de ${kind} va antes de la etiqueta`);
+  if (!segunda.includes("reiniciar") || !segunda.includes("cancelar")) throw new Error(`la segunda ayuda de ${kind} no ofrece reiniciar`);
+  if (/\*(quita|cambia|agrega)/i.test(larga)) throw new Error(`la ayuda larga de ${kind} pone el ejemplo en negrita`);
 }
 if (!isNewOrderIntent("reiniciar") || !isNewOrderIntent("Reiniciar")) throw new Error("reiniciar no reinicia");
 if (!isCancelIntent("cancelar") || !isCancelIntent("cancela")) throw new Error("cancelar no cancela");
