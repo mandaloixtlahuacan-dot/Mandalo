@@ -1,5 +1,13 @@
 import { isProductListRequest, isYesConfirmation } from "@/lib/messages";
-import { applyCustomerEdits, planCustomerEdits, wordsAreClose, type AddedLine } from "@/lib/orderEdits";
+import {
+  applyCustomerEdits,
+  pickRemoval,
+  planCustomerEdits,
+  removalTargets,
+  stripRemovalPhrases,
+  wordsAreClose,
+  type AddedLine,
+} from "@/lib/orderEdits";
 import type { PedidoItemInput } from "@/lib/services/captureEngine";
 
 /**
@@ -91,6 +99,12 @@ const STOP = new Set([
   "betabel", "camote", "camotes", "jicama", "apio", "espinaca",
   "verduraga", "verdolaga", "epazote", "hierbabuena", "guayaba",
   "mandarina", "pera", "uvas", "uva", "lima", "saladet", "saladette",
+  "mal", "aparte", "error", "equivocado", "equivocaste", "equivocacion", "equivocaron",
+  "quitame", "quita", "quitar", "quitalo", "quitala", "quiteme", "quitale",
+  "borra", "borrar", "borrame", "borralo", "borrala",
+  "elimina", "eliminar", "eliminalo", "eliminame",
+  "bote", "botes", "garrafa", "garrafas", "envase", "envases",
+  "reiniciar", "reinicio", "cancelar", "cancela", "cancele", "cancelo",
 ]);
 
 const ROLL_COUNTS = "(?:4|6|8|12|16|18|24|32|40)";
@@ -952,6 +966,7 @@ const CATEGORIES: Category[] = [
     id: "queso",
     nombre: "Queso",
     match: /\bquesos?\b/,
+    skip: (blob) => /\b(maruchan|ramen)\b/.test(blob),
     article: "El",
     example: "Lala, Alpura o Caperucita",
     shelfAsk: "de a cómo (pieza, rebanadas o de kilo)",
@@ -999,6 +1014,56 @@ const CATEGORIES: Category[] = [
       const example = missing.includes("marca") ? "Por ejemplo Cloralex, Blancatel o Clorox." : "";
       return `Va. ${who}, ¿${joinSpanish(bits)}? ${example} ${FOLLOW_LO} 🧴`.replace(/\s+/g, " ").trim();
     },
+  },
+  {
+    id: "sopa",
+    nombre: "Sopa",
+    match: /\b(maruchan|maruchanes|ramen|sopas?(?:\s+instantaneas?)?)\b/,
+    countSeparate: true,
+    slots: ["marca", "tamano", "cantidad"],
+    sizePhrase: (blob) => {
+      const flavor = blob.match(/\b(habanero|pollo|queso|camaron|res|lima|limon|picante|carne|verduras?)\b/);
+      return flavor ? flavor[1] : null;
+    },
+    filled: (slot, blob, item) => {
+      if (slot === "marca") return /\b(maruchan|ramen|nissin)\b/.test(blob) || hasBrand(blob, new Set(["sopa", "sopas", "instantanea", "instantaneas", "habanero"]));
+      if (slot === "tamano") return /\b(habanero|pollo|queso|camaron|res|lima|limon|picante|carne|verduras?)\b/.test(blob);
+      return hasPackageCount(blob, item);
+    },
+    ask: (missing, item) => {
+      const brand = spokenBrand(item);
+      const who = brand ? `La ${brand}` : "La sopa";
+      const bits: string[] = [];
+      if (missing.includes("marca")) bits.push("de qué marca");
+      if (missing.includes("tamano")) bits.push("de qué sabor (habanero, pollo o queso)");
+      if (missing.includes("cantidad")) bits.push("cuántas");
+      const example = missing.includes("marca") ? "Por ejemplo Maruchan." : "";
+      return `Va. ${who}, ¿${joinSpanish(bits)}? ${example} ${FOLLOW_LA}`.replace(/\s+/g, " ").trim();
+    },
+  },
+  {
+    id: "jamonqueso",
+    nombre: "Jamón y queso",
+    match: /\bjamonqueso\b/,
+    slots: ["cantidad"],
+    filled: (slot, blob, item) => slot === "cantidad" && (hasPackageCount(blob, item) || /\b(un|una|kilo|kilos|kg)\b/.test(blob)),
+    ask: () => `Va. El jamón y queso, ¿cuánto? ${FOLLOW_LO}`,
+  },
+  {
+    id: "cafeconleche",
+    nombre: "Café con leche",
+    match: /\bcafeconleche\b/,
+    slots: ["cantidad"],
+    filled: (slot, blob, item) => slot === "cantidad" && (hasPackageCount(blob, item) || /\b(un|una|vaso|taza)\b/.test(blob)),
+    ask: () => `Va. El café con leche, ¿cuántos? ${FOLLOW_LO}`,
+  },
+  {
+    id: "arrozconleche",
+    nombre: "Arroz con leche",
+    match: /\barrozconleche\b/,
+    slots: ["cantidad"],
+    filled: (slot, blob, item) => slot === "cantidad" && (hasPackageCount(blob, item) || /\b(un|una|vaso|taza)\b/.test(blob)),
+    ask: () => `Va. El arroz con leche, ¿cuántos? ${FOLLOW_LO}`,
   },
   {
     id: "verdura",
@@ -1085,6 +1150,7 @@ function categoryRejected(category: Category, blob: string): boolean {
 // "un kilo de arroz y un paquete de papel" no entra: ahí hay dos productos.
 export function rewriteGrocerySlips(message: string): string {
   return message
+    .replace(/(\d+)\s*(litros?|kilos?|gramos?|ml|kg)\b/gi, "$1 $2")
     .replace(/\barroz\s+higi[eé]nicos?\b/gi, "papel higiénico")
     .replace(/\bcoquitas?\b/gi, "coca")
     .replace(/\bchescos?\b/gi, "refresco")
@@ -1301,10 +1367,48 @@ function unknownProductLabel(clause: string): string | null {
   return label || null;
 }
 
+const OPEN_LEAD = /^(?:(?:esta|estan|es|son|era|eran|no|mal|aparte|error|equivoc\w*|quiero|dame|traeme|tambien|ademas)\s+)+/;
+
+// "una Maruchan", "la maruchan", "2 plumones": abre otro producto aunque no
+// esté en las categorías. "sería 1 litro", "y entera" o "de 2 litros" no.
+function articleNoun(part: string): string | null {
+  const text = norm(part).replace(OPEN_LEAD, "");
+  const qty = "un|una|uno|unos|unas|otro|otra|otros|otras|el|la|los|las|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|\\d+";
+  const match = text.match(new RegExp(`^(?:${qty})\\s+([a-z][a-z0-9]{3,})`));
+  if (!match) return null;
+  const noun = match[1];
+  if (STOP.has(noun)) return null;
+  if (/^(litros?|kilos?|kg|ml|cajas?|paquetes?|piezas?|bolsas?|botellas?|botes?|garrafas?|latas?|rollos?|gramos?)$/.test(noun)) {
+    return null;
+  }
+  return noun;
+}
+
 function clauseOpensProduct(part: string): boolean {
   if (hitsIn(part).length > 0) return true;
   if (purchaseClause(part) && unknownProductLabel(part) != null) return true;
-  return measuredUnknownWindow(part) != null;
+  if (measuredUnknownWindow(part) != null) return true;
+  return articleNoun(part) != null;
+}
+
+function protectCompounds(message: string): string {
+  return message
+    .replace(/jam[oó]n\s+y\s+queso/gi, "jamonqueso")
+    .replace(/caf[eé]\s+con\s+leche/gi, "cafeconleche")
+    .replace(/arroz\s+con\s+leche/gi, "arrozconleche");
+}
+
+// "una coca de 2 litros una maruchan" no trae coma ni "y". La segunda cantidad
+// abre otro producto. "Quiero un kilo…" no se parte: el verbo no es producto.
+function separateArticleProducts(message: string): string {
+  return message.replace(
+    /([A-Za-zÁÉÍÓÚÑáéíóúñ]{4,})\s+((?:un|una|uno|unos|unas|otro|otra|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|\d+)\s+[A-Za-zÁÉÍÓÚÑáéíóúñ]{4,})/gi,
+    (full, word: string, rest: string) => {
+      if (STACK_LEAD.has(norm(word))) return full;
+      if (!clauseOpensProduct(rest)) return full;
+      return `${word}, ${rest}`;
+    },
+  );
 }
 
 const STACK_LEAD = new Set([
@@ -1332,6 +1436,11 @@ const INTENT_BRAND = new Set([
   "anadir", "anade", "anademe", "anadele", "anadelo",
   "falto", "faltaron", "faltaba", "faltan", "faltante", "faltantes",
   "solamente", "tambien", "quiero", "pero",
+  "mal", "aparte", "error", "equivocado", "equivocaste", "equivocacion",
+  "quitame", "quita", "quitar", "quitalo", "quitala", "quiteme", "quitale",
+  "borra", "borrar", "borrame", "borralo", "borrala",
+  "elimina", "eliminar", "eliminalo", "eliminame",
+  "bote", "botes", "garrafa", "garrafas", "envase", "envases",
 ]);
 
 // «Agregar servilletas Sanitas» no es una marca. El verbo se queda fuera.
@@ -1356,9 +1465,11 @@ function stripAddLead(message: string): string {
 }
 
 function splitProductClauses(message: string): string[] {
-  const text = separateStackedPurchases(rewriteGrocerySlips(dropAddressTail(message)));
+  const text = separateArticleProducts(
+    separateStackedPurchases(protectCompounds(rewriteGrocerySlips(dropAddressTail(message)))),
+  );
   const parts = text
-    .split(/\s*(?:,|;|\by\b|\btambi[eé]n\b|\badem[aá]s\b)\s*/i)
+    .split(/\s*(?:,|;|\n+|\by\b|\bcon\b|\btambi[eé]n\b|\badem[aá]s\b)\s*/i)
     .map((part) => part.trim())
     .filter((part) => part.length > 0);
   if (!parts.length) return [text];
@@ -1490,11 +1601,30 @@ function measuredUnknownWindow(clause: string): { category: Category; text: stri
   return { category: fallbackPackaged(label), text: clause };
 }
 
+// "el Fusi no es refresco, es frutos rojos" corrige una línea. Después de
+// quitar "no es refresco" queda "el Fusi y es frutos rojos": eso no es compra.
+function identityCorrection(clause: string): boolean {
+  const text = norm(clause);
+  if (/\b(no es|no era|no son|no eran|equivoc\w*)\b/.test(text)) return true;
+  return /^(?:el|la|los|las|un|una)\s+[a-z0-9]+\s+(?:y\s+)?(?:es|son|era|eran)\s+(?:un |una |el |la |de )?(?![\d]|un |una |medio |media )/.test(
+    text,
+  );
+}
+
+function articleProductWindow(clause: string): { category: Category; text: string } | null {
+  if (hitsIn(clause).length) return null;
+  if (identityCorrection(clause)) return null;
+  const noun = articleNoun(clause);
+  if (!noun) return null;
+  const label = unknownProductLabel(clause) ?? noun;
+  return { category: fallbackPackaged(label), text: clause };
+}
+
 function windowsFor(message: string): Array<{ category: Category; text: string }> {
   return splitProductClauses(message).flatMap((clause) => {
     const found = windowsInClause(clause);
     if (found.length) return found;
-    const unknown = unknownProductWindow(clause) ?? measuredUnknownWindow(clause);
+    const unknown = unknownProductWindow(clause) ?? measuredUnknownWindow(clause) ?? articleProductWindow(clause);
     return unknown ? [unknown] : [];
   });
 }
@@ -1737,10 +1867,20 @@ function applyDetail(
   if (boundWindow && !presentationBelongsToWindow(next.presentacion, extra)) next.presentacion = null;
   const productTokens = new Set(norm(next.nombre_producto).split(" ").filter((token) => token.length >= 3));
   const nouns = categoryNouns();
+  const soupFlavor = new Set(["habanero", "pollo", "queso", "camaron", "res", "lima", "limon", "picante", "carne", "verdura", "verduras"]);
   const tokens = brandTokens(extra, ignore).filter(
-    (token) => !productTokens.has(token) && !nouns.has(token) && !MEASURE_WORDS.has(token),
+    (token) =>
+      !productTokens.has(token) &&
+      !nouns.has(token) &&
+      !MEASURE_WORDS.has(token) &&
+      !(category.id === "sopa" && soupFlavor.has(token)),
   );
   if (category.kind !== "produce" && !spokenBrand(next) && tokens.length) next.marca = displayBrand(extraRaw, tokens);
+  if (category.id === "sopa") {
+    if (/\bmaruchan\b/.test(extra)) next.marca = "Maruchan";
+    else if (/\bramen\b/.test(extra)) next.marca = "Ramen";
+    else if (/\bnissin\b/.test(extra)) next.marca = "Nissin";
+  }
   if (category.id === "arroz") {
     const hinted = riceBrandFrom(extraRaw);
     if (hinted) next.marca = hinted;
@@ -2034,21 +2174,40 @@ function collapseSameName(items: PedidoItemInput[]): PedidoItemInput[] {
   return kept;
 }
 
+const VERB_LINE = new Set([
+  "quitame", "quita", "quitar", "quitalo", "quitala", "borra", "borrar", "borrame",
+  "elimina", "eliminar", "eliminalo", "mal", "aparte", "error", "equivocaste", "equivocado",
+  "reiniciar", "reinicio", "cancelar", "cancela",
+]);
+
+function dropVerbLines(items: PedidoItemInput[]): PedidoItemInput[] {
+  return items.filter((item) => !VERB_LINE.has(norm(item.nombre_producto)));
+}
+
 function tidyQuoteLines(items: PedidoItemInput[]): PedidoItemInput[] {
-  return collapseSameName(collapseAliasDuplicate(stripStolenBrands(items)));
+  return dropVerbLines(collapseSameName(collapseAliasDuplicate(stripStolenBrands(items))));
 }
 
 export function dropItemsNamedInRemoval(items: PedidoItemInput[], message: string): PedidoItemInput[] {
-  const text = norm(message);
-  const targets: string[] = [];
-  const re =
-    /\b(?:quit[aeo]\w*|borra(?:r|lo|la)?|elimina(?:r|lo|la)?|ya no quiero|ya no)\s+(?:el |la |los |las |un |una |al )?([a-z0-9]{4,})/g;
-  for (const match of text.matchAll(re)) targets.push(match[1]);
-  if (!targets.length) return items;
-  return items.filter((item) => {
-    const blob = norm(`${item.nombre_producto} ${item.marca ?? ""}`);
-    return !targets.some((target) => blob.includes(target));
-  });
+  let next = items;
+  for (const target of removalTargets(message)) {
+    const picked = pickRemoval(next, target);
+    if (picked.index == null) continue;
+    next = next.filter((_, index) => index !== picked.index);
+  }
+  return next;
+}
+
+export function quoteLineSignature(items: PedidoItemInput[]): string {
+  return JSON.stringify(
+    items.map((item) => ({
+      n: norm(item.nombre_producto),
+      m: norm(item.marca ?? ""),
+      p: norm(item.presentacion ?? ""),
+      c: item.cantidad ?? null,
+      u: norm(item.unidad ?? ""),
+    })),
+  );
 }
 
 function titlePhrase(value: string): string {
@@ -2086,10 +2245,7 @@ function stripClauses(message: string, items: PedidoItemInput[]): string {
       if (token.length >= 4) nouns.add(token);
     }
   }
-  const withoutRemoval = message.replace(
-    /\b(?:quit[aeo]\w*|borra(?:r|lo|la)?|elimina(?:r|lo|la)?|ya no quiero|ya no)\s+(?:el |la |los |las |un |una |al )?[a-z0-9]+/gi,
-    " ",
-  );
+  const withoutRemoval = stripRemovalPhrases(message);
   return withoutRemoval.replace(
     /\bno (?:es|era|son|eran)\s+(?:el |la |los |las |un |una )?([a-záéíóúñ]+)/gi,
     (full, word: string) => (nouns.has(norm(word)) ? " " : full),
@@ -2134,7 +2290,7 @@ function pickDetailIndex(items: PedidoItemInput[], message: string, ignore: Set<
 }
 
 export function groceryNamesClause(clause: string): boolean {
-  return windowsFor(clause).length > 0;
+  return windowsFor(clause).some((window) => !window.category.id.startsWith("otro:"));
 }
 
 export function prepareQuoteItems(
@@ -2143,7 +2299,7 @@ export function prepareQuoteItems(
   ignoreText?: string | null,
 ): PedidoItemInput[] {
   const ignore = ignoreSet(ignoreText);
-  let next = tidyQuoteLines(items.map((item) => withoutIntentBrand({ ...item })));
+  let next = tidyQuoteLines(items.map((item) => ({ ...item })));
   const message = rewriteGrocerySlips(String(userMessage ?? "").trim());
   const editPlan = planCustomerEdits(message);
   if (editPlan.editsOnly) {
@@ -2153,7 +2309,7 @@ export function prepareQuoteItems(
         working: next,
         plan: editPlan,
         resolveAddition: groceryAddition,
-      }).items,
+      }).items.map((item) => withoutIntentBrand(item)),
     );
   }
   const opened = stripAddLead(message);
@@ -2188,11 +2344,21 @@ export function prepareQuoteItems(
         const detailed = applyDetail(named, window.text, ignore, boundWindow);
         return window.category.id.startsWith("otro:") ? applySpokenPurchase(detailed, window.text) : detailed;
       };
-      if (index === -1) {
+      let resolved = index;
+      if (resolved === -1 && window.category.id.startsWith("otro:")) {
+        const noun = norm(label);
+        resolved = next.findIndex((item, itemIndex) => {
+          if (used.has(itemIndex)) return false;
+          return norm(item.nombre_producto)
+            .split(" ")
+            .some((word) => word === noun || wordsAreClose(word, noun));
+        });
+      }
+      if (resolved === -1) {
         produced.push(finish({ nombre_producto: label }));
       } else {
-        used.add(index);
-        produced.push(finish(next[index]));
+        used.add(resolved);
+        produced.push(finish(next[resolved]));
       }
     }
     const prior = next.filter((_, itemIndex) => !used.has(itemIndex));
@@ -2219,7 +2385,7 @@ export function prepareQuoteItems(
       resolveAddition: groceryAddition,
     }).items;
   }
-  return tidyQuoteLines(next);
+  return tidyQuoteLines(next.map((item) => withoutIntentBrand(item)));
 }
 
 function groceryAddition(phrase: string): AddedLine {
@@ -2251,9 +2417,8 @@ const MENTION_NOISE = new Set([
 
 function keepSpokenMentions(items: PedidoItemInput[], message: string): PedidoItemInput[] {
   if (!message.trim() || looksLikeAddress(message) || isYesConfirmation(message) || isProductListRequest(message)) return items;
-  const scan = message
-    .replace(/\bno (?:era|es|son|eran)\b[^,.]*/gi, " ")
-    .replace(/\b(?:quita(?:me|le|lo|r)?|quitar)\b[^,.]*/gi, " ");
+  const scan = stripRemovalPhrases(message)
+    .replace(/\bno (?:era|es|son|eran)\b[^,.]*/gi, " ");
   const next = items.map((item) => ({ ...item }));
   for (const clause of scan.split(/,|\by\b|\btambien\b/i)) {
     const tokens = norm(clause)

@@ -8,9 +8,12 @@
 import { applyCatalogSpeech } from "../src/lib/catalogOrderSpeech";
 import { CARNICERIA_LA_CENTRAL_PRODUCTOS } from "../src/lib/carniceriaLaCentralCatalog";
 import { priceCatalogOrder, type CatalogPriceRow } from "../src/lib/catalogQuantities";
-import { classifyProductListReply, isYesConfirmation, orderingStepAfterCustomer } from "../src/lib/messages";
+import { ABARROTES_PRODUCT_REQUEST, formatStuckCorrection } from "../src/lib/customerUx";
+import { classifyProductListReply, isCancelIntent, isNewOrderIntent, isYesConfirmation, orderingStepAfterCustomer } from "../src/lib/messages";
+import { pickRemoval } from "../src/lib/orderEdits";
 import { assembleCapturedItems, ungroundedOrderLines } from "../src/lib/orderGrounding";
 import { MANDALO_DELIVERY_FEE, MANDALO_SERVICE_FEE } from "../src/lib/ordenes";
+import { prepareQuoteItems } from "../src/lib/quoteProductClarity";
 import { mergeSnapshot, type PedidoItemInput, type PedidoSnapshot } from "../src/lib/services/captureEngine";
 import { validateCaptureForConfirmation } from "../src/lib/services/validationEngine";
 
@@ -29,7 +32,11 @@ type Step = {
   unit?: Array<{ name: RegExp; u: string }>;
   specific?: boolean;
   asks?: RegExp;
+  asksNot?: RegExp;
   noAsk?: boolean;
+  notBoth?: Array<[RegExp, RegExp]>;
+  marcaAbsent?: Array<{ name: RegExp; re: RegExp }>;
+  presentacion?: Array<{ name: RegExp; re: RegExp }>;
   /** Un sí mezclado con un cambio no avanza a la ubicación. */
   stays?: boolean;
 };
@@ -39,6 +46,8 @@ type Scenario = {
   store: StoreKind;
   kind?: ScenarioKind;
   catalog?: CatalogPriceRow[];
+  /** Líneas ya anotadas, como si el turno anterior las hubiera dejado mal. */
+  start?: PedidoItemInput[];
   steps: Step[];
 };
 
@@ -78,6 +87,14 @@ function blob(item: PedidoItemInput): string {
   return [item.nombre_producto, item.marca, item.presentacion, item.unidad, item.notas].filter(Boolean).join(" ");
 }
 
+function normName(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .trim();
+}
+
 function merged(prior: PedidoItemInput[], llm: PedidoItemInput[], store: StoreKind): PedidoItemInput[] {
   const name = store === "abarrotes" ? "ZAGU" : store === "george" ? "George" : "Carnicería La Central";
   return (
@@ -88,8 +105,8 @@ function merged(prior: PedidoItemInput[], llm: PedidoItemInput[], store: StoreKi
   );
 }
 
-function quoteTurn(items: PedidoItemInput[], user: string) {
-  const snapshot: PedidoSnapshot = { businessId: 1, businessName: "ZAGU", items };
+function quoteTurn(items: PedidoItemInput[], user: string, flags?: PedidoSnapshot["flags"]) {
+  const snapshot: PedidoSnapshot = { businessId: 1, businessName: "ZAGU", items, flags };
   return validateCaptureForConfirmation({
     snapshot,
     items,
@@ -130,12 +147,29 @@ function checkStep(step: Step, items: PedidoItemInput[], ask: string | null, spe
   }
   const listConfirm = /¿Están bien estos productos\?/.test(ask ?? "");
   if (step.asks && !(step.asks.test(ask ?? ""))) errors.push(`no preguntó /${step.asks.source}/ (dijo: ${ask ?? "nada"})`);
+  if (step.asksNot && step.asksNot.test(ask ?? "")) errors.push(`no debía decir /${step.asksNot.source}/ (dijo: ${ask ?? "nada"})`);
   if (step.noAsk && ask && !listConfirm) errors.push(`preguntó de más: ${ask}`);
+  for (const [left, right] of step.notBoth ?? []) {
+    if (items.some((item) => left.test(blob(item)) && right.test(blob(item)))) {
+      errors.push(`una línea junta /${left.source}/ con /${right.source}/: ${items.map((item) => blob(item)).join(" | ")}`);
+    }
+  }
+  for (const row of step.marcaAbsent ?? []) {
+    const hit = items.find((item) => row.name.test(blob(item)) && row.re.test(String(item.marca ?? "")));
+    if (hit) errors.push(`marca prohibida "${hit.marca}" en ${hit.nombre_producto}`);
+  }
+  for (const row of step.presentacion ?? []) {
+    const item = items.find((line) => row.name.test(blob(line)));
+    const shown = `${item?.presentacion ?? ""} ${item?.unidad ?? ""}`.trim();
+    if (!item) errors.push(`sin línea para presentación /${row.name.source}/`);
+    else if (!row.re.test(shown)) errors.push(`presentación de /${row.name.source}/ es "${shown}"`);
+  }
   return errors;
 }
 
 function run(scenario: Scenario, mode: "before" | "after"): string[] {
-  let prior: PedidoItemInput[] = [];
+  let prior: PedidoItemInput[] = (scenario.start ?? []).map((item) => ({ ...item }));
+  let streak = 0;
   const assisted: string[] = [];
   const errors: string[] = [];
   scenario.steps.forEach((step, index) => {
@@ -148,7 +182,8 @@ function run(scenario: Scenario, mode: "before" | "after"): string[] {
         mode === "after" ? assembleCapturedItems({ prior, incoming, userMessage: step.user }) : null;
       const source = assembled?.items ?? incoming;
       if (assembled) assisted.push(...assembled.assistedNames);
-      const validation = quoteTurn(source, step.user);
+      const validation = quoteTurn(source, step.user, { correccionesSinCambio: streak });
+      streak = validation.correccionesSinCambio ?? 0;
       items = validation.validatedItems.items;
       specific = validation.validatedItems.allItemsSpecific;
       const question = validation.issues.find((issue) => issue.customerQuestion)?.customerQuestion ?? null;
@@ -177,7 +212,8 @@ function run(scenario: Scenario, mode: "before" | "after"): string[] {
   });
   if (mode === "after") {
     const said = scenario.steps.map((step) => step.user).join(" \n ");
-    const loose = ungroundedOrderLines(prior, said, assisted);
+    const started = new Set((scenario.start ?? []).map((item) => normName(item.nombre_producto)));
+    const loose = ungroundedOrderLines(prior, said, assisted).filter((name) => !started.has(normName(name)));
     if (loose.length) errors.push(`sin rastro en lo que dijo el cliente: ${loose.join(", ")}`);
   }
   return errors;
@@ -1859,6 +1895,341 @@ const scenarios: Scenario[] = [
       },
     ],
   },
+  {
+    id: "ab-35 pedido 102 no junta coca y maruchan",
+    store: "abarrotes",
+    kind: "add",
+    steps: [
+      {
+        user: "Quiero un bote de cloro de litro y un fabuloso de litro morado también una coca de 2 litros y una Maruchan de habanero",
+        llm: [],
+        count: 4,
+        has: [/cloro/i, /fabuloso|limpiador/i, /coca|refresco/i, /maruchan|sopa/i],
+        notBoth: [[/coca|refresco/i, /maruchan/i]],
+        marcaAbsent: [
+          { name: /cloro/i, re: /bote/i },
+          { name: /refresco|coca|sopa|maruchan/i, re: /\bmal\b/i },
+        ],
+        absent: [/quitame/i],
+      },
+      {
+        user: "Está mal es una coca de 2 litros y aparte la maruchan de habanero",
+        llm: [{ nombre_producto: "Refresco", marca: "Coca Maruchan Habanero", presentacion: "2 litros", cantidad: 1, unidad: "pieza" }],
+        count: 4,
+        has: [/coca|refresco/i, /maruchan|sopa/i],
+        notBoth: [[/coca|refresco/i, /maruchan/i]],
+        absent: [/quitame/i, /\bmal\b/i],
+      },
+      {
+        user: "No es aparte es un refresco de dos litros Coca-Cola y una maruchan de habanero",
+        llm: [{ nombre_producto: "Refresco", marca: "Coca Maruchan Habanero", presentacion: "2 litros", cantidad: 1 }],
+        count: 4,
+        notBoth: [[/coca|refresco/i, /maruchan/i]],
+        has: [/maruchan|sopa/i, /coca|refresco/i],
+        absent: [/\bmal\b/i],
+      },
+      {
+        user: "No está mal el refresco",
+        llm: [{ nombre_producto: "Refresco", marca: "Mal", cantidad: 1 }],
+        marcaAbsent: [{ name: /refresco|coca/i, re: /^mal$/i }],
+        absent: [/quitame/i],
+      },
+    ],
+  },
+  {
+    id: "ab-36 el modelo pegado tampoco junta la maruchan",
+    store: "abarrotes",
+    kind: "add",
+    steps: [
+      {
+        user: "una coca de 2 litros y una Maruchan de habanero",
+        llm: [{ nombre_producto: "Refresco", marca: "Coca Maruchan Habanero", presentacion: "2 litros", cantidad: 1, unidad: "pieza" }],
+        count: 2,
+        has: [/coca|refresco/i, /maruchan|sopa/i],
+        notBoth: [[/coca|refresco/i, /maruchan/i]],
+        presentacion: [{ name: /sopa|maruchan/i, re: /habanero/i }],
+      },
+    ],
+  },
+  {
+    id: "ab-37 línea combinada se parte con aparte",
+    store: "abarrotes",
+    kind: "add",
+    start: [
+      { nombre_producto: "Cloro", marca: "Bote", cantidad: 1, unidad: "litro" },
+      { nombre_producto: "Limpiador", marca: "Fabuloso Morado", cantidad: 1, unidad: "litro" },
+      { nombre_producto: "Refresco", marca: "Coca Maruchan Habanero", presentacion: "2 litros", cantidad: 1, unidad: "pieza" },
+    ],
+    steps: [
+      {
+        user: "Está mal es una coca de 2 litros y aparte la maruchan de habanero",
+        llm: [{ nombre_producto: "Refresco", marca: "Coca Maruchan Habanero", presentacion: "2 litros", cantidad: 1, unidad: "pieza" }],
+        count: 4,
+        has: [/cloro/i, /fabuloso|limpiador/i, /coca|refresco/i, /maruchan|sopa/i],
+        notBoth: [[/coca|refresco/i, /maruchan/i]],
+        marcaAbsent: [{ name: /cloro/i, re: /bote/i }],
+        absent: [/\bmal\b/i, /quitame/i],
+      },
+    ],
+  },
+  {
+    id: "ab-38 quítame solo la línea combinada",
+    store: "abarrotes",
+    kind: "remove",
+    start: [
+      { nombre_producto: "Cloro", marca: "Cloralex", cantidad: 1, unidad: "litro" },
+      { nombre_producto: "Limpiador", marca: "Fabuloso", cantidad: 1, unidad: "litro" },
+      { nombre_producto: "Refresco", marca: "Coca Maruchan Habanero", presentacion: "2 litros", cantidad: 1, unidad: "pieza" },
+      { nombre_producto: "Refresco", marca: "Mal", presentacion: "2 litros", cantidad: 1, unidad: "pieza" },
+    ],
+    steps: [
+      {
+        user: "Quítame refresco, Coca-Cola, Maruchan habanero, 2 l una pieza",
+        llm: [{ nombre_producto: "Quitame", cantidad: 1 }, { nombre_producto: "Maruchan Habanero", cantidad: 1 }],
+        has: [/cloro/i, /limpiador|fabuloso/i],
+        absent: [/quitame/i, /maruchan/i, /\bmal\b/i],
+        notBoth: [[/coca|refresco/i, /maruchan/i]],
+      },
+      {
+        user: "Quítame el refresco",
+        llm: [],
+        has: [/cloro/i],
+        absent: [/quitame/i, /maruchan/i],
+      },
+    ],
+  },
+  {
+    id: "ab-39 ya no quiero, sin y bórrame",
+    store: "abarrotes",
+    kind: "remove",
+    steps: [
+      {
+        user: "un pinol de 1 litro y una coca de 2 litros",
+        llm: [],
+        count: 2,
+        has: [/pinol|limpiador/i, /coca|refresco/i],
+      },
+      {
+        user: "ya no quiero el pinol",
+        llm: [{ nombre_producto: "Pinol", cantidad: 1 }, { nombre_producto: "Coca", cantidad: 1 }],
+        count: 1,
+        has: [/coca|refresco/i],
+        absent: [/pinol|limpiador/i],
+      },
+    ],
+  },
+  {
+    id: "ab-40 sin el jabón y bórrame la coca",
+    store: "abarrotes",
+    kind: "remove",
+    steps: [
+      {
+        user: "un jabón zote y una coca de lata",
+        llm: [],
+        count: 2,
+        has: [/zote|jab[oó]n/i, /coca|refresco/i],
+      },
+      {
+        user: "sin el zote",
+        llm: [],
+        count: 1,
+        has: [/coca|refresco/i],
+        absent: [/zote|jab[oó]n/i],
+      },
+      {
+        user: "bórrame la coca",
+        llm: [{ nombre_producto: "Borrame", cantidad: 1 }],
+        count: 0,
+        absent: [/coca|refresco|borrame|quitame/i],
+      },
+    ],
+  },
+  {
+    id: "ab-41 no está mal no crea marca Mal",
+    store: "abarrotes",
+    kind: "add",
+    steps: [
+      {
+        user: "una coca de 2 litros",
+        llm: [],
+        has: [/coca|refresco/i],
+      },
+      {
+        user: "No está mal el refresco",
+        llm: [{ nombre_producto: "Refresco", marca: "Mal", presentacion: "2 litros", cantidad: 1 }],
+        count: 1,
+        marcaAbsent: [{ name: /refresco|coca/i, re: /\bmal\b/i }],
+        absent: [/\bmal\b/i],
+      },
+    ],
+  },
+  {
+    id: "ab-42 corrección que no cambia no repite la lista",
+    store: "abarrotes",
+    kind: "confirm",
+    steps: [
+      {
+        user: "2 kilos de jitomate y una coca de 2 litros",
+        llm: [],
+        count: 2,
+        specific: true,
+        asks: /Están bien estos productos/i,
+      },
+      {
+        user: "te equivocaste",
+        llm: [],
+        count: 2,
+        asks: /quita el Pinol/i,
+        asksNot: /OK, pediste/i,
+      },
+      {
+        user: "te equivocaste otra vez",
+        llm: [],
+        count: 2,
+        asks: /reiniciar/i,
+        asksNot: /OK, pediste/i,
+      },
+    ],
+  },
+  {
+    id: "ab-43 cambia la coca, quita el pinol y agrega zote",
+    store: "abarrotes",
+    kind: "replace",
+    steps: [
+      {
+        user: "una coca de 600 ml y un pinol de 1 litro",
+        llm: [],
+        count: 2,
+        has: [/coca|refresco/i, /pinol|limpiador/i],
+      },
+      {
+        user: "cambia la coca a 2 litros",
+        llm: [],
+        count: 2,
+        has: [/pinol|limpiador/i],
+        presentacion: [{ name: /coca|refresco/i, re: /2 litros/i }],
+      },
+      {
+        user: "quita el pinol",
+        llm: [],
+        count: 1,
+        absent: [/pinol|limpiador/i],
+        has: [/coca|refresco/i],
+      },
+      {
+        user: "agrega 1 jabón zote",
+        llm: [],
+        count: 2,
+        has: [/zote|jab[oó]n/i, /coca|refresco/i],
+      },
+    ],
+  },
+  {
+    id: "ab-44 varios productos con y sin comas",
+    store: "abarrotes",
+    kind: "add",
+    steps: [
+      {
+        user: "un refresco y una sopa Maruchan de habanero",
+        llm: [],
+        count: 2,
+        has: [/refresco|coca/i, /maruchan|sopa/i],
+        notBoth: [[/refresco|coca/i, /maruchan/i]],
+      },
+      {
+        user: "un plumón, una coca de 600 ml y 1 kg de tortillas",
+        llm: [],
+        has: [/plum[oó]n/i, /coca|refresco/i, /tortilla/i, /maruchan|sopa/i],
+        notBoth: [[/plum/i, /coca|refresco|tortilla/i]],
+      },
+    ],
+  },
+  {
+    id: "ab-45 voz corrida sin comas no junta",
+    store: "abarrotes",
+    kind: "slang",
+    steps: [
+      {
+        user: "quiero un bote de cloro de litro un fabuloso de litro una coca de 2 litros una maruchan de habanero",
+        llm: [],
+        count: 4,
+        has: [/cloro/i, /fabuloso|limpiador/i, /coca|refresco/i, /maruchan|sopa/i],
+        notBoth: [[/coca|refresco/i, /maruchan/i]],
+        marcaAbsent: [{ name: /cloro/i, re: /bote/i }],
+      },
+    ],
+  },
+  {
+    id: "ab-46 jamón y queso y café con leche siguen juntos",
+    store: "abarrotes",
+    kind: "add",
+    steps: [
+      {
+        user: "un jamón y queso y un café con leche",
+        llm: [],
+        count: 2,
+        has: [/jam[oó]n y queso/i, /caf[eé] con leche/i],
+        absent: [/^queso$/i, /^leche$/i],
+      },
+    ],
+  },
+  {
+    id: "ge-29 quita solo la pepsi",
+    store: "george",
+    kind: "remove",
+    catalog: george85,
+    steps: [
+      {
+        user: "una pepsi y una manzana",
+        llm: [],
+        count: 2,
+        has: [/pepsi/i, /manzana/i],
+      },
+      {
+        user: "quita la pepsi",
+        llm: [
+          { nombre_producto: "Pepsi", cantidad: 1 },
+          { nombre_producto: "Manzana", cantidad: 1 },
+        ],
+        count: 1,
+        has: [/manzana/i],
+        absent: [/pepsi/i],
+        asks: /Están bien estos productos/i,
+      },
+      {
+        user: "agrégale otro refresco",
+        llm: [],
+        has: [/manzana/i],
+      },
+    ],
+  },
+  {
+    id: "ce-28 sin el chorizo deja el diezmillo",
+    store: "central",
+    kind: "remove",
+    steps: [
+      {
+        user: "un kilo de chorizo y un diezmillo",
+        llm: [],
+        count: 2,
+      },
+      {
+        user: "sin el chorizo",
+        llm: [
+          { nombre_producto: "Chorizo", cantidad: 1, unidad: "kilo" },
+          { nombre_producto: "Diezmillo", cantidad: 1 },
+        ],
+        count: 1,
+        has: [/diezmillo/i],
+        absent: [/chorizo/i],
+      },
+      {
+        user: "que sean 2 kilos",
+        llm: [],
+        qty: [{ name: /diezmillo/i, n: 2 }],
+      },
+    ],
+  },
 ];
 
 function tally(mode: "before" | "after") {
@@ -1906,6 +2277,42 @@ const counts = {
 if (MANDALO_SERVICE_FEE !== 0 || MANDALO_DELIVERY_FEE !== 25) {
   throw new Error("el cargo dejó de ser 0 + 25");
 }
+
+if (!ABARROTES_PRODUCT_REQUEST.includes("2 Coca-Cola de 600 ml")) throw new Error("falta el ejemplo de Coca");
+if (!ABARROTES_PRODUCT_REQUEST.includes("1 Pinol de 1 litro")) throw new Error("el ejemplo de abarrotes no trae Pinol");
+if (!ABARROTES_PRODUCT_REQUEST.includes("1 kg de tortillas")) throw new Error("falta el ejemplo de tortillas");
+if (/maruchan/i.test(ABARROTES_PRODUCT_REQUEST)) throw new Error("el ejemplo de abarrotes no debe usar Maruchan");
+if (!formatStuckCorrection(1).includes("quita el Pinol") || formatStuckCorrection(1).includes("reiniciar")) {
+  throw new Error("la primera corrección sin cambio no debe hablar de reiniciar");
+}
+if (!formatStuckCorrection(2).includes("reiniciar") || !formatStuckCorrection(2).includes("cancelar")) {
+  throw new Error("la segunda corrección sin cambio tiene que decir cómo reiniciar");
+}
+if (!isNewOrderIntent("reiniciar") || !isNewOrderIntent("Reiniciar")) throw new Error("reiniciar no reinicia");
+if (!isCancelIntent("cancelar") || !isCancelIntent("cancela")) throw new Error("cancelar no cancela");
+const reinicio = prepareQuoteItems([{ nombre_producto: "Coca", marca: "Coca", cantidad: 1 }], "reiniciar");
+if (reinicio.some((item) => /reiniciar/i.test(item.nombre_producto))) throw new Error("reiniciar se volvió producto");
+const cancelado = prepareQuoteItems([{ nombre_producto: "Coca", marca: "Coca", cantidad: 1 }], "cancelar");
+if (cancelado.some((item) => /cancel/i.test(item.nombre_producto))) throw new Error("cancelar se volvió producto");
+const quitame = prepareQuoteItems(
+  [
+    { nombre_producto: "Refresco", marca: "Coca Maruchan Habanero", presentacion: "2 litros", cantidad: 1, unidad: "pieza" },
+    { nombre_producto: "Refresco", marca: "Mal", presentacion: "2 litros", cantidad: 1, unidad: "pieza" },
+  ],
+  "Quítame refresco, Coca-Cola, Maruchan habanero, 2 l una pieza",
+);
+if (quitame.some((item) => /quitame|maruchan|\bmal\b/i.test(`${item.nombre_producto} ${item.marca ?? ""}`))) {
+  throw new Error(`quítame dejó basura: ${quitame.map((item) => `${item.nombre_producto}/${item.marca ?? ""}`).join(" | ")}`);
+}
+if (quitame.length !== 1) throw new Error(`quítame debía dejar una línea y dejó ${quitame.length}`);
+const picked = pickRemoval(
+  [
+    { nombre_producto: "Refresco", marca: "Coca Maruchan Habanero", presentacion: "2 litros", cantidad: 1 },
+    { nombre_producto: "Refresco", marca: "Otra", presentacion: "lata", cantidad: 1 },
+  ],
+  "refresco coca cola maruchan habanero",
+);
+if (picked.ambiguous || picked.index !== 0) throw new Error("la línea combinada no fue la única que coincidió");
 
 const before = tally("before");
 const after = tally("after");

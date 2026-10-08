@@ -178,6 +178,7 @@ function retainPriorPlusGrounded(
 const TRACE_ALIAS: Record<string, string[]> = {
   refresco: ["coca", "coquita", "chesco", "pepsi", "sprite", "mirinda"],
   coca: ["coquita", "chesco"],
+  sopa: ["maruchan", "ramen"],
   papa: ["sabrita", "sabritas"],
   papas: ["sabrita", "sabritas"],
   tortilla: ["tortillina", "tortillinas"],
@@ -238,6 +239,8 @@ const CLAUSE_SKIP = new Set([
   "chica", "chico", "chicas", "mediana", "mediano", "blanca", "blanco", "morada", "morado",
   "negra", "negro", "roja", "rojo", "faltaron", "faltan", "faltaba", "unos", "unas",
   "entera", "enteras", "enteros", "quieres", "como", "fijate",
+  "quitame", "quitalo", "quitala", "borrame", "aparte", "error", "equivocaste", "equivocado",
+  "mal", "bote", "botes", "reiniciar", "cancelar", "cancela",
 ]);
 
 const HARD_OFF = new Set(["sushi", "pizza", "pescado", "camaron", "camarones", "combo", "combos", "taco", "tacos", "pollo", "pollos"]);

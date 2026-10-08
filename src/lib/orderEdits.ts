@@ -170,6 +170,97 @@ function blank(source: string, re: RegExp, onMatch: (match: RegExpMatchArray) =>
   });
 }
 
+const REMOVAL_SKIP = new Set([
+  ...LEFTOVER_SKIP,
+  "mal", "aparte", "error", "equivocado", "equivocaste", "equivocacion",
+  "quita", "quitame", "quitar", "quitalo", "quitala", "quiteme", "quitale",
+  "borra", "borrar", "borrame", "borralo", "borrala",
+  "elimina", "eliminar", "eliminalo", "eliminame",
+  "pedido", "nada",
+  "pieza", "piezas", "litro", "litros", "lata", "latas", "bote", "botes",
+  "garrafa", "garrafas",
+]);
+
+const REMOVE_VERB =
+  "quit[aeo]\\w*|borr(?:ar|a|ame|alo|ala|amelo|amela)?|elimina(?:r|me|lo|la|melo|mela)?|ya no quiero|ya no";
+const REMOVE_STOP = "y|tambien|ademas|agrega\\w*|anade\\w*|ponle|sumale";
+
+function removalRegex(): RegExp {
+  return new RegExp(
+    `\\b(?:${REMOVE_VERB})\\s+((?:el |la |los |las |un |una |al )?(?:(?!\\b(?:${REMOVE_STOP})\\b)[a-z0-9]+)(?:\\s+(?!\\b(?:${REMOVE_STOP})\\b)[a-z0-9]+){0,16})`,
+    "g",
+  );
+}
+
+function sinRegex(): RegExp {
+  return /\bsin\s+(?:el |la |los |las |un |una )?(?!marinar\b|marinad\w*|lactosa\b)([a-z][a-z0-9]{3,}(?:\s+[a-z0-9]+){0,6})/g;
+}
+
+export function removalTokens(target: string): string[] {
+  return norm(target)
+    .split(" ")
+    .filter((token) => token.length >= 3 && !REMOVAL_SKIP.has(token) && !/^\d+$/.test(token));
+}
+
+function scoreRemoval(item: PedidoItemInput, tokens: string[]): number {
+  const hay = norm(`${item.nombre_producto} ${item.marca ?? ""} ${item.presentacion ?? ""} ${item.unidad ?? ""}`);
+  let score = 0;
+  for (const token of tokens) {
+    const stem = token.length > 4 && token.endsWith("s") ? token.slice(0, -1) : token;
+    if (hay.includes(token) || (stem.length >= 4 && hay.includes(stem))) {
+      score += 1;
+      continue;
+    }
+    if (hay.split(" ").some((word) => wordsAreClose(word, token) || wordsAreClose(word, stem))) score += 1;
+  }
+  return score;
+}
+
+/** Una sola línea: la que más se parece a todo el texto, no todas las que comparten la primera palabra. */
+export function pickRemoval(items: PedidoItemInput[], target: string): { index: number | null; ambiguous: boolean } {
+  const tokens = removalTokens(target);
+  if (!tokens.length || tokens.every((token) => token === "pedido" || token === "nada")) {
+    return { index: null, ambiguous: false };
+  }
+  const scored = items.map((item, index) => ({ index, score: scoreRemoval(item, tokens) }));
+  const best = scored.reduce((max, row) => Math.max(max, row.score), 0);
+  const floor = tokens.length >= 2 ? 2 : 1;
+  if (best < floor) return { index: null, ambiguous: false };
+  const winners = scored.filter((row) => row.score === best);
+  if (winners.length !== 1) return { index: null, ambiguous: true };
+  return { index: winners[0].index, ambiguous: false };
+}
+
+export function removalTargets(message: string): string[] {
+  const text = norm(message);
+  const targets: string[] = [];
+  for (const re of [removalRegex(), sinRegex()]) {
+    for (const match of text.matchAll(re)) {
+      const target = match[1]?.trim();
+      if (target && removalTokens(target).length) targets.push(target);
+    }
+  }
+  return targets;
+}
+
+const REMOVE_VERB_RAW =
+  "qu[ií]t[aeoáéó]\\w*|b[oó]rr(?:ar|a|ame|alo|ala|amelo|amela)?|elimina(?:r|me|lo|la|melo|mela)?|ya no quiero|ya no";
+
+function removalRegexRaw(): RegExp {
+  return new RegExp(
+    `\\b(?:${REMOVE_VERB_RAW})\\s+((?:el |la |los |las |un |una |al )?(?:(?!\\b(?:y|tambi[eé]n|adem[aá]s|agrega\\w*|a[nñ]ade\\w*|ponle|sumale)\\b)[\\p{L}\\p{N}]+)(?:\\s+(?!\\b(?:y|tambi[eé]n|adem[aá]s|agrega\\w*|a[nñ]ade\\w*|ponle|sumale)\\b)[\\p{L}\\p{N}]+){0,16})`,
+    "giu",
+  );
+}
+
+function sinRegexRaw(): RegExp {
+  return /\bsin\s+(?:el |la |los |las |un |una )?(?!marinar\b|marinad\w*|lactosa\b)([\p{L}][\p{L}\p{N}]{3,}(?:\s+[\p{L}\p{N}]+){0,6})/giu;
+}
+
+export function stripRemovalPhrases(message: string): string {
+  return message.replace(removalRegexRaw(), " ").replace(sinRegexRaw(), " ").replace(/[ \t]+/g, " ").trim();
+}
+
 export function planCustomerEdits(message: string): EditPlan {
   const ops: EditOp[] = [];
   let rest = norm(message);
@@ -184,12 +275,25 @@ export function planCustomerEdits(message: string): EditPlan {
     },
   );
 
+  rest = blank(rest, removalRegex(), (match) => {
+    const target = match[1]?.trim();
+    if (target && removalTokens(target).some((token) => token !== "pedido" && token !== "nada")) {
+      ops.push({ kind: "remove", target });
+    }
+  });
+
+  rest = blank(rest, sinRegex(), (match) => {
+    const target = match[1]?.trim();
+    if (target && removalTokens(target).length) ops.push({ kind: "remove", target });
+  });
+
   rest = blank(
     rest,
-    /\b(?:quit[aeo]\w*|borra(?:r|lo|la)?|elimina(?:r|lo|la)?|ya no quiero|ya no)\s+(?:el |la |los |las |un |una |al )?([a-z0-9]{4,})/g,
+    /\bcambia(?:r|me|le|lo|la)?\s+(?:el |la |los |las |un |una )?([a-z0-9]+(?:\s+[a-z0-9]+){0,2})\s+a\s+(\d+(?:\.\d+)?)\s*(litros?|ml|kilos?|kg|gramos?|g)\b/g,
     (match) => {
       const target = match[1]?.trim();
-      if (target && !["pedido", "nada", "quiero"].includes(target)) ops.push({ kind: "remove", target });
+      const unit = match[3] === "g" ? "g" : match[3];
+      if (target && match[2]) ops.push({ kind: "resize", target, size: `${match[2]} ${unit}` });
     },
   );
 
@@ -367,8 +471,13 @@ export function applyCustomerEdits(params: {
 
   for (const op of params.plan.ops) {
     if (op.kind !== "remove") continue;
-    const next = items.filter((item) => !matchesTarget(item, op.target));
-    items.splice(0, items.length, ...next);
+    const picked = pickRemoval(items, op.target);
+    if (picked.ambiguous) {
+      notes.push("¿Cuál quito?");
+      continue;
+    }
+    if (picked.index == null) continue;
+    items.splice(picked.index, 1);
   }
 
   return { items, note: [...new Set(notes)].join(" ") || null };
@@ -393,6 +502,11 @@ export function pendingEditNote(message: string, items: PedidoItemInput[]): stri
       );
       if (sized.length !== 1) notes.push("¿Cuál cambio de tamaño?");
     }
+    if (op.kind === "resize" && op.target) {
+      const pool = poolFor(items, op.target);
+      if (pool.length !== 1) notes.push("¿Cuál cambio de tamaño?");
+    }
+    if (op.kind === "remove" && pickRemoval(items, op.target).ambiguous) notes.push("¿Cuál quito?");
   }
   return [...new Set(notes)].join(" ") || null;
 }

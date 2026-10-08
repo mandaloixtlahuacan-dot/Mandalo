@@ -241,12 +241,35 @@ export function formatNicheSwitchList(niche: StoreNiche, stores: UxStore[]): str
   return `Va, soltamos la tienda anterior. 🛵\n\n${formatNicheStoreList(niche, stores)}`;
 }
 
+export const ABARROTES_PRODUCT_REQUEST =
+  "Mándame cada producto por separado, con marca, tamaño y cuántos. Ejemplo:\n" +
+  "2 Coca-Cola de 600 ml\n" +
+  "1 Pinol de 1 litro\n" +
+  "1 kg de tortillas";
+
+export function formatHowToEditList(): string {
+  return [
+    "Si algo está mal, dime: quita el Pinol / cambia la Coca a 2 litros / agrega 1 jabón Zote.",
+    "Para que lo lea bien, cada producto va aparte, con marca, tamaño y cuántos.",
+    "Ejemplo: 2 Coca-Cola de 600 ml.",
+  ].join("\n");
+}
+
+/** Cuando una corrección no movió la lista. El reinicio solo sale después de 2 intentos. */
+export function formatStuckCorrection(failedCount: number): string {
+  const lines = [formatHowToEditList(), "Si la lista ya está bien, responde sí."];
+  if (failedCount >= 2) {
+    lines.push("Si seguimos atorados, escribe reiniciar o cancelar y armamos el pedido de nuevo.");
+  }
+  return lines.join("\n");
+}
+
 export function formatAbarrotesStoreAck(store: UxStore): string {
   const closed = store.abierta
     ? ""
     : `\n\nOjo: está cerrada ahora${store.abreTexto ? ` (${store.abreTexto})` : ""}. Lo armamos igual y se manda en cuanto abra.`;
   return (
-    `Va, de ${store.nombre}. Dime qué se te antoja y yo lo consigo. Si falta marca, presentación o cuántos, te pregunto con un ejemplo.${closed}\n\n` +
+    `Va, de ${store.nombre}. ${ABARROTES_PRODUCT_REQUEST}${closed}\n\n` +
     `La tienda cotiza y se suman ${formatMoney(CUSTOMER_FACING_FEE)} de envío y servicio. 🛒`
   );
 }
@@ -336,10 +359,7 @@ export function formatCatalogMenu(storeName: string, category: string, items: Ar
 }
 
 export function formatNoFixedMenu(storeName: string): string {
-  return (
-    `${storeName} es de abarrotes. Dime el producto y yo lo consigo; si falta marca, presentación o cuántos, te pregunto.\n\n` +
-    `${formatCustomerFeeLine()}. 🛒`
-  );
+  return `${storeName} es de abarrotes. ${ABARROTES_PRODUCT_REQUEST}\n\n${formatCustomerFeeLine()}. 🛒`;
 }
 
 export function replyBlamesStoreForMissingMenu(text: string, storeName: string): boolean {

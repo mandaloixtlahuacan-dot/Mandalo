@@ -440,16 +440,21 @@ export async function getLLMResponse(params: {
       const parsedJson = JSON.parse(candidate);
       const parsed = mandaloAgentResponseSchema.safeParse(parsedJson);
       if (parsed.success) {
-        // Log temporal de diagnóstico (agosto 2026): un pedido real mostró
-        // itemCount:0 en captureEngine turno tras turno aunque el
-        // customer_reply de la IA describía los productos correctamente y
-        // sin ningún error de validación de Zod — es decir, el JSON pasó el
-        // schema pero algo en order_state.items no traía lo que el texto
-        // sí describía. Este log muestra el order_state crudo tal como lo
-        // mandó la IA, antes de cualquier merge/normalización, para ver
-        // exactamente qué venía. Retirar en cuanto se confirme la causa.
         const rawOrderState = (parsedJson as Record<string, unknown>).order_state;
-        console.log("[getLLMResponse] order_state crudo de la IA:", JSON.stringify(rawOrderState));
+        const rawItems = rawOrderState && typeof rawOrderState === "object" ? (rawOrderState as { items?: unknown }).items : null;
+        const itemLog = Array.isArray(rawItems)
+          ? rawItems.map((item) => {
+              if (!item || typeof item !== "object") return null;
+              const row = item as Record<string, unknown>;
+              return {
+                nombre: row.nombre_producto ?? row.nombre ?? row.name ?? null,
+                marca: row.marca ?? null,
+                cantidad: row.cantidad ?? row.qty ?? null,
+                unidad: row.unidad ?? null,
+              };
+            })
+          : [];
+        console.log("[getLLMResponse] items:", JSON.stringify(itemLog));
         // Si la IA omite la clave "customer_reply" (JSON válido pero
         // incompleto), el schema la rellena con un texto de relleno
         // ("¡Entendido! Dame un momento.") que no invita a nada — el cliente
@@ -942,6 +947,7 @@ async function handleAwaitingProductList(
       userMessage: mensaje,
     });
     const question = validation.issues.find((issue) => issue.customerQuestion)?.customerQuestion ?? "";
+    const listText = question || formatProductListConfirm(validation.validatedItems.items);
     const nextSnapshot = {
       ...snapshot,
       items: validation.validatedItems.items,
@@ -951,7 +957,9 @@ async function handleAwaitingProductList(
         itemsValidated: validation.validatedItems.allItemsSpecific,
         readyForConfirmation: false,
         productosConfirmados: false,
-        awaitingProductConfirm: isProductListConfirmMessage(question),
+        awaitingProductConfirm:
+          isProductListConfirmMessage(listText) || listText.includes("Si algo está mal, dime:"),
+        correccionesSinCambio: validation.correccionesSinCambio ?? 0,
       },
     };
     await pedidoRepositoryV2.updatePedidoSnapshot({
@@ -972,7 +980,7 @@ async function handleAwaitingProductList(
       actorTipo: "cliente",
       payload: { userMessage: mensaje },
     });
-    const msg = question || formatProductListConfirm(validation.validatedItems.items);
+    const msg = listText;
     await sendWhatsApp(telefono, msg);
     await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
     return { ok: true, role: "cliente", accion: "productos_corregidos", pedidoId: pedido.id };

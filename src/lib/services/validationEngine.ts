@@ -1,7 +1,14 @@
+import { formatStuckCorrection } from "@/lib/customerUx";
 import type { OrderState } from "@/lib/orderStateMachine";
 import { isProductListRequest, messageCorrectsOrder } from "@/lib/messages";
 import { pendingEditNote } from "@/lib/orderEdits";
-import { isGuidedQuoteItem, prepareQuoteItems, quoteItemNeedsDetail, quoteQuestionForItems } from "@/lib/quoteProductClarity";
+import {
+  isGuidedQuoteItem,
+  prepareQuoteItems,
+  quoteItemNeedsDetail,
+  quoteLineSignature,
+  quoteQuestionForItems,
+} from "@/lib/quoteProductClarity";
 import {
   ADDRESS_ASK_MESSAGE,
   formatProductListConfirm,
@@ -285,9 +292,20 @@ export function validateCaptureForConfirmation(params: {
       (revisesProducts && !validatedAddress?.isValid) ||
       (!productosConfirmados && (!validatedAddress?.isValid || awaitingProductConfirm)));
 
+  const linesChanged = quoteLineSignature(params.items) !== quoteLineSignature(validatedItems.items);
+  const priorStreak = params.snapshot.flags?.correccionesSinCambio ?? 0;
+  let correccionesSinCambio = linesChanged ? 0 : priorStreak;
+
   if (showProductList) {
     const clarify = pendingEditNote(params.userMessage ?? "", validatedItems.items);
-    const question = clarify ? `${clarify}\n\n${formatProductListConfirm(validatedItems.items)}` : formatProductListConfirm(validatedItems.items);
+    const stuck = !linesChanged && revisesProducts && !clarify;
+    if (stuck) correccionesSinCambio = priorStreak + 1;
+    else if (linesChanged || clarify) correccionesSinCambio = 0;
+    const question = stuck
+      ? formatStuckCorrection(correccionesSinCambio)
+      : clarify
+        ? `${clarify}\n\n${formatProductListConfirm(validatedItems.items)}`
+        : formatProductListConfirm(validatedItems.items);
     const addressIssue = issues.find((issue) => issue.field === "direccion");
     if (addressIssue) addressIssue.customerQuestion = question;
     else {
@@ -320,5 +338,6 @@ export function validateCaptureForConfirmation(params: {
     validatedBusiness,
     validatedItems,
     readyForConfirmation: nextState === "confirmacion_cliente",
+    correccionesSinCambio,
   };
 }
