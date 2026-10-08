@@ -101,38 +101,23 @@ OK, pediste:
 
 *¿Están bien estos productos?*
 
-Si algo está mal, dime:
+_Si algún producto está mal, escríbeme cuál es y qué cambio quieres._
 
-*quita el Pinol*
-
-*cambia la Coca a 2 litros*
-
-*agrega 1 jabón Zote*
-
-Para que lo lea bien, cada producto va aparte, con marca, tamaño y cuántos.
-
-*Ejemplo:*
-
-✅ 🥤 *2 Coca-Cola de 600 ml*
+_Solo es un ejemplo, no está en tu pedido: "cambia la leche Lala a 2 litros" o "quita la leche"._
 
 
 ================================================================
 ABARROTES — corrección que no movió la lista
 ================================================================
 
-Si algo está mal, dime:
+No pude cambiar tu lista. Escríbeme cuál producto está mal y qué cambio quieres.
 
-*quita el Pinol*
+_Solo es un ejemplo, no está en tu pedido:_
+_"quita la leche"_
+_"cambia la leche Lala a 2 litros"_
+_"agrega 1 leche Lala de 1 litro"_
 
-*cambia la Coca a 2 litros*
-
-*agrega 1 jabón Zote*
-
-Para que lo lea bien, cada producto va aparte, con marca, tamaño y cuántos.
-
-*Ejemplo:*
-
-✅ 🥤 *2 Coca-Cola de 600 ml*
+Cada producto va aparte, con marca, tamaño y cuántos.
 
 Si la lista ya está bien, responde *sí*.
 
@@ -141,19 +126,14 @@ Si la lista ya está bien, responde *sí*.
 ABARROTES — segunda corrección, ya dice reiniciar
 ================================================================
 
-Si algo está mal, dime:
+No pude cambiar tu lista. Escríbeme cuál producto está mal y qué cambio quieres.
 
-*quita el Pinol*
+_Solo es un ejemplo, no está en tu pedido:_
+_"quita la leche"_
+_"cambia la leche Lala a 2 litros"_
+_"agrega 1 leche Lala de 1 litro"_
 
-*cambia la Coca a 2 litros*
-
-*agrega 1 jabón Zote*
-
-Para que lo lea bien, cada producto va aparte, con marca, tamaño y cuántos.
-
-*Ejemplo:*
-
-✅ 🥤 *2 Coca-Cola de 600 ml*
+Cada producto va aparte, con marca, tamaño y cuántos.
 
 Si la lista ya está bien, responde *sí*.
 
@@ -428,6 +408,43 @@ GEORGE — lo que anotó
 
 
 ================================================================
+GEORGE — OK, pediste
+================================================================
+
+OK, pediste:
+
+🛒 *Tu pedido*
+
+✅ 🍔 *Hamburguesa de Res Chica, x1*
+
+✅ 🌭 *Dogo clásico, x1*
+
+✅ 🍟 *Papas Gajo 315g, x1*
+
+*¿Están bien estos productos?*
+
+_Si algún producto está mal, escríbeme cuál es y qué cambio quieres._
+
+_Solo es un ejemplo, no está en tu pedido: "quita las papas" o "agrega 1 refresco". Pídelo con el nombre del menú._
+
+
+================================================================
+GEORGE — corrección que no movió la lista
+================================================================
+
+No pude cambiar tu lista. Escríbeme cuál producto está mal y qué cambio quieres.
+
+_Solo es un ejemplo, no está en tu pedido:_
+_"quita las papas"_
+_"cambia la hamburguesa a grande"_
+_"agrega 1 refresco"_
+
+Pídelo con el nombre del menú y cuántos.
+
+Si la lista ya está bien, responde *sí*.
+
+
+================================================================
 GEORGE — ticket
 ================================================================
 
@@ -512,6 +529,41 @@ LA CENTRAL — lo que anotó
 ✅ 🥩 *Chorizo — 1 kilo*
 
 ✅ 🥩 *Arrachera Marinada — 0.5 kilos*
+
+
+================================================================
+LA CENTRAL — OK, pediste
+================================================================
+
+OK, pediste:
+
+🛒 *Tu pedido*
+
+✅ 🥩 *Chorizo, 1 kilo*
+
+✅ 🥩 *Arrachera Marinada, 0.5 kilos*
+
+*¿Están bien estos productos?*
+
+_Si algún producto está mal, escríbeme cuál es y qué cambio quieres._
+
+_Solo es un ejemplo, no está en tu pedido: "cambia el carbón a 2 bolsas" o "quita el pastor"._
+
+
+================================================================
+LA CENTRAL — corrección que no movió la lista
+================================================================
+
+No pude cambiar tu lista. Escríbeme cuál producto está mal y qué cambio quieres.
+
+_Solo es un ejemplo, no está en tu pedido:_
+_"quita el pastor"_
+_"cambia el carbón a 2 bolsas"_
+_"agrega 1 kilo de carne"_
+
+Pídelo con el corte y los kilos (o cuántos pesos).
+
+Si la lista ya está bien, responde *sí*.
 
 
 ================================================================

@@ -505,7 +505,9 @@ const abarrotesLeak = [
 ].join("\n");
 check(
   "fuga-abarrotes",
-  /quita el Pinol/.test(formatStuckCorrection(1)) &&
+  /Solo es un ejemplo, no está en tu pedido/.test(formatStuckCorrection(1)) &&
+    /quita la leche/.test(formatStuckCorrection(1)) &&
+    !/pinol|coca|zote/i.test(`${formatHowToEditList()}\n${formatStuckCorrection(1)}`) &&
     !/reiniciar/.test(formatStuckCorrection(1)) &&
     /Pinol/.test(abarrotesLeak) &&
     !/como sale en la foto|El menú trae precio|Hamburguesa Hawaiana|Dogo Clásico|Salchilocos|Arrachera Marinada/i.test(abarrotesLeak),
@@ -581,8 +583,10 @@ check(
     abarrotesAyuda.includes("_Si algún producto está mal") &&
     !abarrotesAyuda.includes("✅") &&
     !/Pinol|jabón Zote|marca, tamaño y cuántos|reiniciar|Croquetas|Frijol|Ciel|Monster/i.test(abarrotesAyuda) &&
-    /quita el Pinol/.test(formatStuckCorrection(1)) &&
+    /No pude cambiar tu lista/.test(formatStuckCorrection(1)) &&
+    /quita la leche/.test(formatStuckCorrection(1)) &&
     /marca, tamaño y cuántos/.test(formatStuckCorrection(1)) &&
+    !/pinol|coca|zote/i.test(formatStuckCorrection(1)) &&
     !/reiniciar/.test(formatStuckCorrection(1)),
   abarrotesAyuda,
 );
@@ -605,7 +609,10 @@ check(
     !georgeAyuda.includes("✅") &&
     !/Hamburguesa de Res Grande|Dogo de Pollo|Papas Gajo|Pinol|leche Lala|carbón/i.test(georgeAyuda) &&
     georgeAyuda === helpAfterList(formatProductListConfirm([{ nombre_producto: "Dogo Clásico", cantidad: 1 }], "restaurante")) &&
-    !/Hamburguesa de Res Grande|Dogo de Pollo|Papas Gajo/.test(formatStuckCorrection(1, { kind: "restaurante" })),
+    /Solo es un ejemplo, no está en tu pedido/.test(formatStuckCorrection(1, { kind: "restaurante" })) &&
+    /nombre del menú y cuántos/.test(formatStuckCorrection(1, { kind: "restaurante" })) &&
+    !formatStuckCorrection(1, { kind: "restaurante" }).includes("✅") &&
+    !/Hamburguesa de Res Grande|Dogo de Pollo|Papas Gajo|Pinol|Coca|Zote/.test(formatStuckCorrection(1, { kind: "restaurante" })),
   georgeAyuda,
 );
 
@@ -624,7 +631,9 @@ check(
     /pastor/.test(centralAyuda) &&
     !centralAyuda.includes("✅") &&
     !/Bistec de res|Chorizo|Pinol|leche Lala|nombre del menú/i.test(centralAyuda) &&
+    /Solo es un ejemplo, no está en tu pedido/.test(formatStuckCorrection(1, { kind: "carniceria" })) &&
     /corte y los kilos/.test(formatStuckCorrection(1, { kind: "carniceria" })) &&
+    !formatStuckCorrection(1, { kind: "carniceria" }).includes("✅") &&
     !/reiniciar/.test(formatStuckCorrection(1, { kind: "carniceria" })) &&
     /reiniciar/.test(formatStuckCorrection(2, { kind: "carniceria" })),
   centralAyuda,

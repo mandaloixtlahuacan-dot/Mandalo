@@ -19,49 +19,24 @@ export function formatShortEditHelp(kind: StoreKind = "abarrotes"): string {
   return `${SHORT_INTRO}\n\n${example}`;
 }
 
-/** Cómo escribir el cambio, cuando la corrección no movió la lista. Tampoco usa el pedido. */
+const LONG_INTRO = "No pude cambiar tu lista. Escríbeme cuál producto está mal y qué cambio quieres.";
+const EXAMPLE_LABEL = "_Solo es un ejemplo, no está en tu pedido:_";
+
+/** Cómo escribir el cambio, cuando la corrección no movió la lista. Los ejemplos son fijos. */
 export function formatLongEditHelp(kind: StoreKind = "abarrotes"): string {
-  if (kind === "restaurante") {
-    return [
-      "Si algo está mal, dime:",
-      "",
-      "*quita el Dogo Clásico*",
-      "",
-      "*cambia la Hamburguesa Hawaiana a grande*",
-      "",
-      "*agrega 2 Pepsi*",
-      "",
-      "Pídelo con el nombre del menú y cuántos.",
-    ].join("\n");
-  }
-  if (kind === "carniceria") {
-    return [
-      "Si algo está mal, dime:",
-      "",
-      "*quita el Chorizo*",
-      "",
-      "*cambia el Bistec de res a 2 kilos*",
-      "",
-      "*agrega medio kilo de Arrachera Marinada*",
-      "",
-      "Pídelo con el corte y los kilos (o cuántos pesos).",
-    ].join("\n");
-  }
-  return [
-    "Si algo está mal, dime:",
-    "",
-    "*quita el Pinol*",
-    "",
-    "*cambia la Coca a 2 litros*",
-    "",
-    "*agrega 1 jabón Zote*",
-    "",
-    "Para que lo lea bien, cada producto va aparte, con marca, tamaño y cuántos.",
-    "",
-    "*Ejemplo:*",
-    "",
-    "2 Coca-Cola de 600 ml",
-  ].join("\n");
+  const examples =
+    kind === "restaurante"
+      ? ['_"quita las papas"_', '_"cambia la hamburguesa a grande"_', '_"agrega 1 refresco"_']
+      : kind === "carniceria"
+        ? ['_"quita el pastor"_', '_"cambia el carbón a 2 bolsas"_', '_"agrega 1 kilo de carne"_']
+        : ['_"quita la leche"_', '_"cambia la leche Lala a 2 litros"_', '_"agrega 1 leche Lala de 1 litro"_'];
+  const closing =
+    kind === "restaurante"
+      ? "Pídelo con el nombre del menú y cuántos."
+      : kind === "carniceria"
+        ? "Pídelo con el corte y los kilos (o cuántos pesos)."
+        : "Cada producto va aparte, con marca, tamaño y cuántos.";
+  return [LONG_INTRO, "", EXAMPLE_LABEL, ...examples, "", closing].join("\n");
 }
 
 export function summaryStoreLabel(kind: StoreKind): string {
