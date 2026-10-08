@@ -240,6 +240,7 @@ const CLAUSE_SKIP = new Set([
   "chica", "chico", "chicas", "mediana", "mediano", "blanca", "blanco", "morada", "morado",
   "negra", "negro", "roja", "rojo", "faltaron", "faltan", "faltaba", "unos", "unas",
   "entera", "enteras", "enteros", "quieres", "como", "fijate",
+  "seria", "serian", "seran", "fueron", "quieta", "kita",
   "quitame", "quitalo", "quitala", "borrame", "aparte", "error", "equivocaste", "equivocado",
   "mal", "bote", "botes", "reiniciar", "cancelar", "cancela",
 ]);
@@ -295,8 +296,59 @@ function openClauses(message: string, items: PedidoItemInput[]): string[] {
   return open;
 }
 
+function catalogWordSet(catalog: CatalogPriceRow[]): Set<string> {
+  const words = new Set<string>();
+  for (const row of catalog) {
+    for (const word of norm(row.nombreProducto).split(" ")) {
+      if (word.length >= 4) words.add(word);
+    }
+  }
+  return words;
+}
+
+/**
+ * «hawaiana» ya es una palabra del menú. No se usa para meter «Dogo Hawaiano»
+ * cuando el cliente dijo la hamburguesa. Una palabra que no está en el menú
+ * («gringa», «chesco») sí puede acercarse a una fila y preguntarse.
+ */
+const MENU_HEADS = new Set(["hamburguesa", "dogo", "hotdog", "refresco", "torta", "papas", "bistec", "costilla", "chorizo", "salsa"]);
+
+/** «hawaiana» ya armó la hamburguesa. No se vuelve también una torta. */
+function repeatsAnotherFamily(item: PedidoItemInput, message: string, existing: PedidoItemInput[]): boolean {
+  const tokens = norm(item.nombre_producto).split(" ");
+  const head = tokens.find((word) => MENU_HEADS.has(word));
+  if (!head) return false;
+  const saidHead = norm(message)
+    .split(" ")
+    .some((word) => word === head || (word.endsWith("s") && word.slice(0, -1) === head));
+  if (saidHead) return false;
+  const distinctive = tokens.filter((word) => word.length >= 4 && !MENU_HEADS.has(word));
+  if (!distinctive.length) return false;
+  return distinctive.every((token) =>
+    existing.some((line) => {
+      const lineTokens = norm(line.nombre_producto).split(" ");
+      const lineHead = lineTokens.find((word) => MENU_HEADS.has(word));
+      return Boolean(lineHead && lineHead !== head && lineTokens.includes(token));
+    }),
+  );
+}
+
+function clashesWithSaidMenuWord(item: PedidoItemInput, message: string, catalog: CatalogPriceRow[]): boolean {
+  const said = new Set(norm(message).split(" ").filter((word) => word.length >= 5));
+  const known = catalogWordSet(catalog);
+  return norm(item.nombre_producto)
+    .split(" ")
+    .filter((word) => word.length >= 5 && !MENU_HEADS.has(word))
+    .some((token) => {
+      if (said.has(token)) return false;
+      return [...said].some((word) => known.has(word) && wordsAreClose(word, token));
+    });
+}
+
 function fuzzyMenuRow(clause: string, catalog: CatalogPriceRow[]): CatalogPriceRow | null {
-  const tokens = clauseTokens(clause).filter((token) => token.length >= 5);
+  const known = catalogWordSet(catalog);
+  const tokens = clauseTokens(clause).filter((token) => token.length >= 5 && !known.has(token));
+  if (!tokens.length) return null;
   const hits: CatalogPriceRow[] = [];
   for (const row of catalog) {
     const words = norm(row.nombreProducto).split(" ").filter((word) => word.length >= 5);
@@ -308,14 +360,32 @@ function fuzzyMenuRow(clause: string, catalog: CatalogPriceRow[]): CatalogPriceR
   return hits[0];
 }
 
+function compactName(value: string): string {
+  return norm(value).replace(/\s+/g, "");
+}
+
 function asMenuItem(item: PedidoItemInput, catalog: CatalogPriceRow[]): PedidoItemInput | null {
   if (!item.nombre_producto?.trim()) return null;
   if (!catalog.length) return { ...item };
   if (modifierOnlyName(item)) return null;
   const name = norm(`${item.nombre_producto} ${item.marca ?? ""}`);
-  const row = catalog.find((candidate) => {
+  const wanted = compactName(item.nombre_producto);
+  const compactRow = wanted.length >= 6
+    ? catalog.find((candidate) => {
+        const label = compactName(candidate.nombreProducto);
+        if (label === wanted) return true;
+        if (!label.startsWith(wanted)) return false;
+        return /^\d+(?:g|gramos?|piezas?|pzas?)?$/.test(label.slice(wanted.length));
+      })
+    : null;
+  const row = compactRow ?? catalog.find((candidate) => {
     const label = norm(candidate.nombreProducto);
-    return label === norm(item.nombre_producto) || label.includes(norm(item.nombre_producto)) || norm(item.nombre_producto).includes(label);
+    const said = norm(item.nombre_producto);
+    if (label === said || said.includes(label)) return true;
+    if (!label.includes(said)) return false;
+    // «Hamburguesa Mar y Tierra» no es la chica ni la grande hasta que lo diga.
+    const extra = label.replace(said, " ").replace(/\s+/g, " ").trim();
+    return !/\b(chica|chico|grande|mediana|mediano|sencilla|sencillo|doble|triple)\b/.test(extra);
   });
   if (row) return { ...item, nombre_producto: row.nombreProducto };
   const brand = DRINK_BRANDS.find((candidate) => name.includes(candidate));
@@ -335,11 +405,52 @@ function titleWord(word: string): string {
 function catalogAddition(phrase: string, catalog: CatalogPriceRow[]): AddedLine {
   const spoken = applyCatalogSpeech({ base: [], userMessage: phrase, catalog });
   if (spoken.aside && spoken.items.length === 0) return { item: null, aside: spoken.aside };
-  if (spoken.applied && spoken.items.length === 1) return { item: spoken.items[0], aside: null };
+  if (spoken.applied && spoken.items.length === 1) {
+    return { item: spoken.items[0], aside: spoken.missing ? spoken.question : null };
+  }
   if (spoken.applied && spoken.items.length > 1) {
-    return { item: null, aside: `¿Te refieres a ${spoken.items.map((item) => item.nombre_producto).join(" o a ")}?` };
+    return { item: null, aside: spoken.question ?? `¿Te refieres a ${spoken.items.map((item) => item.nombre_producto).join(" o a ")}?` };
   }
   return { item: null, aside: null };
+}
+
+function sameMenuRow(left: PedidoItemInput, right: PedidoItemInput): boolean {
+  if (norm(left.nombre_producto) !== norm(right.nombre_producto)) return false;
+  return !brandsConflict(left.marca, right.marca);
+}
+
+function withoutSizeWords(value: string): string {
+  return norm(value)
+    .replace(/\b(chica|chico|grande|mediana|mediano|sencilla|sencillo|doble|triple)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** En menú fijo cada línea es una fila real, o un tipo que todavía se pregunta. */
+function enforceMenuLines(items: PedidoItemInput[], catalog: CatalogPriceRow[], prior: PedidoItemInput[] = []): PedidoItemInput[] {
+  const next: PedidoItemInput[] = [];
+  for (const item of items) {
+    if (norm(item.notas ?? "") === "falta tipo") {
+      next.push(item);
+      continue;
+    }
+    const mapped = asMenuItem(item, catalog);
+    if (!mapped) continue;
+    const name = norm(mapped.nombre_producto);
+    const exact = catalog.some((row) => norm(row.nombreProducto) === name);
+    const unsized = catalog.some((row) => withoutSizeWords(row.nombreProducto) === name);
+    const alreadyThere = prior.some((line) => norm(line.nombre_producto) === name);
+    if (!exact && !unsized && !alreadyThere) continue;
+    const prev = next.find((line) => sameMenuRow(line, mapped));
+    if (prev) {
+      const left = typeof prev.cantidad === "number" ? prev.cantidad : 1;
+      const right = typeof mapped.cantidad === "number" ? mapped.cantidad : 1;
+      prev.cantidad = Math.max(left, right);
+      continue;
+    }
+    next.push(mapped);
+  }
+  return next;
 }
 
 function dropRefusal(aside: string | null, words: string[]): string | null {
@@ -382,11 +493,15 @@ function absorbModelReading(params: {
 
   const soft = open.filter((clause) => !clauseTokens(clause).some((token) => hardOff(token, params.catalog)));
   const refusedMarinade = /sin marinar/.test(norm(params.aside ?? ""));
+  const lineMatch = (left: PedidoItemInput, right: PedidoItemInput) =>
+    params.catalog.length ? sameMenuRow(left, right) : sameLine(left, right);
   const suggestions = params.incoming
     .map((item) => asMenuItem(item, params.catalog))
     .filter((item): item is PedidoItemInput => item != null)
-    .filter((item) => !items.some((previous) => sameLine(previous, item)))
-    .filter((item) => !params.prior.some((previous) => sameLine(previous, item)))
+    .filter((item) => !items.some((previous) => lineMatch(previous, item)))
+    .filter((item) => !params.prior.some((previous) => lineMatch(previous, item)))
+    .filter((item) => !params.catalog.length || !clashesWithSaidMenuWord(item, params.userMessage, params.catalog))
+    .filter((item) => !params.catalog.length || !repeatsAnotherFamily(item, params.userMessage, items))
     .filter((item) => !(refusedMarinade && /marinad/.test(norm(item.nombre_producto))))
     .filter((item) => !(soft.length === 1 && restatesClause(soft[0], item)));
   if (!soft.length || !suggestions.length) return { items, note: null, assistedNames: [], aside: params.aside };
@@ -401,6 +516,15 @@ function absorbModelReading(params: {
   const accept = (clause: string, item: PedidoItemInput, certain: boolean) => {
     const next = sanitizeNewItem(item, params.userMessage);
     if (next.cantidad == null) next.cantidad = 1;
+    if (params.catalog.length && items.some((previous) => sameMenuRow(previous, next))) return;
+    if (params.catalog.length) {
+      const generic = items.findIndex((previous) => {
+        const short = norm(previous.nombre_producto);
+        const long = norm(next.nombre_producto);
+        return short !== long && long.startsWith(`${short} `) && short.split(" ").length <= 2;
+      });
+      if (generic >= 0) items.splice(generic, 1);
+    }
     items.push(next);
     assistedNames.push(next.nombre_producto);
     cleared.push(...clauseTokens(clause));
@@ -493,8 +617,11 @@ export function assembleCapturedItems(params: {
       spoken = applyCatalogSpeech({ base: items.map((item) => ({ ...item })), userMessage: plan.remainder, catalog });
       if (spoken.applied) items = spoken.items.map((item) => ({ ...item }));
     }
+    let removeNote: string | null = null;
     if (removals.ops.length) {
-      items = applyCustomerEdits({ prior: items, working: items, plan: removals, catalog }).items;
+      const removed = applyCustomerEdits({ prior: items, working: items, plan: removals, catalog });
+      items = removed.items;
+      removeNote = removed.note;
     }
     items = dropItemsNamedInRemoval(items, message);
     const asideOnly = spoken?.missing === true && spoken.aside != null && spoken.question === spoken.aside;
@@ -506,18 +633,24 @@ export function assembleCapturedItems(params: {
       catalog,
       aside: [edited.note, spoken?.aside].filter(Boolean).join(" ") || null,
     });
-    const missing = spoken?.missing === true && !(asideOnly && absorbed.aside == null && absorbed.assistedNames.length > 0);
-    const note = absorbed.note ?? (absorbed.aside?.trim() ? absorbed.aside : null);
+    const kept = enforceMenuLines(absorbed.items, catalog, prior);
+    const pending = kept.some((item) => norm(item.notas ?? "") === "falta tipo");
+    const missing =
+      pending ||
+      Boolean(removeNote) ||
+      (spoken?.missing === true && !(asideOnly && absorbed.aside == null && absorbed.assistedNames.length > 0));
+    const note = [removeNote, absorbed.note ?? (absorbed.aside?.trim() ? absorbed.aside : null)].filter(Boolean).join("\n") || null;
+    const ask = spoken?.question ?? edited.note ?? note;
     return {
-      items: absorbed.items,
+      items: kept,
       assistedNames: absorbed.assistedNames,
       assistNote: absorbed.note,
       catalogSpeech: {
         applied: true,
         missing,
-        items: absorbed.items,
-        reply: missing ? spoken?.reply ?? null : null,
-        question: missing ? spoken?.question ?? note : listQuestion(note),
+        items: kept,
+        reply: missing ? spoken?.reply ?? ask ?? null : null,
+        question: missing ? ask : listQuestion(note),
         aside: note,
       },
     };
@@ -530,17 +663,19 @@ export function assembleCapturedItems(params: {
       const asideOnly = spoken.missing && spoken.aside != null && spoken.question === spoken.aside;
       const absorbed = absorbModelReading({ items: dropped, incoming, prior, userMessage: message, catalog, aside: spoken.aside });
       const resolved = asideOnly && absorbed.assistedNames.length > 0;
-      const missing = spoken.missing && !resolved;
+      const kept = enforceMenuLines(absorbed.items, catalog, prior);
+      const pending = kept.some((item) => norm(item.notas ?? "") === "falta tipo");
+      const missing = pending || (spoken.missing && !resolved);
       const note = [absorbed.note, absorbed.aside].filter(Boolean).join("\n") || null;
       return {
-        items: absorbed.items,
+        items: kept,
         assistedNames: absorbed.assistedNames,
         assistNote: absorbed.note,
         catalogSpeech: {
           ...spoken,
           missing,
-          items: absorbed.items,
-          question: resolved || absorbed.note ? listQuestion(note) : spoken.question,
+          items: kept,
+          question: missing ? spoken.question ?? note : resolved || absorbed.note ? listQuestion(note) : spoken.question,
           aside: note,
           reply: spoken.reply,
         },

@@ -13,8 +13,11 @@
  * con `categoria` Carnicerías (o `nicho:carnicerias`).
  */
 
+import { formatKindEditHelp, type StoreKind } from "@/lib/categoryCopy";
 import { formatCheckedLine, formatCheckedLines, joinBlocks } from "@/lib/messageStyle";
 import { formatMoney, MANDALO_DELIVERY_FEE, MANDALO_SERVICE_FEE } from "@/lib/ordenes";
+
+export type { StoreKind };
 
 export const CUSTOMER_FACING_FEE = MANDALO_SERVICE_FEE + MANDALO_DELIVERY_FEE;
 
@@ -190,6 +193,18 @@ export function nicheById(id: string): StoreNiche | null {
   return CUSTOMER_STORE_NICHES.find((niche) => niche.id === id) ?? null;
 }
 
+/** La categoría de la tienda (`tiendas.categoria`), no el flag de menú fijo. */
+export function storeKindFromCategoria(categoria: string | null | undefined): StoreKind {
+  const niche = nicheIdForCategoria(categoria);
+  if (niche === "restaurantes") return "restaurante";
+  if (niche === "carnicerias") return "carniceria";
+  return "abarrotes";
+}
+
+export function storeKindFromStore(store: { categoria?: string | null } | null | undefined): StoreKind {
+  return storeKindFromCategoria(store?.categoria);
+}
+
 export function nicheIdForCategoria(categoria: string | null | undefined): StoreNicheId | null {
   const normalized = normalizeUxText(categoria ?? "");
   if (!normalized) return null;
@@ -254,7 +269,9 @@ export const ABARROTES_PRODUCT_REQUEST =
     formatCheckedLine("1 kg de tortillas"),
   ]);
 
-export function formatHowToEditList(): string {
+export function formatHowToEditList(kind: StoreKind = "abarrotes", itemNames: string[] = []): string {
+  const other = kind === "abarrotes" ? null : formatKindEditHelp(kind, itemNames);
+  if (other) return other;
   return [
     "Si algo está mal, dime:",
     "",
@@ -273,8 +290,17 @@ export function formatHowToEditList(): string {
 }
 
 /** Cuando una corrección no movió la lista. El reinicio solo sale después de 2 intentos. */
-export function formatStuckCorrection(failedCount: number): string {
-  const lines = [formatHowToEditList(), "Si la lista ya está bien, responde *sí*."];
+export function formatStuckCorrection(
+  failedCount: number,
+  options?: { kind?: StoreKind; itemLines?: string[]; itemNames?: string[] },
+): string {
+  const kind = options?.kind ?? "abarrotes";
+  const help = formatHowToEditList(kind, options?.itemNames ?? []);
+  const lines: string[] = [];
+  if (options?.itemLines?.length) {
+    lines.push(`🛒 *Tu pedido*\n\n${options.itemLines.join("\n\n")}\n\n*¿Están bien estos productos?*`);
+  }
+  lines.push(help, "Si la lista ya está bien, responde *sí*.");
   if (failedCount >= 2) {
     lines.push("Si seguimos atorados, escribe *reiniciar* o *cancelar* y armamos el pedido de nuevo.");
   }
@@ -377,7 +403,11 @@ export function formatCatalogMenu(storeName: string, category: string, items: Ar
   return `🛒 *${category} en ${storeName}:*\n\n${lines}\n\n${formatCustomerFeeLine()}, aparte.\n\n*${UX_MENU_MARKER}*`;
 }
 
-export function formatNoFixedMenu(storeName: string): string {
+export function formatNoFixedMenu(storeName: string, kind: StoreKind = "abarrotes"): string {
+  if (kind !== "abarrotes") {
+    const emoji = kind === "carniceria" ? "🥩" : "🍔";
+    return `${emoji} *${storeName}*\n\nDime qué se te antoja y cuántos.\n\n${formatCustomerFeeLine()}.`;
+  }
   return `🏪 *${storeName}* es de abarrotes.\n\n${ABARROTES_PRODUCT_REQUEST}\n\n${formatCustomerFeeLine()}.`;
 }
 
@@ -788,7 +818,9 @@ export type CustomerUxRender =
 
 function renderPickedStore(store: UxStore): CustomerUxRender {
   if (!store.usaCatalogoFijo) {
-    return { kind: "text", text: formatAbarrotesStoreAck(store), rememberStore: store, clearActiveStore: false };
+    const kind = storeKindFromCategoria(store.categoria);
+    const text = kind === "abarrotes" ? formatAbarrotesStoreAck(store) : formatNoFixedMenu(store.nombre, kind);
+    return { kind: "text", text, rememberStore: store, clearActiveStore: false };
   }
   return {
     kind: "menu",

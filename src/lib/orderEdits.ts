@@ -10,7 +10,7 @@ import type { PedidoItemInput } from "@/lib/services/captureEngine";
  */
 
 export type EditOp =
-  | { kind: "remove"; target: string }
+  | { kind: "remove"; target: string; mode?: "one" | "all" | "ask" }
   | { kind: "increment"; target: string | null; by: number }
   | { kind: "replace"; from: string; to: string }
   | { kind: "setQty"; target: string | null; qty: number; unit: string | null }
@@ -183,7 +183,7 @@ const REMOVAL_SKIP = new Set([
 ]);
 
 const REMOVE_VERB =
-  "quit[aeo]\\w*|borr(?:ar|a|ame|alo|ala|amelo|amela)?|elimina(?:r|me|lo|la|melo|mela)?|ya no quiero|ya no";
+  "quiet[ao]|kita|quit[aeo]\\w*|borr(?:ar|a|ame|alo|ala|amelo|amela)?|elimina(?:r|me|lo|la|melo|mela)?|ya no quiero|ya no";
 const REMOVE_STOP = "y|tambien|ademas|agrega\\w*|anade\\w*|ponle|sumale";
 
 function removalRegex(): RegExp {
@@ -279,7 +279,10 @@ export function planCustomerEdits(message: string): EditPlan {
   rest = blank(rest, removalRegex(), (match) => {
     const target = match[1]?.trim();
     if (target && removalTokens(target).some((token) => token !== "pedido" && token !== "nada")) {
-      ops.push({ kind: "remove", target });
+      const verb = (match[0] ?? "").split(" ")[0] ?? "";
+      const uncertain = /^(quiet|kita)/.test(verb) || /\bdigo\b/.test(target);
+      const mode = uncertain ? "ask" : /^(un|una)\b/.test(target) ? "one" : "all";
+      ops.push({ kind: "remove", target: target.replace(/\bdigo\b/g, "dogo"), mode });
     }
   });
 
@@ -314,7 +317,7 @@ export function planCustomerEdits(message: string): EditPlan {
 
   rest = blank(
     rest,
-    /\botr[ao]s?\s+(?!vez\b)(?:(dos|tres|cuatro|cinco|\d+)\s+)?(?:(?:kilos?|kg|gramos?)\s+)?(?:de\s+)?([a-z][a-z0-9]{2,})/g,
+    /\botr[ao]s?\s+(?!vez\b)(?:(dos|tres|cuatro|cinco|\d+)\s+)?(?:(?:kilos?|kg|gramos?)\s+)?(?:de\s+)?([a-z][a-z0-9]{2,})\b(?!\s+(?!y\b|e\b|tambien\b|ademas\b|seria\b|serian\b|seran\b|pero\b)[a-z]{3,})/g,
     (match) => {
       const by = match[1] ? (NUM[match[1]] ?? Number(match[1])) : 1;
       const target = match[2];
@@ -334,6 +337,15 @@ export function planCustomerEdits(message: string): EditPlan {
         qty: parsed.qty,
         unit: unitOf(match[2], parsed.unit),
       });
+    },
+  );
+
+  rest = blank(
+    rest,
+    /\bcambia(?:r|me|le|lo|la)?\s+(?:el |la |los |las )?(?:de\s+)?([a-z0-9]+(?:\s+[a-z0-9]+){0,3})\s+a\s+(chica|chico|grande|mediana|mediano|sencilla|sencillo|doble|triple)\b/g,
+    (match) => {
+      const target = match[1]?.trim();
+      if (target && target !== "a") ops.push({ kind: "resize", target, size: match[2] });
     },
   );
 
@@ -394,10 +406,15 @@ export function applyCustomerEdits(params: {
     const added = resolve?.(phrase);
     if (added?.item) {
       items.push({ ...added.item, cantidad: added.item.cantidad ?? qty });
+      if (added.aside) notes.push(added.aside);
       return;
     }
     if (added?.aside) {
       notes.push(added.aside);
+      return;
+    }
+    if (params.catalog?.length) {
+      notes.push("¿Te refieres a algo del menú?");
       return;
     }
     items.push({ nombre_producto: titlePhrase(phrase), cantidad: qty });
@@ -467,6 +484,15 @@ export function applyCustomerEdits(params: {
       notes.push("¿Cuál cambio de tamaño?");
       continue;
     }
+    const weighed = op.size.match(/^(\d+(?:\.\d+)?)\s*(kilos?|kg|gramos?|g)$/);
+    if (weighed) {
+      const qty = Number(weighed[1]);
+      const raw = weighed[2];
+      chosen[0].cantidad = qty;
+      chosen[0].unidad = raw.startsWith("kilo") || raw === "kg" ? "kilo" : raw.startsWith("gram") || raw === "g" ? "gramo" : raw.startsWith("litro") ? "litro" : raw;
+      if (norm(chosen[0].presentacion ?? "") === norm(op.size)) chosen[0].presentacion = null;
+      continue;
+    }
     resizeItem(chosen[0], op.size, params.catalog);
   }
 
@@ -478,6 +504,16 @@ export function applyCustomerEdits(params: {
       continue;
     }
     if (picked.index == null) continue;
+    const current = items[picked.index];
+    const qty = typeof current.cantidad === "number" && current.cantidad > 0 ? current.cantidad : 1;
+    if (op.mode === "ask") {
+      notes.push(`¿Quito el ${current.nombre_producto} o dejo menos? Tienes ${qty}.`);
+      continue;
+    }
+    if (op.mode === "one" && qty > 1) {
+      current.cantidad = qty - 1;
+      continue;
+    }
     items.splice(picked.index, 1);
   }
 

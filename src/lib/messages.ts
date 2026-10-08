@@ -183,7 +183,7 @@ const QUESTION_WORDS_REGEX =
 // equivocaste…" en confirmacion_cliente se estaba yendo como SÍ y la tienda
 // recibía el mandado mal armado. Solo confirma la aceptación limpia.
 const ORDER_CHANGE_REGEX =
-  /\b(pero|equivoc\w*|quit[aeo]\w*|cambi\w*|corrig\w*|no es|no era|no son|no eran|en vez de|en lugar de|nomas que|solo que|solamente que|nada mas que|unicamente que)\b|\bera\b|\besta mal\b/;
+  /\b(pero|equivoc\w*|quit[aeo]\w*|quiet\w*|kita\w*|cambi\w*|corrig\w*|no es|no era|no son|no eran|en vez de|en lugar de|nomas que|solo que|solamente que|nada mas que|unicamente que)\b|\bera\b|\besta mal\b/;
 
 // «Sí, solamente te faltó…», «y te faltaron…», «agrega», «añade» y «también
 // quiero» suman o cambian el mandado. No son el SÍ limpio que pide el GPS.
@@ -250,7 +250,9 @@ export function isYesConfirmation(text: string): boolean {
     .replace(/\b(por favor|porfa|gracias)\b/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-  return /^(si|ok|va|confirmo|confirmar|dale|de acuerdo|visto bueno)$/.test(core);
+  return /^(si|ok|va|confirmo|confirmar|dale|de acuerdo|visto bueno|si estan bien|si esta bien|si asi esta bien|asi esta bien|si todo bien|si correcto|correcto|si ya)$/.test(
+    core,
+  );
 }
 
 export type OrderingGateStep = "product_list" | "final_ticket";

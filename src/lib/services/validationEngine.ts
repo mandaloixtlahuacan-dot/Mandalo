@@ -1,4 +1,6 @@
+import type { StoreKind } from "@/lib/categoryCopy";
 import { formatStuckCorrection } from "@/lib/customerUx";
+import { formatCheckedLine } from "@/lib/messageStyle";
 import type { OrderState } from "@/lib/orderStateMachine";
 import { isProductListRequest, messageCorrectsOrder } from "@/lib/messages";
 import { pendingEditNote } from "@/lib/orderEdits";
@@ -12,6 +14,7 @@ import {
 import {
   ADDRESS_ASK_MESSAGE,
   formatProductListConfirm,
+  formatSpecificItemLine,
   type PedidoItemInput,
   type PedidoSnapshot,
   type ValidationIssue,
@@ -230,6 +233,9 @@ export function validateCaptureForConfirmation(params: {
   knownZoneNames?: string[];
   quoteStore?: boolean;
   userMessage?: string | null;
+  /** Lista de antes de este turno. Si no viene, se compara contra `items`. */
+  priorItems?: PedidoItemInput[] | null;
+  storeKind?: StoreKind | null;
 }): ValidationResult {
   const validatedBusiness = validateBusiness(params.snapshot);
   const validatedAddress = validateAddress(
@@ -292,7 +298,11 @@ export function validateCaptureForConfirmation(params: {
       (revisesProducts && !validatedAddress?.isValid) ||
       (!productosConfirmados && (!validatedAddress?.isValid || awaitingProductConfirm)));
 
-  const linesChanged = quoteLineSignature(params.items) !== quoteLineSignature(validatedItems.items);
+  const beforeItems = params.priorItems ?? params.items;
+  const linesChanged = quoteLineSignature(beforeItems) !== quoteLineSignature(validatedItems.items);
+  const kind: StoreKind = params.storeKind ?? params.snapshot.storeKind ?? "abarrotes";
+  const listLines = validatedItems.items.map((item) => formatCheckedLine(formatSpecificItemLine(item), item.nombre_producto));
+  const listNames = validatedItems.items.map((item) => item.nombre_producto);
   const priorStreak = params.snapshot.flags?.correccionesSinCambio ?? 0;
   let correccionesSinCambio = linesChanged ? 0 : priorStreak;
 
@@ -302,10 +312,10 @@ export function validateCaptureForConfirmation(params: {
     if (stuck) correccionesSinCambio = priorStreak + 1;
     else if (linesChanged || clarify) correccionesSinCambio = 0;
     const question = stuck
-      ? formatStuckCorrection(correccionesSinCambio)
+      ? formatStuckCorrection(correccionesSinCambio, { kind, itemLines: listLines, itemNames: listNames })
       : clarify
-        ? `${clarify}\n\n${formatProductListConfirm(validatedItems.items)}`
-        : formatProductListConfirm(validatedItems.items);
+        ? `${clarify}\n\n${formatProductListConfirm(validatedItems.items, kind)}`
+        : formatProductListConfirm(validatedItems.items, kind);
     const addressIssue = issues.find((issue) => issue.field === "direccion");
     if (addressIssue) addressIssue.customerQuestion = question;
     else {
