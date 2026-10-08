@@ -1,63 +1,67 @@
 /**
  * Textos del tramo de productos, uno por categoría.
- * Abarrotes se queda con el ejemplo de siempre. Restaurante y carnicería
- * no heredan Pinol, Coca ni «la tienda cotiza».
+ * La confirmación lleva un ejemplo fijo, en cursiva, que no sale del pedido.
+ * La ayuda larga solo sale si una corrección no cambió nada.
  */
 
 export type StoreKind = "abarrotes" | "restaurante" | "carniceria";
 
-function cleanName(value: string): string {
-  return String(value ?? "").replace(/\s+/g, " ").trim();
+const SHORT_INTRO = "_Si algún producto está mal, escríbeme cuál es y qué cambio quieres._";
+
+/** Una sola ayuda corta, debajo de la lista. Nunca usa los productos del cliente. */
+export function formatShortEditHelp(kind: StoreKind = "abarrotes"): string {
+  const example =
+    kind === "restaurante"
+      ? '_Solo es un ejemplo, no está en tu pedido: "quita las papas" o "agrega 1 refresco". Pídelo con el nombre del menú._'
+      : kind === "carniceria"
+        ? '_Solo es un ejemplo, no está en tu pedido: "cambia el carbón a 2 bolsas" o "quita el pastor"._'
+        : '_Solo es un ejemplo, no está en tu pedido: "cambia la leche Lala a 2 litros" o "quita la leche"._';
+  return `${SHORT_INTRO}\n\n${example}`;
 }
 
-function firstName(names: string[], fallback: string): string {
-  return cleanName(names.find((name) => name.trim()) ?? "") || fallback;
-}
-
-function quitaPhrase(name: string): string {
-  const female = /^(hamburguesa|torta|papa|sincronizada|quesadilla|coca|salsa|arrachera|costilla)/i.test(name);
-  return `quita ${female ? "la" : "el"} ${name}`;
-}
-
-export function formatRestauranteEditHelp(itemNames: string[] = []): string {
-  const quitar = firstName(itemNames, "Dogo Clásico");
-  const burger =
-    itemNames.find((name) => /hamburguesa/i.test(name))?.replace(/\s+(chica|chico|grande)$/i, "").trim() ||
-    "Hamburguesa Hawaiana";
+/** Cómo escribir el cambio, cuando la corrección no movió la lista. Tampoco usa el pedido. */
+export function formatLongEditHelp(kind: StoreKind = "abarrotes"): string {
+  if (kind === "restaurante") {
+    return [
+      "Si algo está mal, dime:",
+      "",
+      "*quita el Dogo Clásico*",
+      "",
+      "*cambia la Hamburguesa Hawaiana a grande*",
+      "",
+      "*agrega 2 Pepsi*",
+      "",
+      "Pídelo con el nombre del menú y cuántos.",
+    ].join("\n");
+  }
+  if (kind === "carniceria") {
+    return [
+      "Si algo está mal, dime:",
+      "",
+      "*quita el Chorizo*",
+      "",
+      "*cambia el Bistec de res a 2 kilos*",
+      "",
+      "*agrega medio kilo de Arrachera Marinada*",
+      "",
+      "Pídelo con el corte y los kilos (o cuántos pesos).",
+    ].join("\n");
+  }
   return [
     "Si algo está mal, dime:",
     "",
-    `*${quitaPhrase(quitar)}*`,
+    "*quita el Pinol*",
     "",
-    `*cambia la ${burger} a grande*`,
+    "*cambia la Coca a 2 litros*",
     "",
-    "*agrega 2 Pepsi*",
+    "*agrega 1 jabón Zote*",
     "",
-    "Pídelo con el nombre del menú y cuántos.",
+    "Para que lo lea bien, cada producto va aparte, con marca, tamaño y cuántos.",
+    "",
+    "*Ejemplo:*",
+    "",
+    "2 Coca-Cola de 600 ml",
   ].join("\n");
-}
-
-export function formatCarniceriaEditHelp(itemNames: string[] = []): string {
-  const quitar = itemNames.find((name) => /chorizo/i.test(name)) || firstName(itemNames, "Chorizo");
-  const bistec = itemNames.find((name) => /bistec/i.test(name)) || "Bistec de res";
-  const extra = itemNames.find((name) => /arrachera/i.test(name)) || "Arrachera Marinada";
-  return [
-    "Si algo está mal, dime:",
-    "",
-    `*quita el ${quitar}*`,
-    "",
-    `*cambia el ${bistec} a 2 kilos*`,
-    "",
-    `*agrega medio kilo de ${extra}*`,
-    "",
-    "Pídelo con el corte y los kilos (o cuántos pesos).",
-  ].join("\n");
-}
-
-export function formatKindEditHelp(kind: StoreKind, itemNames: string[] = []): string | null {
-  if (kind === "restaurante") return formatRestauranteEditHelp(itemNames);
-  if (kind === "carniceria") return formatCarniceriaEditHelp(itemNames);
-  return null;
 }
 
 export function summaryStoreLabel(kind: StoreKind): string {

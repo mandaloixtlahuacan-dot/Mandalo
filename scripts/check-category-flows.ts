@@ -141,6 +141,12 @@ function qty(item: PedidoItemInput | undefined): number | null {
   return typeof item?.cantidad === "number" ? item.cantidad : null;
 }
 
+function helpAfterList(message: string): string {
+  const marker = "*¿Están bien estos productos?*";
+  const at = message.indexOf(marker);
+  return at === -1 ? message : message.slice(at + marker.length);
+}
+
 function georgeOrder(incoming: PedidoItemInput[]) {
   return assembleCapturedItems({ prior: [], incoming, userMessage: GEORGE_MSG, catalog: george });
 }
@@ -217,11 +223,16 @@ check(
   "george-lista",
   /OK, pediste/.test(georgeList) &&
     /¿Están bien estos productos\?/.test(georgeList) &&
-    /nombre del menú/.test(georgeList) &&
-    !/Pinol|jabón Zote|marca, tamaño y cuántos/i.test(georgeList) &&
+    /nombre del menú/.test(helpAfterList(georgeList)) &&
+    /ejemplo/i.test(helpAfterList(georgeList)) &&
+    /quita las papas/.test(helpAfterList(georgeList)) &&
+    /agrega 1 refresco/.test(helpAfterList(georgeList)) &&
+    !/✅/.test(helpAfterList(georgeList)) &&
+    !/Pinol|jabón Zote|marca, tamaño y cuántos|reiniciar/i.test(georgeList) &&
+    emptyGeorge.items.every((item) => !helpAfterList(georgeList).includes(item.nombre_producto)) &&
     /OK, pediste/.test(georgeAsked) &&
     /¿Están bien estos productos\?/.test(georgeAsked),
-  georgeAsked.slice(0, 180),
+  helpAfterList(georgeList).slice(0, 180),
 );
 check(
   "george-si",
@@ -364,8 +375,12 @@ const carneLista = formatProductListConfirm(conArrachera.items, "carniceria");
 check(
   "central-agrega-arrachera",
   Boolean(findItem(conArrachera.items, /Arrachera Marinada/i)) &&
-    /corte y los kilos/.test(carneLista) &&
-    !/Pinol|Zote|marca, tamaño/i.test(carneLista),
+    /ejemplo/i.test(helpAfterList(carneLista)) &&
+    /carbón/.test(helpAfterList(carneLista)) &&
+    /pastor/.test(helpAfterList(carneLista)) &&
+    !/✅/.test(helpAfterList(carneLista)) &&
+    !/corte y los kilos|Pinol|Zote|marca, tamaño|reiniciar/i.test(helpAfterList(carneLista)) &&
+    conArrachera.items.every((item) => !helpAfterList(carneLista).includes(item.nombre_producto)),
 );
 
 function tangOk(items: PedidoItemInput[], detail: string): string | null {
@@ -497,11 +512,10 @@ check(
 );
 
 const restaurantBits = [
-  formatHowToEditList("restaurante", ["Hamburguesa de Camarón Grande", "Dogo Clásico"]),
+  formatHowToEditList("restaurante"),
   formatStuckCorrection(1, {
     kind: "restaurante",
     itemLines: ["✅ 🍔 *Hamburguesa Hawaiana Grande, x1*"],
-    itemNames: ["Hamburguesa Hawaiana Grande"],
   }),
   formatProductListConfirm(emptyGeorge.items, "restaurante"),
   formatNoFixedMenu("Hamburguesas Hotdogs George", "restaurante"),
@@ -526,18 +540,16 @@ check(
       formatStuckCorrection(1, {
         kind: "restaurante",
         itemLines: ["✅ 🍔 *Dogo Clásico, x3*"],
-        itemNames: ["Dogo Clásico"],
       }),
     ),
   restaurantBits.slice(0, 240),
 );
 
 const meatBits = [
-  formatHowToEditList("carniceria", ["Chorizo", "Bistec de res"]),
+  formatHowToEditList("carniceria"),
   formatStuckCorrection(2, {
     kind: "carniceria",
     itemLines: ["✅ 🥩 *Chorizo, x1*"],
-    itemNames: ["Chorizo"],
   }),
   formatProductListConfirm([{ nombre_producto: "Chorizo", cantidad: 1, unidad: "kilo" }], "carniceria"),
   formatNoFixedMenu("Carnicería La Central", "carniceria"),
@@ -547,7 +559,75 @@ check(
   /corte y los kilos/.test(meatBits) &&
     /reiniciar/.test(meatBits) &&
     /¿Están bien estos productos\?/.test(meatBits) &&
-    !/Pinol|jabón Zote|Coca a 2 litros|con marca, tamaño y cuántos|La tienda cotiza|es de abarrotes|Takis|Salchicha FUD|McCormick/i.test(meatBits),
+    !/Pinol|jabón Zote|Coca a 2 litros|con marca, tamaño y cuántos|La tienda cotiza|es de abarrotes|Takis|Salchicha FUD|McCormick/i.test(meatBits) &&
+    !/corte y los kilos|reiniciar/.test(formatHowToEditList("carniceria")),
+);
+
+const abarrotesPedido = formatProductListConfirm([
+  { nombre_producto: "Croquetas Perron", cantidad: 1, unidad: "kilo" },
+  { nombre_producto: "Frijol negro", cantidad: 2, unidad: "kilo" },
+  { nombre_producto: "Agua Ciel", presentacion: "1 litro", cantidad: 1 },
+  { nombre_producto: "Monster", presentacion: "lata", cantidad: 1 },
+]);
+const abarrotesAyuda = helpAfterList(abarrotesPedido);
+const mismaAyuda = helpAfterList(
+  formatProductListConfirm([{ nombre_producto: "Leche Lala", cantidad: 1, unidad: "litro" }]),
+);
+check(
+  "ayuda-abarrotes",
+  abarrotesAyuda === mismaAyuda &&
+    /leche/i.test(abarrotesAyuda) &&
+    /ejemplo/i.test(abarrotesAyuda) &&
+    abarrotesAyuda.includes("_Si algún producto está mal") &&
+    !abarrotesAyuda.includes("✅") &&
+    !/Pinol|jabón Zote|marca, tamaño y cuántos|reiniciar|Croquetas|Frijol|Ciel|Monster/i.test(abarrotesAyuda) &&
+    /quita el Pinol/.test(formatStuckCorrection(1)) &&
+    /marca, tamaño y cuántos/.test(formatStuckCorrection(1)) &&
+    !/reiniciar/.test(formatStuckCorrection(1)),
+  abarrotesAyuda,
+);
+
+const georgePedido = formatProductListConfirm(
+  [
+    { nombre_producto: "Hamburguesa de Res Grande", cantidad: 2 },
+    { nombre_producto: "Dogo de Pollo", cantidad: 2 },
+    { nombre_producto: "Papas Gajo 315g", cantidad: 1 },
+  ],
+  "restaurante",
+);
+const georgeAyuda = helpAfterList(georgePedido);
+check(
+  "ayuda-george",
+  /ejemplo/i.test(georgeAyuda) &&
+    /quita las papas/.test(georgeAyuda) &&
+    /agrega 1 refresco/.test(georgeAyuda) &&
+    /nombre del menú/.test(georgeAyuda) &&
+    !georgeAyuda.includes("✅") &&
+    !/Hamburguesa de Res Grande|Dogo de Pollo|Papas Gajo|Pinol|leche Lala|carbón/i.test(georgeAyuda) &&
+    georgeAyuda === helpAfterList(formatProductListConfirm([{ nombre_producto: "Dogo Clásico", cantidad: 1 }], "restaurante")) &&
+    !/Hamburguesa de Res Grande|Dogo de Pollo|Papas Gajo/.test(formatStuckCorrection(1, { kind: "restaurante" })),
+  georgeAyuda,
+);
+
+const centralPedido = formatProductListConfirm(
+  [
+    { nombre_producto: "Bistec de res", cantidad: 1, unidad: "kilo" },
+    { nombre_producto: "Chorizo", cantidad: 0.5, unidad: "kilo" },
+  ],
+  "carniceria",
+);
+const centralAyuda = helpAfterList(centralPedido);
+check(
+  "ayuda-central",
+  /ejemplo/i.test(centralAyuda) &&
+    /carbón/.test(centralAyuda) &&
+    /pastor/.test(centralAyuda) &&
+    !centralAyuda.includes("✅") &&
+    !/Bistec de res|Chorizo|Pinol|leche Lala|nombre del menú/i.test(centralAyuda) &&
+    /corte y los kilos/.test(formatStuckCorrection(1, { kind: "carniceria" })) &&
+    !/reiniciar/.test(formatStuckCorrection(1, { kind: "carniceria" })) &&
+    /reiniciar/.test(formatStuckCorrection(2, { kind: "carniceria" })),
+  centralAyuda,
 );
 
 const ticket = buildCustomerMessage({

@@ -660,6 +660,7 @@ const CATEGORIES: Category[] = [
     id: "refresco",
     nombre: "Refresco",
     match: /\b(refrescos?|refa|coca|pepsi|sprite|fanta|sidral|manzanita|squirt|seven|mirinda|redbull|red bull|monster)\b/,
+    label: (blob) => (/\b(monster|red\s*bull|redbull)\b/i.test(blob) ? "Bebida energética" : "Refresco"),
     countSeparate: true,
     slots: ["marca", "tamano", "cantidad"],
     sizePhrase: (blob) => {
@@ -1695,6 +1696,7 @@ function shelfName(category: Category, currentName: string | null | undefined, l
     // "Papas" por kilo es la papa suelta. El plural solo se queda pidiendo
     // marca, como si fueran de bolsa. Un nombre más largo se conserva.
     if (category.kind === "produce" && tokens.length === 1) return category.label?.(norm(current)) ?? category.nombre;
+    if (norm(current) === norm(category.nombre) && norm(label) !== norm(category.nombre)) return label;
     return current;
   }
   return label;
@@ -1949,7 +1951,7 @@ function applyDetail(
     norm(next.nombre_producto) === norm(String(next.marca)) &&
     norm(category.nombre) !== norm(String(next.marca))
   ) {
-    next.nombre_producto = category.nombre;
+    next.nombre_producto = category.label?.(extra) ?? category.nombre;
   }
 
   next.presentacion = mergeType(category, next.presentacion, typeFromReply(category, next, extra));

@@ -302,7 +302,6 @@ export function validateCaptureForConfirmation(params: {
   const linesChanged = quoteLineSignature(beforeItems) !== quoteLineSignature(validatedItems.items);
   const kind: StoreKind = params.storeKind ?? params.snapshot.storeKind ?? "abarrotes";
   const listLines = validatedItems.items.map((item) => formatCheckedLine(formatSpecificItemLine(item), item.nombre_producto));
-  const listNames = validatedItems.items.map((item) => item.nombre_producto);
   const priorStreak = params.snapshot.flags?.correccionesSinCambio ?? 0;
   let correccionesSinCambio = linesChanged ? 0 : priorStreak;
 
@@ -312,7 +311,7 @@ export function validateCaptureForConfirmation(params: {
     if (stuck) correccionesSinCambio = priorStreak + 1;
     else if (linesChanged || clarify) correccionesSinCambio = 0;
     const question = stuck
-      ? formatStuckCorrection(correccionesSinCambio, { kind, itemLines: listLines, itemNames: listNames })
+      ? formatStuckCorrection(correccionesSinCambio, { kind, itemLines: listLines })
       : clarify
         ? `${clarify}\n\n${formatProductListConfirm(validatedItems.items, kind)}`
         : formatProductListConfirm(validatedItems.items, kind);

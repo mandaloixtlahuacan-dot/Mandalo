@@ -975,6 +975,12 @@ assert(cocaSinCantidad.result.validatedItems.items[0]?.cantidad == null, "el 2 d
 const redBull = questionOf("un red bull");
 assert(!redBull.question.includes("de qué marca"), "Red Bull ya es la marca");
 assert(/tamaño|lata|ml|litros/i.test(redBull.question), "Red Bull pide el tamaño que falta");
+assert(/bebida energética/i.test(redBull.result.validatedItems.items[0]?.nombre_producto ?? ""), "Red Bull no se anota como Refresco");
+
+const monsterLata = quoteCheck([], "un monster de lata");
+assert(/bebida energética/i.test(monsterLata.validatedItems.items[0]?.nombre_producto ?? ""), "Monster no se anota como Refresco");
+assert(/monster/i.test(String(monsterLata.validatedItems.items[0]?.marca ?? "")), "Monster se guarda como marca");
+assert(/lata/i.test(String(monsterLata.validatedItems.items[0]?.presentacion ?? "")), "la lata de Monster se guarda");
 
 const jitomate = questionOf("jitomate");
 assert(!jitomate.result.readyForConfirmation, "jitomate solo no se cierra");

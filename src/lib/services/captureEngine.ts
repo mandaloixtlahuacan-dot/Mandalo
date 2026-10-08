@@ -546,8 +546,7 @@ export const ADDRESS_ASK_MESSAGE =
   '(ej. "frente a la tortillería", "casa azul").';
 
 export function formatProductListConfirm(items: PedidoItemInput[], kind: StoreKind = "abarrotes"): string {
-  const names = items.map((item) => item.nombre_producto);
-  return `OK, pediste:\n\n🛒 *Tu pedido*\n\n${formatItems(items)}\n\n*¿Están bien estos productos?*\n\n${formatHowToEditList(kind, names)}`;
+  return `OK, pediste:\n\n🛒 *Tu pedido*\n\n${formatItems(items)}\n\n*¿Están bien estos productos?*\n\n${formatHowToEditList(kind)}`;
 }
 
 export function isProductListConfirmMessage(text: string): boolean {

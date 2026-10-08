@@ -8,14 +8,14 @@
 import { applyCatalogSpeech } from "../src/lib/catalogOrderSpeech";
 import { CARNICERIA_LA_CENTRAL_PRODUCTOS } from "../src/lib/carniceriaLaCentralCatalog";
 import { priceCatalogOrder, type CatalogPriceRow } from "../src/lib/catalogQuantities";
-import { ABARROTES_PRODUCT_REQUEST, formatStuckCorrection } from "../src/lib/customerUx";
+import { ABARROTES_PRODUCT_REQUEST, formatHowToEditList, formatStuckCorrection } from "../src/lib/customerUx";
 import { classifyProductListReply, isCancelIntent, isNewOrderIntent, isYesConfirmation, orderingStepAfterCustomer } from "../src/lib/messages";
 import { pickRemoval } from "../src/lib/orderEdits";
 import { assembleCapturedItems, ungroundedOrderLines } from "../src/lib/orderGrounding";
 import { MANDALO_DELIVERY_FEE, MANDALO_SERVICE_FEE } from "../src/lib/ordenes";
 import { formatCheckedLine, stripBotDecorations } from "../src/lib/messageStyle";
 import { prepareQuoteItems } from "../src/lib/quoteProductClarity";
-import { formatSpecificItemLine } from "../src/lib/services/captureEngine";
+import { formatProductListConfirm, formatSpecificItemLine } from "../src/lib/services/captureEngine";
 import { mergeSnapshot, type PedidoItemInput, type PedidoSnapshot } from "../src/lib/services/captureEngine";
 import { validateCaptureForConfirmation } from "../src/lib/services/validationEngine";
 
@@ -2305,8 +2305,71 @@ if (/maruchan/i.test(ABARROTES_PRODUCT_REQUEST)) throw new Error("el ejemplo de 
 if (!formatStuckCorrection(1).includes("quita el Pinol") || formatStuckCorrection(1).includes("reiniciar")) {
   throw new Error("la primera corrección sin cambio no debe hablar de reiniciar");
 }
+if (!formatStuckCorrection(1).includes("marca, tamaño y cuántos")) {
+  throw new Error("la corrección sin cambio perdió la ayuda larga");
+}
 if (!formatStuckCorrection(2).includes("reiniciar") || !formatStuckCorrection(2).includes("cancelar")) {
   throw new Error("la segunda corrección sin cambio tiene que decir cómo reiniciar");
+}
+
+function helpAfterConfirm(message: string): string {
+  const marker = "*¿Están bien estos productos?*";
+  const at = message.indexOf(marker);
+  return at === -1 ? message : message.slice(at + marker.length);
+}
+
+const pedidoConNombres = formatProductListConfirm([
+  { nombre_producto: "Croquetas Perron", cantidad: 1, unidad: "kilo" },
+  { nombre_producto: "Frijol negro", cantidad: 2, unidad: "kilo" },
+  { nombre_producto: "Agua Ciel", presentacion: "1 litro", cantidad: 1 },
+  { nombre_producto: "Monster", presentacion: "lata", cantidad: 1 },
+]);
+const ayudaCorta = helpAfterConfirm(pedidoConNombres);
+const ayudaDeOtroPedido = helpAfterConfirm(
+  formatProductListConfirm([{ nombre_producto: "Leche Lala", cantidad: 2, unidad: "litro" }]),
+);
+if (ayudaCorta !== ayudaDeOtroPedido) throw new Error("la ayuda cambia según los productos del cliente");
+if (!/leche/i.test(ayudaCorta) || !/ejemplo/i.test(ayudaCorta)) throw new Error("la ayuda de abarrotes no usa el ejemplo de la leche");
+if (ayudaCorta.includes("✅")) throw new Error("la ayuda corta trae palomita");
+if (/Croquetas Perron|Frijol negro|Agua Ciel|Monster|Pinol|marca, tamaño y cuántos|reiniciar/i.test(ayudaCorta)) {
+  throw new Error(`la primera confirmación mezcla el pedido o la ayuda larga: ${ayudaCorta}`);
+}
+if (formatHowToEditList() !== ayudaCorta.trim()) throw new Error("la confirmación no usa la ayuda corta");
+
+const ayudaGeorge = helpAfterConfirm(
+  formatProductListConfirm(
+    [
+      { nombre_producto: "Hamburguesa de Res Grande", cantidad: 2 },
+      { nombre_producto: "Dogo de Pollo", cantidad: 2 },
+      { nombre_producto: "Papas Gajo 315g", cantidad: 1 },
+    ],
+    "restaurante",
+  ),
+);
+if (!/ejemplo/i.test(ayudaGeorge) || !/quita las papas/.test(ayudaGeorge) || !/agrega 1 refresco/.test(ayudaGeorge)) {
+  throw new Error("George no tiene su ejemplo fijo");
+}
+if (/Hamburguesa de Res Grande|Dogo de Pollo|Papas Gajo|Pinol|leche Lala/.test(ayudaGeorge) || ayudaGeorge.includes("✅")) {
+  throw new Error(`la ayuda de George usa el pedido: ${ayudaGeorge}`);
+}
+
+const ayudaCarne = helpAfterConfirm(
+  formatProductListConfirm(
+    [
+      { nombre_producto: "Bistec de res", cantidad: 1, unidad: "kilo" },
+      { nombre_producto: "Chorizo", cantidad: 0.5, unidad: "kilo" },
+    ],
+    "carniceria",
+  ),
+);
+if (!/ejemplo/i.test(ayudaCarne) || !/carbón/.test(ayudaCarne) || !/pastor/.test(ayudaCarne)) {
+  throw new Error("La Central no tiene su ejemplo fijo");
+}
+if (/Bistec de res|Chorizo|Pinol|leche Lala|nombre del menú/.test(ayudaCarne) || ayudaCarne.includes("✅")) {
+  throw new Error(`la ayuda de carnicería usa el pedido: ${ayudaCarne}`);
+}
+if (!/corte y los kilos/.test(formatStuckCorrection(2, { kind: "carniceria" })) || !formatStuckCorrection(2, { kind: "carniceria" }).includes("reiniciar")) {
+  throw new Error("la ayuda larga de carnicería no sale al atorarse");
 }
 if (!isNewOrderIntent("reiniciar") || !isNewOrderIntent("Reiniciar")) throw new Error("reiniciar no reinicia");
 if (!isCancelIntent("cancelar") || !isCancelIntent("cancela")) throw new Error("cancelar no cancela");

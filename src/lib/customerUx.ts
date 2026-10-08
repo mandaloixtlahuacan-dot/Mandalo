@@ -13,7 +13,7 @@
  * con `categoria` Carnicerías (o `nicho:carnicerias`).
  */
 
-import { formatKindEditHelp, type StoreKind } from "@/lib/categoryCopy";
+import { formatLongEditHelp, formatShortEditHelp, type StoreKind } from "@/lib/categoryCopy";
 import { formatCheckedLine, formatCheckedLines, joinBlocks } from "@/lib/messageStyle";
 import { formatMoney, MANDALO_DELIVERY_FEE, MANDALO_SERVICE_FEE } from "@/lib/ordenes";
 
@@ -269,38 +269,21 @@ export const ABARROTES_PRODUCT_REQUEST =
     formatCheckedLine("1 kg de tortillas"),
   ]);
 
-export function formatHowToEditList(kind: StoreKind = "abarrotes", itemNames: string[] = []): string {
-  const other = kind === "abarrotes" ? null : formatKindEditHelp(kind, itemNames);
-  if (other) return other;
-  return [
-    "Si algo está mal, dime:",
-    "",
-    "*quita el Pinol*",
-    "",
-    "*cambia la Coca a 2 litros*",
-    "",
-    "*agrega 1 jabón Zote*",
-    "",
-    "Para que lo lea bien, cada producto va aparte, con marca, tamaño y cuántos.",
-    "",
-    "*Ejemplo:*",
-    "",
-    formatCheckedLine("2 Coca-Cola de 600 ml"),
-  ].join("\n");
+export function formatHowToEditList(kind: StoreKind = "abarrotes"): string {
+  return formatShortEditHelp(kind);
 }
 
 /** Cuando una corrección no movió la lista. El reinicio solo sale después de 2 intentos. */
 export function formatStuckCorrection(
   failedCount: number,
-  options?: { kind?: StoreKind; itemLines?: string[]; itemNames?: string[] },
+  options?: { kind?: StoreKind; itemLines?: string[] },
 ): string {
   const kind = options?.kind ?? "abarrotes";
-  const help = formatHowToEditList(kind, options?.itemNames ?? []);
   const lines: string[] = [];
   if (options?.itemLines?.length) {
     lines.push(`🛒 *Tu pedido*\n\n${options.itemLines.join("\n\n")}\n\n*¿Están bien estos productos?*`);
   }
-  lines.push(help, "Si la lista ya está bien, responde *sí*.");
+  lines.push(formatLongEditHelp(kind), "Si la lista ya está bien, responde *sí*.");
   if (failedCount >= 2) {
     lines.push("Si seguimos atorados, escribe *reiniciar* o *cancelar* y armamos el pedido de nuevo.");
   }
