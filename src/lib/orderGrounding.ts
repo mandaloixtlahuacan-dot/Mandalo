@@ -387,7 +387,18 @@ function asMenuItem(item: PedidoItemInput, catalog: CatalogPriceRow[]): PedidoIt
     const extra = label.replace(said, " ").replace(/\s+/g, " ").trim();
     return !/\b(chica|chico|grande|mediana|mediano|sencilla|sencillo|doble|triple)\b/.test(extra);
   });
+  if (row && flavorListLabel(row.nombreProducto)) {
+    const saidBrands = DRINK_BRANDS.filter((candidate) => name.includes(candidate));
+    const picked = saidBrands.length === 1 ? saidBrands[0] : null;
+    return {
+      ...item,
+      nombre_producto: "Refresco",
+      ...(picked ? { marca: picked === "manzanita" ? "Manzana" : titleWord(picked) } : item.marca ? { marca: item.marca } : {}),
+    };
+  }
   if (row) return { ...item, nombre_producto: row.nombreProducto };
+  const stemmed = stemMenuRow(item, catalog);
+  if (stemmed) return stemmed;
   const brand = DRINK_BRANDS.find((candidate) => name.includes(candidate));
   if (brand && (menuHas(catalog, "refresco") || menuHas(catalog, brand))) {
     const brandRow = catalog.find((candidate) => norm(candidate.nombreProducto).includes(brand));
@@ -396,6 +407,50 @@ function asMenuItem(item: PedidoItemInput, catalog: CatalogPriceRow[]): PedidoIt
   }
   if (clauseTokens(item.nombre_producto).some((token) => menuHas(catalog, token))) return { ...item };
   return null;
+}
+
+function menuTokenMatches(said: string, token: string): boolean {
+  if (said === token) return true;
+  if (wordsAreClose(said, token)) return true;
+  if (said.startsWith(token) && said.length - token.length <= 2) return true;
+  if (token.startsWith(said) && token.length - said.length <= 2 && said.length >= 5) return true;
+  return false;
+}
+
+function roughCanon(word: string): string {
+  if (["dogs", "dog", "dogos", "dogo", "hotdog", "hotdogs", "jotdog", "jotdogs"].includes(word)) return "dogo";
+  if (word === "hawaianos" || word === "hawaiano" || word === "awaiano" || word === "awaianos") return "hawaiano";
+  if (word === "hawaianas" || word === "awaiana") return "hawaiana";
+  if (word === "refrezco" || word === "refrezcos" || word === "refrescos") return "refresco";
+  if (word === "salchiloco" || word === "salchilokos") return "salchilocos";
+  if (word === "amburguesa" || word === "amburguesas" || word === "hamburgesa" || word === "hamburgesas" || word === "hamburguesas") {
+    return "hamburguesa";
+  }
+  if (word.length >= 6 && word.endsWith("os") && !word.endsWith("locos")) return word.slice(0, -1);
+  if (word.length >= 6 && word.endsWith("as") && !word.endsWith("locas")) return word.slice(0, -1);
+  return word;
+}
+
+/** «Dogos hawaianos» y «salchiloco» nombran una fila aunque no vengan escritos igual. */
+function stemMenuRow(item: PedidoItemInput, catalog: CatalogPriceRow[]): PedidoItemInput | null {
+  const said = norm(`${item.nombre_producto} ${item.marca ?? ""}`)
+    .split(" ")
+    .map(roughCanon)
+    .filter((token) => token.length >= 3);
+  if (!said.length) return null;
+  const ranked = catalog
+    .map((row) => {
+      const tokens = norm(row.nombreProducto).split(" ").map(roughCanon).filter((token) => token.length >= 4);
+      const hits = tokens.filter((token) => said.some((word) => menuTokenMatches(word, token)));
+      return { row, hits: hits.length, tokens };
+    })
+    .filter((entry) => entry.hits > 0 && entry.tokens.every((token) => said.some((word) => menuTokenMatches(word, token))));
+  if (ranked.length !== 1) return null;
+  const row = ranked[0].row;
+  if (flavorListLabel(row.nombreProducto)) {
+    return { ...item, nombre_producto: "Refresco" };
+  }
+  return { ...item, nombre_producto: row.nombreProducto };
 }
 
 function titleWord(word: string): string {
@@ -421,9 +476,35 @@ function sameMenuRow(left: PedidoItemInput, right: PedidoItemInput): boolean {
 
 function withoutSizeWords(value: string): string {
   return norm(value)
-    .replace(/\b(chica|chico|grande|mediana|mediano|sencilla|sencillo|doble|triple)\b/g, " ")
+    .replace(/\b(chicas|chicos|chica|chico|grandes|grande|medianas|medianos|mediana|mediano|sencillas|sencillos|sencilla|sencillo|dobles|doble|triples|triple)\b/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function flavorListLabel(name: string): boolean {
+  const text = norm(name);
+  if (!text.includes("refresco")) return false;
+  return DRINK_BRANDS.filter((brand) => text.includes(brand)).length >= 2;
+}
+
+function spokenQty(clause: string): number | null {
+  const match = norm(clause).match(/\b(un|una|uno|unos|unas|otro|otra|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|\d{1,2})\b/);
+  if (!match) return null;
+  if (QTY_WORDS[match[1]] != null) return QTY_WORDS[match[1]];
+  const parsed = Number(match[1]);
+  return parsed >= 1 && parsed <= 30 ? parsed : null;
+}
+
+/** Comas de la transcripción se vuelven espacios; el corte va en la cantidad y en «y». */
+function menuClauses(message: string): string[] {
+  const flat = norm(message);
+  const marked = flat
+    .replace(/\s+\b(?:y|tambien)\b\s+/g, " | ")
+    .replace(/(?:^|\s+)(?=(?:un|una|uno|unos|unas|otro|otra|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|\d{1,2})\b)/g, " | ");
+  return marked
+    .split("|")
+    .map((part) => part.trim())
+    .filter((part) => clauseTokens(part).length > 0);
 }
 
 /** En menú fijo cada línea es una fila real, o un tipo que todavía se pregunta. */
@@ -440,7 +521,8 @@ function enforceMenuLines(items: PedidoItemInput[], catalog: CatalogPriceRow[], 
     const exact = catalog.some((row) => norm(row.nombreProducto) === name);
     const unsized = catalog.some((row) => withoutSizeWords(row.nombreProducto) === name);
     const alreadyThere = prior.some((line) => norm(line.nombre_producto) === name);
-    if (!exact && !unsized && !alreadyThere) continue;
+    const plainDrink = name === "refresco" && catalog.some((row) => flavorListLabel(row.nombreProducto));
+    if (!exact && !unsized && !alreadyThere && !plainDrink) continue;
     const prev = next.find((line) => sameMenuRow(line, mapped));
     if (prev) {
       const left = typeof prev.cantidad === "number" ? prev.cantidad : 1;
@@ -488,7 +570,9 @@ function absorbModelReading(params: {
   aside: string | null;
 }): { items: PedidoItemInput[]; note: string | null; assistedNames: string[]; aside: string | null } {
   const items = params.items.map((item) => ({ ...item }));
-  const open = openClauses(params.userMessage, items);
+  const open = params.catalog.length
+    ? menuClauses(params.userMessage).filter((clause) => !clauseTokens(clause).every((token) => tokenCovered(token, items)))
+    : openClauses(params.userMessage, items);
   if (!open.length) return { items, note: null, assistedNames: [], aside: params.aside };
 
   const soft = open.filter((clause) => !clauseTokens(clause).some((token) => hardOff(token, params.catalog)));
@@ -498,8 +582,8 @@ function absorbModelReading(params: {
   const suggestions = params.incoming
     .map((item) => asMenuItem(item, params.catalog))
     .filter((item): item is PedidoItemInput => item != null)
-    .filter((item) => !items.some((previous) => lineMatch(previous, item)))
-    .filter((item) => !params.prior.some((previous) => lineMatch(previous, item)))
+    .filter((item) => !items.some((previous) => lineMatch(previous, item) || withoutSizeWords(previous.nombre_producto) === withoutSizeWords(item.nombre_producto)))
+    .filter((item) => !params.prior.some((previous) => lineMatch(previous, item) || withoutSizeWords(previous.nombre_producto) === withoutSizeWords(item.nombre_producto)))
     .filter((item) => !params.catalog.length || !clashesWithSaidMenuWord(item, params.userMessage, params.catalog))
     .filter((item) => !params.catalog.length || !repeatsAnotherFamily(item, params.userMessage, items))
     .filter((item) => !(refusedMarinade && /marinad/.test(norm(item.nombre_producto))))
@@ -515,7 +599,9 @@ function absorbModelReading(params: {
 
   const accept = (clause: string, item: PedidoItemInput, certain: boolean) => {
     const next = sanitizeNewItem(item, params.userMessage);
-    if (next.cantidad == null) next.cantidad = 1;
+    const heard = spokenQty(clause);
+    if (heard != null) next.cantidad = heard;
+    else if (next.cantidad == null) next.cantidad = 1;
     if (params.catalog.length && items.some((previous) => sameMenuRow(previous, next))) return;
     if (params.catalog.length) {
       const generic = items.findIndex((previous) => {
@@ -535,6 +621,18 @@ function absorbModelReading(params: {
   };
 
   if (soft.length === 1 && suggestions.length > 1) {
+    const clause = soft[0];
+    const fitting = suggestions.filter((item) => {
+      const hay = norm(`${item.nombre_producto} ${item.marca ?? ""}`);
+      return clauseTokens(clause).some((token) => hay.includes(token) || hay.split(" ").some((word) => wordsAreClose(word, token)));
+    });
+    const distinct = fitting.filter(
+      (item, index) => fitting.findIndex((other) => norm(other.nombre_producto) === norm(item.nombre_producto)) === index,
+    );
+    if (distinct.length >= 2 && params.catalog.length) {
+      for (const item of distinct) accept(clause, item, lineTracesToCustomer(item, params.userMessage));
+      return { items, note, assistedNames, aside: dropRefusal(params.aside, cleared) };
+    }
     const labels = [...new Set(suggestions.map((item) => [item.nombre_producto, item.marca].filter(Boolean).join(" ")))];
     return {
       items,
@@ -562,7 +660,7 @@ function absorbModelReading(params: {
   for (const clause of soft) {
     const fuzzy = params.catalog.length ? fuzzyMenuRow(clause, params.catalog) : null;
     if (fuzzy) {
-      accept(clause, { nombre_producto: fuzzy.nombreProducto, cantidad: 1 }, true);
+      accept(clause, { nombre_producto: fuzzy.nombreProducto, cantidad: spokenQty(clause) ?? undefined }, true);
       continue;
     }
     let best = -1;

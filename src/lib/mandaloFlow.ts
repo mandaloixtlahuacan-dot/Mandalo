@@ -446,6 +446,8 @@ export async function getLLMResponse(params: {
   const trimmed = text.trim();
   const jsonMatch = trimmed.match(/\{[\s\S]*\}/);
 
+  if (!jsonMatch?.[0]) console.warn("[getLLMResponse] sin JSON");
+
   if (jsonMatch?.[0]) {
     const candidate = jsonMatch[0].trim();
     try {

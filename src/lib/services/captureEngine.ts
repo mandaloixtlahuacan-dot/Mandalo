@@ -3,6 +3,7 @@ import { formatHowToEditList, formatPreConfirmFeeNote } from "@/lib/customerUx";
 import { formatCheckedLine, formatCheckedLines, joinBlocks } from "@/lib/messageStyle";
 import { isYesConfirmation, messageCorrectsOrder } from "@/lib/messages";
 import type { CatalogPriceRow } from "@/lib/catalogQuantities";
+import { advanceMenuAsk } from "@/lib/catalogOrderSpeech";
 import { assembleCapturedItems } from "@/lib/orderGrounding";
 import { restoreNamedFromHistory } from "@/lib/quoteProductClarity";
 import type { OrderState } from "@/lib/orderStateMachine";
@@ -654,6 +655,21 @@ export function createCaptureEngine(deps: CaptureEngineDeps) {
       });
       const spoken = assembled.catalogSpeech;
       const assistNote = assembled.assistNote;
+      let menuPending: import("@/lib/clarificationAnswers").PendingAsk | null = null;
+      if (spoken?.applied && input.quoteStore !== true) {
+        const stepped = advanceMenuAsk({
+          items: spoken.items,
+          question: spoken.question,
+          reply: spoken.reply,
+          message: input.userMessage ?? "",
+          pending: priorSnapshot?.pendingAsk ?? null,
+        });
+        spoken.items = stepped.items;
+        spoken.question = stepped.question;
+        spoken.reply = stepped.reply;
+        if (!stepped.question) spoken.missing = false;
+        menuPending = stepped.pendingAsk;
+      }
       let itemsForValidation = assembled.items;
       const revisesProducts = messageCorrectsOrder(input.userMessage);
       const productsWereConfirmed = mergedSnapshot.flags?.productosConfirmados === true;
@@ -771,7 +787,7 @@ export function createCaptureEngine(deps: CaptureEngineDeps) {
         // sin nombre descartados) para no volver a arrastrar basura en el
         // siguiente turno.
         items: validation.validatedItems.items,
-        pendingAsk: validation.pendingAsk ?? null,
+        pendingAsk: input.quoteStore === true ? (validation.pendingAsk ?? null) : menuPending,
         listaAvisos: validation.listaAvisos ?? priorSnapshot?.listaAvisos ?? [],
         flags: {
           ...(mergedSnapshot.flags ?? {}),
