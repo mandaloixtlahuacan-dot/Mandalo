@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "check": "npx tsx scripts/check-product-ordering.ts && npx tsx scripts/check-category-flows.ts && npx tsx scripts/check-customer-ux.ts && npx tsx scripts/check-business-hours.ts && npx tsx scripts/check-no-disponible.ts && npx tsx scripts/check-message-style.ts && npx tsx scripts/check-clarification-answers.ts"
+    "check": "npx tsx scripts/check-product-ordering.ts && npx tsx scripts/check-category-flows.ts && npx tsx scripts/check-customer-ux.ts && npx tsx scripts/check-business-hours.ts && npx tsx scripts/check-no-disponible.ts && npx tsx scripts/check-message-style.ts && npx tsx scripts/check-clarification-answers.ts && npx tsx scripts/check-restaurant-orders.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.4",

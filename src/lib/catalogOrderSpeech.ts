@@ -61,11 +61,41 @@ const FILLER = new Set([
   "oye", "mira", "pues", "fijate", "fijese", "verdad", "este", "esta", "nomas", "solo",
   "seria", "serian", "seran", "agrega", "agregame", "agregale", "anade", "anademe",
   "quieta", "quita", "kita", "cambia", "cambiar",
+  "pero", "faltaron", "faltan", "faltaba", "falta", "demas",
 ]);
 
 const SIZE_WORDS = ["chica", "chico", "mediana", "mediano", "grande", "sencilla", "sencillo", "doble", "triple"];
+const SIZE_FOLD: Record<string, string> = {
+  chica: "chica",
+  chicas: "chica",
+  chico: "chico",
+  chicos: "chico",
+  mediana: "mediana",
+  medianas: "mediana",
+  mediano: "mediano",
+  medianos: "mediano",
+  grande: "grande",
+  grandes: "grande",
+  sencilla: "sencilla",
+  sencillas: "sencilla",
+  sencillo: "sencillo",
+  sencillos: "sencillo",
+  doble: "doble",
+  dobles: "doble",
+  triple: "triple",
+  triples: "triple",
+};
 const BRANDS = ["pepsi", "coca", "seven", "sprite", "mirinda", "manzana"];
 const HEADS = new Set(["hamburguesa", "dogo", "hotdog", "refresco"]);
+
+/** Una sola forma de «grande/grandes», «chica/chicas», «la grande», «2 grandes». */
+export function foldSizeToken(word: string): string | null {
+  return SIZE_FOLD[norm(word)] ?? null;
+}
+
+function isSizeWord(word: string): boolean {
+  return foldSizeToken(word) != null;
+}
 
 type Family = {
   key: string;
@@ -93,6 +123,10 @@ type SpokenLine = {
   /** Palabra que agrupa varias filas (hamburguesa, dogo, bistec). */
   head: string;
   options: string[];
+  /** El cliente dijo un número en este tramo. Si no, se conserva la cantidad ya anotada. */
+  qtyExplicit: boolean;
+  /** Pregunta concreta cuando el tramo no cayó en una fila («¿Te refieres a X?»). */
+  ask?: string | null;
 };
 
 function norm(value: string): string {
@@ -114,11 +148,40 @@ const UNIT_WORDS = new Set([
 ]);
 
 function canon(word: string): string {
-  if (word === "hamburguesas") return "hamburguesa";
-  if (word === "hawaianas") return "hawaiana";
+  const sized = SIZE_FOLD[word];
+  if (sized) return sized;
+  if (
+    word === "hamburguesas" ||
+    word === "amburguesa" ||
+    word === "amburguesas" ||
+    word === "hamburgesa" ||
+    word === "hamburgesas"
+  ) {
+    return "hamburguesa";
+  }
+  if (word === "hawaianas" || word === "awaiana" || word === "awaianas") return "hawaiana";
+  if (word === "hawaianos" || word === "hawaiano" || word === "awaiano" || word === "awaianos") return "hawaiano";
   if (word === "cubanas") return "cubana";
-  if (word === "hotdogs" || word === "hotdog" || word === "dogos" || word === "dogo") return "dogo";
-  if (word === "refrescos") return "refresco";
+  if (word === "cubanos") return "cubano";
+  if (
+    word === "hotdogs" ||
+    word === "hotdog" ||
+    word === "dogos" ||
+    word === "dogo" ||
+    word === "dogs" ||
+    word === "dog" ||
+    word === "jotdog" ||
+    word === "jotdogs"
+  ) {
+    return "dogo";
+  }
+  if (word === "refrescos" || word === "refrezco" || word === "refrezcos") return "refresco";
+  if (word === "salchiloco" || word === "salchilokos") return "salchilocos";
+  if (word === "pepsis") return "pepsi";
+  if (word === "cocas" || word === "cocacolas") return "coca";
+  if (word === "sevens") return "seven";
+  if (word === "sprites") return "sprite";
+  if (word === "mirindas") return "mirinda";
   if (word === "manzanitas" || word === "manzanita") return "manzana";
   if (word === "clasicos" || word === "clasicas" || word === "clasica") return "clasico";
   if (word === "marinada" || word === "marinado" || word === "marinadas" || word === "marinados" || word === "marinda" || word === "marindo") return "marinad";
@@ -135,6 +198,9 @@ function canon(word: string): string {
   if (word === "argentinos") return "argentino";
   if (word === "firo" || word === "firos") return "fino";
   if (word === "pulpas") return "pulpa";
+  // «hawaianos» → hawaiano. «locos» (5) y «salchilocos» se quedan: si no, «salchi locos» deja de pegar.
+  if (word.length >= 6 && word.endsWith("os") && !word.endsWith("locos")) return word.slice(0, -1);
+  if (word.length >= 6 && word.endsWith("as") && !word.endsWith("locas")) return word.slice(0, -1);
   return word;
 }
 
@@ -180,7 +246,10 @@ function titleBrand(brand: string): string {
 }
 
 function sizesIn(name: string): string[] {
-  const found: string[] = norm(name).match(/\b(chica|chico|grande|mediana|mediano|sencilla|sencillo|doble|triple)\b/g) ?? [];
+  const found = norm(name)
+    .split(" ")
+    .map((word) => SIZE_FOLD[word])
+    .filter((word): word is string => Boolean(word));
   return found.filter((word, index) => found.indexOf(word) === index);
 }
 
@@ -223,7 +292,7 @@ type Measure = { qty: number; unidad: "kilo" | "pesos"; presentacion: string | n
 function measureBefore(rawText: string, index: number): Measure | null {
   const rawBefore = rawText.slice(0, index);
   const before = norm(rawBefore);
-  const kiloYMedio = before.match(/(?:^|\s)(\d{1,2}|un|una|uno)\s*(?:kilos?|kg)\s+y\s+medio\s*(?:de\s*)?$/);
+  const kiloYMedio = before.match(/(?:^|\s)(\d{1,2}|un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\s*(?:kilos?|kg)\s+y\s+medio\s*(?:de\s*)?$/);
   if (kiloYMedio) {
     const base = qtyWord(kiloYMedio[1]) ?? Number(kiloYMedio[1]);
     if (base >= 1 && base <= 30) return { qty: base + 0.5, unidad: "kilo", presentacion: null };
@@ -247,7 +316,7 @@ function measureBefore(rawText: string, index: number): Measure | null {
   if (/(?:^|\s)medio\s*(?:kilo|kg)?\s*(?:de\s*)?$/.test(before)) {
     return { qty: 0.5, unidad: "kilo", presentacion: null };
   }
-  const weighed = before.match(/(?:^|\s)(\d{1,2}(?:[.,]\d+)?|un|una|uno)\s*(?:kilos?|kg)\s*(?:de\s*)?$/);
+  const weighed = before.match(/(?:^|\s)(\d{1,2}(?:[.,]\d+)?|un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\s*(?:kilos?|kg)\s*(?:de\s*)?$/);
   if (weighed) {
     const raw = weighed[1].replace(",", ".");
     const parsed = qtyWord(raw) ?? Number(raw);
@@ -303,7 +372,7 @@ function fillerBetween(raw: string): boolean {
 /** Entre «hamburguesa» y «camarón» puede ir el tamaño: «hamburguesa grande de camarón». */
 function bridgeBetween(raw: string): boolean {
   const parts = norm(raw).split(" ").filter(Boolean);
-  return parts.every((word) => FILLER.has(word) || QTY[word] != null || SIZE_WORDS.includes(word));
+  return parts.every((word) => FILLER.has(word) || QTY[word] != null || isSizeWord(word));
 }
 
 function wordSpans(text: string): Array<{ word: string; index: number; end: number }> {
@@ -355,10 +424,10 @@ function productAnchorHits(text: string, families: Family[]): Array<{ index: num
 
 function spansOf(text: string, families: Family[] = []): Array<{ kind: AnchorKind | null; text: string; qty: number | null; unidad: string | null; presentacion: string | null }> {
   const patterns: Array<{ kind: AnchorKind | "brand"; re: RegExp }> = [
-    { kind: "hamburguesa", re: /\bhamburguesas?\b/g },
-    { kind: "dogo", re: /\b(?:hot\s*dogs?|hotdogs?|dogos?|dogo)\b/g },
-    { kind: "refresco", re: /\brefrescos?\b/g },
-    { kind: "brand", re: /\b(pepsi|coca|seven|sprite|mirinda|manzanitas?|manzana)\b/g },
+    { kind: "hamburguesa", re: /\b(?:hamburguesas?|amburguesas?|hamburgesas?)\b/g },
+    { kind: "dogo", re: /\b(?:jot\s*dogs?|hot\s*dogs?|hotdogs?|jotdogs?|dogos?|dogs?|dogo)\b/g },
+    { kind: "refresco", re: /\b(?:refrescos?|refrezcos?)\b/g },
+    { kind: "brand", re: /\b(pepsis?|cocas?|sevens?|sprites?|mirindas?|manzanitas?|manzana)\b/g },
   ];
   const hits: Array<{ kind: AnchorKind | "brand"; index: number; end: number }> = [];
   for (const pattern of patterns) {
@@ -462,7 +531,9 @@ function scoreFamily(family: Family, span: { kind: AnchorKind | null; text: stri
   const allowed = new Set([...family.distinct, ...family.nameTokens, ...BRANDS]);
   const parts = [...family.distinct, ...family.nameTokens];
   const extras = [...tokens].filter((token) => {
-    if (allowed.has(token) || SIZE_WORDS.includes(token)) return false;
+    if (allowed.has(token) || isSizeWord(token)) return false;
+    // «hot dog» / «jot dog»: hot y jot no son otro producto.
+    if ((token === "hot" || token === "jot") && (span.kind === "dogo" || family.nameTokens.includes("dogo"))) return false;
     if ([...allowed].some((part) => closeEnough(part, token))) return false;
     // «Salchi locos» es un solo nombre en el menú («Salchilocos»): esas
     // palabras no son otro producto.
@@ -483,7 +554,7 @@ const MEAT_PLURALS = ["chorizos", "arracheras", "bistecs", "costillas", "peinesi
 function uncountedPlural(span: { text: string; qty: number | null }): boolean {
   if (span.qty != null) return false;
   const said = norm(span.text);
-  if (/\b(hamburguesas|dogos|hotdogs|hot\s+dogs|refrescos|manzanitas)\b/.test(said)) return true;
+  if (/\b(hamburguesas|amburguesas|hamburgesas|dogos|dogs|hotdogs|hot\s+dogs|jot\s+dogs|refrescos|refrezcos|manzanitas)\b/.test(said)) return true;
   return MEAT_PLURALS.some((word) => new RegExp(`\\b${word}\\b`).test(said));
 }
 
@@ -498,8 +569,11 @@ function dropDrinkIntroducers(lines: SpokenLine[]): SpokenLine[] {
 }
 
 function sizeIn(text: string): string | null {
-  const match = norm(text).match(/\b(chica|chico|grande|mediana|mediano|sencilla|sencillo|doble|triple)\b/);
-  return match?.[1] ?? null;
+  for (const word of norm(text).split(" ").filter(Boolean)) {
+    const folded = SIZE_FOLD[word];
+    if (folded) return folded;
+  }
+  return null;
 }
 
 function editDistance(left: string, right: string): number {
@@ -537,10 +611,20 @@ function rejectsMarinada(text: string): boolean {
   return /\bno\b(?:\s+(?:esta|este|la|el|lo|quiero|tan|muy|nada)){0,3}\s+marinad\b/.test(said) || /\bsin\s+marinad\b/.test(said);
 }
 
+function leadingSize(text: string, families: Family[]): string | null {
+  const spans = spansOf(text, families);
+  const anchored = spans.some((span) => span.kind != null);
+  if (!anchored) return sizeIn(text);
+  const first = spans.find((span) => span.kind != null);
+  if (!first) return null;
+  const at = text.indexOf(first.text);
+  const prefix = at > 0 ? text.slice(0, at) : "";
+  return sizeIn(prefix);
+}
+
 function sizeFollowUp(base: CatalogSpeechItem[], text: string, families: Family[]): SpokenLine | null {
-  const size = sizeIn(text);
+  const size = leadingSize(text, families);
   if (!size) return null;
-  if (spansOf(text).some((span) => span.kind != null)) return null;
   const pending: Array<{ index: number; family: Family }> = [];
   base.forEach((item, index) => {
     const family = families.find((candidate) => candidate.key === stripSize(item.nombre_producto));
@@ -551,7 +635,12 @@ function sizeFollowUp(base: CatalogSpeechItem[], text: string, families: Family[
   if (pending.length !== 1) return null;
   const family = pending[0].family;
   const qty = base[pending[0].index]?.cantidad ?? null;
-  return lineFromSpan({ kind: null, text: `${family.key} ${size}`, qty: typeof qty === "number" ? qty : null }, families, text);
+  // «2 grandes» y «las dos grandes» confirman el tamaño. No cambian la cantidad ya anotada.
+  return lineFromSpan(
+    { kind: null, text: `${family.key} ${size}`, qty: typeof qty === "number" ? qty : null },
+    families,
+    text,
+  );
 }
 
 function looseScore(family: Family, spanText: string, families: Family[]): number {
@@ -559,7 +648,7 @@ function looseScore(family: Family, spanText: string, families: Family[]): numbe
   if (/marinad/.test(family.key) && rejectsMarinada(spanText)) return 0;
   if (isHeadFamily(family)) {
     const lead = family.distinct.slice().sort((a, b) => b.length - a.length)[0];
-    const spoken = words(spanText).filter((token) => !SIZE_WORDS.includes(token));
+    const spoken = words(spanText).filter((token) => !isSizeWord(token));
     if (!lead || lead.length < 6 || !spoken.includes(lead)) return 0;
     const owners = families.filter((candidate) => candidate.distinct.includes(lead));
     if (owners.length !== 1) return 0;
@@ -567,7 +656,7 @@ function looseScore(family: Family, spanText: string, families: Family[]): numbe
     if (extras.length) return 0;
     return 4;
   }
-  const rawSpoken = words(spanText).filter((token) => !SIZE_WORDS.includes(token));
+  const rawSpoken = words(spanText).filter((token) => !isSizeWord(token));
   const onMenu = rawSpoken.filter((token) =>
     families.some((candidate) =>
       candidate.nameTokens.some((name) => name === token || name.includes(token) || token.includes(name) || closeEnough(name, token)),
@@ -663,7 +752,7 @@ function pendingFamilyLine(
     const distinct = family.distinct.filter((token) => token !== best?.head && token.length >= 3);
     return distinct.length > 0 && distinct.every((token) => tokenHit(token, said));
   });
-  if (complete.length === 1 && tied.length === 0) return null;
+  if (complete.length === 1 && tied.length === 0) return lineFromFamily(complete[0], span);
   const sizes = SIZE_WORDS.filter((size) => best.families.some((family) => family.sizes.includes(size)));
   const spokenSize = sizeIn(span.text);
   const gaps: Gap[] = ["tipo"];
@@ -684,6 +773,7 @@ function pendingFamilyLine(
     nameTokens: [best.head],
     head: best.head,
     options: best.families.map((family) => shortOption(family, best.head)),
+    qtyExplicit: span.qty != null,
   };
 }
 
@@ -707,32 +797,17 @@ function rowChoiceLine(family: Family, span: { text: string; qty: number | null;
     nameTokens: family.nameTokens,
     head: head,
     options: family.rows.map((row) => row.nombreProducto),
+    qtyExplicit: span.qty != null,
   };
 }
 
-function lineFromSpan(
-  span: { kind: AnchorKind | null; text: string; qty: number | null; unidad?: string | null; presentacion?: string | null },
-  catalog: Family[],
-  fullText = "",
-): SpokenLine | null {
-  const pool = fullText && rejectsMarinada(fullText) ? catalog.filter((family) => !/marinad/.test(family.key)) : catalog;
-  const ranked = pool
-    .map((family) => {
-      const strict = scoreFamily(family, span);
-      return { family, score: strict > 0 ? strict : looseScore(family, span.text, pool) };
-    })
-    .filter((entry) => entry.score > 0)
-    .sort((a, b) => b.score - a.score);
-  const tied = ranked.length > 1 && ranked[0].score === ranked[1].score;
-  if (!ranked.length || tied) {
-    const pending = pendingFamilyLine(span, pool, tied ? ranked.filter((entry) => entry.score === ranked[0].score).map((entry) => entry.family) : []);
-    return pending;
-  }
-  const family = ranked[0].family;
+type Span = { kind: AnchorKind | null; text: string; qty: number | null; unidad?: string | null; presentacion?: string | null };
+
+function lineFromFamily(family: Family, span: Span): SpokenLine | null {
   const spokenSize = sizeIn(span.text);
-  const wantedSize = spokenSize === "chico" ? "chica" : spokenSize === "mediano" ? "mediana" : spokenSize;
+  const wantedSize = spokenSize === "chico" ? "chica" : spokenSize === "mediano" ? "mediana" : spokenSize === "sencillo" ? "sencilla" : spokenSize;
   const sizedRow = wantedSize
-    ? family.rows.find((row) => sizesIn(row.nombreProducto).includes(wantedSize) || sizesIn(row.nombreProducto).includes(spokenSize ?? ""))
+    ? family.rows.find((row) => sizesIn(row.nombreProducto).includes(wantedSize))
     : null;
   const needsSize = family.sizes.length > 1 && !sizedRow;
   const brandList = isBrandListDrink(family);
@@ -747,9 +822,10 @@ function lineFromSpan(
   const pieceChoice = !needsSize && !sizedRow ? rowChoiceLine(family, span) : null;
   if (pieceChoice) return pieceChoice;
   const single = family.rows.length === 1 ? family.rows[0].nombreProducto : family.unsizedName;
+  const nombre = sizedRow?.nombreProducto ?? (needsSize ? family.unsizedName : brandList ? "Refresco" : single);
   return {
     familyKey: brandList ? "refresco" : family.key,
-    nombre: sizedRow?.nombreProducto ?? (needsSize ? family.unsizedName : brandList ? "Refresco" : single),
+    nombre: brandList ? "Refresco" : nombre,
     marca: brand,
     cantidad,
     unidad: span.unidad ?? null,
@@ -761,7 +837,124 @@ function lineFromSpan(
     nameTokens: brandList ? ["refresco"] : family.nameTokens,
     head: brandList ? "refresco" : familyHead(family),
     options: [],
+    qtyExplicit: span.qty != null,
   };
+}
+
+function lineFromSpan(span: Span, catalog: Family[], fullText = ""): SpokenLine | null {
+  const pool = fullText && rejectsMarinada(fullText) ? catalog.filter((family) => !/marinad/.test(family.key)) : catalog;
+  const ranked = pool
+    .map((family) => {
+      const strict = scoreFamily(family, span);
+      return { family, score: strict > 0 ? strict : looseScore(family, span.text, pool) };
+    })
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score);
+  const tied = ranked.length > 1 && ranked[0].score === ranked[1].score;
+  if (!ranked.length || tied) {
+    const pending = pendingFamilyLine(span, pool, tied ? ranked.filter((entry) => entry.score === ranked[0].score).map((entry) => entry.family) : []);
+    return pending;
+  }
+  return lineFromFamily(ranked[0].family, span);
+}
+
+function spanScore(span: Span, families: Family[]): number {
+  return families.reduce((best, family) => {
+    const strict = scoreFamily(family, span);
+    const score = strict > 0 ? strict : looseScore(family, span.text, families);
+    return Math.max(best, score);
+  }, 0);
+}
+
+/** Un tramo con puntaje ≤ 0 se vuelve a partir en cantidades y cabezas, para no tragarse el siguiente producto. */
+function resplitWeak(text: string): string[] | null {
+  const re = /\b(?:un|una|uno|unos|unas|otro|otra|otros|otras|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|\d{1,2}|hamburguesas?|amburguesas?|hamburgesas?|jot\s*dogs?|hot\s*dogs?|dogos?|dogs?|dogo|refrescos?|refrezcos?)\b/g;
+  const cuts: number[] = [];
+  for (const match of text.matchAll(re)) {
+    if (match.index == null || match.index <= 0) continue;
+    cuts.push(match.index);
+  }
+  if (!cuts.length) return null;
+  const parts: string[] = [];
+  let start = 0;
+  for (const cut of cuts) {
+    if (cut <= start) continue;
+    parts.push(text.slice(start, cut));
+    start = cut;
+  }
+  parts.push(text.slice(start));
+  const usable = parts.map((part) => part.trim()).filter(Boolean);
+  return usable.length > 1 ? usable : null;
+}
+
+function unresolvedLine(span: Span, families: Family[], fullText = ""): SpokenLine | null {
+  if (rejectsMarinada(span.text) || rejectsMarinada(fullText)) return null;
+  const tokens = words(span.text).filter((token) => !isSizeWord(token) && token !== "hot" && token !== "jot" && !/marinad/.test(token));
+  if (!tokens.length) return null;
+  const onMenu = families.some((family) =>
+    family.nameTokens.some((token) =>
+      tokens.some((said) => token === said || token.includes(said) || said.includes(token) || closeEnough(token, said)),
+    ),
+  );
+  if (!onMenu) return null;
+  const label = tokens.map(titleWord).join(" ");
+  const closest = families
+    .map((family) => {
+      const hits = family.nameTokens.filter((token) =>
+        tokens.some((said) => token === said || token.includes(said) || said.includes(token) || closeEnough(token, said)),
+      ).length;
+      return { family, hits };
+    })
+    .filter((entry) => entry.hits > 0)
+    .sort((a, b) => b.hits - a.hits)[0];
+  const guess = closest ? (isBrandListDrink(closest.family) ? "Refresco" : closest.family.unsizedName) : label;
+  return {
+    familyKey: norm(label),
+    nombre: label,
+    marca: null,
+    cantidad: span.qty ?? (uncountedPlural(span) ? null : 1),
+    unidad: span.unidad ?? null,
+    presentacion: span.presentacion ?? null,
+    gaps: ["tipo"],
+    sizeAsk: "",
+    label,
+    distinct: [],
+    nameTokens: tokens,
+    head: "",
+    options: [],
+    qtyExplicit: span.qty != null,
+    ask: `¿Te refieres a ${guess}?`,
+  };
+}
+
+function interpretText(text: string, families: Family[], fullText: string, depth = 0): SpokenLine[] {
+  const lines: SpokenLine[] = [];
+  for (const span of spansOf(text, families)) {
+    const line = lineFromSpan(span, families, fullText);
+    // Puntaje claro, o un «¿cuál hamburguesa?» que ya trae su cantidad.
+    // Re-partir ese tramo se comería el «dos» del producto que sigue.
+    if (line && (spanScore(span, families) > 0 || (line.gaps.includes("tipo") && !line.ask))) {
+      lines.push(line);
+      continue;
+    }
+    if (depth < 2) {
+      const pieces = resplitWeak(span.text);
+      if (pieces) {
+        const nested = pieces.flatMap((piece) => interpretText(piece, families, fullText, depth + 1));
+        if (nested.length) {
+          lines.push(...nested);
+          continue;
+        }
+      }
+    }
+    if (line) {
+      lines.push(line);
+      continue;
+    }
+    const asked = unresolvedLine(span, families, fullText);
+    if (asked) lines.push(asked);
+  }
+  return lines;
 }
 
 function sameFamily(item: CatalogSpeechItem, line: SpokenLine): boolean {
@@ -814,6 +1007,7 @@ function questionFor(lines: SpokenLine[], itemCount: number): string | null {
   if (!pending.length) return null;
   return pending
     .map((line) => {
+      if (line.ask) return line.ask;
       const size = line.gaps.includes("tamano");
       const brand = line.gaps.includes("marca");
       const qty = line.gaps.includes("cantidad");
@@ -864,6 +1058,85 @@ function prefixPendingHeads(text: string, base: CatalogSpeechItem[], families: F
     .join("");
 }
 
+function familyForItem(item: CatalogSpeechItem, families: Family[]): Family | null {
+  const key = stripSize(item.nombre_producto);
+  const direct = families.find((family) => family.key === key);
+  if (direct) return direct;
+  if (norm(item.nombre_producto) === "refresco" || key.startsWith("refresco")) {
+    return families.find((family) => isBrandListDrink(family)) ?? null;
+  }
+  return null;
+}
+
+/** Huecos que ya estaban anotados y este mensaje no cerró: el sabor del refresco sigue abierto. */
+function lingeringLines(items: CatalogSpeechItem[], families: Family[], open: SpokenLine[]): SpokenLine[] {
+  const extra: SpokenLine[] = [];
+  for (const item of items) {
+    if (/\b(?:la|el) que sea\b/.test(norm(item.notas ?? "")) || /\b(?:la|el) que sea\b/.test(norm(item.marca ?? ""))) continue;
+    const family = familyForItem(item, families);
+    const drink = Boolean(family && isBrandListDrink(family));
+    const gaps: Gap[] = [];
+    if (norm(item.notas ?? "") === "falta tipo") gaps.push("tipo");
+    if (drink && !item.marca) gaps.push("marca");
+    if (family && family.sizes.length > 1 && !sizesIn(item.nombre_producto).length && norm(item.notas ?? "") !== "falta tipo") {
+      gaps.push("tamano");
+    }
+    if (typeof item.cantidad !== "number" && norm(item.notas ?? "") !== "falta tipo") gaps.push("cantidad");
+    const fresh = gaps.filter((gap) => !open.some((line) => line.gaps.includes(gap) && sameFamily(item, line)));
+    if (!fresh.length) continue;
+    const head = family ? familyHead(family) : norm(item.nombre_producto);
+    const group = families.filter((candidate) => familyHead(candidate) === head);
+    extra.push({
+      familyKey: drink ? "refresco" : family?.key ?? norm(item.nombre_producto),
+      nombre: drink ? "Refresco" : item.nombre_producto,
+      marca: item.marca ?? null,
+      cantidad: typeof item.cantidad === "number" ? item.cantidad : null,
+      unidad: item.unidad ?? null,
+      presentacion: item.presentacion ?? null,
+      gaps: fresh,
+      sizeAsk: family?.sizes.join(" o ") ?? "",
+      label: drink ? "Refresco" : family?.unsizedName ?? item.nombre_producto,
+      distinct: drink ? [] : family?.distinct ?? [],
+      nameTokens: drink ? ["refresco"] : family?.nameTokens ?? words(item.nombre_producto),
+      head,
+      options: fresh.includes("tipo") ? group.map((candidate) => shortOption(candidate, head)) : [],
+      qtyExplicit: true,
+    });
+  }
+  return extra;
+}
+
+function uncoveredQuestion(
+  text: string,
+  items: CatalogSpeechItem[],
+  question: string | null,
+  aside: string | null,
+): string | null {
+  const covered = new Set<string>();
+  for (const item of items) {
+    for (const token of words(`${item.nombre_producto} ${item.marca ?? ""}`)) covered.add(token);
+  }
+  const blob = norm(`${question ?? ""} ${aside ?? ""}`);
+  if (rejectsMarinada(text)) return null;
+  const branded = items.some((item) => {
+    const name = norm(`${item.nombre_producto} ${item.marca ?? ""}`);
+    return BRANDS.some((brand) => name.includes(brand));
+  });
+  const missing: string[] = [];
+  for (const token of words(text)) {
+    if (isSizeWord(token) || token === "hot" || token === "jot" || /marinad/.test(token)) continue;
+    // «3 refrescos: 1 Pepsi y 2 manzanitas»: refresco solo presenta las marcas.
+    if (token === "refresco" && branded) continue;
+    const hit = [...covered].some(
+      (known) => known === token || known.includes(token) || token.includes(known) || closeEnough(known, token),
+    );
+    if (hit || blob.includes(token)) continue;
+    missing.push(token);
+  }
+  if (!missing.length) return null;
+  return `¿Te refieres a ${missing.map((token) => titleWord(token)).join(" ")}?`;
+}
+
 export function applyCatalogSpeech(params: {
   base: CatalogSpeechItem[];
   userMessage: string;
@@ -874,12 +1147,22 @@ export function applyCatalogSpeech(params: {
   const text = prefixPendingHeads(norm(stripBotDecorations(params.userMessage)), base, families);
   if (!text || !families.length) return { applied: false, missing: false, items: base, reply: null, question: null, aside: null };
 
-  const fromAnchors = spansOf(text, families)
-    .map((span) => lineFromSpan(span, families, text))
-    .filter((line): line is SpokenLine => line != null);
-  const spoken = dropDrinkIntroducers(
-    fromAnchors.length ? fromAnchors : [sizeFollowUp(base, text, families)].filter((line): line is SpokenLine => line != null),
-  );
+  for (const item of base) {
+    const family = familyForItem(item, families);
+    if (family && isBrandListDrink(family)) item.nombre_producto = "Refresco";
+  }
+
+  const fromAnchors = interpretText(text, families, text);
+  const sizeLine = sizeFollowUp(base, text, families);
+  const combined =
+    sizeLine && !fromAnchors.some((line) => line.familyKey === sizeLine.familyKey && !line.gaps.includes("tamano"))
+      ? [sizeLine, ...fromAnchors]
+      : fromAnchors.length
+        ? fromAnchors
+        : sizeLine
+          ? [sizeLine]
+          : [];
+  const spoken = dropDrinkIntroducers(combined);
   const aside = noticeFor(text, spoken, families);
   if (!spoken.length && !aside) return { applied: false, missing: false, items: base, reply: null, question: null, aside: null };
   if (!spoken.length) return { applied: true, missing: true, items: base, reply: aside, question: aside, aside };
@@ -891,6 +1174,16 @@ export function applyCatalogSpeech(params: {
       index = items.findIndex((item) => norm(item.notas ?? "") === "falta tipo" && norm(item.nombre_producto) === line.head);
     }
     if (index < 0) index = items.findIndex((item) => sameFamily(item, line));
+    // «el argentino» precisa el chorizo ya anotado. No abre otra línea de 1.
+    if (index < 0 && !line.qtyExplicit && !line.gaps.includes("tipo")) {
+      const generic = items.findIndex((item) => {
+        if (norm(item.notas ?? "") === "falta tipo") return false;
+        const short = norm(item.nombre_producto);
+        const long = norm(line.nombre);
+        return Boolean(short) && long.startsWith(`${short} `) && short.split(" ").length <= 3;
+      });
+      if (generic >= 0) index = generic;
+    }
     const previous = index >= 0 ? items[index] : null;
     const adding = /^(?:agrega\w*|a[nñ]ade\w*|a[nñ]adir)\b/.test(norm(stripBotDecorations(params.userMessage)));
     const addingOnto =
@@ -900,12 +1193,16 @@ export function applyCatalogSpeech(params: {
       !line.gaps.includes("tipo") &&
       !line.gaps.includes("tamano") &&
       norm(previous.nombre_producto) === norm(line.nombre);
-    let cantidad = line.cantidad ?? (typeof previous?.cantidad === "number" ? previous.cantidad : null);
+    let cantidad = line.qtyExplicit
+      ? line.cantidad
+      : typeof previous?.cantidad === "number"
+        ? previous.cantidad
+        : line.cantidad;
     if (addingOnto) {
-      const extra = line.cantidad ?? 1;
-      const base = typeof previous.cantidad === "number" && previous.cantidad > 0 ? previous.cantidad : 1;
-      cantidad = base + extra;
-    } else if (line.cantidad == null && cantidad != null) {
+      const extra = line.qtyExplicit ? (line.cantidad ?? 1) : 1;
+      const baseQty = typeof previous.cantidad === "number" && previous.cantidad > 0 ? previous.cantidad : 1;
+      cantidad = baseQty + extra;
+    } else if (cantidad != null) {
       line.gaps = line.gaps.filter((gap) => gap !== "cantidad");
     }
     if (line.marca == null && previous?.marca) line.marca = previous.marca;
@@ -941,11 +1238,18 @@ export function applyCatalogSpeech(params: {
       if (answered.has(norm(items[index]?.nombre_producto ?? ""))) items.splice(index, 1);
     }
   }
-  const open = spoken.filter((line) => !(line.head && line.gaps.includes("tipo") && answered.has(line.head)));
+  const open = [
+    ...spoken.filter((line) => !(line.head && line.gaps.includes("tipo") && answered.has(line.head))),
+    ...lingeringLines(items, families, spoken),
+  ];
 
-  const missing = open.some((line) => line.gaps.length) || items.some((item) => norm(item.notas ?? "") === "falta tipo");
   const hole = questionFor(open, items.length);
-  const question = [hole, aside].filter(Boolean).join(" ") || null;
+  const uncovered = uncoveredQuestion(text, items, hole, aside);
+  const question = [hole, uncovered, aside].filter(Boolean).join(" ") || null;
+  const missing =
+    open.some((line) => line.gaps.length) ||
+    Boolean(uncovered) ||
+    items.some((item) => norm(item.notas ?? "") === "falta tipo");
   const shown = items.filter((item) => norm(item.notas ?? "") !== "falta tipo");
   const reply = shown.length
     ? `🛒 *Anoto:*\n\n${joinBlocks(shown.map(itemLine))}${question ? `\n\n${question}` : ""}`
@@ -971,7 +1275,7 @@ function titleWord(word: string): string {
 function offMenuWords(text: string, lines: SpokenLine[], families: Family[]): string[] {
   const covered = new Set<string>();
   for (const line of lines) {
-    for (const token of words(`${line.nombre} ${line.familyKey}`)) covered.add(token);
+    for (const token of words(`${line.nombre} ${line.familyKey} ${line.marca ?? ""}`)) covered.add(token);
   }
   const hits: string[] = [];
   for (const clause of norm(text).split(/\s+y\s+|,\s*/)) {
@@ -1016,4 +1320,129 @@ function noticeFor(text: string, lines: SpokenLine[], families: Family[]): strin
   if (off.length) parts.push(`🛍️ ${off.map((name) => `*${name}*`).join(" y ")} no lo manejamos.`);
   if (refused.length) parts.push(`🥩 ${refused.map((name) => `*${name}*`).join(" y ")} sin marinar no la manejamos.`);
   return parts.length ? parts.join(" ") : null;
+}
+
+type MenuPending = {
+  itemKey: string;
+  slots: string[];
+  question: string;
+  count: number;
+  mode: "ask" | "options";
+  choices?: string[];
+};
+
+function menuChoiceList(question: string): { title: string; emoji: string; choices: string[] } {
+  if (/marca/i.test(question)) {
+    return {
+      title: "¿De qué marca?",
+      emoji: "🥤",
+      choices: ["Pepsi", "Seven", "Coca", "Mirinda", "Manzana", "El que sea"],
+    };
+  }
+  if (/chica/i.test(question) && /grande/i.test(question)) {
+    return { title: "¿Chica o grande?", emoji: "🍔", choices: ["Chica", "Grande", "El que sea"] };
+  }
+  return { title: "¿Cuál va?", emoji: "🍽️", choices: ["El que sea"] };
+}
+
+function messageEngagesOrder(message: string): boolean {
+  const text = norm(message);
+  if (!text) return false;
+  if (sizeIn(text)) return true;
+  if (BRANDS.some((brand) => text.includes(brand))) return true;
+  return text.split(" ").some((word) => word.length >= 4 && !FILLER.has(word) && !isSizeWord(word) && word !== "cual" && word !== "nada");
+}
+
+function applyMenuWaiver(items: CatalogSpeechItem[], question: string): CatalogSpeechItem[] {
+  const next = items.map((item) => ({ ...item }));
+  if (/marca/i.test(question)) {
+    const drink = next.find((item) => norm(item.nombre_producto) === "refresco" && !item.marca);
+    if (drink) drink.marca = "La que sea";
+    return next;
+  }
+  const open = next.find((item) => !sizesIn(item.nombre_producto).length);
+  if (open) open.notas = "la que sea";
+  return next;
+}
+
+function applyMenuChoice(items: CatalogSpeechItem[], choice: string, question: string): CatalogSpeechItem[] {
+  if (/el que sea|la que sea/i.test(choice)) return applyMenuWaiver(items, question);
+  const next = items.map((item) => ({ ...item }));
+  if (/marca/i.test(question)) {
+    const drink = next.find((item) => norm(item.nombre_producto) === "refresco" && !item.marca);
+    if (drink) drink.marca = choice === "Manzana" ? "Manzana" : choice;
+    return next;
+  }
+  return next;
+}
+
+/**
+ * En menú fijo no se repite la misma pregunta: a la segunda van opciones
+ * numeradas y, si tampoco contestan, queda «el que sea».
+ */
+export function advanceMenuAsk(params: {
+  items: CatalogSpeechItem[];
+  question: string | null;
+  reply: string | null;
+  message: string;
+  pending: MenuPending | null;
+}): { items: CatalogSpeechItem[]; question: string | null; reply: string | null; pendingAsk: MenuPending | null } {
+  const pending = params.pending;
+  let items = params.items.map((item) => ({ ...item }));
+  let question = params.question;
+  if (pending?.mode === "options" && pending.choices?.length) {
+    const text = norm(params.message);
+    let picked = -1;
+    if (/^(el|la) que sea|cualquiera|me da igual$/.test(text) || /\b(el|la) que sea\b/.test(text)) {
+      picked = pending.choices.findIndex((choice) => /el que sea|la que sea/i.test(choice));
+    } else if (/^\d+$/.test(text)) {
+      const number = Number(text);
+      if (number >= 1 && number <= pending.choices.length) picked = number - 1;
+    }
+    if (picked >= 0) {
+      items = applyMenuChoice(items, pending.choices[picked], pending.question);
+      question = null;
+    }
+  }
+  if (!question) {
+    const reply = params.reply && params.question && params.reply.includes(params.question)
+      ? params.reply.replace(params.question, "").trim() || null
+      : params.reply;
+    return { items, question: null, reply, pendingAsk: null };
+  }
+  const same = Boolean(pending && norm(pending.question) === norm(question));
+  if (same && pending && !messageEngagesOrder(params.message)) {
+    if (pending.mode !== "options") {
+      const choice = menuChoiceList(question);
+      const lines = [
+        `${choice.emoji} *${choice.title}*`,
+        ...choice.choices.map((label, index) => `*${index + 1})* ${label}`),
+        "_Contesta con el número._",
+      ];
+      const nextQuestion = lines.join("\n\n");
+      const reply = params.reply?.includes(question) ? params.reply.replace(question, nextQuestion) : nextQuestion;
+      return {
+        items,
+        question: nextQuestion,
+        reply,
+        pendingAsk: {
+          itemKey: "menu",
+          slots: [],
+          question: nextQuestion,
+          count: pending.count + 1,
+          mode: "options",
+          choices: choice.choices,
+        },
+      };
+    }
+    items = applyMenuWaiver(items, question);
+    const reply = params.reply?.includes(question) ? params.reply.replace(question, "").trim() || null : params.reply;
+    return { items, question: null, reply, pendingAsk: null };
+  }
+  return {
+    items,
+    question,
+    reply: params.reply,
+    pendingAsk: { itemKey: "menu", slots: [], question, count: 1, mode: "ask" },
+  };
 }

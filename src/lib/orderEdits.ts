@@ -113,15 +113,22 @@ function unitOf(raw: string | undefined, fallback: string | null): string | null
 }
 
 function wantedSize(size: string): string {
-  if (size === "chico") return "chica";
-  if (size === "mediano") return "mediana";
-  if (size === "sencillo") return "sencilla";
-  return size;
+  const word = norm(size);
+  if (word === "chico" || word === "chicos") return "chica";
+  if (word === "mediano" || word === "medianos") return "mediana";
+  if (word === "sencillo" || word === "sencillos") return "sencilla";
+  if (word === "chicas") return "chica";
+  if (word === "grandes") return "grande";
+  if (word === "medianas") return "mediana";
+  if (word === "sencillas") return "sencilla";
+  if (word === "dobles") return "doble";
+  if (word === "triples") return "triple";
+  return word;
 }
 
 function stripSize(value: string): string {
   return norm(value)
-    .replace(/\b(chica|chico|grande|mediana|mediano|sencilla|sencillo|doble|triple)\b/g, " ")
+    .replace(/\b(chicas|chicos|chica|chico|grandes|grande|medianas|medianos|mediana|mediano|sencillas|sencillos|sencilla|sencillo|dobles|doble|triples|triple)\b/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -342,7 +349,7 @@ export function planCustomerEdits(message: string): EditPlan {
 
   rest = blank(
     rest,
-    /\bcambia(?:r|me|le|lo|la)?\s+(?:el |la |los |las )?(?:de\s+)?([a-z0-9]+(?:\s+[a-z0-9]+){0,3})\s+a\s+(chica|chico|grande|mediana|mediano|sencilla|sencillo|doble|triple)\b/g,
+    /\bcambia(?:r|me|le|lo|la)?\s+(?:el |la |los |las )?(?:de\s+)?([a-z0-9]+(?:\s+[a-z0-9]+){0,3})\s+a\s+(chicas|chicos|chica|chico|grandes|grande|medianas|medianos|mediana|mediano|sencillas|sencillos|sencilla|sencillo|dobles|doble|triples|triple)\b/g,
     (match) => {
       const target = match[1]?.trim();
       if (target && target !== "a") ops.push({ kind: "resize", target, size: match[2] });
@@ -351,7 +358,7 @@ export function planCustomerEdits(message: string): EditPlan {
 
   rest = blank(
     rest,
-    /\b(?:cambial[oa](?:me|la|lo)?|que sea|mejor)\s+(?:a\s+)?(chica|chico|grande|mediana|mediano|sencilla|sencillo|doble|triple)\b/g,
+    /\b(?:cambial[oa](?:me|la|lo)?|que sea|mejor)\s+(?:a\s+)?(chicas|chicos|chica|chico|grandes|grande|medianas|medianos|mediana|mediano|sencillas|sencillos|sencilla|sencillo|dobles|doble|triples|triple)\b/g,
     (match) => {
       ops.push({ kind: "resize", target: null, size: match[1] });
     },
@@ -380,7 +387,7 @@ function resizeItem(item: PedidoItemInput, size: string, catalog: CatalogPriceRo
   }
   if (SIZE_WORDS.some((word) => norm(item.nombre_producto).includes(word))) {
     item.nombre_producto = item.nombre_producto.replace(
-      /\b(chica|chico|grande|mediana|mediano|sencilla|sencillo|doble|triple)\b/i,
+      /\b(chicas|chicos|chica|chico|grandes|grande|medianas|medianos|mediana|mediano|sencillas|sencillos|sencilla|sencillo|dobles|doble|triples|triple)\b/i,
       wanted,
     );
     return;
