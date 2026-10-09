@@ -4,12 +4,12 @@ import { formatCheckedLine } from "@/lib/messageStyle";
 import type { OrderState } from "@/lib/orderStateMachine";
 import { isProductListRequest, messageCorrectsOrder } from "@/lib/messages";
 import { pendingEditNote } from "@/lib/orderEdits";
+import { advanceQuoteTurn, type PendingAsk } from "@/lib/clarificationAnswers";
+import type { ListaProducto } from "@/lib/storeProductList";
 import {
   isGuidedQuoteItem,
-  prepareQuoteItems,
   quoteItemNeedsDetail,
   quoteLineSignature,
-  quoteQuestionForItems,
 } from "@/lib/quoteProductClarity";
 import {
   ADDRESS_ASK_MESSAGE,
@@ -139,12 +139,26 @@ export function validateAddress(
 
 export function validateItems(
   items: PedidoItemInput[],
-  options?: { quoteStore?: boolean; userMessage?: string | null; ignoreText?: string | null },
-): ValidationResult["validatedItems"] {
+  options?: {
+    quoteStore?: boolean;
+    userMessage?: string | null;
+    ignoreText?: string | null;
+    pendingAsk?: PendingAsk | null;
+    lista?: ListaProducto[] | null;
+    listaAvisos?: string[] | null;
+  },
+): ValidationResult["validatedItems"] & { pendingAsk?: PendingAsk | null; listaAvisos?: string[] } {
   const issues: ValidationIssue[] = [];
   const quoteStore = options?.quoteStore === true;
-  const source = quoteStore ? prepareQuoteItems(items, options?.userMessage, options?.ignoreText) : items;
-  const quoteQuestion = quoteStore ? quoteQuestionForItems(source) : null;
+  const turn = quoteStore
+    ? advanceQuoteTurn(items, options?.userMessage ?? "", options?.pendingAsk ?? null, {
+        ignoreText: options?.ignoreText,
+        lista: options?.lista,
+        listaAvisos: options?.listaAvisos,
+      })
+    : null;
+  const source = turn ? turn.items : items;
+  const quoteQuestion = turn ? turn.question : null;
   let quoteQuestionUsed = false;
 
   const normalizedItems = source
@@ -213,6 +227,8 @@ export function validateItems(
     hasItems: normalizedItems.length > 0,
     allItemsSpecific: !issues.some((issue) => issue.code === "GENERIC_ITEM_NEEDS_SPEC"),
     issues,
+    pendingAsk: turn?.pendingAsk ?? null,
+    listaAvisos: turn?.listaAvisos ?? options?.listaAvisos ?? [],
   };
 }
 
@@ -236,6 +252,7 @@ export function validateCaptureForConfirmation(params: {
   /** Lista de antes de este turno. Si no viene, se compara contra `items`. */
   priorItems?: PedidoItemInput[] | null;
   storeKind?: StoreKind | null;
+  lista?: ListaProducto[] | null;
 }): ValidationResult {
   const validatedBusiness = validateBusiness(params.snapshot);
   const validatedAddress = validateAddress(
@@ -247,6 +264,9 @@ export function validateCaptureForConfirmation(params: {
     quoteStore: params.quoteStore === true,
     userMessage: params.userMessage,
     ignoreText: params.snapshot.businessName,
+    pendingAsk: params.snapshot.pendingAsk ?? null,
+    lista: params.lista,
+    listaAvisos: params.snapshot.listaAvisos,
   });
 
   // Orden de prioridad de issues/missingFields: tienda -> dirección -> producto,
@@ -348,5 +368,7 @@ export function validateCaptureForConfirmation(params: {
     validatedItems,
     readyForConfirmation: nextState === "confirmacion_cliente",
     correccionesSinCambio,
+    pendingAsk: showProductList ? null : validatedItems.pendingAsk ?? null,
+    listaAvisos: validatedItems.listaAvisos ?? [],
   };
 }

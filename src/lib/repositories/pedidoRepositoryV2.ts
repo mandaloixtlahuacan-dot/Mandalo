@@ -416,6 +416,71 @@ export async function getProductosTiendaActivos(tiendaId: number): Promise<Produ
     .filter((row) => row.nombreProducto.length > 0 && Number.isFinite(row.precio));
 }
 
+export type ListaProductoRow = {
+  id: number;
+  nombreProducto: string;
+  marca: string | null;
+  presentacion: string | null;
+  categoria: string | null;
+  alias: string[];
+  precio: number | null;
+};
+
+// Lista de abarrotes sin precio. No filtra por precio: la tienda sigue cotizando.
+// Si la migración todavía no está aplicada, el select falla y el llamador sigue sin lista.
+export async function getListaProductosTienda(tiendaId: number): Promise<ListaProductoRow[]> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("productos_tienda")
+    .select("id, nombre_producto, precio, categoria, marca, presentacion, alias")
+    .eq("tienda_id", tiendaId)
+    .eq("disponible", true);
+  if (error) throw error;
+  return (data ?? [])
+    .map((row) => {
+      const record = row as {
+        id: unknown;
+        nombre_producto: unknown;
+        precio: unknown;
+        categoria: unknown;
+        marca: unknown;
+        presentacion: unknown;
+        alias: unknown;
+      };
+      const alias = Array.isArray(record.alias) ? record.alias.map((item) => String(item)) : [];
+      const precio = Number(record.precio ?? NaN);
+      return {
+        id: Number(record.id),
+        nombreProducto: String(record.nombre_producto ?? "").trim(),
+        marca: cleanText(record.marca),
+        presentacion: cleanText(record.presentacion),
+        categoria: cleanText(record.categoria),
+        alias,
+        precio: Number.isFinite(precio) ? precio : null,
+      };
+    })
+    .filter((row) => row.nombreProducto.length > 0);
+}
+
+export async function getListaProductosSiActiva(tiendaId: number) {
+  try {
+    const supabase = getSupabaseAdmin();
+    const flag = await supabase.from("tiendas").select("usa_lista_productos").eq("id", tiendaId).maybeSingle();
+    if (flag.error || (flag.data as { usa_lista_productos?: unknown } | null)?.usa_lista_productos !== true) return null;
+    const rows = await getListaProductosTienda(tiendaId);
+    return rows.map((row) => ({
+      nombre: row.nombreProducto,
+      marca: row.marca,
+      presentacion: row.presentacion,
+      categoria: row.categoria,
+      alias: row.alias,
+      precio: row.precio,
+    }));
+  } catch {
+    return null;
+  }
+}
+
 // Mismo patrón "exacto, luego parcial" que findPedidoItemByText, pero en
 // dirección contraria: busca el producto DEL PEDIDO dentro del catálogo de
 // precios fijos de la tienda, para resolver su precio sin intervención humana.

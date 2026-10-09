@@ -14,6 +14,8 @@ export type MandaloPromptContext = {
   // mencionó — vacío hasta que se detecta una categoría (ver categoriasTienda
   // arriba), y vacío también si esa tienda no cotiza por catálogo.
   menuTiendaCatalogo?: string;
+  // Nombres (sin precio) de la lista de abarrotes que pegan con este mensaje.
+  listaAbarrotes?: string;
 };
 
 export function buildMandaloSystemPrompt(ctx: MandaloPromptContext) {
@@ -51,6 +53,7 @@ Contexto disponible:
 - HORARIO DE REPARTO DE MÁNDALO: ${ctx.horarioMandaloText}
 - CATEGORÍAS DE LA TIENDA DE CATÁLOGO (de la tienda de la que el cliente está por pedir; si aplica, nombres reales, sin productos ni precios): ${ctx.categoriasTienda || "(no aplica)"}
 - MENÚ DE PRECIOS FIJOS (productos reales de la categoría que el cliente ya mencionó; vacío hasta que la mencione, o si la tienda no tiene catálogo de precios fijos): ${ctx.menuTiendaCatalogo || "(vacío — todavía no hay categoría clara, o esta tienda cotiza manual como las demás)"}
+- LISTA DE ABARROTES (solo nombres de esta tienda que pegan con lo que el cliente acaba de decir; sin precios; si el producto no está, anótalo como lo dijo): ${ctx.listaAbarrotes || "(esta tienda no tiene lista, o no aplica)"}
 - HISTORIAL: ${ctx.historial || "(sin historial)"}
 
 BLOQUE 4. REGLAS DE NEGOCIO

@@ -57,6 +57,7 @@ const STOP = new Set([
   "solamente", "pero",
   "seria",
   "anotala", "anotalo", "anotar", "porfa", "favor", "porfavor", "gracias",
+  "serian", "seran",
   "hola", "buenas", "bueno", "entonces", "nomas", "solo", "pura", "puro",
   "tambien", "ademas", "ejemplo", "esta", "este", "eso", "esa", "mas", "muy",
   "bien", "ok", "va", "dale", "sale", "ocupa", "necesito", "pide", "pedir",
@@ -319,7 +320,9 @@ function litrosPhrase(blob: string): string | null {
 }
 
 function bareLiterQuantity(extra: string): number | null {
-  const match = extra.match(/^(?:de\s+)?(\d+(?:\.\d+)?|un|una|uno|dos|tres|cuatro|cinco|seis|media|medio)$/);
+  const match = extra.match(
+    /^(?:(?:la|el|las|los)\s+)?(?:de\s+)?(\d+(?:\.\d+)?|un|una|uno|dos|tres|cuatro|cinco|seis|media|medio)$/,
+  );
   if (!match) return null;
   return wordToQty(match[1]);
 }
@@ -365,7 +368,8 @@ function hasPackageCount(blob: string, item: PedidoItemInput): boolean {
   if (parsePackageCount(blob) != null) return true;
   if (typeof item.cantidad === "number" && Number.isFinite(item.cantidad) && item.cantidad > 0) {
     const sized = sizeNumber(blob);
-    if (sized != null && item.cantidad === sized) return false;
+    // "2 kilos" de queso es la cantidad. 600 ml guardado como cantidad no lo es.
+    if (sized != null && item.cantidad === sized && !/\b(kilos?|kg)\b/.test(blob)) return false;
     return true;
   }
   return false;
@@ -403,6 +407,12 @@ function shelfPhrase(blob: string): string | null {
   if (/\bfamiliar\b/.test(text)) return "familiar";
   const litros = litrosPhrase(text);
   if (litros) return litros;
+  const kilo = text.match(/\b(\d+(?:\.\d+)?|un|una|uno|dos|tres|cuatro|cinco|seis|media|medio)\s*(?:kilos?|kg)\b/);
+  if (kilo) {
+    const amount = wordToQty(kilo[1]);
+    if (amount == null || amount === 1) return "1 kilo";
+    return `${amount} kilos`;
+  }
   if (/\b(kilo|kilos|kg)\b/.test(text)) return "1 kilo";
   if (/\bgarrafon(?:es)?\b/.test(text)) return "garrafón";
   const sizeWord = text.match(/\b(chica|chico|mediana|mediano|grande|individual)\b/);
@@ -577,11 +587,23 @@ const CATEGORIES: Category[] = [
     match: /\bleches?\b/,
     slots: ["marca", "tipo", "tamano"],
     typePhrase: lecheTipo,
-    sizePhrase: litrosPhrase,
+    sizePhrase: (blob) => {
+      const litros = litrosPhrase(blob);
+      if (litros) return litros;
+      if (/\bfamiliar\b/.test(blob)) return "familiar";
+      if (/\bgrande\b/.test(blob)) return "grande";
+      if (/\bchica\b/.test(blob)) return "chica";
+      if (/\bmediana\b/.test(blob)) return "mediana";
+      return null;
+    },
     filled: (slot, blob, item) => {
       if (slot === "marca") return hasBrand(blob, new Set());
       if (slot === "tipo") return lecheTipo(blob) != null;
-      return litrosPhrase(blob) != null || (hasAmount(blob, item) && /\b(litro|litros|ml)\b/.test(blob));
+      return (
+        litrosPhrase(blob) != null ||
+        /\b(grande|chica|chico|mediana|familiar)\b/.test(blob) ||
+        (hasAmount(blob, item) && /\b(litro|litros|ml)\b/.test(blob))
+      );
     },
     ask: (missing) => {
       const size = missing.includes("tamano");
@@ -671,12 +693,15 @@ const CATEGORIES: Category[] = [
       if (bare && !/\b(litro|litros|kilo|rollos)\b/.test(blob)) return `${bare[1]} ml`;
       if (/\bfamiliar\b/.test(blob)) return "familiar";
       if (/\bvidrio\b/.test(blob)) return "vidrio";
+      if (/\bgrande\b/.test(blob)) return "grande";
+      if (/\bchica\b/.test(blob)) return "chica";
+      if (/\bmediana\b/.test(blob)) return "mediana";
       return litrosPhrase(blob);
     },
     filled: (slot, blob, item) => {
       if (slot === "marca") return hasBrand(blob, new Set());
       if (slot === "cantidad") return hasPackageCount(blob, item);
-      return /\b(lata|latas|ml|litro|litros|familiar|vidrio|medio)\b/.test(blob);
+      return /\b(lata|latas|ml|litro|litros|familiar|vidrio|medio|grande|chica|chico|mediana)\b/.test(blob);
     },
     ask: (missing, item, blob) => {
       const brand = spokenBrand(item) || (/\bcoca\b/.test(blob) ? "Coca" : /\bred bull\b|\bredbull\b/.test(blob) ? "Red Bull" : null);
@@ -889,7 +914,7 @@ const CATEGORIES: Category[] = [
     slots: ["marca", "tamano", "cantidad"],
     sizePhrase: (blob) => {
       if (/\bsix\b/.test(blob)) return "six";
-      if (/\bcaguama\b/.test(blob)) return "caguama";
+      if (/\bcaguamas?\b/.test(blob)) return "caguama";
       if (/\bmedia\b/.test(blob)) return "media";
       if (/\blata\b/.test(blob)) return "lata";
       if (/\bfamiliar\b/.test(blob)) return "familiar";
@@ -1183,6 +1208,10 @@ export function rewriteGrocerySlips(message: string): string {
     .replace(/(\d+)\s*(litros?|kilos?|gramos?|ml|kg)\b/gi, "$1 $2")
     .replace(/\barroz\s+higi[eé]nicos?\b/gi, "papel higiénico")
     .replace(/\bcoquitas?\b/gi, "coca")
+    .replace(/\bpepsis\b/gi, "pepsi")
+    .replace(/\bcocas\b/gi, "coca")
+    .replace(/\bcoronas\b/gi, "corona")
+    .replace(/\b(\d+)\s*lt\b/gi, "$1 litro")
     .replace(/\bchescos?\b/gi, "refresco")
     .replace(/\bpapel de ba[nñ]o\b/gi, "papel higiénico")
     .replace(/\btortillinas?\b/gi, "tortillas")
@@ -1907,6 +1936,7 @@ function applyDetail(
   extraRaw: string,
   ignore: Set<string>,
   boundWindow = false,
+  asAnswer = false,
 ): PedidoItemInput {
   const keepBrand = protectedBrandTokens(norm(extraRaw));
   const extra = norm(extraRaw)
@@ -1933,7 +1963,9 @@ function applyDetail(
       !MEASURE_WORDS.has(token) &&
       !(category.id === "sopa" && soupFlavor.has(token)),
   );
-  if (category.kind !== "produce" && !spokenBrand(next) && tokens.length) next.marca = displayBrand(extraRaw, tokens);
+  if (category.kind !== "produce" && tokens.length && (asAnswer || !spokenBrand(next))) {
+    next.marca = displayBrand(extraRaw, tokens);
+  }
   if (category.id === "sopa") {
     if (/\bmaruchan\b/.test(extra)) next.marca = "Maruchan";
     else if (/\bramen\b/.test(extra)) next.marca = "Ramen";
@@ -1956,25 +1988,37 @@ function applyDetail(
 
   next.presentacion = mergeType(category, next.presentacion, typeFromReply(category, next, extra));
   let size = category.sizePhrase?.(extra) ?? null;
-  if (!size && literQuestionOpen) {
+  const literFamily = category.id === "leche" || category.id === "aceite" || category.id === "agua" || category.id === "limpiador";
+  if (!size && (literQuestionOpen || (asAnswer && literFamily && missingSlots(category, item).includes("tamano")))) {
     const bare = bareLiterQuantity(extra);
-    if (bare != null) size = literPhraseFromQty(bare);
+    if (bare != null && !/\b(kilo|kilos|pieza|piezas|docena)\b/.test(extra)) size = literPhraseFromQty(bare);
   }
   if (size && (category.id === "papel" || /lata|ml|familiar|vidrio|six|caguama|media|cajetilla|carton|garrafon/.test(norm(size)))) {
     next.presentacion = mergeText(next.presentacion, size);
   } else if (size && /\blitro/.test(norm(size))) {
     if (category.countSeparate) {
-      next.presentacion = mergeText(next.presentacion, size);
+      next.presentacion = asAnswer ? size : mergeText(next.presentacion, size);
     } else {
       const qty = parseQty(norm(size));
       // "l" ya guardado no trae la palabra litro: esta respuesta la reemplaza.
-      const replaceLiter = isLiterAbbrev(next.unidad);
+      // Si la pregunta era de litros y la unidad era kilo, también se reemplaza.
+      const conflicting = Boolean(clean(next.unidad) && !isLiterAbbrev(next.unidad));
+      const replaceLiter = isLiterAbbrev(next.unidad) || (asAnswer && literQuestionOpen && conflicting);
       if (qty != null && (next.cantidad == null || replaceLiter)) next.cantidad = qty;
       if (!clean(next.unidad) || replaceLiter) next.unidad = qtyUnit(size);
+      if (replaceLiter && /\bkilo/.test(norm(next.presentacion ?? ""))) next.presentacion = null;
     }
   } else if (size && /\bkilo|docena/.test(norm(size))) {
     if (category.countSeparate) {
-      next.presentacion = mergeText(next.presentacion, size);
+      const kiloQty = qtyBeforeUnit(extra, /kilos?|kg/);
+      if (kiloQty != null && /\bkilo/.test(norm(size))) {
+        if (next.cantidad == null || asAnswer) next.cantidad = kiloQty;
+        if (!clean(next.unidad) || asAnswer) next.unidad = "kilo";
+        const phrase = kiloQty === 1 ? "1 kilo" : `${kiloQty} kilos`;
+        next.presentacion = asAnswer ? phrase : mergeText(next.presentacion, phrase);
+      } else {
+        next.presentacion = mergeText(next.presentacion, size);
+      }
     } else {
       if (!clean(next.unidad)) next.unidad = norm(size).includes("docena") ? "docena" : "kilo";
       const qty = qtyBeforeUnit(extra, /kilos?|kg|docenas?/) ?? parseQty(extra);
@@ -2067,6 +2111,24 @@ function applyDetail(
     next.presentacion = mergeText(stripped || null, measured.presentacion);
     next.cantidad = measured.cantidad;
     next.unidad = measured.unidad;
+  }
+  const pack = extra.match(/\b(\d+|un|una|uno|dos|tres|cuatro|cinco|seis)\s+de\s+(?:un\s+|una\s+)?litros?\b/);
+  if (pack) {
+    const qty = wordToQty(pack[1]);
+    if (qty != null) {
+      next.cantidad = qty;
+      next.unidad = "pieza";
+      next.presentacion = mergeText(next.presentacion, "1 litro");
+    }
+  }
+  const piezas = extra.match(/\b(\d+|dos|tres|cuatro|cinco|seis)\s+piezas?\b/);
+  if (piezas && litrosPhrase(extra)) {
+    const qty = wordToQty(piezas[1]);
+    if (qty != null) {
+      next.cantidad = qty;
+      next.unidad = "pieza";
+      next.presentacion = mergeText(next.presentacion, litrosPhrase(extra));
+    }
   }
   return scrubItem(next, ignore);
 }
@@ -2377,6 +2439,126 @@ export function restoreNamedFromHistory(
   return next;
 }
 
+const KNOWN_ANSWER_BRANDS =
+  /\b(lala|alpura|caperucita|santa clara|pepsi|coca|corona|victoria|modelo|tecate|nutrioli|capullo|zote|palmolive|escudo|bimbo|wonder|sabritas|barcel|ciel|bonafont|epura|pinol|fabuloso|cloralex|costena|herdez|roma|ariel|ace|gamesa|marinela|emperador|fud)\b/;
+
+function explicitAdd(text: string): boolean {
+  return (
+    /\b(quiero|quisiera|agrega\w*|anade\w*|tambien|ademas|falto\w*|otra|otro|otras|otros)\b/.test(
+      text,
+    ) || /\by\s+(?:un|una|uno|dos|tres|el|la|los|las)\b/.test(text)
+  );
+}
+
+function messageFitsItem(item: PedidoItemInput, message: string): boolean {
+  const own = itemCategory(item);
+  if (!own) return false;
+  const text = norm(rewriteGrocerySlips(message));
+  if (!text) return false;
+  if (waiverNote(text) || /\bgeneric\w*\b/.test(text)) return true;
+  if (/^(si|ok|va|sale|dale)$/.test(text)) return true;
+  const missing = missingSlots(own, item);
+  if (!missing.length) return false;
+  if (own.match.test(text)) {
+    const differentBrand =
+      missing.length > 0 &&
+      !missing.includes("marca") &&
+      KNOWN_ANSWER_BRANDS.test(text) &&
+      !own.sizePhrase?.(text) &&
+      !own.typePhrase?.(text);
+    if (!differentBrand) return true;
+  }
+  if (missing.includes("tipo") && own.typePhrase?.(`${blobOf(item)} ${text}`)) return true;
+  if (missing.includes("tamano")) {
+    if (own.sizePhrase?.(text)) return true;
+    if (soleLiterQuestion(own, item) && bareLiterQuantity(text) != null) return true;
+  }
+  if (missing.includes("cantidad") && (bareLiterQuantity(text) != null || parsePackageCount(text) != null)) return true;
+  if (missing.includes("marca")) {
+    const tokens = brandTokens(text, new Set());
+    const onlyMarca = missing.length === 1 && missing[0] === "marca";
+    const cued = /\b(marca|es|seria|serian)\b/.test(text);
+    const known = KNOWN_ANSWER_BRANDS.test(text) || categoryFromBrand(text) != null;
+    if (tokens.length && (onlyMarca || cued || known)) return true;
+  }
+  return false;
+}
+
+function applyLateSize(items: PedidoItemInput[], message: string): PedidoItemInput[] {
+  const text = norm(rewriteGrocerySlips(message));
+  const word = text.match(/\b(grande|chica|chico|mediana|familiar|lata|caguama|caguamas|six|media)\b/);
+  const litros = litrosPhrase(text);
+  if (!word && !litros) return items;
+  const index = items.findIndex((item) => waiverNote(blobOf(item)) && itemCategory(item)?.countSeparate === true);
+  if (index < 0) return items;
+  const next = items.map((item) => ({ ...item }));
+  const item = next[index];
+  const category = itemCategory(item);
+  item.notas = null;
+  if (litros) item.presentacion = litros;
+  else if (word) item.presentacion = word[1] === "caguamas" ? "caguama" : word[1];
+  if (category && !category.countSeparate && litros) {
+    const qty = parseQty(norm(litros));
+    if (qty != null) item.cantidad = qty;
+    item.unidad = qty != null && qty > 1 ? "litros" : "litro";
+  }
+  return next;
+}
+
+function brandHintOnly(message: string): boolean {
+  const text = norm(rewriteGrocerySlips(message));
+  if (!text) return false;
+  const named = CATEGORIES.some((category) => category.match.test(text) && !categoryRejected(category, text));
+  if (named) return false;
+  return categoryFromBrand(text) != null;
+}
+
+function measuredOrder(message: string): boolean {
+  return /\b(\d|kilo|kilos|kg|litro|litros|gramo|gramos|ml|caja|paquete|pieza|docena)\b/.test(norm(message));
+}
+
+function shouldAbsorbAnswer(items: PedidoItemInput[], message: string): boolean {
+  const text = norm(message);
+  if (!text || !items.length) return false;
+  if (explicitAdd(text)) return false;
+  if (planCustomerEdits(message).editsOnly) return false;
+  const windows = windowsFor(message);
+  if (windows.length > 1) return false;
+  if (!windows.length || brandHintOnly(message)) return true;
+  const matches = windows.some((window) => items.some((item) => itemMatchesWindow(item, window)));
+  if (!matches) {
+    const vague = items.some((item) => !clean(item.marca) && !clean(item.presentacion) && itemCategory(item) == null);
+    if (vague && measuredOrder(message)) return false;
+    return true;
+  }
+  const openMatch = windows.some((window) =>
+    items.some((item) => itemMatchesWindow(item, window) && quoteItemNeedsDetail(item)),
+  );
+  // "Papas" + kilo todavía se tiene que renombrar a la papa suelta.
+  if (!openMatch && items.some((item) => /^papas?$/.test(norm(item.nombre_producto))) && /\bkilo/.test(text)) {
+    return false;
+  }
+  const correctsType = windows.some((window) =>
+    items.some(
+      (item) =>
+        itemMatchesWindow(item, window) &&
+        Boolean(window.category.typePhrase?.(`${norm(item.nombre_producto)} ${text}`)),
+    ),
+  );
+  if (!openMatch && correctsType) return false;
+  if (!openMatch) return true;
+  if (measuredOrder(message)) return false;
+  const replacingFilledBrand = windows.some((window) =>
+    items.some((item) => {
+      if (!itemMatchesWindow(item, window)) return false;
+      const category = itemCategory(item);
+      if (!category || missingSlots(category, item).includes("marca")) return false;
+      return Boolean(spokenBrand(item)) && KNOWN_ANSWER_BRANDS.test(text);
+    }),
+  );
+  return replacingFilledBrand;
+}
+
 export function prepareQuoteItems(
   items: PedidoItemInput[],
   userMessage?: string | null,
@@ -2395,6 +2577,27 @@ export function prepareQuoteItems(
         resolveAddition: groceryAddition,
       }).items.map((item) => withoutIntentBrand(item)),
     );
+  }
+  if (shouldAbsorbAnswer(next, message)) {
+    const openIndexes = next
+      .map((item, index) => (quoteItemNeedsDetail(item) ? index : -1))
+      .filter((index) => index >= 0);
+    const fit = openIndexes.find((index) => messageFitsItem(next[index], message));
+    if (fit != null) next[fit] = applyDetail(next[fit], message, ignore, false, true);
+    else next = applyLateSize(next, message);
+    next = tidyQuoteLines(next.map((item) => scrubItem(item, ignore)));
+    next = dropItemsNamedInRemoval(next, message);
+    next = renameNegated(next, message);
+    const plan = planCustomerEdits(message);
+    if (plan.ops.length) {
+      next = applyCustomerEdits({
+        prior: items.map((item) => ({ ...item })),
+        working: next,
+        plan,
+        resolveAddition: groceryAddition,
+      }).items;
+    }
+    return tidyQuoteLines(next.map((item) => withoutIntentBrand(item)));
   }
   const opened = stripAddLead(message);
   const visible = opened ? stripClauses(opened, next) : "";
@@ -2532,6 +2735,48 @@ function keepSpokenMentions(items: PedidoItemInput[], message: string): PedidoIt
     next.push({ nombre_producto: label });
   }
   return next;
+}
+
+export function clarificationChoicesForItem(item: PedidoItemInput): { title: string; emoji: string; choices: string[] } | null {
+  const category = itemCategory(item);
+  if (!category) return null;
+  const missing = missingSlots(category, item);
+  if (!missing.length) return null;
+  const any = "La que tengan";
+  if (category.id === "leche") {
+    if (missing.length === 1 && missing[0] === "tamano") {
+      return { title: "¿De qué tamaño la leche?", emoji: "🥛", choices: ["1 litro", "2 litros", any] };
+    }
+    if (missing.length === 1 && missing[0] === "tipo") {
+      return { title: "¿Cuál leche?", emoji: "🥛", choices: ["Entera", "Deslactosada", "Light", any] };
+    }
+    if (missing.length === 1 && missing[0] === "marca") {
+      return { title: "¿De qué marca la leche?", emoji: "🥛", choices: ["Lala", "Alpura", "Santa Clara", any] };
+    }
+    return { title: "¿Cuál leche anotamos?", emoji: "🥛", choices: ["Lala entera de 1 litro", "Lala entera de 2 litros", any] };
+  }
+  if (category.id === "refresco") {
+    if (missing.includes("tamano") && !missing.includes("marca")) {
+      return { title: "¿De qué tamaño el refresco?", emoji: "🥤", choices: ["Lata", "600 ml", "2 litros", "Grande", any] };
+    }
+    return { title: "¿Cuál refresco anotamos?", emoji: "🥤", choices: ["Pepsi de 2 litros", "Coca de lata", any] };
+  }
+  if (category.id === "queso") {
+    return { title: "¿Cuál queso anotamos?", emoji: "🧀", choices: ["Lala de kilo", "Caperucita de kilo", any] };
+  }
+  if (category.id === "cerveza") {
+    if (missing.includes("marca") && missing.includes("tamano")) {
+      return { title: "¿Cuál cerveza?", emoji: "🍺", choices: ["Corona caguama", "Victoria media", any] };
+    }
+    if (missing.includes("tamano")) {
+      return { title: "¿De qué presentación la cerveza?", emoji: "🍺", choices: ["Lata", "Media", "Caguama", "Six", any] };
+    }
+    return { title: "¿De qué marca la cerveza?", emoji: "🍺", choices: ["Corona", "Victoria", "Modelo", any] };
+  }
+  if (missing.includes("tamano") && category.sizePhrase) {
+    return { title: `¿De qué tamaño ${category.nombre.toLocaleLowerCase("es-MX")}?`, emoji: "🛒", choices: ["La chica", "La grande", any] };
+  }
+  return { title: `¿Cuál ${category.nombre.toLocaleLowerCase("es-MX")} anotamos?`, emoji: "🛒", choices: [any] };
 }
 
 export function quoteQuestionForItems(items: PedidoItemInput[]): string | null {

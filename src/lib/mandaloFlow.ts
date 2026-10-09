@@ -394,6 +394,16 @@ export async function getLLMResponse(params: {
     }
   }
 
+  let listaAbarrotes_text = "";
+  if (menuCandidato && menuCandidato.usa_catalogo_fijo !== true && Number.isFinite(menuCandidatoId) && menuCandidatoId > 0) {
+    const lista = await pedidoRepositoryV2.getListaProductosSiActiva(menuCandidatoId).catch(() => null);
+    if (lista?.length) {
+      const { listaNamesForPrompt } = await import("@/lib/storeProductList");
+      const names = listaNamesForPrompt(lista, params.userMessage);
+      listaAbarrotes_text = names.length ? names.map((name) => `- ${name}`).join("\n") : "";
+    }
+  }
+
   const model = getOpenAIModel();
   const system = buildMandaloSystemPrompt({
     negociosDisponibles: tiendas_text,
@@ -405,6 +415,7 @@ export async function getLLMResponse(params: {
     horarioMandaloText: `de ${formatHour12(MANDALO_HORA_APERTURA)} a ${formatHour12(MANDALO_HORA_CIERRE)}`,
     menuTiendaCatalogo: menuTiendaCatalogo_text,
     categoriasTienda: categoriasTienda_text,
+    listaAbarrotes: listaAbarrotes_text,
   });
 
   const messages: LlmMessage[] = [

@@ -38,6 +38,10 @@ export type PedidoSnapshot = {
   storeKind?: import("@/lib/categoryCopy").StoreKind | null;
   /** Lo que el cliente ya dijo de productos en este pedido, para no perder un nombre. */
   productMessages?: string[] | null;
+  /** Pregunta de aclaración que se acaba de hacer, para no repetirla. */
+  pendingAsk?: import("@/lib/clarificationAnswers").PendingAsk | null;
+  /** Productos que no estaban en la lista de la tienda y ya se avisó. */
+  listaAvisos?: string[] | null;
   flags?: {
     addressValidated?: boolean;
     itemsValidated?: boolean;
@@ -108,6 +112,8 @@ export type ValidationResult = {
   };
   readyForConfirmation: boolean;
   correccionesSinCambio?: number;
+  pendingAsk?: import("@/lib/clarificationAnswers").PendingAsk | null;
+  listaAvisos?: string[];
 };
 
 export type CaptureInput = {
@@ -139,6 +145,8 @@ export type CaptureInput = {
   catalog?: CatalogPriceRow[] | null;
   // abarrotes | restaurante | carniceria. No se infiere del menú fijo.
   storeKind?: StoreKind | null;
+  // Lista de abarrotes sin precio. No cambia el modo de cotización.
+  storeList?: import("@/lib/storeProductList").ListaProducto[] | null;
   // Pin real de WhatsApp en este turno. Las coordenadas que invente el modelo
   // no cuentan como ubicación.
   pinnedLocation?: { latitude: number; longitude: number } | null;
@@ -173,6 +181,7 @@ export type PedidoRepositoryV2Deps = {
     pedidoId: number;
     items: PedidoItemInput[];
   }): Promise<void>;
+  getListaProductosSiActiva?(tiendaId: number): Promise<import("@/lib/storeProductList").ListaProducto[] | null>;
   appendPedidoEvento(params: {
     pedidoId: number;
     tipoEvento: string;
@@ -192,6 +201,7 @@ export type ValidationEngineDeps = {
     userMessage?: string | null;
     priorItems?: PedidoItemInput[] | null;
     storeKind?: StoreKind | null;
+    lista?: import("@/lib/storeProductList").ListaProducto[] | null;
   }): ValidationResult;
 };
 
@@ -672,6 +682,15 @@ export function createCaptureEngine(deps: CaptureEngineDeps) {
           snapshotForValidation.businessName,
         );
       }
+      let storeList = input.storeList ?? null;
+      if (
+        storeList == null &&
+        input.quoteStore === true &&
+        snapshotForValidation.businessId &&
+        pedidoRepository.getListaProductosSiActiva
+      ) {
+        storeList = await pedidoRepository.getListaProductosSiActiva(snapshotForValidation.businessId).catch(() => null);
+      }
       const validation = validationEngine.validateCaptureForConfirmation({
         snapshot: snapshotForValidation,
         items: itemsForValidation,
@@ -680,6 +699,7 @@ export function createCaptureEngine(deps: CaptureEngineDeps) {
         userMessage: input.userMessage,
         priorItems,
         storeKind: kind,
+        lista: storeList,
       });
 
       if (spoken?.applied) {
@@ -751,6 +771,8 @@ export function createCaptureEngine(deps: CaptureEngineDeps) {
         // sin nombre descartados) para no volver a arrastrar basura en el
         // siguiente turno.
         items: validation.validatedItems.items,
+        pendingAsk: validation.pendingAsk ?? null,
+        listaAvisos: validation.listaAvisos ?? priorSnapshot?.listaAvisos ?? [],
         flags: {
           ...(mergedSnapshot.flags ?? {}),
           addressValidated: Boolean(validation.validatedAddress?.isValid),
