@@ -171,10 +171,13 @@ function canon(word: string): string {
     word === "dogs" ||
     word === "dog" ||
     word === "jotdog" ||
-    word === "jotdogs"
+    word === "jotdogs" ||
+    word === "duos" ||
+    word === "duo"
   ) {
     return "dogo";
   }
+  if (word === "cerdo" || word === "cerdos") return "puerco";
   if (word === "refrescos" || word === "refrezco" || word === "refrezcos") return "refresco";
   if (word === "salchiloco" || word === "salchilokos") return "salchilocos";
   if (word === "pepsis") return "pepsi";
@@ -366,7 +369,17 @@ function nickContinues(rawNick: string, kind: AnchorKind | "brand", families: Fa
 
 function fillerBetween(raw: string): boolean {
   const parts = norm(raw).split(" ").filter(Boolean);
-  return parts.every((word) => FILLER.has(word) || QTY[word] != null);
+  return parts.every((word) => FILLER.has(word) || QTY[word] != null || /^\d{1,2}$/.test(word));
+}
+
+/** «sería una Pepsi y una coca»: la marca trae su propia cantidad y hay otra después. No se traga. */
+function brandKeepsItsOwnQty(text: string, gapStart: number, brandAt: number): boolean {
+  const gap = norm(text.slice(gapStart, brandAt));
+  const hasQty = /\b(?:un|una|uno|otro|otra|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|\d{1,2})\b/.test(gap);
+  if (!hasQty) return false;
+  const later = text.slice(brandAt);
+  const brands = later.match(/\b(?:pepsis?|cocas?|sevens?|sprites?|mirindas?|manzanitas?|manzana)\b/g) ?? [];
+  return brands.length >= 2;
 }
 
 /** Entre «hamburguesa» y «camarón» puede ir el tamaño: «hamburguesa grande de camarón». */
@@ -425,7 +438,7 @@ function productAnchorHits(text: string, families: Family[]): Array<{ index: num
 function spansOf(text: string, families: Family[] = []): Array<{ kind: AnchorKind | null; text: string; qty: number | null; unidad: string | null; presentacion: string | null }> {
   const patterns: Array<{ kind: AnchorKind | "brand"; re: RegExp }> = [
     { kind: "hamburguesa", re: /\b(?:hamburguesas?|amburguesas?|hamburgesas?)\b/g },
-    { kind: "dogo", re: /\b(?:jot\s*dogs?|hot\s*dogs?|hotdogs?|jotdogs?|dogos?|dogs?|dogo)\b/g },
+    { kind: "dogo", re: /\b(?:jot\s*dogs?|hot\s*dogs?|hotdogs?|jotdogs?|dogos?|dogs?|duos?|dogo)\b/g },
     { kind: "refresco", re: /\b(?:refrescos?|refrezcos?)\b/g },
     { kind: "brand", re: /\b(pepsis?|cocas?|sevens?|sprites?|mirindas?|manzanitas?|manzana)\b/g },
   ];
@@ -448,7 +461,8 @@ function spansOf(text: string, families: Family[] = []): Array<{ kind: AnchorKin
     if (
       hit.kind === "brand" &&
       prev?.kind === "refresco" &&
-      fillerBetween(text.slice(prev.end, hit.index))
+      fillerBetween(text.slice(prev.end, hit.index)) &&
+      !brandKeepsItsOwnQty(text, prev.end, hit.index)
     ) {
       continue;
     }
@@ -571,6 +585,32 @@ function dropDrinkIntroducers(lines: SpokenLine[]): SpokenLine[] {
 function sizeIn(text: string): string | null {
   for (const word of norm(text).split(" ").filter(Boolean)) {
     const folded = SIZE_FOLD[word];
+    if (folded) return folded;
+  }
+  return null;
+}
+
+const STYLE_FOLD: Record<string, string> = {
+  clasico: "clasico",
+  clasicos: "clasico",
+  clasica: "clasico",
+  clasicas: "clasico",
+  hawaiano: "hawaiano",
+  hawaianos: "hawaiano",
+  hawaiana: "hawaiana",
+  hawaianas: "hawaiana",
+  cubano: "cubano",
+  cubanos: "cubano",
+  cubana: "cubana",
+  cubanas: "cubana",
+  argentino: "argentino",
+  argentinos: "argentino",
+  argentina: "argentino",
+};
+
+function styleIn(text: string): string | null {
+  for (const word of norm(text).split(" ").filter(Boolean)) {
+    const folded = STYLE_FOLD[word];
     if (folded) return folded;
   }
   return null;
@@ -974,6 +1014,12 @@ function sameFamily(item: CatalogSpeechItem, line: SpokenLine): boolean {
   const itemBrand = canon(norm(String(item.marca ?? "")));
   const lineBrand = canon(norm(String(line.marca ?? "")));
   if (itemBrand && lineBrand && itemBrand !== lineBrand) return false;
+  const itemSize = sizeIn(item.nombre_producto);
+  const lineSize = sizeIn(line.nombre);
+  if (itemSize && lineSize && itemSize !== lineSize) return false;
+  const itemStyle = styleIn(item.nombre_producto);
+  const lineStyle = styleIn(line.nombre);
+  if (itemStyle && lineStyle && itemStyle !== lineStyle) return false;
   return matched;
 }
 
@@ -1137,6 +1183,333 @@ function uncoveredQuestion(
   return `¿Te refieres a ${missing.map((token) => titleWord(token)).join(" ")}?`;
 }
 
+function uniqueFolded(text: string, re: RegExp, fold: (word: string) => string): Set<string> {
+  const found = new Set<string>();
+  for (const match of text.matchAll(re)) found.add(fold(match[0]));
+  return found;
+}
+
+function sizesMentioned(text: string): Set<string> {
+  return uniqueFolded(
+    text,
+    /\b(?:chicas?|chicos?|grandes?|medianas?|medianos?|sencillas?|sencillos?|dobles?|triples?)\b/g,
+    (word) => SIZE_FOLD[word] ?? word,
+  );
+}
+
+function stylesMentioned(text: string): Set<string> {
+  return uniqueFolded(
+    text,
+    /\b(?:clasic[oa]s?|hawaian[oa]s?|cuban[oa]s?|argentin[oa]s?)\b/g,
+    (word) => STYLE_FOLD[word] ?? canon(word),
+  );
+}
+
+function brandsMentioned(text: string): Set<string> {
+  return uniqueFolded(text, /\b(?:pepsis?|cocas?|sevens?|sprites?|mirindas?|manzanitas?|manzana)\b/g, (word) => canon(word));
+}
+
+/** Dos tamaños, dos estilos o dos marcas en el mismo mensaje: hay que partir, no heredar la cantidad. */
+function isSplitAnswer(text: string): boolean {
+  if (sizesMentioned(text).size >= 2) return true;
+  if (stylesMentioned(text).size >= 2) return true;
+  if (brandsMentioned(text).size >= 2) return true;
+  if (/\b(?:cerdo|puerco)\b/.test(text) && /\b(?:res|bistec)\b/.test(text)) return true;
+  if (/\bcasa\b/.test(text) && /\b(?:chorizo|argentino)\b/.test(text)) return true;
+  return false;
+}
+
+type BareVariant = { qty: string; kind: "size" | "style" | "meat" | "casa"; value: string };
+
+function bareVariant(clause: string): BareVariant | null {
+  const n = norm(clause).trim();
+  const sized = n.match(
+    /^(?:(?:la|el|los|las)\s+)?(un|una|uno|otro|otra|otros|otras|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|\d+)\s+(chica|chico|grande|mediana|mediano|sencilla|sencillo|doble|triple|clasico|clasica|hawaiano|hawaiana|cubano|cubana|argentino|argentina)s?$/,
+  );
+  if (sized) {
+    const value = SIZE_FOLD[sized[2]] ?? STYLE_FOLD[sized[2]] ?? canon(sized[2]);
+    const kind = SIZE_FOLD[sized[2]] ? "size" : "style";
+    return { qty: sized[1], kind, value };
+  }
+  const meat = n.match(/^(?:(?:la|el)\s+)?(medio|un|una|uno|otro|otra|\d+)\s+de\s+(cerdo|puerco|res|pollo|camaron)$/);
+  if (meat) return { qty: meat[1], kind: "meat", value: meat[2] === "cerdo" ? "puerco" : meat[2] };
+  const casa = n.match(/^(?:(?:la|el)\s+)?(un|una|uno|otro|otra|\d+)\s+de\s+la\s+casa$/);
+  if (casa) return { qty: casa[1], kind: "casa", value: "casa" };
+  return null;
+}
+
+function stemFromClause(clause: string): { phrase: string; unit: "kilo" | null } | null {
+  const n = norm(clause);
+  const unit = /\b(?:kilos?|kg|medio)\b/.test(n) ? "kilo" : null;
+  if (/\bmar y tierra\b/.test(n)) return { phrase: "hamburguesa mar y tierra", unit };
+  if (/\bhamburguesas?\b/.test(n)) {
+    const protein = n.match(/\bde\s+(res|pollo|camaron|arrachera)\b/);
+    if (protein) return { phrase: `hamburguesa de ${protein[1]}`, unit };
+    if (/\bhawaiana\b/.test(n)) return { phrase: "hamburguesa hawaiana", unit };
+    if (/\bcubana\b/.test(n)) return { phrase: "hamburguesa cubana", unit };
+    return { phrase: "hamburguesa", unit };
+  }
+  if (/\b(?:duos?|dogos?|dogs?|hot\s*dogs?|jot\s*dogs?|dogo)\b/.test(n)) return { phrase: "dogo", unit };
+  if (/\bbistecs?\b/.test(n)) {
+    const meat = n.match(/\bde\s+(res|puerco|cerdo|pollo)\b/);
+    const protein = meat ? (meat[1] === "cerdo" ? "puerco" : meat[1]) : "";
+    return { phrase: protein ? `bistec de ${protein}` : "bistec", unit: unit ?? "kilo" };
+  }
+  if (/\bchorizos?\b/.test(n)) {
+    if (/\bargentino\b/.test(n)) return { phrase: "chorizo argentino", unit: unit ?? "kilo" };
+    return { phrase: "chorizo", unit: unit ?? "kilo" };
+  }
+  if (/\barrachera\b/.test(n)) return { phrase: "arrachera", unit: unit ?? "kilo" };
+  return null;
+}
+
+function stemFromPending(base: CatalogSpeechItem[], families: Family[]): { phrase: string; unit: "kilo" | null } | null {
+  const open = base.filter((item) => {
+    if (sizeIn(item.nombre_producto)) return false;
+    const family = familyForItem(item, families);
+    return Boolean(family && family.sizes.length > 1);
+  });
+  if (open.length !== 1) return null;
+  const item = open[0];
+  return stemFromClause(item.nombre_producto) ?? {
+    phrase: stripSize(item.nombre_producto),
+    unit: item.unidad === "kilo" ? "kilo" : null,
+  };
+}
+
+function renderBare(bare: BareVariant, phrase: string, unit: "kilo" | null): string {
+  if (bare.kind === "size") return `${bare.qty} ${phrase} ${bare.value}`.replace(/\s+/g, " ").trim();
+  if (bare.kind === "style") {
+    const head = phrase.replace(/\s+argentino$/, "").split(" de ")[0] || phrase;
+    const kilo = unit === "kilo" ? " kilo de" : "";
+    return `${bare.qty}${kilo} ${head} ${bare.value}`.replace(/\s+/g, " ").trim();
+  }
+  if (bare.kind === "meat") {
+    const head = phrase.split(" de ")[0] || phrase;
+    if (bare.qty === "medio") return `medio kilo de ${head} de ${bare.value}`;
+    const kilo = unit === "kilo" ? " kilo de" : "";
+    return `${bare.qty}${kilo} ${head} de ${bare.value}`.replace(/\s+/g, " ").trim();
+  }
+  const head = phrase.replace(/\s+argentino$/, "").split(" de ")[0] || phrase;
+  const kilo = unit === "kilo" ? " kilo de" : "";
+  return `${bare.qty}${kilo} ${head}`.replace(/\s+/g, " ").trim();
+}
+
+const BARE_TAIL =
+  /\b((?:la\s+|el\s+)?(?:un|una|uno|otro|otra|otros|otras|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|\d+|medio)\s+(?:de\s+la\s+casa|de\s+(?:cerdo|puerco|pollo|camaron)|de\s+res\s+(?:chicas?|chicos?|grandes?|medianas?)|(?:chicas?|chicos?|grandes?|medianas?|medianos?|sencillas?|sencillos?|dobles?|triples?|clasic[oa]s?|hawaian[oa]s?|cuban[oa]s?|argentin[oa]s?)))\b/g;
+
+/**
+ * «una chica y una grande» no trae el nombre otra vez. Se le pega el producto
+ * de la frase anterior (o de la única línea que todavía no tiene tamaño)
+ * para que cada variante sea su propia línea. La coma ya se volvió espacio
+ * en norm(), así que el corte es la cola «una chica», no la puntuación.
+ */
+function expandBareVariants(text: string, base: CatalogSpeechItem[], families: Family[]): string {
+  const split = isSplitAnswer(text);
+  if (!split && !/\b(?:medio|un|una|uno|otro|otra)\s+de\s+(?:cerdo|puerco)\b/.test(text)) return text;
+  const pending = stemFromPending(base, families);
+  let stem = pending?.phrase ?? null;
+  let unit: "kilo" | null = pending?.unit ?? null;
+  let cursor = 0;
+  let out = "";
+  for (const match of text.matchAll(BARE_TAIL)) {
+    if (match.index == null) continue;
+    const prefix = text.slice(cursor, match.index);
+    const found = stemFromClause(prefix);
+    if (found) {
+      stem = found.phrase;
+      if (found.unit) unit = found.unit;
+    } else if (/\bde\s+res\b/.test(prefix) && !/\bhamburguesas?\b/.test(prefix)) {
+      stem = "hamburguesa de res";
+    } else if (/\bmar y tierra\b/.test(prefix)) {
+      stem = "hamburguesa mar y tierra";
+    }
+    const tail = match[1];
+    const partial = tail.match(/^(.*?)\s+de\s+res\s+(chica|chico|grande|mediana)s?$/);
+    if (partial) {
+      out += `${prefix}${partial[1]} hamburguesa de res ${SIZE_FOLD[partial[2]] ?? partial[2]}`;
+      stem = "hamburguesa de res";
+      cursor = match.index + match[0].length;
+      continue;
+    }
+    const bare = bareVariant(tail) ?? bareVariant(tail.replace(/s$/, ""));
+    const sawProduct = stemFromClause(prefix) != null || (stem != null && stemFromClause(prefix.slice(Math.max(0, prefix.length - 40))) != null);
+    const expand = Boolean(bare && stem && (bare.kind === "meat" ? sawProduct || stemFromClause(text.slice(0, match.index)) != null : split));
+    if (!bare || !stem || !expand) {
+      out += prefix + tail;
+      cursor = match.index + match[0].length;
+      continue;
+    }
+    out += prefix + renderBare(bare, stem, bare.kind === "size" ? null : unit);
+    cursor = match.index + match[0].length;
+  }
+  return out + text.slice(cursor);
+}
+
+function qtyBeforeToken(text: string, token: string): number | null {
+  const aliases: Record<string, string> = {
+    chica: "chicas?|chicos?",
+    chico: "chicos?|chicas?",
+    grande: "grandes?",
+    mediana: "medianas?|medianos?",
+    mediano: "medianos?|medianas?",
+    sencilla: "sencillas?|sencillos?",
+    sencillo: "sencillos?|sencillas?",
+    doble: "dobles?",
+    triple: "triples?",
+    clasico: "clasic[oa]s?",
+    hawaiano: "hawaianos?",
+    hawaiana: "hawaianas?",
+    cubano: "cubanos?",
+    cubana: "cubanas?",
+    argentino: "argentin[oa]s?",
+    pepsi: "pepsis?",
+    coca: "cocas?",
+    manzana: "manzanitas?|manzanas?",
+    seven: "sevens?",
+    mirinda: "mirindas?",
+    sprite: "sprites?",
+    puerco: "puercos?|cerdos?",
+  };
+  const pattern = aliases[token] ?? `${token}s?`;
+  const hit = new RegExp(`\\b(?:${pattern})\\b`).exec(norm(text));
+  if (!hit || hit.index == null) return null;
+  const before = norm(text).slice(0, hit.index).trim().split(" ").filter(Boolean);
+  for (let i = before.length - 1; i >= 0 && i >= before.length - 4; i--) {
+    const word = before[i];
+    if (QTY[word] != null) return QTY[word];
+    if (/^\d{1,2}$/.test(word)) {
+      const parsed = Number(word);
+      if (parsed >= 1 && parsed <= 30) return parsed;
+    }
+    if (word === "medio") return 0.5;
+  }
+  return null;
+}
+
+function variantToken(line: SpokenLine): string | null {
+  if (line.marca) {
+    const brand = canon(norm(line.marca));
+    if (BRANDS.includes(brand)) return brand;
+  }
+  const size = sizeIn(line.nombre);
+  if (size) return size === "chico" ? "chica" : size === "mediano" ? "mediana" : size === "sencillo" ? "sencilla" : size;
+  const style = styleIn(line.nombre);
+  if (style) return style;
+  if (/\bpuerco\b/.test(norm(line.nombre)) && /\bcerdo\b/.test(norm(line.nombre)) === false) {
+    return "puerco";
+  }
+  return null;
+}
+
+function tokenIsSplit(text: string, token: string): boolean {
+  if (SIZE_WORDS.includes(token) || Boolean(SIZE_FOLD[token])) return sizesMentioned(text).size >= 2;
+  if (BRANDS.includes(token)) return brandsMentioned(text).size >= 2;
+  if (STYLE_FOLD[token] || ["clasico", "hawaiano", "hawaiana", "cubano", "cubana", "argentino"].includes(token)) {
+    return stylesMentioned(text).size >= 2;
+  }
+  return false;
+}
+
+/** En «sería una chica y una grande», el «una» de cada variante es la cantidad. No se hereda la anterior. */
+function markSplitQuantities(lines: SpokenLine[], text: string): SpokenLine[] {
+  if (!isSplitAnswer(text)) return lines;
+  return lines.map((line) => {
+    const token = variantToken(line);
+    if (!token || !tokenIsSplit(text, token)) return line;
+    const qty = qtyBeforeToken(text, token);
+    if (qty == null) return line;
+    return {
+      ...line,
+      cantidad: qty,
+      qtyExplicit: true,
+      gaps: line.gaps.filter((gap) => gap !== "cantidad"),
+    };
+  });
+}
+
+function statedBurgerMismatch(text: string, lines: SpokenLine[]): string | null {
+  const said = norm(text);
+  const totalWord = said.match(/\b(un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|\d+)\s+hamburguesas?\b/);
+  if (!totalWord || sizesMentioned(said).size < 2) return null;
+  const total = qtyWord(totalWord[1]);
+  if (total == null || totalWord.index == null) return null;
+  // «una hamburguesa de pollo grande y la otra chica»: ese «una» es de la grande.
+  const after = said.slice(totalWord.index + totalWord[0].length);
+  if (total === 1 && /^(?:\s+de\s+[a-z]+){0,3}\s+(?:chicas?|chicos?|grandes?|medianas?|medianos?|sencillas?|sencillos?)\b/.test(after)) {
+    return null;
+  }
+  const sized = lines.filter((line) => /hamburguesa/.test(`${line.familyKey} ${line.nombre}`) && sizeIn(line.nombre));
+  if (sized.length < 2) return null;
+  const sum = sized.reduce((acc, line) => acc + (typeof line.cantidad === "number" ? line.cantidad : 1), 0);
+  if (Math.abs(sum - total) < 0.001) return null;
+  return `¿Te refieres a ${sized.map((line) => `${line.cantidad ?? 1} ${line.nombre}`).join(" y ")}?`;
+}
+
+function reconcileVariants(lines: SpokenLine[]): { lines: SpokenLine[]; ask: string | null } {
+  const groups = new Map<string, SpokenLine[]>();
+  for (const line of lines) {
+    const key = line.familyKey || stripSize(line.nombre);
+    const list = groups.get(key) ?? [];
+    list.push(line);
+    groups.set(key, list);
+  }
+  const drop = new Set<SpokenLine>();
+  const asks: string[] = [];
+  for (const group of groups.values()) {
+    const sized = group.filter((line) => sizeIn(line.nombre) && !line.gaps.includes("tipo"));
+    const unsized = group.filter((line) => !sizeIn(line.nombre) && !line.marca && !line.gaps.includes("tipo"));
+    if (sized.length < 2 || unsized.length < 1) continue;
+    for (const line of unsized) drop.add(line);
+    const stated = unsized.filter((line) => line.qtyExplicit && typeof line.cantidad === "number");
+    if (!stated.length) continue;
+    const total = stated[0].cantidad ?? 0;
+    const sum = sized.reduce((acc, line) => acc + (typeof line.cantidad === "number" ? line.cantidad : 1), 0);
+    if (Math.abs(sum - total) > 0.001) {
+      const labels = sized.map((line) => `${line.cantidad ?? 1} ${line.nombre}`).join(" y ");
+      asks.push(`¿Te refieres a ${labels}?`);
+    }
+  }
+  const drinks = lines.filter((line) => isDrinkLine(line));
+  const branded = drinks.filter((line) => line.marca);
+  const plain = drinks.filter((line) => !line.marca);
+  if (branded.length >= 2 && plain.length === 1 && plain[0].qtyExplicit && typeof plain[0].cantidad === "number") {
+    const total = plain[0].cantidad;
+    const sum = branded.reduce((acc, line) => acc + (typeof line.cantidad === "number" ? line.cantidad : 1), 0);
+    if (Math.abs(sum - total) > 0.001) {
+      const labels = branded.map((line) => `${line.cantidad ?? 1} ${line.marca}`).join(" y ");
+      asks.push(`¿Te refieres a ${labels}?`);
+    }
+  }
+  return { lines: lines.filter((line) => !drop.has(line)), ask: asks.join(" ") || null };
+}
+
+function uniqueAsks(parts: Array<string | null | undefined>): string | null {
+  const seen = new Set<string>();
+  const kept: string[] = [];
+  for (const part of parts) {
+    const text = part?.trim();
+    if (!text) continue;
+    const key = norm(text);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    kept.push(text);
+  }
+  return kept.join(" ") || null;
+}
+
+function dedupeSentences(text: string): string {
+  const seen = new Set<string>();
+  const kept: string[] = [];
+  for (const part of text.split(/(?<=\.)\s+/)) {
+    const key = norm(part);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    kept.push(part.trim());
+  }
+  return kept.join(" ");
+}
+
 export function applyCatalogSpeech(params: {
   base: CatalogSpeechItem[];
   userMessage: string;
@@ -1144,7 +1517,8 @@ export function applyCatalogSpeech(params: {
 }): CatalogSpeechResult {
   const base = params.base.map((item) => ({ ...item }));
   const families = familiesOf(params.catalog);
-  const text = prefixPendingHeads(norm(stripBotDecorations(params.userMessage)), base, families);
+  const source = prefixPendingHeads(norm(stripBotDecorations(params.userMessage)), base, families);
+  const text = expandBareVariants(source, base, families);
   if (!text || !families.length) return { applied: false, missing: false, items: base, reply: null, question: null, aside: null };
 
   for (const item of base) {
@@ -1152,8 +1526,8 @@ export function applyCatalogSpeech(params: {
     if (family && isBrandListDrink(family)) item.nombre_producto = "Refresco";
   }
 
-  const fromAnchors = interpretText(text, families, text);
-  const sizeLine = sizeFollowUp(base, text, families);
+  const fromAnchors = interpretText(text, families, source);
+  const sizeLine = isSplitAnswer(source) ? null : sizeFollowUp(base, source, families);
   const combined =
     sizeLine && !fromAnchors.some((line) => line.familyKey === sizeLine.familyKey && !line.gaps.includes("tamano"))
       ? [sizeLine, ...fromAnchors]
@@ -1162,8 +1536,12 @@ export function applyCatalogSpeech(params: {
         : sizeLine
           ? [sizeLine]
           : [];
-  const spoken = dropDrinkIntroducers(combined);
-  const aside = noticeFor(text, spoken, families);
+  const marked = markSplitQuantities(combined, source);
+  const reconciled = reconcileVariants(marked);
+  const totalAsk = statedBurgerMismatch(source, reconciled.lines);
+  const splitAsk = uniqueAsks([reconciled.ask, totalAsk]);
+  const spoken = dropDrinkIntroducers(reconciled.lines);
+  const aside = noticeFor(source, spoken, families);
   if (!spoken.length && !aside) return { applied: false, missing: false, items: base, reply: null, question: null, aside: null };
   if (!spoken.length) return { applied: true, missing: true, items: base, reply: aside, question: aside, aside };
 
@@ -1244,11 +1622,12 @@ export function applyCatalogSpeech(params: {
   ];
 
   const hole = questionFor(open, items.length);
-  const uncovered = uncoveredQuestion(text, items, hole, aside);
-  const question = [hole, uncovered, aside].filter(Boolean).join(" ") || null;
+  const uncovered = uncoveredQuestion(source, items, hole, aside);
+  const question = dedupeSentences([hole, uncovered, splitAsk, aside].filter(Boolean).join(" ")) || null;
   const missing =
     open.some((line) => line.gaps.length) ||
     Boolean(uncovered) ||
+    Boolean(splitAsk) ||
     items.some((item) => norm(item.notas ?? "") === "falta tipo");
   const shown = items.filter((item) => norm(item.notas ?? "") !== "falta tipo");
   const reply = shown.length
@@ -1266,6 +1645,24 @@ const OFF_MENU_NOISE = new Set<string>([
   "marinda",
   "marinada",
   "marinado",
+  "bien",
+  "pedido",
+  "todo",
+  "asi",
+  "listo",
+  "correcto",
+  "perfecto",
+  "gracias",
+  "vien",
+  "okey",
+  "sale",
+  "simon",
+  "andale",
+  "mero",
+  "otra",
+  "otro",
+  "otras",
+  "otros",
 ]);
 
 function titleWord(word: string): string {

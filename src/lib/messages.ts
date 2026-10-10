@@ -229,7 +229,7 @@ export type ProductListReplyKind = "confirm" | "cancel" | "revise" | "relist" | 
 export function classifyProductListReply(text: string): ProductListReplyKind {
   if (isProductListRequest(text)) return "relist";
   if (isBareOrderRejection(text)) return "cancel";
-  if (isYesConfirmation(text)) return "confirm";
+  if (isYesConfirmation(text) || isProductListYes(text)) return "confirm";
   if (messageCorrectsOrder(text)) return "revise";
   return "ignore";
 }
@@ -253,6 +253,85 @@ export function isYesConfirmation(text: string): boolean {
   return /^(si|ok|va|confirmo|confirmar|dale|de acuerdo|visto bueno|si estan bien|si esta bien|si asi esta bien|asi esta bien|si todo bien|si correcto|correcto|si ya)$/.test(
     core,
   );
+}
+
+const PRODUCT_LIST_YES_FILLER = new Set([
+  "mi", "pedido", "todo", "asi", "bien", "esta", "estan", "ya", "eso", "es", "el", "la", "los", "las",
+  "productos", "producto", "lista", "gracias", "porfa", "por", "favor", "que", "de", "acuerdo", "muy",
+  "mero", "dejalo", "dejala", "anda", "andale",
+]);
+
+const PRODUCT_LIST_YES_ROOTS = new Set([
+  "si", "sip", "simon", "ok", "okey", "va", "sale", "ya", "listo", "asi", "correcto", "perfecto",
+  "dale", "andale", "confirmo", "confirmar", "acuerdo",
+]);
+
+function productListYesDistance(left: string, right: string): number {
+  if (Math.abs(left.length - right.length) > 2) return 3;
+  const prev = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= left.length; i++) {
+    let corner = prev[0];
+    prev[0] = i;
+    for (let j = 1; j <= right.length; j++) {
+      const upper = prev[j];
+      const cost = left[i - 1] === right[j - 1] ? 0 : 1;
+      prev[j] = Math.min(prev[j] + 1, prev[j - 1] + 1, corner + cost);
+      corner = upper;
+    }
+  }
+  return prev[right.length];
+}
+
+function foldProductListYesToken(token: string): string {
+  const collapsed = token.replace(/(.)\1{2,}/g, "$1");
+  if (/^si+$/.test(collapsed)) return "si";
+  if (collapsed === "vien" || collapsed === "bn" || collapsed === "bine") return "bien";
+  if (collapsed === "ta" || collapsed === "sta") return "esta";
+  if (collapsed === "okey" || collapsed === "okay") return "ok";
+  if (collapsed === "simon" || collapsed === "simón") return "simon";
+  if (collapsed === "andale" || collapsed === "andalee") return "andale";
+  return collapsed;
+}
+
+/**
+ * Sí de la lista de productos, más amplio que el del ticket final.
+ * «Si está bien mi pedido» confirma la lista. El precio final sigue con
+ * isYesConfirmation, que no se afloja aquí.
+ */
+export function isProductListYes(text: string): boolean {
+  const raw = String(text ?? "").trim();
+  if (!raw) return false;
+  if (/[?¿]/.test(raw) || QUESTION_WORDS_REGEX.test(raw)) return false;
+  if (messageCorrectsOrder(raw) || isBareOrderRejection(raw)) return false;
+
+  const stripped = raw.replace(/\p{Extended_Pictographic}/gu, " ").replace(/[¡!.,;:]+/g, " ").trim();
+  if (!stripped) return false;
+  const core = normalizeMessageIntentText(stripped)
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\b(por favor|porfa|gracias)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!core || /^no\b/.test(core)) return false;
+  if (/\d/.test(core)) return false;
+
+  const tokens = core.split(" ").filter(Boolean).map(foldProductListYesToken);
+  if (!tokens.length) return false;
+  const known = (token: string) =>
+    PRODUCT_LIST_YES_FILLER.has(token) ||
+    PRODUCT_LIST_YES_ROOTS.has(token) ||
+    (token.length >= 4 &&
+      [...PRODUCT_LIST_YES_FILLER, ...PRODUCT_LIST_YES_ROOTS].some(
+        (word) => word.length >= 4 && productListYesDistance(token, word) <= 1,
+      ));
+  if (tokens.some((token) => !known(token))) return false;
+
+  const roots = tokens.filter((token) => PRODUCT_LIST_YES_ROOTS.has(token));
+  if (roots.length) return true;
+  const hasBien = tokens.includes("bien");
+  if (hasBien && tokens.some((token) => token === "esta" || token === "estan" || token === "todo" || token === "asi" || token === "pedido")) {
+    return true;
+  }
+  return tokens.includes("todo") && tokens.some((token) => token === "es" || token === "eso");
 }
 
 export type OrderingGateStep = "product_list" | "final_ticket";

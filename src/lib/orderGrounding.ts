@@ -418,7 +418,7 @@ function menuTokenMatches(said: string, token: string): boolean {
 }
 
 function roughCanon(word: string): string {
-  if (["dogs", "dog", "dogos", "dogo", "hotdog", "hotdogs", "jotdog", "jotdogs"].includes(word)) return "dogo";
+  if (["dogs", "dog", "dogos", "dogo", "hotdog", "hotdogs", "jotdog", "jotdogs", "duo", "duos"].includes(word)) return "dogo";
   if (word === "hawaianos" || word === "hawaiano" || word === "awaiano" || word === "awaianos") return "hawaiano";
   if (word === "hawaianas" || word === "awaiana") return "hawaiana";
   if (word === "refrezco" || word === "refrezcos" || word === "refrescos") return "refresco";
@@ -682,6 +682,119 @@ function absorbModelReading(params: {
   return { items, note, assistedNames, aside: dropRefusal(params.aside, cleared) };
 }
 
+function sizeTokenOf(name: string): string | null {
+  const match = norm(name).match(/\b(chica|chico|grande|mediana|mediano|sencilla|sencillo|doble|triple)\b/);
+  if (!match) return null;
+  if (match[1] === "chico") return "chica";
+  if (match[1] === "mediano") return "mediana";
+  if (match[1] === "sencillo") return "sencilla";
+  return match[1];
+}
+
+function readingFamily(item: PedidoItemInput): string {
+  const name = withoutSizeWords(item.nombre_producto);
+  if (name === "refresco" || name.startsWith("refresco ")) return "refresco";
+  return name;
+}
+
+function readingSignature(item: PedidoItemInput): string {
+  return `${readingFamily(item)}|${sizeTokenOf(item.nombre_producto) ?? ""}|${norm(item.marca ?? "")}`;
+}
+
+function distinctiveToken(item: PedidoItemInput): string | null {
+  const brand = norm(item.marca ?? "");
+  if (brand && brand !== "la que sea") return brand === "manzanita" ? "manzana" : brand;
+  return sizeTokenOf(item.nombre_producto);
+}
+
+function qtyBeside(message: string, token: string): number | null {
+  const aliases: Record<string, string> = {
+    chica: "chicas?|chicos?",
+    grande: "grandes?",
+    mediana: "medianas?|medianos?",
+    sencilla: "sencillas?|sencillos?",
+    doble: "dobles?",
+    triple: "triples?",
+    pepsi: "pepsis?",
+    coca: "cocas?",
+    manzana: "manzanitas?|manzanas?",
+    seven: "sevens?",
+    mirinda: "mirindas?",
+    sprite: "sprites?",
+  };
+  const hit = new RegExp(`\\b(?:${aliases[token] ?? `${token}s?`})\\b`).exec(norm(message));
+  if (!hit || hit.index == null) return null;
+  const before = norm(message).slice(0, hit.index).trim().split(" ").filter(Boolean);
+  for (let i = before.length - 1; i >= 0 && i >= before.length - 4; i--) {
+    const word = before[i];
+    if (QTY_WORDS[word] != null) return QTY_WORDS[word];
+    if (/^\d{1,2}$/.test(word)) {
+      const parsed = Number(word);
+      if (parsed >= 1 && parsed <= 30) return parsed;
+    }
+  }
+  return null;
+}
+
+function tokenSaid(message: string, token: string): boolean {
+  const text = norm(message);
+  if (token === "manzana") return /\bmanzanitas?\b|\bmanzanas?\b/.test(text);
+  if (token === "coca") return /\bcocas?\b/.test(text);
+  if (token === "pepsi") return /\bpepsis?\b/.test(text);
+  if (token === "chica") return /\bchicas?\b|\bchicos?\b/.test(text);
+  if (token === "grande") return /\bgrandes?\b/.test(text);
+  return new RegExp(`\\b${token}s?\\b`).test(text);
+}
+
+/**
+ * Si nuestra lectura juntó «una chica y una grande» en una sola línea y el
+ * modelo las trae separadas, se queda la del modelo. Cada variante tiene que
+ * estar dicha en el mensaje: no se inventa una.
+ */
+function restoreSplitReading(
+  items: PedidoItemInput[],
+  incoming: PedidoItemInput[],
+  message: string,
+  catalog: CatalogPriceRow[],
+): PedidoItemInput[] {
+  if (!catalog.length || incoming.length < 2) return items;
+  const groups = new Map<string, PedidoItemInput[]>();
+  for (const raw of incoming) {
+    const mapped = asMenuItem(raw, catalog);
+    if (!mapped) continue;
+    const token = distinctiveToken(mapped);
+    if (!token || !tokenSaid(message, token)) continue;
+    const key = readingFamily(mapped);
+    const list = groups.get(key) ?? [];
+    if (!list.some((prev) => readingSignature(prev) === readingSignature(mapped))) list.push(mapped);
+    groups.set(key, list);
+  }
+  let next = items.map((item) => ({ ...item }));
+  for (const [key, variants] of groups) {
+    const spoken = variants.filter((item) => {
+      const token = distinctiveToken(item);
+      return Boolean(token && tokenSaid(message, token));
+    });
+    if (spoken.length < 2) continue;
+    const signatures = new Set(spoken.map(readingSignature));
+    if (signatures.size < 2) continue;
+    const withQty = spoken.map((item) => {
+      const token = distinctiveToken(item);
+      const heard = token ? qtyBeside(message, token) : null;
+      return { ...item, cantidad: heard ?? 1 };
+    });
+    const det = next.filter((item) => readingFamily(item) === key);
+    const missing = withQty.some((item) => !det.some((row) => sameMenuRow(row, item)));
+    const qtyOff = withQty.some((item) => {
+      const row = det.find((prev) => sameMenuRow(prev, item));
+      return !row || row.cantidad !== item.cantidad;
+    });
+    if (!missing && !qtyOff && det.length === withQty.length) continue;
+    next = [...next.filter((item) => readingFamily(item) !== key), ...withQty];
+  }
+  return next;
+}
+
 function listQuestion(note: string | null): string | null {
   const parts = [note?.trim(), "¿Están bien estos productos?"].filter(Boolean);
   return parts.join("\n") || null;
@@ -731,7 +844,7 @@ export function assembleCapturedItems(params: {
       catalog,
       aside: [edited.note, spoken?.aside].filter(Boolean).join(" ") || null,
     });
-    const kept = enforceMenuLines(absorbed.items, catalog, prior);
+    const kept = restoreSplitReading(enforceMenuLines(absorbed.items, catalog, prior), incoming, message, catalog);
     const pending = kept.some((item) => norm(item.notas ?? "") === "falta tipo");
     const missing =
       pending ||
@@ -761,7 +874,7 @@ export function assembleCapturedItems(params: {
       const asideOnly = spoken.missing && spoken.aside != null && spoken.question === spoken.aside;
       const absorbed = absorbModelReading({ items: dropped, incoming, prior, userMessage: message, catalog, aside: spoken.aside });
       const resolved = asideOnly && absorbed.assistedNames.length > 0;
-      const kept = enforceMenuLines(absorbed.items, catalog, prior);
+      const kept = restoreSplitReading(enforceMenuLines(absorbed.items, catalog, prior), incoming, message, catalog);
       const pending = kept.some((item) => norm(item.notas ?? "") === "falta tipo");
       const missing = pending || (spoken.missing && !resolved);
       const note = [absorbed.note, absorbed.aside].filter(Boolean).join("\n") || null;

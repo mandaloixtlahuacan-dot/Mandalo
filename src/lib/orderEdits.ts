@@ -283,6 +283,22 @@ export function planCustomerEdits(message: string): EditPlan {
     },
   );
 
+  rest = blank(
+    rest,
+    new RegExp(
+      `\\b(?:${REMOVE_VERB})\\s+((?:el |la |los |las |un |una |al )?(?:(?!\\b(?:y|tambien|ademas|nomas|solo|solamente|quiero|dejalo|dejala)\\b)[a-z0-9]+)(?:\\s+(?!\\b(?:y|tambien|ademas|nomas|solo|solamente|quiero|dejalo|dejala)\\b)[a-z0-9]+){0,6})\\s+(?:(?:nomas|solo|solamente)\\s+quiero(?:\\s+debes\\s+de\\s+\\d+)?(?:\\s+quiero)?\\s+(un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|\\d+)|de\\s+\\d+\\s+quiero\\s+(un|una|uno|dos|tres|cuatro|cinco|\\d+)|(?:dejalo|dejala)\\s+en\\s+(un|una|uno|dos|tres|cuatro|cinco|\\d+)|(?:solo|solamente|nomas)\\s+(un|una|uno|\\d+))\\b`,
+      "g",
+    ),
+    (match) => {
+      const target = match[1]?.trim();
+      const rawQty = match[2] || match[3] || match[4] || match[5];
+      if (!target || !rawQty) return;
+      if (!removalTokens(target).some((token) => token !== "pedido" && token !== "nada")) return;
+      const parsed = qtyOf(rawQty);
+      ops.push({ kind: "setQty", target, qty: parsed.qty, unit: parsed.unit });
+    },
+  );
+
   rest = blank(rest, removalRegex(), (match) => {
     const target = match[1]?.trim();
     if (target && removalTokens(target).some((token) => token !== "pedido" && token !== "nada")) {
@@ -310,7 +326,7 @@ export function planCustomerEdits(message: string): EditPlan {
 
   rest = blank(
     rest,
-    /\b(?:agregale|ponle|sumale|echale|metele)\s+otr[ao]s?(?:\s+(?:dos|tres|cuatro|cinco|\d+))?\s+(?:(?:kilos?|kg|gramos?)\s+)?(?:de\s+)?([a-z][a-z0-9]{2,})/g,
+    /\b(?:agregale|ponle|sumale|echale|metele)\s+otr[ao]s?(?:\s+(?:dos|tres|cuatro|cinco|\d+))?\s+(?:(?:kilos?|kg|gramos?)\s+)?(?:de\s+)?(?!(?:chicas?|chicos?|grandes?|medianas?|medianos?|sencillas?|sencillos?|dobles?|triples?)\b)([a-z][a-z0-9]{2,})/g,
     (match) => {
       const byRaw = match[0].match(/\b(dos|tres|cuatro|cinco|\d+)\b/);
       const by = byRaw ? (NUM[byRaw[1]] ?? Number(byRaw[1])) : 1;
@@ -322,9 +338,14 @@ export function planCustomerEdits(message: string): EditPlan {
     ops.push({ kind: "increment", target: match[1]?.trim() || null, by: 1 });
   });
 
+  // «otra chica» / «la otra grande» es una variante, no «súmale una chica».
+  const bareSize = "chicas?|chicos?|grandes?|medianas?|medianos?|sencillas?|sencillos?|dobles?|triples?";
   rest = blank(
     rest,
-    /\botr[ao]s?\s+(?!vez\b)(?:(dos|tres|cuatro|cinco|\d+)\s+)?(?:(?:kilos?|kg|gramos?)\s+)?(?:de\s+)?([a-z][a-z0-9]{2,})\b(?!\s+(?!y\b|e\b|tambien\b|ademas\b|seria\b|serian\b|seran\b|pero\b)[a-z]{3,})/g,
+    new RegExp(
+      `\\botr[ao]s?\\s+(?!vez\\b)(?!(?:${bareSize})\\b)(?:(dos|tres|cuatro|cinco|\\d+)\\s+)?(?:(?:kilos?|kg|gramos?)\\s+)?(?:de\\s+)?([a-z][a-z0-9]{2,})\\b(?!\\s+(?!y\\b|e\\b|tambien\\b|ademas\\b|seria\\b|serian\\b|seran\\b|pero\\b)[a-z]{3,})`,
+      "g",
+    ),
     (match) => {
       const by = match[1] ? (NUM[match[1]] ?? Number(match[1])) : 1;
       const target = match[2];

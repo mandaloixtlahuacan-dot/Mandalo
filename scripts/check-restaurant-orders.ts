@@ -8,8 +8,10 @@
 import { CARNICERIA_LA_CENTRAL_PRODUCTOS } from "../src/lib/carniceriaLaCentralCatalog";
 import type { CatalogPriceRow } from "../src/lib/catalogQuantities";
 import { advanceMenuAsk } from "../src/lib/catalogOrderSpeech";
+import { classifyProductListReply, isProductListYes, isYesConfirmation, orderingStepAfterCustomer } from "../src/lib/messages";
+import { applyCustomerEdits, planCustomerEdits } from "../src/lib/orderEdits";
 import { assembleCapturedItems } from "../src/lib/orderGrounding";
-import type { PedidoItemInput } from "../src/lib/services/captureEngine";
+import { formatProductListConfirm, type PedidoItemInput } from "../src/lib/services/captureEngine";
 
 const george: CatalogPriceRow[] = `
 Hamburguesa de Res Chica | 60
@@ -288,6 +290,175 @@ const numbered = advanceMenuAsk({
   pending: again.pendingAsk,
 });
 check("repite-numero", /pepsi/i.test(numbered.items.find((item) => /refresco/i.test(item.nombre_producto))?.marca ?? "") && numbered.question == null);
+
+function shown(items: PedidoItemInput[]): string {
+  return items.map((item) => `${item.nombre_producto} ${item.marca ?? ""} x${item.cantidad ?? "?"} ${item.unidad ?? ""}`.replace(/\s+/g, " ").trim()).join(" | ");
+}
+
+function hasLine(items: PedidoItemInput[], re: RegExp, n: number, unit?: string): boolean {
+  const item = line(items, re);
+  if (qty(item) !== n) return false;
+  if (unit && item?.unidad !== unit) return false;
+  return true;
+}
+
+const MSG_118_1 = "Quiero dos hamburguesas de res, dos dedos de queso, un dúo clásico y dos refrescos";
+const MSG_118_2 = "La hamburguesa de res sería una chica y una grande y el refresco. Sería una Pepsi y una coca.";
+const MODEL_118: PedidoItemInput[] = [
+  { nombre_producto: "Hamburguesa de Res Chica", cantidad: 1 },
+  { nombre_producto: "Hamburguesa de Res Grande", cantidad: 1 },
+  { nombre_producto: "Dedos de Queso 6 piezas", cantidad: 2 },
+  { nombre_producto: "Dogo Clásico", cantidad: 1 },
+  { nombre_producto: "Refresco", marca: "Pepsi", cantidad: 1 },
+  { nombre_producto: "Refresco", marca: "Coca", cantidad: 1 },
+];
+
+function order118ok(items: PedidoItemInput[]): string | null {
+  if (!hasLine(items, /res chica/i, 1)) return `chica ${shown(items)}`;
+  if (!hasLine(items, /res grande/i, 1)) return `grande ${shown(items)}`;
+  if (!hasLine(items, /dedos de queso/i, 2)) return `dedos ${shown(items)}`;
+  if (!hasLine(items, /dogo cl[aá]sico/i, 1)) return `dogo ${shown(items)}`;
+  if (!hasLine(items, /pepsi/i, 1)) return `pepsi ${shown(items)}`;
+  if (!hasLine(items, /coca/i, 1)) return `coca ${shown(items)}`;
+  if (items.length !== 6) return `líneas ${items.length}: ${shown(items)}`;
+  return null;
+}
+
+const turn1 = speak(MSG_118_1);
+check("118-turno-1", hasLine(turn1.items, /res$/i, 2) && hasLine(turn1.items, /dedos/i, 2) && hasLine(turn1.items, /dogo cl[aá]sico/i, 1) && hasLine(turn1.items, /^refresco$/i, 2), shown(turn1.items));
+check("118-sin-duo", !/duo/i.test(asked(turn1)) && /chica o grande/i.test(asked(turn1)) && /marca/i.test(asked(turn1)), asked(turn1).slice(0, 240));
+const turn2 = speak(MSG_118_2, turn1.items, MODEL_118);
+check("118-turno-2", order118ok(turn2.items) == null, order118ok(turn2.items) ?? asked(turn2).slice(0, 180));
+check("118-sin-bien", !/bien/i.test(asked(turn2)) && !/no lo manejamos/i.test(asked(turn2)) && !/te refieres/i.test(asked(turn2)), asked(turn2).slice(0, 220));
+const collapsed = speak(MSG_118_2, turn1.items, []);
+check("118-sin-modelo", order118ok(collapsed.items) == null, order118ok(collapsed.items) ?? shown(collapsed.items));
+const saidYes = "Si está bien mi pedido";
+const yesTalk = speak(saidYes, turn2.items);
+check("118-si-no-cambia", order118ok(yesTalk.items) == null && !/bien/i.test(asked(yesTalk)) && !/no lo manejamos/i.test(asked(yesTalk)), `${shown(yesTalk.items)} ${asked(yesTalk).slice(0, 120)}`);
+check(
+  "118-si-una-vez",
+  classifyProductListReply(saidYes) === "confirm" &&
+    isProductListYes(saidYes) &&
+    !isYesConfirmation(saidYes) &&
+    orderingStepAfterCustomer({ step: "final_ticket", customerMessage: saidYes }) === "stay" &&
+    orderingStepAfterCustomer({ step: "product_list", customerMessage: "SÍ" }) === "location",
+);
+
+const pepsiDoble: PedidoItemInput[] = [
+  { nombre_producto: "Refresco", marca: "Pepsi", cantidad: 2 },
+  { nombre_producto: "Refresco", marca: "Coca", cantidad: 1 },
+];
+const quitaUno = "Quítame el refresco Pepsi nomás quiero debes de 2 quiero uno";
+const planUno = planCustomerEdits(quitaUno);
+const dejadoEnUno = applyCustomerEdits({ prior: pepsiDoble, plan: planUno, catalog: george });
+check(
+  "118-quiero-uno",
+  planUno.ops.some((op) => op.kind === "setQty") &&
+    !planUno.ops.some((op) => op.kind === "remove") &&
+    hasLine(dejadoEnUno.items, /pepsi/i, 1) &&
+    hasLine(dejadoEnUno.items, /coca/i, 1),
+  `${planUno.ops.map((op) => op.kind).join(",")} ${shown(dejadoEnUno.items)}`,
+);
+for (const phrase of ["quítame la pepsi, de 2 quiero uno", "quita la pepsi dejalo en uno", "quita la pepsi solo uno", "quita la pepsi nomas quiero 1"]) {
+  const plan = planCustomerEdits(phrase);
+  const edited = applyCustomerEdits({ prior: pepsiDoble, plan, catalog: george });
+  check(`edita-${phrase}`, plan.ops.some((op) => op.kind === "setQty") && hasLine(edited.items, /pepsi/i, 1), shown(edited.items));
+}
+const quitaDeVeras = planCustomerEdits("quita la pepsi");
+const sinPepsi = applyCustomerEdits({ prior: pepsiDoble, plan: quitaDeVeras, catalog: george });
+check("quita-sigue-borrando", quitaDeVeras.ops.some((op) => op.kind === "remove") && !line(sinPepsi.items, /pepsi/i) && hasLine(sinPepsi.items, /coca/i, 1));
+
+function splitOk(message: string, prior: PedidoItemInput[] = []): boolean {
+  const result = speak(message, prior);
+  return order118ok.length >= 0 && hasLine(result.items, /res chica/i, 1) && hasLine(result.items, /res grande/i, 1) && !/no lo manejamos/i.test(asked(result));
+}
+check("mix-chica-grande", splitOk("una hamburguesa de res chica y una grande"));
+check("mix-reparte-2", splitOk("2 hamburguesas de res, una chica y una grande"));
+check("mix-de-res", splitOk("una de res chica y una grande"));
+check("mix-las-dos", splitOk("las dos de res, una chica y una grande"));
+const pollo = speak("quiero una hamburguesa de pollo grande y una chica");
+check(
+  "mix-pollo",
+  hasLine(pollo.items, /pollo grande/i, 1) && hasLine(pollo.items, /pollo chica/i, 1) && pollo.items.length === 2,
+  shown(pollo.items),
+);
+const otraChica = speak("hamburguesa de pollo grande y otra chica");
+check(
+  "mix-otra-chica",
+  hasLine(otraChica.items, /pollo grande/i, 1) &&
+    hasLine(otraChica.items, /pollo chica/i, 1) &&
+    otraChica.items.length === 2 &&
+    !/te refieres/i.test(asked(otraChica)) &&
+    !/no lo manejamos/i.test(asked(otraChica)),
+  `${shown(otraChica.items)} ${asked(otraChica).slice(0, 160)}`,
+);
+const laOtraChica = speak("quiero una hamburguesa de pollo grande y la otra chica");
+check(
+  "mix-la-otra-chica",
+  hasLine(laOtraChica.items, /pollo grande/i, 1) &&
+    hasLine(laOtraChica.items, /pollo chica/i, 1) &&
+    laOtraChica.items.length === 2 &&
+    !/te refieres/i.test(asked(laOtraChica)) &&
+    !/no lo manejamos/i.test(asked(laOtraChica)),
+  `${shown(laOtraChica.items)} ${asked(laOtraChica).slice(0, 160)}`,
+);
+const dogos = speak("dos dogos, uno clásico y uno hawaiano");
+check(
+  "mix-dogos",
+  hasLine(dogos.items, /dogo cl[aá]sico/i, 1) && hasLine(dogos.items, /dogo hawaiano/i, 1) && !/hawaiano\?/i.test(asked(dogos)) && dogos.items.length === 2,
+  `${shown(dogos.items)} ${asked(dogos).slice(0, 120)}`,
+);
+const respondeTamano = speak("una chica y una grande", [{ nombre_producto: "Hamburguesa de Res", cantidad: 2 }]);
+check("mix-responde-tamano", hasLine(respondeTamano.items, /res chica/i, 1) && hasLine(respondeTamano.items, /res grande/i, 1) && respondeTamano.items.length === 2, shown(respondeTamano.items));
+const respondeSabor = speak("una Pepsi y una coca", [{ nombre_producto: "Refresco", cantidad: 2 }]);
+check("mix-responde-sabor", hasLine(respondeSabor.items, /pepsi/i, 1) && hasLine(respondeSabor.items, /coca/i, 1) && respondeSabor.items.length === 2, shown(respondeSabor.items));
+const noSuma = speak("3 hamburguesas de res, una chica y una grande");
+check(
+  "mix-no-suma",
+  hasLine(noSuma.items, /res chica/i, 1) &&
+    hasLine(noSuma.items, /res grande/i, 1) &&
+    (noSuma.catalogSpeech?.question ?? "").match(/te refieres/gi)?.length === 1,
+  `${shown(noSuma.items)} ${asked(noSuma).slice(0, 160)}`,
+);
+const bistec = speak("1 kilo de bistec de res y medio de cerdo", [], [], central);
+check(
+  "mix-cerdo",
+  hasLine(bistec.items, /bistec de res/i, 1, "kilo") &&
+    hasLine(bistec.items, /bistec de puerco$/i, 0.5, "kilo") &&
+    !/marinad/i.test(shown(bistec.items)) &&
+    bistec.items.length === 2,
+  shown(bistec.items),
+);
+const chorizos = speak("2 kilos de chorizo, uno argentino y uno de la casa", [], [], central);
+check(
+  "mix-chorizo",
+  hasLine(chorizos.items, /^chorizo$/i, 1, "kilo") && hasLine(chorizos.items, /chorizo argentino/i, 1, "kilo") && chorizos.items.length === 2,
+  shown(chorizos.items),
+);
+
+const yesPhrases = [
+  "sí", "si", "siii", "sip", "simón", "ok", "okey", "va", "va que va", "sale", "ya", "listo", "es todo",
+  "eso es todo", "así", "así está bien", "así está bien mi pedido", "sí está bien mi pedido", "está bien",
+  "todo bien", "todo está bien", "sí todo está bien", "sí, así", "correcto", "es correcto", "sí, es correcto",
+  "perfecto", "de acuerdo", "dale", "ándale", "confirmo", "así déjalo", "así mero", "está perfecto",
+  "sí gracias", "sí por favor", "si esta vien", "asi esta bn", "ta bien", "ok si", "sii ok",
+];
+for (const phrase of yesPhrases) {
+  check(`si-${phrase}`, classifyProductListReply(phrase) === "confirm" && isProductListYes(phrase), classifyProductListReply(phrase));
+}
+for (const phrase of ["sí, pero quita la coca", "agrega 1 pepsi", "está bien pero sin cebolla", "¿está bien?", "no", "no está bien"]) {
+  check(`no-si-${phrase}`, classifyProductListReply(phrase) !== "confirm");
+}
+for (const kind of ["abarrotes", "carniceria", "restaurante"] as const) {
+  const prompt = formatProductListConfirm([{ nombre_producto: "Prueba", cantidad: 1 }], kind);
+  check(
+    `pregunta-${kind}`,
+    prompt.includes("*Si tu pedido está bien, responde sí.*") &&
+      prompt.includes("*¿Están bien estos productos?*") &&
+      prompt.includes("Solo es un ejemplo, no está en tu pedido"),
+    prompt.slice(prompt.indexOf("¿Están"), 220),
+  );
+}
 
 console.log(`Restaurante: ${passed}/${passed + failures.length}`);
 if (failures.length) {
