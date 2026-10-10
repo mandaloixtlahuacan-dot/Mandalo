@@ -9,6 +9,7 @@ import { priceCatalogOrder, type CatalogPriceRow } from "@/lib/catalogQuantities
 import {
   buildCatalog,
   catalogEngineIsLegacy,
+  catalogEngineMode,
   runCatalogOrderTurn,
   type CartLine,
   type PendingCatalogAsk,
@@ -2042,7 +2043,7 @@ async function completeFixedCatalogConfirmation(
   return { ok: true, role: "cliente", accion: "productos_confirmados", stage: nextState, pedidoId: pedido.id };
 }
 
-/** Menú cerrado (George y La Central). Abarrotes y CATALOG_ENGINE=legacy no entran. */
+/** Menú cerrado (George y La Central). CATALOG_ENGINE=legacy no entra. CATALOG_ENGINE=v1 usa el motor anterior. */
 async function handleFixedCatalogTurn(
   telefono: string,
   mensaje: string,
@@ -2129,15 +2130,20 @@ async function handleFixedCatalogTurn(
     return { ok: true, role: "cliente", accion: "catalogo_no_disponible", pedidoId: pedido.id };
   }
   const catalog = buildCatalog(rows, profile, "priced");
-  const historial = await fetchHistorialReciente(telefono, 6).catch(() => []);
-  const history = historial
-    .slice()
-    .reverse()
-    .map((item) => ({
-      role: item.estado === "bot" ? ("assistant" as const) : ("user" as const),
-      text: String(item.texto ?? ""),
-    }))
-    .filter((item) => item.text.trim());
+  const history: Array<{ role: "user" | "assistant"; text: string }> = [];
+  if (catalogEngineMode() === "v1") {
+    const historial = await fetchHistorialReciente(telefono, 6).catch(() => []);
+    history.push(
+      ...historial
+        .slice()
+        .reverse()
+        .map((item) => ({
+          role: item.estado === "bot" ? ("assistant" as const) : ("user" as const),
+          text: String(item.texto ?? ""),
+        }))
+        .filter((item) => item.text.trim()),
+    );
+  }
 
   const result = await runCatalogOrderTurn({
     message: mensaje,

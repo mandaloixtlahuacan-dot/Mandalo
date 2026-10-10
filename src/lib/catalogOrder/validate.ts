@@ -1,8 +1,6 @@
 /**
- * Revisa la lectura del modelo. Confía en su cantidad, unidad, pesos y sabor
- * cuando cuadran con el texto (números, id del menú, palabras de sabor).
- * Solo corrige si el id no existe, el número no está, falta algo que sí nombró,
- * o el monto no se sostiene (un peso, cero kilos, un sabor que no dijo).
+ * Motor v1. El motor por defecto ya no pasa por aquí.
+ * Se usa con CATALOG_ENGINE=v1, y el lector de respaldo sigue aparte.
  */
 import { familyRows } from "@/lib/catalogOrder/catalog";
 import { cartFromModel, fallbackInterpret, messageClauses } from "@/lib/catalogOrder/fallback";

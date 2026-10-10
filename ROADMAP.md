@@ -2,19 +2,23 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 10 de octubre de 2026. Tercera evaluación en vivo
-> del menú cerrado (sobre `c8d2021`, `gpt-4.1-mini`, dos pasadas): corpus
-> 179/185 estricto; 50 casos nuevos 40–41/50 estricto y 45–46/50 sin
-> fallas graves. Las 11 fallas graves de la segunda pasada ya no salieron.
-> Las nuevas salían porque el validador rehacía una lectura que el modelo
-> ya tenía bien. Ahora acepta cantidad, unidad, pesos y sabor cuando
-> cuadran con el texto, y solo corrige si el id no está en el menú, el
-> número no se dijo, falta algo que sí nombró, o el monto no se sostiene.
-> Replay de la segunda y la tercera: corpus 185/185, held-out 30/30,
-> 40 casos 40/40 y los 50 nuevos 50/50, en las dos pasadas de mini y en
-> `gpt-5.5` (esa grabación no trae los 50). La cuarta evaluación en vivo
-> sigue pendiente. No está mergeado ni desplegado. La base de producción
-> no se tocó. Abarrotes sigue igual. Se apaga con `CATALOG_ENGINE=legacy`.
+> Última actualización: 10 de octubre de 2026. La evaluación en vivo
+> de `0f1d4e1` (`gpt-5.5`, esfuerzo none) dejó el corpus en 182–183/185
+> sin graves. El guardia del nombre exacto convertía «bistec de res
+> marinado» en la fila sin marinar: si el mensaje dice marin*, no se
+> toca, y solo se corrigen líneas nuevas. Quesadilla no se cambia por
+> sincronizada. «la de X no» pide una corrección si el carrito no se
+> movió. Un doridogo o «de arrachera» después del Clásico lo reemplaza
+> (en el prompt). Un corte de 8 s se reintenta 5 s antes del respaldo.
+> «seis kilos y tres cuartos» son 6.75, y la pregunta del respaldo
+> conserva la cantidad. «boneles» no termina en «No le entendí».
+> No está mergeado ni desplegado. La base no se tocó.
+> Actualización anterior del mismo día: el menú cerrado que ya está en
+> producción (PR #33, `0abd169`) se simplifica en un PR nuevo. El modelo
+> devuelve el carrito completo. Cada llamada lleva el paso, el menú de
+> esa tienda y el carrito; no lleva historial ni otras tiendas.
+> `CATALOG_ENGINE=v1` vuelve al motor anterior. `CATALOG_ENGINE=legacy`
+> lo apaga.
 > Actualización anterior del mismo día: segunda evaluación (commit
 > `0f7c1d6`). El monto se queda en su línea, los cientos en palabras se
 > leen, y lo que sí está en el menú no se pierde. Replay de esas

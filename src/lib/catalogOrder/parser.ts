@@ -1,13 +1,83 @@
 import OpenAI from "openai";
-import type { CatalogModel, InterpretRequest, ModelOutput, SellUnit } from "@/lib/catalogOrder/types";
+import { GENERIC_DOGO } from "@/lib/catalogOrder/catalog";
+import { fold } from "@/lib/catalogOrder/text";
+import type { AiOutput, AiPendingLine, CatalogModel, CatalogRow, InterpretRequest, SellUnit } from "@/lib/catalogOrder/types";
 
-export const DEFAULT_ORDER_MODEL = "gpt-4.1-mini";
+export const DEFAULT_ORDER_MODEL = "gpt-5.5";
 
-const ORDER_TIMEOUT_MS = 6000;
+/** 8 s: gpt-5.5 con esfuerzo low no cabe en 6. */
+export const ORDER_TIMEOUT_MS = 8000;
 
-/** gpt-5 rechaza temperature; se pide sin razonamiento. */
+/** Si la primera llamada se corta, un reintento de 5 s antes del respaldo. */
+export const ORDER_RETRY_TIMEOUT_MS = 5000;
+
+export function isOrderTimeout(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const name = "name" in error ? String((error as { name?: unknown }).name ?? "") : "";
+  const message = error instanceof Error ? error.message : "";
+  if (name === "TimeoutError" || name === "AbortError" || name === "APIUserAbortError") return true;
+  return /timeout|aborted|abort/i.test(`${name} ${message}`);
+}
+
+const RULES = [
+  "Devuelve el carrito COMPLETO de esta tienda, no un delta. Si el cliente no quitó una línea, sigue en el carrito.",
+  "No inventes tamaño, sabor ni tipo. Si falta uno y hay varias opciones, va en pending y esa línea no va en el carrito. Si solo hay una opción, agrégala. No preguntes con una sola opción.",
+  "Cada elemento de pending lleva text, candidate_ids, qty, unit y source_text (las palabras del cliente). Si pending no está vacío, confirmed es false.",
+  "«no es X, es Y» o «cámbialo por Y» reemplaza y conserva cantidad y tamaño. quita borra. «otra» sola suma 1 a la última. «otra de Y» suma 1 de Y y deja lo demás. «una de cada una» es una de cada opción de pending, no todo el menú.",
+  "medio=0.5, cuarto=0.25, kilo y medio=1.5, N kilos y tres cuartos=N.75. En piezas, qty es un entero. Docena = 12.",
+  "Si la fila dice «1 orden = N piezas», qty es cuántas órdenes. «dos de 20» es esa fila con qty 2. Si esa medida no existe, va en pending y se listan las medidas, sin adivinar.",
+  "En carne, $100 o cien pesos: unit pesos, qty 100. Solo en filas kg.",
+  "«la que no es marinada», «sin marinar» o «normal» es la fila sin marinar.",
+  "Si el cliente dice el nombre exacto de una fila y no dice marinado, es esa fila. No la cambies por la marinada. Una frase con varias filas (carne de puerco, unas papas) va en pending, sin escoger.",
+  "Si la pregunta es de tamaño y la respuesta reparte (dos grandes y una chica), parte la cantidad y deja pending vacío. «una de esas» o «una de ellas» mueve esa cantidad de la línea original a la nueva: el total queda igual.",
+  "Lo que no está en el menú va SOLO en not_on_menu, sin pregunta. Lo demás del mismo mensaje se queda en el carrito.",
+  "sí, listo, ya sería todo o eso es todo, sin pregunta pendiente: confirmed true, pending vacío y el mismo carrito. Con pregunta pendiente, eso no confirma: la pregunta sigue. Nunca confirmes un carrito vacío.",
+].join("\n");
+
+function examplesFor(profile: InterpretRequest["catalog"]["profile"]): string {
+  if (profile === "carniceria") {
+    return [
+      "«bistec» → pending [{text: «¿El bistec de res o de puerco?», qty y source_text del cliente}], sin esa línea.",
+      "«un kilo de diezmillo» → esa fila, qty 1, unit kg, pending [].",
+      "«$150 de pastor» → unit pesos, qty 150.",
+      "«un pollo entero y un kilo de bistec» → not_on_menu [\"pollo\"] y el bistec en el carrito, pending [].",
+      "«la que no es marinada» → la fila sin marinar.",
+      "«un kilo de bistec de puerco» → Bistec de puerco, no el marinado.",
+      "«un kilo de carne de puerco» → pending con las filas de puerco, sin escoger una.",
+      "«sí está bien» → confirmed true, pending [], carrito igual.",
+    ].join("\n");
+  }
+  const dogo = GENERIC_DOGO === "ask"
+    ? "«un dogo», «un hot dog» o «un jocho» sin tipo → pending «¿Cuál dogo?», sin esa línea."
+    : "";
+  return [
+    "«2 hamburguesas» → pending con «¿Cuál hamburguesa?», qty 2, unit pz, source_text «2 hamburguesas», sin esa línea.",
+    "«una de res chica» → esa fila, qty 1, pending []. Si solo hay una opción, se agrega y no se pregunta.",
+    "«10 alitas» → la fila «1 orden = 10 piezas», qty 1. «dos alitas de 20» → la de 20, qty 2. «alitas de 12» → pending con 5, 10, 15, 20 y 30, sin línea.",
+    "«una docena de dogos» → ese dogo, qty 12. Docena = 12.",
+    "«no es cubana, es hawaiana» con una Grande → la hawaiana Grande, misma qty.",
+    "«otra de pierna» suma 1 de pierna y deja lo demás. «otra» sola suma 1 a la última.",
+    "«un pizzadogo» es Pizzadogo. «una manzanita» es Refresco sabor Manzana.",
+    "«una pizza y dos dogos» → not_on_menu [\"pizza\"] y los dogos en el carrito, pending [].",
+    "Pregunta de 3, «dos grandes y una chica» → Grande qty 2 y Chica qty 1, pending [].",
+    "«4 grandes» y luego «una de esas que sea chica» → Grande 3 y Chica 1.",
+    "«tres tortas de chorizo» y luego «una de ellas mejor de arrachera» → Chorizo 2 y Arrachera 1.",
+    "«unas papas» o «una orden de papas» sin tipo → pending con las dos papas, sin elegir.",
+    "«dos quesadillas de tocino, una con ingrediente extra» → Quesadilla de Tocino 2 e Ingrediente Extra 1. Quesadilla no es Sincronizada.",
+    "«una sincronizada de chorizo y una de arrachera» y luego «la de chorizo no» → solo la de arrachera.",
+    "Con Dogo Clásico, «el doridogo», «de arrachera» o «el cubano» (sin cantidad, sin «otro» ni «y») reemplaza el Clásico, misma cantidad, pending []. «otro de arrachera» o «y un doridogo» agregan una línea.",
+    dogo,
+    "«sí está bien» → confirmed true, pending [], carrito igual.",
+  ].filter(Boolean).join("\n");
+}
+
+/** gpt-5 rechaza temperature. El esfuerzo se elige con OPENAI_REASONING_EFFORT (none o low). */
 function omitsTemperature(modelName: string): boolean {
   return /^gpt-5/i.test(modelName.trim());
+}
+
+function reasoningEffort(): "none" | "low" {
+  return String(process.env.OPENAI_REASONING_EFFORT ?? "").trim().toLowerCase() === "low" ? "low" : "none";
 }
 
 const announcedAccess = new Set<string>();
@@ -25,161 +95,173 @@ function accessError(error: unknown): { status: number; code: string } | null {
   return null;
 }
 
-function orderModel(): string {
+export function orderModel(): string {
   const configured = String(process.env.OPENAI_ORDER_MODEL ?? "").trim();
   return configured || DEFAULT_ORDER_MODEL;
 }
 
-function catalogLines(request: InterpretRequest): string {
+function aliasSuffix(row: CatalogRow): string {
+  const name = fold(`${row.name} ${row.searchName}`);
+  const extra = row.alias
+    .map((item) => item.trim())
+    .filter((item) => item.length >= 3 && !name.includes(fold(item)));
+  const unique = extra.filter((item, index) => extra.findIndex((other) => fold(other) === fold(item)) === index);
+  return unique.length ? ` (${unique.join(", ")})` : "";
+}
+
+function packNote(row: CatalogRow): string {
+  if (!row.size || !/^\d+$/.test(row.size)) return "";
+  if (!/\b(alitas|boneless|dedos)\b/.test(fold(`${row.family} ${row.name}`))) return "";
+  return ` | 1 orden = ${row.size} piezas`;
+}
+
+function menuLines(request: InterpretRequest): string {
   return request.catalog.rows
     .map((row) => {
-      const variants = row.variants.length ? ` | ${row.variants.join("/")}` : "";
-      return `${row.id} | ${row.name} | ${row.precio} | ${row.unit}${variants}`;
+      const flavors = row.variants.length ? ` [${row.variants.join("/")}]` : "";
+      return `${row.id} ${row.name} $${row.precio} ${row.unit}${flavors}${aliasSuffix(row)}${packNote(row)}`;
     })
     .join("\n");
 }
 
-function schemaFor(ids: number[]): Record<string, unknown> {
+function cartJson(request: InterpretRequest): string {
+  const lines = request.cart.map((line) => ({
+    product_id: line.productId,
+    qty: line.qty,
+    unit: line.unit,
+    variant: line.variant,
+  }));
+  return JSON.stringify(lines);
+}
+
+function describePending(
+  pending: { question: string; sourceText: string; qty: number; unit: string; candidateIds: number[] },
+  catalog: InterpretRequest["catalog"],
+): string {
+  const options = pending.candidateIds
+    .map((id) => {
+      const row = catalog.byId.get(id);
+      return row ? `${id} ${row.name}` : String(id);
+    })
+    .join(", ");
+  return `Pregunta pendiente: ${pending.question}. Era: "${pending.sourceText}", qty ${pending.qty} ${pending.unit}. Opciones: ${options}`;
+}
+
+function stepLine(request: InterpretRequest): string {
+  if (request.repairErrors?.length) return `Corrige el JSON. ${request.repairErrors.join(" ")}`;
+  if (request.pending) {
+    const lines = [request.pending, ...(request.pending.queue ?? [])];
+    return lines.map((pending) => describePending(pending, request.catalog)).join("\n");
+  }
+  if (request.awaitingList) return "Ya vio la lista. Un sí la confirma. Un cambio la edita. Con pending no se confirma.";
+  return "Armando el pedido.";
+}
+
+/** Lo único que ve el modelo: reglas cortas, el paso, el menú de esta tienda y el carrito. */
+export function buildOrderPrompt(request: InterpretRequest): string {
+  return [
+    RULES,
+    examplesFor(request.catalog.profile),
+    stepLine(request),
+    "Menú (id nombre precio unidad):",
+    menuLines(request),
+    "Carrito:",
+    cartJson(request),
+  ].join("\n");
+}
+
+export function orderJsonSchema(ids: number[]): Record<string, unknown> {
   const idEnum = ids.length ? ids : [0];
-  const nullableId = { anyOf: [{ type: "integer", enum: idEnum }, { type: "null" }] };
   return {
     type: "object",
     additionalProperties: false,
-    required: ["intent", "cart", "changes", "unmatched", "confidence"],
+    required: ["cart", "pending", "not_on_menu", "confirmed"],
     properties: {
-      intent: { type: "string", enum: ["order", "edit", "confirm", "answer", "question", "other"] },
       cart: {
         type: "array",
         items: {
           type: "object",
           additionalProperties: false,
-          required: ["product_id", "qty", "unit", "variant", "notes"],
+          required: ["product_id", "qty", "unit", "variant"],
           properties: {
             product_id: { type: "integer", enum: idEnum },
             qty: { type: "number" },
             unit: { type: "string", enum: ["pz", "kg", "pesos"] },
             variant: { anyOf: [{ type: "string" }, { type: "null" }] },
-            notes: { anyOf: [{ type: "string" }, { type: "null" }] },
           },
         },
       },
-      changes: {
+      pending: {
         type: "array",
         items: {
           type: "object",
           additionalProperties: false,
-          required: ["op", "product_id", "from_product_id", "source_text"],
+          required: ["text", "candidate_ids", "qty", "unit", "source_text"],
           properties: {
-            op: { type: "string", enum: ["add", "set_qty", "remove", "replace", "set_variant"] },
-            product_id: nullableId,
-            from_product_id: nullableId,
-            source_text: { type: "string" },
+            text: { type: "string" },
+            candidate_ids: { type: "array", items: { type: "integer" } },
+            qty: { anyOf: [{ type: "number" }, { type: "null" }] },
+            unit: { anyOf: [{ type: "string", enum: ["pz", "kg", "pesos"] }, { type: "null" }] },
+            source_text: { anyOf: [{ type: "string" }, { type: "null" }] },
           },
         },
       },
-      unmatched: {
-        type: "array",
-        items: {
-          type: "object",
-          additionalProperties: false,
-          required: ["source_text", "reason", "candidate_ids"],
-          properties: {
-            source_text: { type: "string" },
-            reason: { type: "string", enum: ["ambiguous", "not_on_menu", "unclear"] },
-            candidate_ids: { type: "array", items: { type: "integer", enum: idEnum } },
-          },
-        },
-      },
-      confidence: { type: "string", enum: ["high", "medium", "low"] },
+      not_on_menu: { type: "array", items: { type: "string" } },
+      confirmed: { type: "boolean" },
     },
   };
 }
 
-function promptFor(request: InterpretRequest): string {
-  const place = request.catalog.profile === "carniceria" ? "carnicería La Central (kilos; carbón y salsas por pieza)" : "restaurante George (todo por pieza)";
-  const cart = request.cart
-    .map((line) => `${line.productId} x${line.qty} ${line.unit}${line.variant ? ` ${line.variant}` : ""}`)
-    .join(", ") || "(vacío)";
-  const pending = request.pending
-    ? `Pregunta pendiente: "${request.pending.question}" candidatos=${request.pending.candidateIds.join(",")} qty=${request.pending.qty} ${request.pending.unit}`
-    : "Sin pregunta pendiente.";
-  const history = request.history.slice(-6).map((turn) => `${turn.role}: ${turn.text}`).join("\n") || "(sin historial)";
-  return [
-    `Eres el lector de pedidos de Mándalo para ${place}.`,
-    "Devuelve solo el JSON del esquema. El carrito final usa únicamente ids del menú.",
-    "Entiende faltas, jerga y voz a texto. Cantidades en palabras y fracciones (1/4, un cuarto, medio, kilo y medio, 3/4, 250 g).",
-    "En carne, '$100 de pastor' o 'cien pesos de chorizo' van con unit pesos.",
-    "otra/otro igual/una más suma 1 a la línea de la que se habla. Si 'otra' trae otro producto, es ese producto, no un extra de la anterior.",
-    "El tamaño aplica al producto que acompaña. No inventes filas.",
-    "Nunca elijas tamaño, tipo ni sabor por default. Si el cliente no lo dijo, unmatched reason ambiguous con las filas que sí caben.",
-    "Una línea de carrito por sabor. Dos sabores en el mismo mensaje son dos líneas, cada una con su variant.",
-    "No sustituyas. not_on_menu cuando ninguna fila comparte una palabra real con lo que dijo (molida, pechuga, jugo, taco). ambiguous solo si esas filas sí coinciden con sus palabras. No listes productos que no se parecen.",
-    "Un monto en pesos se queda en el producto que lo acompaña. Cientos y miles en palabras (doscientos, trescientos, quinientos, mil) son la cantidad, no se parten.",
-    "«sin marinar», «natural» o «normal» es la fila sin marinar. «marinada» o «adobada» es la marinada.",
-    "Si dice el nombre exacto de un producto, no preguntes.",
-    "Si dos o más filas caben y ninguna quedó nombrada completa, unmatched reason ambiguous con sus ids. No preguntes cuando solo hay una fila.",
-    "Un sí, 'así está bien' o 'correcto' es intent confirm y no agrega productos.",
-    "Un elemento de changes por producto. source_text va copiado del mensaje.",
-    "cámbialo o cambia X por Y es op replace: from_product_id es la línea que sale y product_id la que entra. No dejes las dos.",
-    "otra, otro, agrega otro y otra igual suman 1 a esa línea (op add o set_qty con la cantidad nueva).",
-    "En una quesadilla, 'con ingrediente extra' es la fila Ingrediente Extra en Quesadilla, además de la quesadilla.",
-    "",
-    "Menú (id | nombre | precio | unidad | variantes):",
-    catalogLines(request),
-    "",
-    `Carrito actual: ${cart}`,
-    pending,
-    "Historial:",
-    history,
-    "",
-    `Mensaje nuevo: ${request.message}`,
-  ].join("\n");
+function asUnit(value: unknown): SellUnit | null {
+  return value === "pz" || value === "kg" || value === "pesos" ? value : null;
 }
 
-function asUnit(value: unknown): SellUnit {
-  return value === "kg" || value === "pesos" ? value : "pz";
+function unreadable(): AiOutput {
+  return {
+    cart: [{ product_id: -1, qty: 1, unit: "pz", variant: null }],
+    pending: [],
+    question: null,
+    not_on_menu: [],
+    confirmed: false,
+  };
 }
 
-export function parseModelJson(raw: unknown): ModelOutput | null {
+function parsePendingItem(value: unknown): AiPendingLine | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as Record<string, unknown>;
+  const ids = Array.isArray(row.candidate_ids) ? row.candidate_ids.map((id) => Number(id)).filter((id) => Number.isFinite(id)) : [];
+  const qty = row.qty == null || row.qty === "" ? null : Number(row.qty);
+  return {
+    text: String(row.text ?? ""),
+    candidate_ids: ids,
+    qty: qty != null && Number.isFinite(qty) ? qty : null,
+    unit: asUnit(row.unit),
+    source_text: row.source_text == null ? null : String(row.source_text),
+  };
+}
+
+export function parseModelJson(raw: unknown): AiOutput | null {
   const body = typeof raw === "string" ? safeJson(raw) : raw;
   if (!body || typeof body !== "object") return null;
   const record = body as Record<string, unknown>;
-  const intent = record.intent;
-  if (intent !== "order" && intent !== "edit" && intent !== "confirm" && intent !== "answer" && intent !== "question" && intent !== "other") {
-    return null;
-  }
-  const cart = Array.isArray(record.cart) ? record.cart : [];
-  const changes = Array.isArray(record.changes) ? record.changes : [];
-  const unmatched = Array.isArray(record.unmatched) ? record.unmatched : [];
-  const confidence = record.confidence === "low" || record.confidence === "medium" ? record.confidence : "high";
+  if (!Array.isArray(record.cart) || !Array.isArray(record.not_on_menu) || typeof record.confirmed !== "boolean") return null;
+  const pending = Array.isArray(record.pending)
+    ? record.pending.map(parsePendingItem).filter((item): item is AiPendingLine => Boolean(item))
+    : [];
+  const question = parsePendingItem(record.question);
   return {
-    intent,
-    confidence,
-    cart: cart.map((item) => {
+    confirmed: record.confirmed,
+    not_on_menu: record.not_on_menu.map((item) => String(item)).filter((item) => item.trim()),
+    pending: pending.length ? pending : question ? [question] : [],
+    question,
+    cart: record.cart.map((item) => {
       const row = item as Record<string, unknown>;
       return {
         product_id: Number(row.product_id),
         qty: Number(row.qty),
-        unit: asUnit(row.unit),
-        variant: row.variant == null ? null : String(row.variant),
-        notes: row.notes == null ? null : String(row.notes),
+        unit: asUnit(row.unit) ?? String(row.unit ?? ""),
+        variant: row.variant == null || String(row.variant).trim() === "" ? null : String(row.variant),
       };
-    }),
-    changes: changes.map((item) => {
-      const row = item as Record<string, unknown>;
-      const op = row.op;
-      return {
-        op: op === "set_qty" || op === "remove" || op === "replace" || op === "set_variant" ? op : "add",
-        product_id: row.product_id == null ? null : Number(row.product_id),
-        from_product_id: row.from_product_id == null ? null : Number(row.from_product_id),
-        source_text: String(row.source_text ?? ""),
-      };
-    }),
-    unmatched: unmatched.map((item) => {
-      const row = item as Record<string, unknown>;
-      const reason = row.reason === "not_on_menu" || row.reason === "unclear" ? row.reason : "ambiguous";
-      const ids = Array.isArray(row.candidate_ids) ? row.candidate_ids.map((id) => Number(id)).filter((id) => Number.isFinite(id)) : [];
-      return { source_text: String(row.source_text ?? ""), reason, candidate_ids: ids };
     }),
   };
 }
@@ -198,30 +280,33 @@ export function createOpenAICatalogModel(modelName = orderModel()): CatalogModel
     async interpret(request) {
       const apiKey = String(process.env.OPENAI_API_KEY ?? "").trim();
       if (!apiKey) return null;
-      const client = new OpenAI({ apiKey, timeout: ORDER_TIMEOUT_MS });
       const ids = request.catalog.rows.map((row) => row.id);
-      const ask = async () => {
+      const once = async (timeoutMs: number): Promise<AiOutput> => {
+        const client = new OpenAI({ apiKey, timeout: timeoutMs });
         const response = await client.chat.completions.create(
           {
             model: modelName,
-            ...(omitsTemperature(modelName) ? { reasoning_effort: "none" as const } : { temperature: 0 }),
+            ...(omitsTemperature(modelName) ? { reasoning_effort: reasoningEffort() } : { temperature: 0 }),
             messages: [
-              { role: "system", content: promptFor(request) },
+              { role: "system", content: buildOrderPrompt(request) },
               { role: "user", content: request.message },
             ],
             response_format: {
               type: "json_schema",
-              json_schema: { name: "catalog_order", strict: true, schema: schemaFor(ids) },
+              json_schema: { name: "catalog_order", strict: true, schema: orderJsonSchema(ids) },
             },
           },
-          { signal: AbortSignal.timeout(ORDER_TIMEOUT_MS) },
+          { signal: AbortSignal.timeout(timeoutMs) },
         );
-        return parseModelJson(response.choices?.[0]?.message?.content ?? "");
+        return parseModelJson(response.choices?.[0]?.message?.content ?? "") ?? unreadable();
       };
       try {
-        const first = await ask();
-        if (first) return first;
-        return await ask();
+        try {
+          return await once(ORDER_TIMEOUT_MS);
+        } catch (error) {
+          if (!isOrderTimeout(error)) throw error;
+          return await once(ORDER_RETRY_TIMEOUT_MS);
+        }
       } catch (error) {
         const denied = accessError(error);
         if (denied) {
