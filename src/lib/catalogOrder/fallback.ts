@@ -100,7 +100,8 @@ function protect(text: string): string {
     .replace(/al pastor/g, "alpastor")
     .replace(/con hueso/g, "conhueso")
     .replace(/hot wings/g, "hotwings")
-    .replace(/(\d+|un|una|dos|tres|cuatro)\s+kilos?\s+y\s+medio/g, (match) => match.replace(" y ", " y"))
+    .replace(/(\d+|[a-z]+)\s+kilos?\s+y\s+medio/g, (match) => match.replace(/\s+y\s+/, " y"))
+    .replace(/(\d+|[a-z]+)\s+kilos?\s+y\s+cuarto/g, (match) => match.replace(/\s+y\s+/, " y"))
     .replace(/\bkilo y medio\b/g, "kilo ymedio")
     .replace(/\bkilo y cuarto\b/g, "kilo ycuarto")
     .replace(/\by media\b/g, "ymedia");
@@ -588,6 +589,16 @@ function applyEdit(message: string, cart: CartLine[], catalog: CatalogSnapshot):
     return { cart: next, unmatched: [] };
   }
 
+  if (/^mejor\b/.test(text) && !/^mejor que sean\b/.test(text) && !/^mejor que una sea\b/.test(text) && !/^mejor medio\b/.test(text)) {
+    const pieces = parsePieces(text, catalog, null);
+    if (pieces.lines.length) {
+      const touched = new Set(pieces.lines.map((line) => line.productId));
+      let next = cart.filter((line) => !touched.has(line.productId));
+      for (const line of pieces.lines) next = addLine(next, line, false);
+      return { cart: next, unmatched: pieces.unmatched };
+    }
+  }
+
   if (/^mejor medio kilo\b|^mejor medio\b/.test(text)) {
     const index = cart.length === 1 ? 0 : findInCart(cart, catalog, text);
     const target = index < 0 ? 0 : index;
@@ -948,6 +959,9 @@ export function resolvePending(pending: PendingCatalogAsk, message: string, cata
   }
 
   const pool = pending.candidateIds.map((id) => catalog.byId.get(id)).filter((row): row is CatalogRow => Boolean(row));
+  if (/\b(una de cada una|de cada una|de las dos|una y una|ambas)\b/.test(answer) && pool.length >= 2 && pool.length <= 8) {
+    return pool.map((row) => lineOf(row, 1, pending.unit === "pesos" ? "pesos" : pending.unit, null));
+  }
   const plainAnswer = /\bsin marinar\b|\bnatural\b|\bnormal\b|\bsencilla\b|\bla otra\b|\bla que no esta marinada\b|\bno esta marinada\b/.test(answer);
   const seasonedAnswer = !plainAnswer && /\bmarinad|\badobad/.test(answer);
   if ((plainAnswer || seasonedAnswer) && pool.some((row) => /marinad|adobad/.test(fold(row.name)))) {

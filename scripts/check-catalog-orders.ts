@@ -7,8 +7,8 @@
  *   npx tsx scripts/check-catalog-orders.ts --replay
  *   npx tsx scripts/check-catalog-orders.ts --live
  *
- * --replay califica el corpus, el held-out y los 40 casos nuevos
- * con las grabaciones de gpt-4.1-mini (dos pasadas) y gpt-5.5.
+ * --replay califica el corpus, el held-out, los 40 casos y los 50 nuevos
+ * con las grabaciones de la segunda y la tercera evaluación.
  * No forma parte del default: el lector de respaldo no se afina contra esos casos.
  * --live llama a OpenAI (gpt-4.1-mini y gpt-5.5) si hay OPENAI_API_KEY.
  * Sin llave, el default deja el vivo pendiente y exige mock 100% y fallback >= 85%.
@@ -41,6 +41,10 @@ const heldout = existsSync(heldoutPath)
 const unseenPath = resolve(root, "catalog-order-unseen.json");
 const unseen = existsSync(unseenPath)
   ? (JSON.parse(readFileSync(unseenPath, "utf8")) as { cases: CorpusCase[] })
+  : { cases: [] as CorpusCase[] };
+const new50Path = resolve(root, "catalog-order-new50.json");
+const fresh = existsSync(new50Path)
+  ? (JSON.parse(readFileSync(new50Path, "utf8")) as { cases: CorpusCase[] })
   : { cases: [] as CorpusCase[] };
 const catalogs = JSON.parse(readFileSync(resolve(root, "catalogs.json"), "utf8")) as {
   tienda_5_george: RawCatalogRow[];
@@ -599,7 +603,143 @@ function guardrails(): void {
     catalog: central,
   });
   assert(Math.abs((lineOf(unclear.cart, "Pulpa de puerco", central)?.qty ?? 0) - 0.5) < 0.001, "un solo candidato nombrado no se vuelve pregunta");
-  console.log("guardrails: 16/16");
+  assert(Math.abs(parseQuantity("dos kilos y cuarto de chorizo", "carniceria").qty - 2.25) < 0.001, "dos kilos y cuarto son 2.25");
+  assert(parseQuantity("ciento cincuenta de bistec de puerco", "carniceria").unit === "pesos" && parseQuantity("ciento cincuenta de bistec de puerco", "carniceria").qty === 150, "ciento cincuenta de carne son pesos");
+
+  const chorizo = central.rows.find((row) => row.name === "Chorizo");
+  const bistecM = central.rows.find((row) => row.name === "Bistec de puerco marinado");
+  const ribeye = central.rows.find((row) => row.name === "Ribeye de res con hueso");
+  const quesaburra = george.rows.find((row) => row.name === "Quesadilla Quesaburra");
+  assert(chorizo && bistecM && ribeye && quesaburra, "faltan filas de la tercera evaluación");
+
+  const compound = validateModelOutput({
+    output: {
+      intent: "order",
+      confidence: "high",
+      cart: [{ product_id: chorizo.id, qty: 2.25, unit: "kg", variant: null, notes: null }],
+      changes: [{ op: "add", product_id: chorizo.id, from_product_id: null, source_text: "ponme dos kilos y cuarto de chorizo" }],
+      unmatched: [],
+    },
+    prior: [],
+    message: "ponme dos kilos y cuarto de chorizo",
+    catalog: central,
+  });
+  assert(Math.abs((lineOf(compound.cart, "Chorizo", central)?.qty ?? 0) - 2.25) < 0.001, "el modelo en 2.25 no se baja a un cuarto");
+
+  const carried = validateModelOutput({
+    output: {
+      intent: "order",
+      confidence: "high",
+      cart: [
+        { product_id: chorizo.id, qty: 0.1, unit: "kg", variant: null, notes: null },
+        { product_id: bistecM.id, qty: 0.15, unit: "kg", variant: null, notes: null },
+      ],
+      changes: [
+        { op: "add", product_id: chorizo.id, from_product_id: null, source_text: "de a 80 de chorizo" },
+        { op: "add", product_id: bistecM.id, from_product_id: null, source_text: "120 de bistec de puerco marinado" },
+      ],
+      unmatched: [],
+    },
+    prior: [],
+    message: "de a 80 de chorizo y 120 de bistec de puerco marinado",
+    catalog: central,
+  });
+  assert(lineOf(carried.cart, "Chorizo", central)?.unit === "pesos" && lineOf(carried.cart, "Chorizo", central)?.qty === 80, "de a 80 se queda en pesos");
+  assert(lineOf(carried.cart, "Bistec de puerco marinado", central)?.unit === "pesos" && lineOf(carried.cart, "Bistec de puerco marinado", central)?.qty === 120, "120 de bistec también es pesos");
+
+  const splitDrink = validateModelOutput({
+    output: {
+      intent: "order",
+      confidence: "high",
+      cart: [
+        { product_id: refresco.id, qty: 3, unit: "pz", variant: "Coca", notes: null },
+        { product_id: refresco.id, qty: 2, unit: "pz", variant: "Seven", notes: null },
+        { product_id: refresco.id, qty: 1, unit: "pz", variant: "Mirinda", notes: null },
+      ],
+      changes: [{ op: "add", product_id: refresco.id, from_product_id: null, source_text: "seis refrescos: tres coca, dos seven y una mirinda" }],
+      unmatched: [],
+    },
+    prior: [],
+    message: "seis refrescos: tres coca, dos seven y una mirinda",
+    catalog: george,
+  });
+  assert(splitDrink.cart.filter((line) => line.productId === refresco.id).length === 3, "cada sabor del refresco se queda");
+
+  const keptName = validateModelOutput({
+    output: {
+      intent: "edit",
+      confidence: "high",
+      cart: [
+        { product_id: arrachera.id, qty: 1, unit: "kg", variant: null, notes: null },
+        { product_id: diezmillo.id, qty: 0, unit: "kg", variant: null, notes: null },
+      ],
+      changes: [{ op: "remove", product_id: diezmillo.id, from_product_id: diezmillo.id, source_text: "perdon, diezmillo" }],
+      unmatched: [],
+    },
+    prior: [
+      { productId: arrachera.id, qty: 1, unit: "kg", variant: null, notes: null },
+      { productId: diezmillo.id, qty: 3, unit: "kg", variant: null, notes: null },
+    ],
+    message: "perdon, diezmillo",
+    catalog: central,
+  });
+  assert(lineOf(keptName.cart, "Diezmillo", central)?.qty === 3, "nombrar lo que ya está no lo borra");
+
+  const each = resolvePending({
+    sourceText: "dos salsas",
+    candidateIds: central.rows.filter((row) => /salsa/i.test(row.name)).map((row) => row.id),
+    qty: 2,
+    unit: "pz",
+    variant: null,
+    family: null,
+    question: "¿La salsa BBQ o Hot Wings?",
+    count: 1,
+  }, "una de cada una", central);
+  assert(each?.length === 2, "una de cada una reparte las dos opciones");
+
+  const wingWord = validateModelOutput({
+    output: {
+      intent: "order",
+      confidence: "high",
+      cart: [{ product_id: alitas15.id, qty: 15, unit: "pz", variant: null, notes: null }],
+      changes: [{ op: "add", product_id: alitas15.id, from_product_id: null, source_text: "quince alitas" }],
+      unmatched: [],
+    },
+    prior: [],
+    message: "quince alitas",
+    catalog: george,
+  });
+  assert(lineOf(wingWord.cart, alitas15.name, george)?.qty === 1, "quince alitas es una orden de 15");
+
+  const oneQuesa = validateModelOutput({
+    output: {
+      intent: "order",
+      confidence: "high",
+      cart: [{ product_id: quesaburra.id, qty: 1, unit: "pz", variant: null, notes: null }],
+      changes: [{ op: "add", product_id: quesaburra.id, from_product_id: null, source_text: "quesa burra" }],
+      unmatched: [],
+    },
+    prior: [],
+    message: "una quesa burra",
+    catalog: george,
+  });
+  assert(lineOf(oneQuesa.cart, "Quesadilla Quesaburra", george)?.qty === 1 && oneQuesa.unmatched.length === 0, "quesa burra es la única quesaburra");
+
+  const voiceCut = validateModelOutput({
+    output: {
+      intent: "order",
+      confidence: "high",
+      cart: [{ product_id: ribeye.id, qty: 1, unit: "kg", variant: null, notes: null }],
+      changes: [{ op: "add", product_id: ribeye.id, from_product_id: null, source_text: "un kilo de ribay" }],
+      unmatched: [],
+    },
+    prior: [],
+    message: "un kilo de ribay",
+    catalog: central,
+  });
+  assert(lineOf(voiceCut.cart, "Ribeye de res con hueso", central)?.qty === 1, "ribay se queda en el ribeye que el modelo leyó");
+  assert(!voiceCut.unmatched.some((item) => item.reason === "not_on_menu"), "no se niega un corte que el modelo sí puso");
+  console.log("guardrails: 24/24");
 }
 
 async function live(): Promise<void> {
@@ -639,9 +779,11 @@ async function live(): Promise<void> {
 
 async function replay(): Promise<void> {
   const files = [
-    ["gpt-4.1-mini run1", "catalog-llm-recordings.gpt-4.1-mini.run1.json"],
-    ["gpt-4.1-mini run2", "catalog-llm-recordings.gpt-4.1-mini.run2.json"],
-    ["gpt-5.5", "catalog-llm-recordings.gpt-5.5.eval2.json"],
+    ["eval2 gpt-4.1-mini run1", "catalog-llm-recordings.gpt-4.1-mini.run1.json", false],
+    ["eval2 gpt-4.1-mini run2", "catalog-llm-recordings.gpt-4.1-mini.run2.json", false],
+    ["eval2 gpt-5.5", "catalog-llm-recordings.gpt-5.5.eval2.json", false],
+    ["eval3 gpt-4.1-mini run1", "catalog-llm-recordings.gpt-4.1-mini.eval3.run1.json", true],
+    ["eval3 gpt-4.1-mini run2", "catalog-llm-recordings.gpt-4.1-mini.eval3.run2.json", true],
   ] as const;
   if (heldout.cases.length !== 30) {
     console.log(`held-out: se esperaban 30 casos y hay ${heldout.cases.length}`);
@@ -651,7 +793,11 @@ async function replay(): Promise<void> {
     console.log(`unseen: se esperaban 40 casos y hay ${unseen.cases.length}`);
     process.exitCode = 1;
   }
-  for (const [label, file] of files) {
+  if (fresh.cases.length !== 50) {
+    console.log(`new50: se esperaban 50 casos y hay ${fresh.cases.length}`);
+    process.exitCode = 1;
+  }
+  for (const [label, file, hasFresh] of files) {
     const path = resolve(root, file);
     if (!existsSync(path)) {
       console.log(`--replay: falta ${file}`);
@@ -659,9 +805,10 @@ async function replay(): Promise<void> {
       continue;
     }
     const recordings = JSON.parse(readFileSync(path, "utf8")) as Record<string, ModelOutput[]>;
-    printReport(`${label} corpus`, await runCases(corpus.cases, "replay", recordings), 80);
-    printReport(`${label} held-out`, await runCases(heldout.cases, "replay", recordings), 80);
-    printReport(`${label} unseen`, await runCases(unseen.cases, "replay", recordings), 80);
+    printReport(`${label} corpus`, await runCases(corpus.cases, "replay", recordings), 40);
+    printReport(`${label} held-out`, await runCases(heldout.cases, "replay", recordings), 40);
+    printReport(`${label} unseen`, await runCases(unseen.cases, "replay", recordings), 40);
+    if (hasFresh) printReport(`${label} new50`, await runCases(fresh.cases, "replay", recordings), 40);
   }
 }
 
@@ -695,6 +842,10 @@ async function main(): Promise<void> {
   }
   if (unseen.cases.length !== 40) {
     console.error(`unseen: se esperaban 40 casos y hay ${unseen.cases.length}`);
+    process.exitCode = 1;
+  }
+  if (fresh.cases.length !== 50) {
+    console.error(`new50: se esperaban 50 casos y hay ${fresh.cases.length}`);
     process.exitCode = 1;
   }
   const mocked = await runCases(corpus.cases, "mock");

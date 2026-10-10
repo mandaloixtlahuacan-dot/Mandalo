@@ -113,7 +113,7 @@ function promptFor(request: InterpretRequest): string {
     "El tamaño aplica al producto que acompaña. No inventes filas.",
     "Nunca elijas tamaño, tipo ni sabor por default. Si el cliente no lo dijo, unmatched reason ambiguous con las filas que sí caben.",
     "Una línea de carrito por sabor. Dos sabores en el mismo mensaje son dos líneas, cada una con su variant.",
-    "No sustituyas. not_on_menu solo cuando ninguna fila del menú coincide. Si hay filas candidatas, la razón es ambiguous o unclear, no not_on_menu.",
+    "No sustituyas. not_on_menu cuando ninguna fila comparte una palabra real con lo que dijo (molida, pechuga, jugo, taco). ambiguous solo si esas filas sí coinciden con sus palabras. No listes productos que no se parecen.",
     "Un monto en pesos se queda en el producto que lo acompaña. Cientos y miles en palabras (doscientos, trescientos, quinientos, mil) son la cantidad, no se parten.",
     "«sin marinar», «natural» o «normal» es la fila sin marinar. «marinada» o «adobada» es la marinada.",
     "Si dice el nombre exacto de un producto, no preguntes.",
@@ -200,7 +200,7 @@ export function createOpenAICatalogModel(modelName = orderModel()): CatalogModel
       if (!apiKey) return null;
       const client = new OpenAI({ apiKey, timeout: ORDER_TIMEOUT_MS });
       const ids = request.catalog.rows.map((row) => row.id);
-      try {
+      const ask = async () => {
         const response = await client.chat.completions.create(
           {
             model: modelName,
@@ -217,6 +217,11 @@ export function createOpenAICatalogModel(modelName = orderModel()): CatalogModel
           { signal: AbortSignal.timeout(ORDER_TIMEOUT_MS) },
         );
         return parseModelJson(response.choices?.[0]?.message?.content ?? "");
+      };
+      try {
+        const first = await ask();
+        if (first) return first;
+        return await ask();
       } catch (error) {
         const denied = accessError(error);
         if (denied) {

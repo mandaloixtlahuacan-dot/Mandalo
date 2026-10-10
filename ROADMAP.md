@@ -2,16 +2,23 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 10 de octubre de 2026. Segunda evaluación en vivo
-> del menú cerrado (commit `0f7c1d6`): el validador dejaba pasar un peso
-> de más, un kilo de menos o un producto que el cliente sí dijo. Ahora
-> el monto se queda en su línea, los cientos en palabras se leen, y lo
-> que sí está en el menú no se pierde. Replay de esas grabaciones:
-> corpus 185/185, held-out 30/30 y 40 casos nuevos 40/40, en las dos
-> pasadas de `gpt-4.1-mini` y en `gpt-5.5`. La tercera evaluación en
-> vivo, con casos nuevos, sigue pendiente. No está mergeado ni
-> desplegado. La base de producción no se tocó. Abarrotes sigue igual.
-> Se apaga con `CATALOG_ENGINE=legacy`.
+> Última actualización: 10 de octubre de 2026. Tercera evaluación en vivo
+> del menú cerrado (sobre `c8d2021`, `gpt-4.1-mini`, dos pasadas): corpus
+> 179/185 estricto; 50 casos nuevos 40–41/50 estricto y 45–46/50 sin
+> fallas graves. Las 11 fallas graves de la segunda pasada ya no salieron.
+> Las nuevas salían porque el validador rehacía una lectura que el modelo
+> ya tenía bien. Ahora acepta cantidad, unidad, pesos y sabor cuando
+> cuadran con el texto, y solo corrige si el id no está en el menú, el
+> número no se dijo, falta algo que sí nombró, o el monto no se sostiene.
+> Replay de la segunda y la tercera: corpus 185/185, held-out 30/30,
+> 40 casos 40/40 y los 50 nuevos 50/50, en las dos pasadas de mini y en
+> `gpt-5.5` (esa grabación no trae los 50). La cuarta evaluación en vivo
+> sigue pendiente. No está mergeado ni desplegado. La base de producción
+> no se tocó. Abarrotes sigue igual. Se apaga con `CATALOG_ENGINE=legacy`.
+> Actualización anterior del mismo día: segunda evaluación (commit
+> `0f7c1d6`). El monto se queda en su línea, los cientos en palabras se
+> leen, y lo que sí está en el menú no se pierde. Replay de esas
+> grabaciones: corpus 185/185, held-out 30/30 y 40 casos nuevos 40/40.
 > Actualización anterior del mismo día: el lector quedó en
 > `gpt-4.1-mini` (`OPENAI_ORDER_MODEL`; `gpt-5.5` se puede elegir y no
 > manda temperature). El validador ya no acepta un tamaño, tipo o sabor

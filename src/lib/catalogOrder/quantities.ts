@@ -172,12 +172,30 @@ export function parseQuantity(raw: string, profile: StoreProfile): QtyHit {
     const base = WORDS[kilosY[1]] ?? Number(kilosY[1]);
     return { qty: base + 0.5, unit: "kg", pieceSize: null, rest: strip(text, new RegExp(`\\b(${WORD_RE}|\\d+)\\s+kilos?\\s+y\\s+medio\\b`)) };
   }
+  const kilosCuarto = text.match(new RegExp(`\\b(${WORD_RE}|\\d+)\\s+kilos?\\s+y\\s+cuarto\\b`));
+  if (kilosCuarto) {
+    const base = WORDS[kilosCuarto[1]] ?? Number(kilosCuarto[1]);
+    return { qty: base + 0.25, unit: "kg", pieceSize: null, rest: strip(text, new RegExp(`\\b(${WORD_RE}|\\d+)\\s+kilos?\\s+y\\s+cuarto\\b`)) };
+  }
   if (/\bkilo y medio\b|\bymedio\b/.test(text)) {
     return { qty: 1.5, unit: "kg", pieceSize: null, rest: strip(text, /\b(un |una )?kilo y medio\b|\bymedio\b/) };
   }
   if (/\bkilo y cuarto\b|\bycuarto\b/.test(text)) {
     const base = /\b(dos|2)\b/.test(text) ? 2 : 1;
     return { qty: base + 0.25, unit: "kg", pieceSize: null, rest: strip(text, /\b(un |una |dos )?kilos? y cuarto\b|\bycuarto\b/) };
+  }
+  if (profile === "carniceria" && !/\b(kilos?|kg|gramos?)\b/.test(text)) {
+    const head = text.match(/^(.+?)\s+de\s+/);
+    if (head) {
+      const before = head[1].trim().split(/\s+/).filter(Boolean);
+      const last = before[before.length - 1] ?? "";
+      const digit = /^\d+(?:\.\d+)?$/.test(last) ? Number(last) : 0;
+      const word = trailingNumber(before);
+      const amount = digit >= 20 ? digit : (word && word.value >= 20 ? word.value : 0);
+      if (amount >= 20) {
+        return { qty: amount, unit: "pesos", pieceSize: null, rest: strip(text, new RegExp(`\\b${amount >= 20 && digit ? last : WORD_RE}(?:\\s+(?:y\\s+)?(?:${WORD_RE}|mil))*\\s+de\\b`)) };
+      }
+    }
   }
 
   if (/\bmedia docena\b/.test(text)) {

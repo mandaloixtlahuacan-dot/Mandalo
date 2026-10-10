@@ -84,6 +84,9 @@ function questionFor(catalog: CatalogSnapshot, item: Unmatched | PendingCatalogA
   if (/\bcarne de puerco\b/.test(text) && !/\b(pulpa|bistec|pastor|costilla)\b/.test(text)) {
     return "¿Te refieres a Pulpa de puerco o Bistec de puerco?";
   }
+  if (rows.length === 1 && !rows[0].variants.length) {
+    return `¿Te refieres a ${rows[0].name}?`;
+  }
   if (rows.length === 1 && rows[0].variants.length) {
     const flavors = rows[0].variants.join(", ").replace(/, ([^,]+)$/, " o $1");
     return `¿El refresco de qué sabor: ${flavors}?`;
@@ -199,7 +202,6 @@ export function buildCatalogReply(params: {
         }),
       );
     } else questions.push(prose);
-    for (const extra of asks.slice(1)) questions.push(questionFor(catalog, extra, extra.source_text));
     pending = {
       sourceText: source,
       candidateIds: first.candidate_ids,

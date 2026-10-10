@@ -1,7 +1,8 @@
 /**
- * Revisa la lectura del modelo. No vuelve a armar el pedido con regex:
- * solo acepta, recorta o devuelve al carrito anterior lo que no está respaldado.
- * El tamaño, el tipo y el sabor tienen que haber salido de la boca del cliente.
+ * Revisa la lectura del modelo. Confía en su cantidad, unidad, pesos y sabor
+ * cuando cuadran con el texto (números, id del menú, palabras de sabor).
+ * Solo corrige si el id no existe, el número no está, falta algo que sí nombró,
+ * o el monto no se sostiene (un peso, cero kilos, un sabor que no dijo).
  */
 import { familyRows } from "@/lib/catalogOrder/catalog";
 import { cartFromModel, fallbackInterpret, messageClauses } from "@/lib/catalogOrder/fallback";
@@ -71,10 +72,51 @@ function norm(text: string): string {
   return folded;
 }
 
+const SIZE_WORD: Record<string, string> = { cinco: "5", diez: "10", quince: "15", veinte: "20", treinta: "30" };
+const GENERIC = new Set(["carne", "kilo", "kilos", "medio", "media", "cuarto", "cuartos", "paquete", "orden", "ordenes", "pieza", "piezas", "agua", "puro", "pura"]);
+
+function ayFold(value: string): string {
+  return compact(value).replace(/eye$/, "ay").replace(/ey$/, "ay").replace(/ei$/, "ay");
+}
+
+function closeToken(word: string, token: string): boolean {
+  const left = compact(word);
+  const right = compact(token);
+  if (!left || !right) return false;
+  if (left === right || ayFold(word) === ayFold(token)) return true;
+  if (left + "d" === right || right + "d" === left) return true;
+  const limit = Math.min(left.length, right.length) >= 6 ? 2 : 1;
+  return Math.min(left.length, right.length) >= 4 && editDistance(left, right) <= limit;
+}
+
+function joinedHit(text: string, token: string): boolean {
+  const words = fold(text).split(/\s+/).filter(Boolean);
+  const target = compact(token);
+  if (target.length < 5) return false;
+  for (let start = 0; start < words.length; start += 1) {
+    let acc = "";
+    for (let index = start; index < Math.min(words.length, start + 3); index += 1) {
+      acc += compact(words[index] ?? "");
+      if (acc === target) return true;
+    }
+  }
+  return false;
+}
+
 function fz(text: string, token: string): boolean {
-  if (fuzzyIncludes(text, token)) return true;
+  if (fuzzyIncludes(text, token) || joinedHit(text, token)) return true;
   const pin = compact(token);
-  return pin.length >= 6 && tokens(text).some((word) => editDistance(compact(word), pin) <= 2);
+  return pin.length >= 4 && tokens(text).some((word) => closeToken(word, token));
+}
+
+function mentionsMarinade(text: string): boolean {
+  if (/\bmarinad|\badobad/.test(fold(text))) return true;
+  return tokens(text).some((word) => closeToken(word, "marinada") || closeToken(word, "marinado"));
+}
+
+function sizeNumberSaid(text: string, size: string): boolean {
+  if (new RegExp(`\\b${size}\\b`).test(text)) return true;
+  return Object.entries(SIZE_WORD).some(([word, digit]) => digit === size && new RegExp(`\\b${word}\\b`).test(text));
 }
 
 function sizeSaid(text: string, size: string): boolean {
@@ -103,6 +145,8 @@ export function rowNamedBy(text: string, row: CatalogRow, catalog: CatalogSnapsh
   if (aliasHit) return true;
 
   const own = tokens(row.searchName).filter((token) => !/^(chica|grande|marinad[oa]|\d+g)$/.test(token));
+  const unique = own.filter((token) => !GENERIC.has(token) && !/^(res|puerco|pollo|hueso|salsa|queso)$/.test(token) && !catalog.rows.some((other) => other.id !== row.id && (tokens(other.searchName).includes(token) || other.alias.some((alias) => tokens(alias).includes(token)))));
+  const uniqueHit = unique.some((token) => fz(folded, token));
   const peers = catalog.rows.filter((other) => {
     if (other.id === row.id) return false;
     const otherTokens = new Set(tokens(other.searchName));
@@ -111,15 +155,15 @@ export function rowNamedBy(text: string, row: CatalogRow, catalog: CatalogSnapsh
   const distinctive = own.filter((token) => !peers.length || !peers.every((other) => tokens(other.searchName).includes(token)));
   const plainWithMarinated = !/marinad/.test(fold(row.name)) && familyRows(catalog, row.family).some((other) => /marinad/.test(fold(other.name)));
   const need = plainWithMarinated ? own : distinctive.length ? distinctive : own;
-  const named = need.every((token) => fz(folded, token));
+  const named = uniqueHit || need.every((token) => fz(folded, token));
   if (!named) return false;
 
   const siblings = familyRows(catalog, row.family);
   if (siblings.length > 1) {
     if (row.size && /^(chica|grande)$/.test(row.size) && !sizeSaid(folded, row.size)) return false;
-    if (row.size && /^\d+$/.test(row.size) && !new RegExp(`\\b${row.size}\\b`).test(folded)) return false;
+    if (row.size && /^\d+$/.test(row.size) && !sizeNumberSaid(folded, row.size)) return false;
     const marinated = /marinad/.test(fold(row.name));
-    if (siblings.some((other) => /marinad/.test(fold(other.name)) !== marinated) && marinated && !/marinad/.test(folded)) return false;
+    if (siblings.some((other) => /marinad/.test(fold(other.name)) !== marinated) && marinated && !mentionsMarinade(folded)) return false;
   }
   return true;
 }
@@ -136,7 +180,7 @@ function lineFromRow(row: CatalogRow, text: string, catalog: CatalogSnapshot): C
   if (parsed.unit === "pesos" && row.unit === "kg") {
     unit = "pesos";
     qty = parsed.qty;
-  } else if (parsed.unit === "kg") unit = "kg";
+  } else if (parsed.unit === "kg" && row.unit === "kg") unit = "kg";
   const flavors = mentionedVariants(text, row);
   return {
     productId: row.id,
@@ -197,11 +241,20 @@ function bestClause(parts: string[], row: CatalogRow): string | null {
 function collapsePack(text: string, line: CartLine, row: CatalogRow): CartLine {
   if (!row.size || !/^\d+$/.test(row.size)) return line;
   const pieces = Number(row.size);
-  if (!Number.isFinite(pieces) || pieces < 2 || Math.abs(line.qty - pieces) > 0.001) return line;
+  if (!Number.isFinite(pieces) || pieces < 2) return line;
   const folded = fold(text);
+  const orders = folded.match(/\b(\d+|dos|tres|cuatro|cinco)\s+ordenes?\b/);
+  if (orders && sizeNumberSaid(folded, String(pieces))) {
+    const spoken: Record<string, number> = { dos: 2, tres: 3, cuatro: 4, cinco: 5 };
+    const count = spoken[orders[1]] ?? Number(orders[1]);
+    if (count > 0) return { ...line, qty: count };
+  }
+  if (Math.abs(line.qty - pieces) > 0.001) return line;
   const saysPack = /\b(media\s+)?docena\b/.test(folded)
     || new RegExp(`\\b${pieces}\\s*piezas?\\b`).test(folded)
-    || new RegExp(`\\bde\\s+${pieces}\\b`).test(folded);
+    || new RegExp(`\\bde\\s+${pieces}\\b`).test(folded)
+    || sizeNumberSaid(folded, String(pieces))
+    || /\balitas?\b/.test(folded);
   return saysPack ? { ...line, qty: 1 } : line;
 }
 
@@ -231,13 +284,15 @@ export function validateModelOutput(params: {
     if (line.unit === "kg" && row.unit === "pz") return false;
     if (line.unit === "pesos" && row.unit !== "kg") return false;
     if (line.variant && row.variants.length && !row.variants.some((variant) => fold(variant) === fold(line.variant ?? ""))) {
-      unmatched.push({
-        source_text: line.variant,
-        reason: "ambiguous",
-        candidate_ids: [row.id],
-        qty: line.qty,
-        unit: line.unit,
-      });
+      if (!mentionedVariants(message, row).length) {
+        unmatched.push({
+          source_text: line.variant,
+          reason: "ambiguous",
+          candidate_ids: [row.id],
+          qty: line.qty,
+          unit: line.unit,
+        });
+      }
       return false;
     }
     if (line.variant && !row.variants.length) line.variant = null;
@@ -262,6 +317,27 @@ export function validateModelOutput(params: {
     return bestClause(parts, row);
   }
 
+  function flavorClauseQty(row: CatalogRow, variant: string | null): number | null {
+    if (!variant) return null;
+    const parts = fold(message).split(/\s+y\s+|,|;|:/);
+    const part = parts.find((clause) => mentionedVariants(clause, row).some((flavor) => fold(flavor) === fold(variant)));
+    if (!part) return null;
+    const parsed = parseQuantity(part, catalog.profile);
+    return parsed.qty > 0 ? parsed.qty : null;
+  }
+
+  function clauseAgrees(line: CartLine, row: CatalogRow, measure: string | null): boolean {
+    const beside = flavorClauseQty(row, line.variant);
+    if (beside != null && Math.abs(beside - line.qty) < 0.02 && line.unit !== "pesos") return true;
+    if (!measure) return false;
+    const parsed = parseQuantity(measure, catalog.profile);
+    if (parsed.unit === line.unit && Math.abs(parsed.qty - line.qty) < 0.02) return true;
+    if (parsed.unit == null && line.unit !== "pesos" && Math.abs(parsed.qty - line.qty) < 0.02) {
+      return /\d/.test(measure) || /\b(un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|quince|veinte|treinta|medio|cuarto|kilo)\b/.test(fold(measure));
+    }
+    return false;
+  }
+
   proposed = proposed.flatMap((line) => {
     const row = catalog.byId.get(line.productId);
     if (!row) return [line];
@@ -269,12 +345,13 @@ export function validateModelOutput(params: {
     const parsed = measure ? parseQuantity(measure, catalog.profile) : null;
     const adding = /\b(otro|otra|otros|otras|agrega|agregale|agreguele)\b/.test(fold(message));
     const exists = prior.some((item) => item.productId === line.productId);
+    const agrees = clauseAgrees(line, row, measure);
     let next = line;
-    if (parsed && row.unit === "kg" && parsed.unit === "pesos" && parsed.qty >= MIN_PESOS) {
+    if (!agrees && parsed && row.unit === "kg" && parsed.unit === "pesos" && parsed.qty >= MIN_PESOS) {
       next = { ...line, unit: "pesos", qty: parsed.qty };
-    } else if (parsed && measure && !(adding && exists) && row.unit === "kg" && next.unit !== "pesos" && parsed.unit === "kg" && explicitKg(measure) && Math.abs(parsed.qty - line.qty) > 0.001) {
+    } else if (!agrees && parsed && measure && !(adding && exists) && row.unit === "kg" && next.unit !== "pesos" && parsed.unit === "kg" && explicitKg(measure) && Math.abs(parsed.qty - line.qty) > 0.001) {
       next = { ...line, unit: "kg", qty: parsed.qty };
-    } else if (parsed?.unit === "pesos" && parsed.qty >= MIN_PESOS && line.unit === "pesos") {
+    } else if (!agrees && parsed?.unit === "pesos" && parsed.qty >= MIN_PESOS && line.unit === "pesos") {
       next = { ...line, qty: parsed.qty };
     }
     if (next.unit === "pesos" && next.qty < MIN_PESOS) {
@@ -399,6 +476,9 @@ export function validateModelOutput(params: {
       .some((token) => said.includes(token) || fz(message, token));
   }
 
+  const saidQty = /\d/.test(message) || /\b(un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|quince|veinte|treinta|medio|media|cuarto|cuartos|kilo|kilos|kg|docena|par|otro|otra|otros|otras|igual)\b/.test(fold(message));
+  const removeVerb = /\b(quita\w*|ya no|elimina\w*|borra\w*|nada de)\b/.test(fold(message)) || (/\bsin\b/.test(fold(message)) && !/\bsin marinar\b/.test(fold(message)));
+
   for (const line of proposed) {
     const row = catalog.byId.get(line.productId);
     if (!row) continue;
@@ -406,14 +486,21 @@ export function validateModelOutput(params: {
     if (!prev) {
       const clause = claimSource(line, row);
       const clauseFlavors = mentionedVariants(clause, row);
-      if (row.variants.length && clauseFlavors.length === 1) line.variant = clauseFlavors[0];
-      else if (row.variants.length && line.variant && clauseFlavors.length === 0 && !mentionedVariants(message, row).some((flavor) => fold(flavor) === fold(line.variant ?? ""))) {
+      const saidFlavor = Boolean(line.variant && mentionedVariants(message, row).some((flavor) => fold(flavor) === fold(line.variant ?? "")));
+      if (row.variants.length && clauseFlavors.length === 1 && !saidFlavor) line.variant = clauseFlavors[0];
+      else if (row.variants.length && line.variant && !saidFlavor && clauseFlavors.length === 0 && !mentionedVariants(message, row).some((flavor) => fold(flavor) === fold(line.variant ?? ""))) {
         unmatched.push({ source_text: clause, reason: "ambiguous", candidate_ids: [row.id], qty: line.qty, unit: line.unit });
         continue;
       }
       const flavors = mentionedVariants(message, row);
-      if (row.variants.length && flavors.length >= 2 && proposed.filter((item) => item.productId === row.id).length < flavors.length) {
-        if (!lumpedFlavors) unmatched.push({ source_text: message, reason: "unclear", candidate_ids: [] });
+      const flavorEdit = (output.changes ?? []).some((change) => (change.op === "replace" || change.op === "set_variant" || change.op === "remove") && (change.product_id === row.id || change.from_product_id === row.id));
+      if (!flavorEdit && row.variants.length && flavors.length >= 2 && proposed.filter((item) => item.productId === row.id).length < flavors.length) {
+        if (!lumpedFlavors) {
+          for (const flavor of flavors) {
+            const beside = flavorClauseQty(row, flavor);
+            kept.push({ productId: row.id, qty: beside && beside > 0 ? beside : 1, unit: line.unit === "pesos" ? "pz" : line.unit, variant: flavor, notes: null });
+          }
+        }
         lumpedFlavors = true;
         continue;
       }
@@ -431,6 +518,25 @@ export function validateModelOutput(params: {
         continue;
       }
       if (backed && !named) {
+        const family = familyRows(catalog, row.family);
+        const group = proposed.filter((item) => family.some((sibling) => sibling.id === item.productId));
+        const spokenTotal = parseQuantity(message, catalog.profile).qty;
+        const sizeChoice = family.some((sibling) => sibling.size) && new Set(family.map((sibling) => sibling.size)).size > 1;
+        const sizeWasSaid = family.some((sibling) => sibling.size && (sizeSaid(fold(message), sibling.size) || sizeNumberSaid(fold(message), sibling.size)));
+        if (!sizeChoice && family.length >= 2 && group.length === family.length && Math.abs(group.reduce((sum, item) => sum + item.qty, 0) - Math.max(spokenTotal, group.length)) < 0.05) {
+          kept.push(line);
+          continue;
+        }
+        if (sizeChoice && !sizeWasSaid) {
+          unmatched.push({
+            source_text: clause || message,
+            reason: "ambiguous",
+            candidate_ids: family.map((sibling) => sibling.id).slice(0, 12),
+            qty: spokenTotal > 0 ? spokenTotal : line.qty,
+            unit: line.unit,
+          });
+          continue;
+        }
         const matches = matchingIds(clause || message, catalog);
         const namedRows = matches
           .map((id) => catalog.byId.get(id))
@@ -452,7 +558,13 @@ export function validateModelOutput(params: {
         const inFamily = matches.filter((id) => familyIds.has(id));
         const pool = inFamily.length >= 2 ? inFamily : matches;
         if (!pool.length) {
-          unmatched.push({ source_text: sourceFor(line.productId), reason: "not_on_menu", candidate_ids: [] });
+          unmatched.push({
+            source_text: clause || sourceFor(line.productId),
+            reason: "ambiguous",
+            candidate_ids: [line.productId],
+            qty: line.qty,
+            unit: line.unit,
+          });
           continue;
         }
         unmatched.push({
@@ -468,7 +580,7 @@ export function validateModelOutput(params: {
       continue;
     }
     if (Math.abs(prev.qty - line.qty) > 0.001) {
-      const allowed = !answerWithoutNumber && (changeBacks("set_qty", line.productId) || touches(line.productId));
+      const allowed = saidQty && !answerWithoutNumber && (changeBacks("set_qty", line.productId) || touches(line.productId));
       kept.push(allowed ? line : prev);
     } else kept.push(line);
   }
@@ -480,7 +592,10 @@ export function validateModelOutput(params: {
     const removed = (output.changes ?? []).some((change) => {
       const backed = fuzzyIncludes(message, change.source_text);
       if (!backed) return false;
-      if (change.op === "remove") return change.product_id === line.productId || change.from_product_id === line.productId;
+      if (change.op === "remove") {
+        const replaces = /\bcambia\w*\b/.test(fold(message)) && /\bpor\b/.test(fold(message));
+        return (removeVerb || replaces || dropsSibling(line)) && (change.product_id === line.productId || change.from_product_id === line.productId);
+      }
       if (change.op === "replace" || change.op === "set_variant") return change.from_product_id === line.productId;
       return false;
     });
@@ -490,7 +605,73 @@ export function validateModelOutput(params: {
       if (added) added.qty = 1;
       continue;
     }
-    if (!removed) kept.push(line);
+    if (removed) continue;
+    if (dropsSibling(line)) continue;
+    kept.push(line);
+  }
+
+  function dropsSibling(line: CartLine): boolean {
+    const row = catalog.byId.get(line.productId);
+    if (!row) return false;
+    const incoming = proposed.find((item) => {
+      const other = catalog.byId.get(item.productId);
+      return Boolean(other && other.family === row.family && other.id !== row.id);
+    });
+    const other = incoming ? catalog.byId.get(incoming.productId) : undefined;
+    if (!other) return false;
+    const text = fold(message);
+    const oldSea = /marinad/.test(fold(row.name));
+    const newSea = /marinad/.test(fold(other.name));
+    if (oldSea !== newSea) {
+      const namesNew = newSea ? mentionsMarinade(message) : /\b(sin marinar|normal|natural|sencilla)\b/.test(text);
+      const namesOld = oldSea ? mentionsMarinade(message) : /\b(sin marinar|normal|natural|sencilla)\b/.test(text);
+      if (namesNew && !namesOld) return true;
+    }
+    if (row.size && other.size && row.size !== other.size) {
+      const namesNew = sizeSaid(text, other.size) || sizeNumberSaid(text, other.size);
+      const namesOld = sizeSaid(text, row.size) || sizeNumberSaid(text, row.size);
+      const switched = (output.changes ?? []).some((change) => (change.op === "remove" || change.op === "replace" || change.op === "set_variant") && (change.product_id === line.productId || change.from_product_id === line.productId));
+      if (namesNew && !namesOld && (switched || /\b(que sea|mejor|cambia\w*|la quiero)\b/.test(text))) return true;
+    }
+    return false;
+  }
+
+  const swap = fold(message).match(/\bcambia(?:r|la|lo)?\s+(una|uno|un|dos|tres|cuatro|\d+)\s+por\s+([a-z0-9]+)/);
+  if (swap) {
+    const spokenCount: Record<string, number> = { una: 1, uno: 1, un: 1, dos: 2, tres: 3, cuatro: 4 };
+    const count = spokenCount[swap[1]] ?? Number(swap[1]);
+    const drink = catalog.rows.find((row) => row.variants.length && mentionedVariants(swap[2], row).length);
+    const flavor = drink ? mentionedVariants(swap[2], drink)[0] : undefined;
+    const already = drink && flavor && kept.some((line) => line.productId === drink.id && fold(line.variant ?? "") === fold(flavor));
+    const source = drink && flavor ? kept.find((line) => line.productId === drink.id && fold(line.variant ?? "") !== fold(flavor) && line.qty > count) : undefined;
+    if (drink && flavor && count > 0 && !already && source) {
+      source.qty = Math.round((source.qty - count) * 1000) / 1000;
+      kept.push({ productId: drink.id, qty: count, unit: source.unit, variant: flavor, notes: null });
+    }
+  }
+
+  if (/\bmejor\b/.test(fold(message))) {
+    const drink = catalog.rows.find((row) => row.variants.length && mentionedVariants(message, row).length >= 2);
+    if (drink) {
+      const parts = fold(message).split(/\s+y\s+|,|;|:/);
+      const split: CartLine[] = [];
+      for (const variant of drink.variants) {
+        const part = parts.find((clause) => mentionedVariants(clause, drink).some((flavor) => fold(flavor) === fold(variant)));
+        if (!part) continue;
+        const parsed = parseQuantity(part, catalog.profile);
+        split.push({ productId: drink.id, qty: parsed.qty > 0 ? parsed.qty : 1, unit: "pz", variant, notes: null });
+      }
+      if (split.length >= 2) {
+        for (let index = kept.length - 1; index >= 0; index -= 1) {
+          if (kept[index]?.productId === drink.id) kept.splice(index, 1);
+        }
+        kept.push(...split);
+        for (let index = unmatched.length - 1; index >= 0; index -= 1) {
+          const item = unmatched[index];
+          if (item && item.candidate_ids.includes(drink.id)) unmatched.splice(index, 1);
+        }
+      }
+    }
   }
 
   if (/\bquita\b/.test(fold(message)) && /\b(una|uno|1)\b/.test(fold(message))) {
@@ -522,7 +703,28 @@ export function validateModelOutput(params: {
     const row = catalog.byId.get(change.product_id);
     if (!row || !fuzzyIncludes(message, change.source_text)) continue;
     const clause = change.source_text || "";
-    if (!rowNamedBy(heardFor(clause), row, catalog)) continue;
+    if (!rowNamedBy(heardFor(clause), row, catalog)) {
+      const family = familyRows(catalog, row.family);
+      const head = tokens(row.searchName)[0] ?? "";
+      const wider = head.length >= 4
+        ? catalog.rows.filter((other) => tokens(other.searchName)[0] === head || fold(other.family).startsWith(head))
+        : family;
+      const pool = wider.length > family.length ? wider : family;
+      const about = reasonableAsk(clause, pool.map((item) => item.id));
+      if (!about) continue;
+      if (pool.length === 1 && !row.variants.length) {
+        kept.push(lineFromRow(row, clause || message, catalog));
+      } else if (!unmatched.some((item) => fold(item.source_text) === fold(clause))) {
+        unmatched.push({
+          source_text: clause || row.family,
+          reason: "ambiguous",
+          candidate_ids: pool.map((item) => item.id).slice(0, 12),
+          qty: parseQuantity(clause || message, catalog.profile).qty,
+          unit: row.unit === "kg" ? "kg" : "pz",
+        });
+      }
+      continue;
+    }
     const built = lineFromRow(row, clause || message, catalog);
     built.qty = collapseRestatement(row, change.product_id, built.qty);
     if (row.variants.length && !built.variant) continue;
@@ -588,6 +790,30 @@ export function validateModelOutput(params: {
     unmatched.push({ source_text: uncovered.join(" "), reason: "unclear", candidate_ids: [] });
   }
 
+  function contentWords(source: string): string[] {
+    return tokens(source).filter((token) => token.length >= 4 && !GENERIC.has(token) && !SIZE_WORD[token]);
+  }
+
+  function reasonableAsk(source: string, ids: number[]): boolean {
+    const rows = ids.map((id) => catalog.byId.get(id)).filter((row): row is CatalogRow => Boolean(row));
+    const said = contentWords(source);
+    if (!said.length || !rows.length) return false;
+    return said.every((token) => rows.some((row) => {
+      const head = fold(row.family).split(" ")[0] ?? "";
+      if (head.length >= 4 && (token.startsWith(head) || head.startsWith(token) || closeToken(token, head))) return true;
+      const blob = tokens(`${row.searchName} ${row.name} ${row.alias.join(" ")} ${row.family}`);
+      return blob.some((item) => item.length >= 4 && (closeToken(token, item) || item.startsWith(token) || token.startsWith(item)));
+    }));
+  }
+
+  for (const item of unmatched) {
+    if (item.reason !== "ambiguous" && item.reason !== "unclear") continue;
+    if (item.candidate_ids.length === 1 && reasonableAsk(item.source_text, item.candidate_ids)) continue;
+    if (reasonableAsk(item.source_text, item.candidate_ids)) continue;
+    item.reason = "not_on_menu";
+    item.candidate_ids = [];
+  }
+
   const dedup = new Map<string, CartLine>();
   for (const line of [...kept, ...forced]) {
     const id = key(line);
@@ -596,5 +822,24 @@ export function validateModelOutput(params: {
     else dedup.set(id, { ...prev, qty: Math.max(prev.qty, line.qty) });
   }
 
-  return { cart: [...dedup.values()], unmatched, intent: output.intent };
+  const cart = [...dedup.values()];
+  const seen = new Set<string>();
+  const remaining = unmatched.filter((item) => {
+    const mark = `${item.reason}|${fold(item.source_text)}`;
+    if (seen.has(mark)) return false;
+    seen.add(mark);
+    if (item.reason === "not_on_menu") return true;
+    const src = fold(item.source_text);
+    if (src.length < 3) return true;
+    const coveredLine = cart.some((line) => {
+      const row = catalog.byId.get(line.productId);
+      if (!row) return false;
+      const sources = sourcesFor(line.productId).map((source) => fold(source));
+      if (sources.some((source) => source.includes(src) || src.includes(source))) return true;
+      return rowNamedBy(item.source_text, row, catalog);
+    });
+    return !coveredLine;
+  });
+
+  return { cart, unmatched: remaining, intent: output.intent };
 }
