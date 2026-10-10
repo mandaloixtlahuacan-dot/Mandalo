@@ -909,7 +909,7 @@ export function resolvePending(pending: PendingCatalogAsk, message: string, cata
   }
 
   const answer = text.replace(/^no,?\s+/, "");
-  const sized = sizeWord(answer);
+  const sized = /\bgrandes?\b/.test(answer) ? "grande" : /\bchicas?\b/.test(answer) ? "chica" : sizeWord(answer);
   if (sized && pending.family) {
     const siblings = familyRows(catalog, pending.family).filter((row) => pending.candidateIds.includes(row.id));
     const row = siblings.find((item) => item.size === sized);

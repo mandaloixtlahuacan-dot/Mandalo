@@ -1,7 +1,29 @@
 import OpenAI from "openai";
 import type { CatalogModel, InterpretRequest, ModelOutput, SellUnit } from "@/lib/catalogOrder/types";
 
-export const DEFAULT_ORDER_MODEL = "gpt-4.1";
+export const DEFAULT_ORDER_MODEL = "gpt-4.1-mini";
+
+const ORDER_TIMEOUT_MS = 6000;
+
+/** gpt-5 rechaza temperature; se pide sin razonamiento. */
+function omitsTemperature(modelName: string): boolean {
+  return /^gpt-5/i.test(modelName.trim());
+}
+
+const announcedAccess = new Set<string>();
+
+function accessError(error: unknown): { status: number; code: string } | null {
+  if (!error || typeof error !== "object") return null;
+  const status = "status" in error ? Number((error as { status?: number }).status) : NaN;
+  const code = "code" in error ? String((error as { code?: unknown }).code ?? "") : "";
+  const message = error instanceof Error ? error.message : "";
+  const blob = `${code} ${message}`.toLowerCase();
+  const modelMissing = blob.includes("model_not_found") || blob.includes("does not exist") || blob.includes("do not have access");
+  if (status === 401 || status === 403 || modelMissing || (status === 404 && (modelMissing || blob.includes("model") || blob.includes("not found")))) {
+    return { status: Number.isFinite(status) ? status : 0, code };
+  }
+  return null;
+}
 
 function orderModel(): string {
   const configured = String(process.env.OPENAI_ORDER_MODEL ?? "").trim();
@@ -88,10 +110,17 @@ function promptFor(request: InterpretRequest): string {
     "Entiende faltas, jerga y voz a texto. Cantidades en palabras y fracciones (1/4, un cuarto, medio, kilo y medio, 3/4, 250 g).",
     "En carne, '$100 de pastor' o 'cien pesos de chorizo' van con unit pesos.",
     "otra/otro igual/una más suma 1 a la línea de la que se habla. Si 'otra' trae otro producto, es ese producto, no un extra de la anterior.",
-    "El tamaño aplica al producto que acompaña. No inventes filas. Si no está en el menú, unmatched reason not_on_menu.",
-    "Si dos o más filas caben, unmatched reason ambiguous con sus ids. No preguntes tamaño ni tipo si solo hay una fila.",
+    "El tamaño aplica al producto que acompaña. No inventes filas.",
+    "Nunca elijas tamaño, tipo ni sabor por default. Si el cliente no lo dijo, unmatched reason ambiguous con las filas que sí caben.",
+    "Una línea de carrito por sabor. Dos sabores en el mismo mensaje son dos líneas, cada una con su variant.",
+    "No sustituyas. Si lo que nombra no es un producto del menú, unmatched reason not_on_menu y candidate_ids de lo más parecido. No lo cambies por otro parecido.",
+    "Si dice el nombre exacto de un producto, no preguntes.",
+    "Si dos o más filas caben y ninguna quedó nombrada completa, unmatched reason ambiguous con sus ids. No preguntes cuando solo hay una fila.",
     "Un sí, 'así está bien' o 'correcto' es intent confirm y no agrega productos.",
-    "Cada cambio del carrito lleva changes[].source_text copiado del mensaje del cliente.",
+    "Un elemento de changes por producto. source_text va copiado del mensaje.",
+    "cámbialo o cambia X por Y es op replace: from_product_id es la línea que sale y product_id la que entra. No dejes las dos.",
+    "otra, otro, agrega otro y otra igual suman 1 a esa línea (op add o set_qty con la cantidad nueva).",
+    "En una quesadilla, 'con ingrediente extra' es la fila Ingrediente Extra en Quesadilla, además de la quesadilla.",
     "",
     "Menú (id | nombre | precio | unidad | variantes):",
     catalogLines(request),
@@ -167,13 +196,13 @@ export function createOpenAICatalogModel(modelName = orderModel()): CatalogModel
     async interpret(request) {
       const apiKey = String(process.env.OPENAI_API_KEY ?? "").trim();
       if (!apiKey) return null;
-      const client = new OpenAI({ apiKey, timeout: 4000 });
+      const client = new OpenAI({ apiKey, timeout: ORDER_TIMEOUT_MS });
       const ids = request.catalog.rows.map((row) => row.id);
       try {
         const response = await client.chat.completions.create(
           {
             model: modelName,
-            temperature: 0,
+            ...(omitsTemperature(modelName) ? { reasoning_effort: "none" as const } : { temperature: 0 }),
             messages: [
               { role: "system", content: promptFor(request) },
               { role: "user", content: request.message },
@@ -183,10 +212,23 @@ export function createOpenAICatalogModel(modelName = orderModel()): CatalogModel
               json_schema: { name: "catalog_order", strict: true, schema: schemaFor(ids) },
             },
           },
-          { signal: AbortSignal.timeout(4000) },
+          { signal: AbortSignal.timeout(ORDER_TIMEOUT_MS) },
         );
         return parseModelJson(response.choices?.[0]?.message?.content ?? "");
       } catch (error) {
+        const denied = accessError(error);
+        if (denied) {
+          const key = `${modelName}:${denied.status}:${denied.code}`;
+          if (!announcedAccess.has(key)) {
+            announcedAccess.add(key);
+            const status = denied.status ? `HTTP ${denied.status}` : "sin HTTP";
+            const code = denied.code ? ` ${denied.code}` : "";
+            console.error(
+              `[catalogOrder] OpenAI rechazó el modelo ${modelName} (${status}${code}). La llave no tiene acceso o el modelo no existe. Este turno usa el lector de respaldo. El mismo rechazo no se vuelve a anunciar.`,
+            );
+          }
+          return null;
+        }
         console.error("[catalogOrder] modelo falló", error instanceof Error ? error.message : error);
         return null;
       }

@@ -7,7 +7,10 @@
  *   npx tsx scripts/check-catalog-orders.ts --replay
  *   npx tsx scripts/check-catalog-orders.ts --live
  *
- * --live llama a OpenAI (gpt-4.1 y gpt-4.1-mini) si hay OPENAI_API_KEY.
+ * --replay califica el corpus y el held-out con las grabaciones de
+ * gpt-4.1-mini y gpt-5.5. No forma parte del default: el lector de
+ * respaldo no se afina contra el held-out.
+ * --live llama a OpenAI (gpt-4.1-mini y gpt-5.5) si hay OPENAI_API_KEY.
  * Sin llave, el default deja el vivo pendiente y exige mock 100% y fallback >= 85%.
  */
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
@@ -29,6 +32,10 @@ process.env.CATALOG_ORDER_QUIET = "1";
 
 const root = resolve(__dirname, "fixtures");
 const corpus = JSON.parse(readFileSync(resolve(root, "catalog-order-corpus.json"), "utf8")) as { cases: CorpusCase[] };
+const heldoutPath = resolve(root, "catalog-order-heldout.json");
+const heldout = existsSync(heldoutPath)
+  ? (JSON.parse(readFileSync(heldoutPath, "utf8")) as { cases: CorpusCase[] })
+  : { cases: [] as CorpusCase[] };
 const catalogs = JSON.parse(readFileSync(resolve(root, "catalogs.json"), "utf8")) as {
   tienda_5_george: RawCatalogRow[];
   tienda_6_la_central: RawCatalogRow[];
@@ -166,19 +173,16 @@ async function runCase(item: CorpusCase, model: CatalogModel | null): Promise<{ 
   return { cart, reply };
 }
 
-async function runMode(mode: "mock" | "fallback" | "replay" | "live", liveModel?: string): Promise<{ pass: number; fail: Failure[]; byCategory: Map<string, { pass: number; total: number }> }> {
+async function runCases(
+  cases: CorpusCase[],
+  mode: "mock" | "fallback" | "replay" | "live",
+  recordings?: Record<string, ModelOutput[] | null> | null,
+  liveModel?: string,
+): Promise<{ pass: number; total: number; fail: Failure[]; byCategory: Map<string, { pass: number; total: number }> }> {
   const failures: Failure[] = [];
   const byCategory = new Map<string, { pass: number; total: number }>();
-  const recordingsPath = resolve(root, "catalog-llm-recordings.json");
-  const recordings = mode === "replay" && existsSync(recordingsPath)
-    ? (JSON.parse(readFileSync(recordingsPath, "utf8")) as Record<string, ModelOutput[]>)
-    : null;
-  if (mode === "replay" && !recordings) {
-    console.log("--replay: no hay scripts/fixtures/catalog-llm-recordings.json");
-    return { pass: 0, fail: [], byCategory };
-  }
 
-  for (const item of corpus.cases) {
+  for (const item of cases) {
     const bucket = byCategory.get(item.category) ?? { pass: 0, total: 0 };
     bucket.total += 1;
     const catalog = catalogFor(item.store);
@@ -204,17 +208,17 @@ async function runMode(mode: "mock" | "fallback" | "replay" | "live", liveModel?
     else bucket.pass += 1;
     byCategory.set(item.category, bucket);
   }
-  return { pass: corpus.cases.length - failures.length, fail: failures, byCategory };
+  return { pass: cases.length - failures.length, total: cases.length, fail: failures, byCategory };
 }
 
-function printReport(label: string, report: { pass: number; fail: Failure[]; byCategory: Map<string, { pass: number; total: number }> }): void {
-  console.log(`\n${label}: ${report.pass}/${corpus.cases.length}`);
+function printReport(label: string, report: { pass: number; total: number; fail: Failure[]; byCategory: Map<string, { pass: number; total: number }> }, limit = 40): void {
+  console.log(`\n${label}: ${report.pass}/${report.total}`);
   const categories = [...report.byCategory.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   for (const [category, bucket] of categories) console.log(`  ${category}: ${bucket.pass}/${bucket.total}`);
-  for (const failure of report.fail.slice(0, 40)) {
+  for (const failure of report.fail.slice(0, limit)) {
     console.log(`  ${failure.id} ${failure.store}/${failure.category}: ${failure.reasons.join("; ")}`);
   }
-  if (report.fail.length > 40) console.log(`  … y ${report.fail.length - 40} más`);
+  if (report.fail.length > limit) console.log(`  … y ${report.fail.length - limit} más`);
 }
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -328,7 +332,7 @@ async function live(): Promise<void> {
     return;
   }
   const recordings: Record<string, unknown[]> = {};
-  for (const modelName of ["gpt-4.1", "gpt-4.1-mini"]) {
+  for (const modelName of ["gpt-4.1-mini", "gpt-5.5"]) {
     const started: number[] = [];
     const { createOpenAICatalogModel } = await import("../src/lib/catalogOrder/parser");
     let pass = 0;
@@ -346,7 +350,7 @@ async function live(): Promise<void> {
         },
       };
       const { cart, reply } = await runCase(item, wrapped);
-      if (modelName === "gpt-4.1") recordings[item.id] = turns;
+      if (modelName === "gpt-4.1-mini") recordings[item.id] = turns;
       if (!score(item, cart, reply, catalog).length) pass += 1;
     }
     started.sort((a, b) => a - b);
@@ -357,6 +361,28 @@ async function live(): Promise<void> {
   writeFileSync(resolve(root, "catalog-llm-recordings.json"), JSON.stringify(recordings, null, 1));
 }
 
+async function replay(): Promise<void> {
+  const files = [
+    ["gpt-4.1-mini", "catalog-llm-recordings.gpt-4.1-mini.json"],
+    ["gpt-5.5", "catalog-llm-recordings.gpt-5.5_re-none.json"],
+  ] as const;
+  if (heldout.cases.length !== 30) {
+    console.log(`held-out: se esperaban 30 casos y hay ${heldout.cases.length}`);
+    process.exitCode = 1;
+  }
+  for (const [label, file] of files) {
+    const path = resolve(root, file);
+    if (!existsSync(path)) {
+      console.log(`--replay: falta ${file}`);
+      process.exitCode = 1;
+      continue;
+    }
+    const recordings = JSON.parse(readFileSync(path, "utf8")) as Record<string, ModelOutput[]>;
+    printReport(`${label} corpus`, await runCases(corpus.cases, "replay", recordings), 80);
+    printReport(`${label} held-out`, await runCases(heldout.cases, "replay", recordings), 80);
+  }
+}
+
 async function main(): Promise<void> {
   const arg = process.argv[2] ?? "--default";
   if (arg === "--live") {
@@ -364,26 +390,30 @@ async function main(): Promise<void> {
     return;
   }
   if (arg === "--replay") {
-    printReport("replay", await runMode("replay"));
+    await replay();
     return;
   }
   if (arg === "--fallback") {
-    const report = await runMode("fallback");
+    const report = await runCases(corpus.cases, "fallback");
     printReport("fallback", report);
     if (report.pass < Math.ceil(corpus.cases.length * 0.85)) process.exitCode = 1;
     return;
   }
   if (arg === "--mock") {
-    const report = await runMode("mock");
+    const report = await runCases(corpus.cases, "mock");
     printReport("mock", report);
     if (report.pass !== corpus.cases.length) process.exitCode = 1;
     return;
   }
 
   adversarial();
-  const mocked = await runMode("mock");
+  if (heldout.cases.length !== 30) {
+    console.error(`held-out: se esperaban 30 casos y hay ${heldout.cases.length}`);
+    process.exitCode = 1;
+  }
+  const mocked = await runCases(corpus.cases, "mock");
   printReport("mock", mocked);
-  const fallback = await runMode("fallback");
+  const fallback = await runCases(corpus.cases, "fallback");
   printReport("fallback", fallback);
   if (!process.env.OPENAI_API_KEY) console.log("\n--live pendiente: no hay OPENAI_API_KEY. Hay que correrlo antes de prender el motor en producción.");
   if (mocked.pass !== corpus.cases.length || fallback.pass < Math.ceil(corpus.cases.length * 0.85)) process.exitCode = 1;

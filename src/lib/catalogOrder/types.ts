@@ -60,6 +60,9 @@ export type Unmatched = {
   source_text: string;
   reason: "ambiguous" | "not_on_menu" | "unclear";
   candidate_ids: number[];
+  /** Cantidad de la línea que se rechazó, para que la respuesta no la pierda. */
+  qty?: number;
+  unit?: SellUnit;
 };
 
 export type ChangeOp = "add" | "set_qty" | "remove" | "replace" | "set_variant";

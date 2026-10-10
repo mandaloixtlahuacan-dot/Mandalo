@@ -2,14 +2,17 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 10 de octubre de 2026. Motor de pedido contra menú
+> Última actualización: 10 de octubre de 2026. El lector del menú cerrado
+> quedó en `gpt-4.1-mini` (`OPENAI_ORDER_MODEL`; `gpt-5.5` se puede elegir
+> y no manda temperature). El validador ya no acepta un tamaño, tipo o
+> sabor que el cliente no dijo, y un cambio reemplaza la línea. La
+> evaluación en vivo de esta pasada sigue pendiente de volver a correr.
+> No está mergeado ni desplegado. La base de producción no se tocó.
+> Abarrotes sigue igual. Se apaga con `CATALOG_ENGINE=legacy`.
+> Actualización anterior del mismo día: motor de pedido contra menú
 > cerrado para George (tienda 5) y Carnicería La Central (tienda 6), en
-> rama y PR en borrador. No está mergeado ni desplegado. La base de
-> producción no se tocó. Abarrotes sigue igual. Se apaga con
-> `CATALOG_ENGINE=legacy`. Sin `OPENAI_API_KEY` en este entorno, la
-> evaluación en vivo quedó pendiente; el corpus de 185 pasa en simulado
-> y con el lector de respaldo. El modelo del parser es `gpt-4.1`
-> (`OPENAI_ORDER_MODEL` lo cambia).
+> rama y PR en borrador. Sin `OPENAI_API_KEY` en el entorno del agente,
+> el corpus de 185 pasa en simulado y con el lector de respaldo.
 > Actualización anterior: 8 de octubre de 2026. Solo cambió cómo se ven los
 > mensajes de WhatsApp: títulos, nombre de la tienda, productos, precios,
 > la línea de $25 y las instrucciones van en *negrita*; cada producto o
