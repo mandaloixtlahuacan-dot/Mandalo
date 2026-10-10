@@ -1,11 +1,11 @@
 import { checkAiOutput, type AcceptedQuestion, type CheckResult } from "@/lib/catalogOrder/accept";
 import { cartFromModel, fallbackInterpret } from "@/lib/catalogOrder/fallback";
-import { createOpenAICatalogModel } from "@/lib/catalogOrder/parser";
+import { createOpenAICatalogModel, escalationModelName, logEscalation, notePrimaryTurn, orderModel } from "@/lib/catalogOrder/parser";
 import { parseQuantity } from "@/lib/catalogOrder/quantities";
 import { buildAiReply, buildCatalogReply } from "@/lib/catalogOrder/reply";
 import { fold } from "@/lib/catalogOrder/text";
 import { classifyProductListReply } from "@/lib/messages";
-import type { AiOutput, CartLine, CatalogEngineMode, CatalogRow, CatalogSnapshot, CatalogTurnInput, CatalogTurnResult, InterpretRequest } from "@/lib/catalogOrder/types";
+import type { AiOutput, CartLine, CatalogEngineMode, CatalogModel, CatalogRow, CatalogSnapshot, CatalogTurnInput, CatalogTurnResult, InterpretRequest } from "@/lib/catalogOrder/types";
 
 const REPEAT = "No le entendí. Repítemelo con palabras sencillas.";
 
@@ -218,9 +218,73 @@ function removalError(message: string, prior: CartLine[], next: CartLine[]): str
   return "el cliente quitó algo; quítalo";
 }
 
+function guardChecked(input: CatalogTurnInput, checked: CheckResult): CheckResult {
+  const named = preferExactName(input.message, checked, input.cart, input.catalog);
+  return rescueBoneless(input.message, named, input.catalog);
+}
+
 function acceptChecked(input: CatalogTurnInput, output: AiOutput): CheckResult {
-  const checked = preferExactName(input.message, checkAiOutput(output, input.catalog), input.cart, input.catalog);
-  return rescueBoneless(input.message, checked, input.catalog);
+  return guardChecked(input, checkAiOutput(output, input.catalog));
+}
+
+function messageHasContent(message: string): boolean {
+  return /[\p{L}\p{N}]/u.test(message);
+}
+
+function isUnreadable(output: AiOutput): boolean {
+  const line = output.cart[0];
+  return output.cart.length === 1 && line?.product_id === -1 && (output.pending?.length ?? 0) === 0 && output.not_on_menu.length === 0;
+}
+
+function nameMismatch(
+  message: string,
+  checked: CheckResult,
+  prior: CartLine[],
+  catalog: CatalogSnapshot,
+): { reason: "exact-name" | "look-alike"; error: string } | null {
+  const next = preferExactName(message, checked, prior, catalog);
+  if (next === checked) return null;
+  const index = next.cart.findIndex((line, position) => line.productId !== checked.cart[position]?.productId);
+  const oldRow = catalog.byId.get(checked.cart[index]?.productId ?? 0);
+  const newRow = catalog.byId.get(next.cart[index]?.productId ?? 0);
+  const marin = Boolean(oldRow && newRow && normalizeMarin(fold(oldRow.name)).startsWith(`${normalizeMarin(fold(newRow.name))} marinad`));
+  if (marin) return { reason: "exact-name", error: "El cliente dijo el nombre exacto de una fila. No la cambies por la marinada." };
+  return { reason: "look-alike", error: "El cliente nombró otra fila. Usa esa, no la parecida." };
+}
+
+type TurnFailure = { reason: string; errors: string[]; swap: boolean; removal: boolean };
+
+/** Solo estos fallos saltan de modelo. Un carrito que pasó todos los cheques no salta. */
+function failureOf(input: CatalogTurnInput, output: AiOutput, raw: CheckResult): TurnFailure | null {
+  if (isUnreadable(output)) {
+    return { reason: "json", errors: ["El JSON no se pudo leer o no coincide con el esquema."], swap: false, removal: false };
+  }
+  const removal = removalError(input.message, input.cart, raw.cart);
+  const swap = pureSwapError(input.message, input.cart, raw.cart);
+  const named = nameMismatch(input.message, raw, input.cart, input.catalog);
+  const errors = [...raw.errors];
+  if (removal) errors.push(removal);
+  if (swap) errors.push(swap);
+  if (named) errors.push(named.error);
+  if (removal) return { reason: "removal", errors, swap: Boolean(swap), removal: true };
+  if (swap) return { reason: "swap", errors, swap: true, removal: false };
+  if (named) return { reason: named.reason, errors, swap: false, removal: false };
+  if (!useful(raw) && messageHasContent(input.message)) {
+    if (raw.errors.length) return { reason: "rejected", errors, swap: false, removal: false };
+    return { reason: "empty", errors: ["No quedó ninguna línea válida, ni pregunta, ni algo fuera del menú."], swap: false, removal: false };
+  }
+  return null;
+}
+
+function resolveModels(input: CatalogTurnInput): { primary: CatalogModel | null; escalation: CatalogModel | null } {
+  if (input.model === null) return { primary: null, escalation: null };
+  if (input.model) {
+    return { primary: input.model, escalation: input.escalationModel === undefined ? null : input.escalationModel };
+  }
+  if (input.escalationModel === null) return { primary: createOpenAICatalogModel(orderModel()), escalation: null };
+  if (input.escalationModel) return { primary: createOpenAICatalogModel(orderModel()), escalation: input.escalationModel };
+  const name = escalationModelName();
+  return { primary: createOpenAICatalogModel(orderModel()), escalation: name ? createOpenAICatalogModel(name) : null };
 }
 
 function useful(checked: CheckResult): boolean {
@@ -328,57 +392,8 @@ function confirmPrevious(input: CatalogTurnInput, started: number, modelName: st
   });
 }
 
-async function runAiTurn(input: CatalogTurnInput): Promise<CatalogTurnResult> {
-  const started = Date.now();
-  const model = input.model === undefined ? createOpenAICatalogModel() : input.model;
-  const modelName = model?.name ?? "fallback";
-
-  if (input.pending && closesOrder(input.message)) {
-    return reaskPending(input, started, modelName);
-  }
-
-  if (input.awaitingList && classifyProductListReply(input.message) === "confirm") {
-    return confirmPrevious(input, started, modelName);
-  }
-
-  if (!model) return fromFallback(input, started, "fallback");
-
-  let output: AiOutput | null = null;
-  try {
-    output = await model.interpret(requestOf(input));
-  } catch {
-    output = null;
-  }
-  if (!output) return fromFallback(input, started, "fallback");
-
-  let checked = acceptChecked(input, output);
-  const swapError = pureSwapError(input.message, input.cart, checked.cart);
-  const missedRemoval = removalError(input.message, input.cart, checked.cart);
-  const invalid = checked.errors.length > 0 && !useful(checked);
-  if (invalid || swapError || missedRemoval) {
-    const errors = [...checked.errors];
-    if (swapError) errors.push(swapError);
-    if (missedRemoval) errors.push(missedRemoval);
-    let repaired: AiOutput | null = null;
-    try {
-      repaired = await model.interpret(requestOf(input, errors));
-    } catch {
-      repaired = null;
-    }
-    if (!repaired) return fromFallback(input, started, "fallback");
-    const second = acceptChecked(input, repaired);
-    const secondSwap = pureSwapError(input.message, input.cart, second.cart);
-    const secondRemoval = removalError(input.message, input.cart, second.cart);
-    const useSecond = swapError || missedRemoval
-      ? (!swapError || !secondSwap) && (!missedRemoval || !secondRemoval) && useful(second)
-      : useful(second) || second.errors.length < checked.errors.length;
-    if (useSecond) {
-      output = repaired;
-      checked = second;
-    }
-  }
+function speak(input: CatalogTurnInput, started: number, modelName: string, output: AiOutput, checked: CheckResult): CatalogTurnResult {
   if (!useful(checked)) return holdCart(input, started, modelName);
-
   const question = checked.question;
   const notOnMenu = checked.notOnMenu;
   const confirmedList = input.awaitingList === true
@@ -411,6 +426,97 @@ async function runAiTurn(input: CatalogTurnInput): Promise<CatalogTurnResult> {
     freeText: [],
     confirmedList,
   });
+}
+
+async function repairOnSameModel(input: CatalogTurnInput, started: number, model: CatalogModel, output: AiOutput): Promise<CatalogTurnResult> {
+  let checked = acceptChecked(input, output);
+  const swapError = pureSwapError(input.message, input.cart, checked.cart);
+  const missedRemoval = removalError(input.message, input.cart, checked.cart);
+  const invalid = checked.errors.length > 0 && !useful(checked);
+  if (invalid || swapError || missedRemoval) {
+    const errors = [...checked.errors];
+    if (swapError) errors.push(swapError);
+    if (missedRemoval) errors.push(missedRemoval);
+    let repaired: AiOutput | null = null;
+    try {
+      repaired = await model.interpret(requestOf(input, errors));
+    } catch {
+      repaired = null;
+    }
+    if (!repaired) return fromFallback(input, started, "fallback");
+    const second = acceptChecked(input, repaired);
+    const secondSwap = pureSwapError(input.message, input.cart, second.cart);
+    const secondRemoval = removalError(input.message, input.cart, second.cart);
+    const useSecond = swapError || missedRemoval
+      ? (!swapError || !secondSwap) && (!missedRemoval || !secondRemoval) && useful(second)
+      : useful(second) || second.errors.length < checked.errors.length;
+    if (useSecond) {
+      output = repaired;
+      checked = second;
+    }
+  }
+  return speak(input, started, model.name, output, checked);
+}
+
+async function callEscalation(
+  input: CatalogTurnInput,
+  started: number,
+  primaryName: string,
+  escalation: CatalogModel,
+  reason: string,
+  repairErrors: string[] | undefined,
+  first: { output: AiOutput; raw: CheckResult } | null,
+  flags: { swap: boolean; removal: boolean },
+): Promise<CatalogTurnResult> {
+  logEscalation(reason);
+  let repaired: AiOutput | null = null;
+  try {
+    repaired = await escalation.interpret(requestOf(input, repairErrors));
+  } catch {
+    repaired = null;
+  }
+  if (!repaired) return fromFallback(input, started, "fallback");
+  const second = guardChecked(input, checkAiOutput(repaired, input.catalog));
+  const useSecond = !first
+    ? true
+    : flags.swap || flags.removal
+      ? (!flags.swap || !pureSwapError(input.message, input.cart, second.cart))
+        && (!flags.removal || !removalError(input.message, input.cart, second.cart))
+        && useful(second)
+      : reason === "exact-name" || reason === "look-alike"
+        ? useful(second)
+        : useful(second) || second.errors.length < first.raw.errors.length;
+  if (useSecond) return speak(input, started, escalation.name, repaired, second);
+  return speak(input, started, primaryName, first?.output ?? repaired, first ? guardChecked(input, first.raw) : second);
+}
+
+async function runAiTurn(input: CatalogTurnInput): Promise<CatalogTurnResult> {
+  const started = Date.now();
+  const { primary, escalation } = resolveModels(input);
+  const modelName = primary?.name ?? "fallback";
+
+  if (input.pending && closesOrder(input.message)) return reaskPending(input, started, modelName);
+  if (input.awaitingList && classifyProductListReply(input.message) === "confirm") return confirmPrevious(input, started, modelName);
+  if (!primary) return fromFallback(input, started, "fallback");
+
+  notePrimaryTurn();
+  let output: AiOutput | null = null;
+  try {
+    output = await primary.interpret(requestOf(input));
+  } catch {
+    output = null;
+  }
+
+  if (!escalation) {
+    if (!output) return fromFallback(input, started, "fallback");
+    return repairOnSameModel(input, started, primary, output);
+  }
+  if (!output) return callEscalation(input, started, primary.name, escalation, "api", undefined, null, { swap: false, removal: false });
+
+  const raw = checkAiOutput(output, input.catalog);
+  const failure = failureOf(input, output, raw);
+  if (!failure) return speak(input, started, primary.name, output, guardChecked(input, raw));
+  return callEscalation(input, started, primary.name, escalation, failure.reason, failure.errors, { output, raw }, failure);
 }
 
 export async function runCatalogOrderTurn(input: CatalogTurnInput): Promise<CatalogTurnResult> {

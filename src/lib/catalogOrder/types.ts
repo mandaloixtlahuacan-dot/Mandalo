@@ -160,6 +160,11 @@ export type CatalogTurnInput = {
   /** El mensaje anterior ya mostró «¿Están bien estos productos?». */
   awaitingList?: boolean;
   model?: CatalogModel | null;
+  /**
+   * Modelo de salto. Si `model` viene inyectado y esto se omite, no hay salto:
+   * la corrección sigue en el mismo modelo. null lo apaga.
+   */
+  escalationModel?: CatalogModel | null;
 };
 
 export type CatalogEngineMode = "legacy" | "v1" | "v2";

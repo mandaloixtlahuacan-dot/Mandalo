@@ -7,9 +7,8 @@
  *     pruebas offline, sin OpenAI. Esto es lo que corre `npm run check`.
  *
  *   OPENAI_API_KEY=sk-... npx tsx scripts/check-catalog-orders.ts --live
- *   OPENAI_API_KEY=sk-... npx tsx scripts/check-catalog-orders.ts --live
- *   OPENAI_API_KEY=sk-... OPENAI_ORDER_MODEL=gpt-4.1-mini npx tsx scripts/check-catalog-orders.ts --live
- *   OPENAI_API_KEY=sk-... OPENAI_ORDER_MODEL=gpt-5.5 OPENAI_REASONING_EFFORT=none npx tsx scripts/check-catalog-orders.ts --live
+ *   OPENAI_API_KEY=sk-... OPENAI_ORDER_MODEL=gpt-4o-mini npx tsx scripts/check-catalog-orders.ts --live
+ *   OPENAI_API_KEY=sk-... OPENAI_ORDER_ESCALATION_MODEL= npx tsx scripts/check-catalog-orders.ts --live
  *
  *   npx tsx scripts/check-catalog-orders.ts --replay scripts/fixtures/catalog-llm-recordings.live.json
  *
@@ -17,8 +16,11 @@
  * Un argumento extra elige un solo juego: corpus, held-out, unseen, new50, fresh60.
  * Escribe las grabaciones del esquema nuevo en
  * scripts/fixtures/catalog-llm-recordings.live.json
+ * Al final imprime la tasa de salto y el costo partido por modelo.
  *
- * OPENAI_ORDER_MODEL: gpt-5.5 (default), gpt-4.1-mini o gpt-4o-mini.
+ * OPENAI_ORDER_MODEL: gpt-4o-mini (default), temperatura 0.
+ * OPENAI_ORDER_ESCALATION_MODEL: gpt-5.5 (default). Vacío apaga el salto.
+ * El salto ocurre solo si mini falla: API, JSON, nada usable, o una corrección.
  * OPENAI_REASONING_EFFORT: none (default) o low. Solo aplica a gpt-5.
  * CATALOG_ENGINE: vacío = este motor; v1 = el motor anterior; legacy = sin menú cerrado.
  */
@@ -27,7 +29,8 @@ import { resolve } from "node:path";
 import { checkAiOutput, pesosToKg } from "../src/lib/catalogOrder/accept";
 import { buildCatalog, catalogEngineMode, runCatalogOrderTurn, type AiOutput, type CartLine, type CatalogModel, type CatalogSnapshot, type PendingCatalogAsk, type RawCatalogRow } from "../src/lib/catalogOrder";
 import { GENERIC_DOGO } from "../src/lib/catalogOrder/catalog";
-import { buildOrderPrompt, DEFAULT_ORDER_MODEL, isOrderTimeout, ORDER_RETRY_TIMEOUT_MS, ORDER_TIMEOUT_MS, orderJsonSchema, parseModelJson } from "../src/lib/catalogOrder/parser";
+import { buildOrderPrompt, DEFAULT_ORDER_MODEL, escalationModelName, isOrderTimeout, ORDER_RETRY_TIMEOUT_MS, ORDER_TIMEOUT_MS, orderJsonSchema, orderModel, orderSampling, orderStats, parseModelJson, resetOrderStats, setOrderCallSink } from "../src/lib/catalogOrder/parser";
+import type { InterpretRequest } from "../src/lib/catalogOrder/types";
 import { parseQuantity } from "../src/lib/catalogOrder/quantities";
 
 type ExpectItem = { name: string; qty: number; unit: string; variant?: string };
@@ -130,7 +133,9 @@ function scripted(steps: Array<AiOutput | null>): CatalogModel {
   };
 }
 
-async function runCase(item: CorpusCase, model: CatalogModel | null): Promise<{ cart: CartLine[]; reply: string }> {
+type TurnModels = { model?: CatalogModel | null; escalationModel?: CatalogModel | null };
+
+async function runCase(item: CorpusCase, models: TurnModels): Promise<{ cart: CartLine[]; reply: string }> {
   const catalog = catalogFor(item.store);
   let cart: CartLine[] = [];
   let pending = null;
@@ -143,7 +148,8 @@ async function runCase(item: CorpusCase, model: CatalogModel | null): Promise<{ 
       history: [],
       catalog,
       awaitingList: reply.includes("¿Están bien estos productos?"),
-      model,
+      model: models.model,
+      escalationModel: models.escalationModel,
     });
     cart = result.cart;
     pending = result.pending;
@@ -161,7 +167,30 @@ async function offline(): Promise<void> {
   for (const [label, cases] of sets) {
     assert(cases.length === expected[label as keyof typeof expected], `${label}: se esperaban ${expected[label as keyof typeof expected]} y hay ${cases.length}`);
   }
-  assert(DEFAULT_ORDER_MODEL === "gpt-5.5", "el modelo por defecto dejó de ser gpt-5.5");
+  assert(DEFAULT_ORDER_MODEL === "gpt-4o-mini", "el modelo por defecto dejó de ser gpt-4o-mini");
+  const savedOrder = process.env.OPENAI_ORDER_MODEL;
+  const savedEscalation = process.env.OPENAI_ORDER_ESCALATION_MODEL;
+  const savedEffort = process.env.OPENAI_REASONING_EFFORT;
+  delete process.env.OPENAI_ORDER_MODEL;
+  delete process.env.OPENAI_ORDER_ESCALATION_MODEL;
+  delete process.env.OPENAI_REASONING_EFFORT;
+  assert(orderModel() === "gpt-4o-mini", "sin OPENAI_ORDER_MODEL el lector no es gpt-4o-mini");
+  assert(escalationModelName() === "gpt-5.5", "sin variable el salto no es gpt-5.5");
+  assert(orderSampling("gpt-4o-mini").temperature === 0, "gpt-4o-mini no va a temperatura 0");
+  assert(orderSampling("gpt-5.5").reasoning_effort === "none", "gpt-5.5 no va con esfuerzo none");
+  assert(!("temperature" in orderSampling("gpt-5.5")), "gpt-5.5 manda temperature");
+  process.env.OPENAI_ORDER_ESCALATION_MODEL = "";
+  assert(escalationModelName() === null, "OPENAI_ORDER_ESCALATION_MODEL vacío no apaga el salto");
+  process.env.OPENAI_ORDER_ESCALATION_MODEL = "gpt-4.1-mini";
+  assert(escalationModelName() === "gpt-4.1-mini", "el salto no respeta OPENAI_ORDER_ESCALATION_MODEL");
+  process.env.OPENAI_ORDER_MODEL = "gpt-5.5";
+  assert(orderModel() === "gpt-5.5", "OPENAI_ORDER_MODEL no cambia el lector");
+  if (savedOrder === undefined) delete process.env.OPENAI_ORDER_MODEL;
+  else process.env.OPENAI_ORDER_MODEL = savedOrder;
+  if (savedEscalation === undefined) delete process.env.OPENAI_ORDER_ESCALATION_MODEL;
+  else process.env.OPENAI_ORDER_ESCALATION_MODEL = savedEscalation;
+  if (savedEffort === undefined) delete process.env.OPENAI_REASONING_EFFORT;
+  else process.env.OPENAI_REASONING_EFFORT = savedEffort;
   assert(catalogEngineMode() === "v2", "sin CATALOG_ENGINE el motor es v2");
 
   const burger = george.rows.find((row) => row.name === "Hamburguesa de Res Grande");
@@ -522,6 +551,323 @@ async function offline(): Promise<void> {
   });
   assert(okSwapCalls === 1, "un cambio de una parte con el total igual se volvió a pedir");
 
+  function counted(name: string, onCall: (request: InterpretRequest, call: number) => AiOutput | null) {
+    let calls = 0;
+    const model: CatalogModel = {
+      name,
+      async interpret(request) {
+        calls += 1;
+        return onCall(request, calls);
+      },
+    };
+    return { model, calls: () => calls };
+  }
+  const burgerLine = emptyAi({ cart: [{ product_id: burger.id, qty: 1, unit: "pz", variant: null }] });
+  const logs: string[] = [];
+  const previousLog = console.log;
+  console.log = (...args: unknown[]) => {
+    logs.push(args.map((part) => String(part)).join(" "));
+    previousLog(...args);
+  };
+  resetOrderStats();
+  try {
+    const apiMini = counted("gpt-4o-mini", () => null);
+    const apiStrong = counted("gpt-5.5", (request) => {
+      assert(request.repairErrors == null, "un fallo de API mandó errores de corrección");
+      return burgerLine;
+    });
+    const apiHit = await runCatalogOrderTurn({
+      message: "una hamburguesa de res",
+      cart: [],
+      pending: null,
+      history: [],
+      catalog: george,
+      model: apiMini.model,
+      escalationModel: apiStrong.model,
+    });
+    assert(apiMini.calls() === 1 && apiStrong.calls() === 1, "un fallo de API no saltó a gpt-5.5 una sola vez");
+    assert(apiHit.fallback === false && apiHit.model === "gpt-5.5" && apiHit.cart[0]?.productId === burger.id, "el salto de API no se quedó con gpt-5.5");
+    assert(logs.includes("[catalogOrder] escalate reason=api"), "el salto de API no se anotó");
+
+    const apiDown = counted("gpt-5.5", () => null);
+    const apiFell = await runCatalogOrderTurn({
+      message: "una hamburguesa de res",
+      cart: [],
+      pending: null,
+      history: [],
+      catalog: george,
+      model: counted("gpt-4o-mini", () => null).model,
+      escalationModel: apiDown.model,
+    });
+    assert(apiDown.calls() === 1 && apiFell.fallback === true, "si el salto también falla no entra el respaldo");
+
+    const jsonMini = counted("gpt-4o-mini", () => emptyAi({ cart: [{ product_id: -1, qty: 1, unit: "pz", variant: null }] }));
+    const jsonStrong = counted("gpt-5.5", (request) => {
+      assert(request.repairErrors?.some((error) => /json|esquema/i.test(error)) === true, "el JSON ilegible no pidió corrección");
+      return burgerLine;
+    });
+    const jsonHit = await runCatalogOrderTurn({
+      message: "una hamburguesa de res",
+      cart: [],
+      pending: null,
+      history: [],
+      catalog: george,
+      model: jsonMini.model,
+      escalationModel: jsonStrong.model,
+    });
+    assert(jsonMini.calls() === 1 && jsonStrong.calls() === 1 && jsonHit.model === "gpt-5.5" && jsonHit.cart[0]?.productId === burger.id, "un JSON ilegible no saltó");
+    assert(logs.includes("[catalogOrder] escalate reason=json"), "el JSON ilegible no se anotó");
+
+    const rejectedMini = counted("gpt-4o-mini", () => emptyAi({ cart: [{ product_id: 999999, qty: 1, unit: "pz", variant: null }] }));
+    const rejectedStrong = counted("gpt-5.5", (request) => {
+      assert(request.repairErrors?.some((error) => error.includes("no está en el menú")) === true, "el rechazo no explicó la línea");
+      return burgerLine;
+    });
+    const rejectedHit = await runCatalogOrderTurn({
+      message: "una hamburguesa de res",
+      cart: [],
+      pending: null,
+      history: [],
+      catalog: george,
+      model: rejectedMini.model,
+      escalationModel: rejectedStrong.model,
+    });
+    assert(rejectedMini.calls() === 1 && rejectedStrong.calls() === 1 && rejectedHit.model === "gpt-5.5", "un carrito rechazado entero no saltó");
+    assert(logs.includes("[catalogOrder] escalate reason=rejected"), "el rechazo no se anotó");
+
+    const emptyMini = counted("gpt-4o-mini", () => emptyAi());
+    const emptyStrong = counted("gpt-5.5", () => emptyAi({ not_on_menu: ["pizza"] }));
+    const emptyHit = await runCatalogOrderTurn({
+      message: "quiero una pizza",
+      cart: [],
+      pending: null,
+      history: [],
+      catalog: george,
+      model: emptyMini.model,
+      escalationModel: emptyStrong.model,
+    });
+    assert(emptyMini.calls() === 1 && emptyStrong.calls() === 1 && emptyHit.model === "gpt-5.5" && /pizza/i.test(emptyHit.reply), "un mensaje con contenido y carrito vacío no saltó");
+    assert(logs.includes("[catalogOrder] escalate reason=empty"), "el carrito vacío no se anotó");
+
+    const boneMini = counted("gpt-4o-mini", () => emptyAi());
+    const boneStrong = counted("gpt-5.5", () => emptyAi());
+    const boneHit = await runCatalogOrderTurn({
+      message: "unos boneles",
+      cart: [],
+      pending: null,
+      history: [],
+      catalog: george,
+      model: boneMini.model,
+      escalationModel: boneStrong.model,
+    });
+    assert(boneMini.calls() === 1 && boneStrong.calls() === 1, "boneles vacío no saltó");
+    assert(boneHit.cart.some((line) => /boneless/i.test(george.byId.get(line.productId)?.name ?? "")) && !boneHit.reply.includes("palabras sencillas"), "boneles después del salto terminó en «No le entendí»");
+
+    let removalMiniCalls = 0;
+    const removalStrong = counted("gpt-5.5", (request) => {
+      assert(request.repairErrors?.some((error) => error.includes("quitó")) === true, "la corrección del salto no dijo que había que quitar");
+      return emptyAi({ cart: [{ product_id: arraSync.id, qty: 1, unit: "pz", variant: null }] });
+    });
+    const removalHit = await runCatalogOrderTurn({
+      message: "la de chorizo no",
+      cart: bothSync,
+      pending: null,
+      history: [],
+      catalog: george,
+      model: {
+        name: "gpt-4o-mini",
+        async interpret() {
+          removalMiniCalls += 1;
+          return emptyAi({
+            cart: [
+              { product_id: chorizoSync.id, qty: 1, unit: "pz", variant: null },
+              { product_id: arraSync.id, qty: 1, unit: "pz", variant: null },
+            ],
+          });
+        },
+      },
+      escalationModel: removalStrong.model,
+    });
+    assert(removalMiniCalls === 1 && removalStrong.calls() === 1 && removalHit.model === "gpt-5.5", "quitar sin mover el carrito no saltó, o mini corrigió solo");
+    assert(removalHit.cart.length === 1 && removalHit.cart[0]?.productId === arraSync.id, "el salto no quitó la de chorizo");
+    assert(logs.includes("[catalogOrder] escalate reason=removal"), "la quita no se anotó");
+
+    const swapStrong = counted("gpt-5.5", (request) => {
+      assert(request.repairErrors?.some((error) => error.includes("cantidad total")) === true, "el salto no dijo que el total cambió");
+      return emptyAi({
+        cart: [
+          { product_id: polloG.id, qty: 3, unit: "pz", variant: null },
+          { product_id: polloC.id, qty: 1, unit: "pz", variant: null },
+        ],
+      });
+    });
+    let swapMiniCalls = 0;
+    const swapHit = await runCatalogOrderTurn({
+      message: "una de esas que sea chica",
+      cart: fourGrandes,
+      pending: null,
+      history: [],
+      catalog: george,
+      model: {
+        name: "gpt-4o-mini",
+        async interpret() {
+          swapMiniCalls += 1;
+          return emptyAi({
+            cart: [
+              { product_id: polloC.id, qty: 4, unit: "pz", variant: null },
+              { product_id: polloG.id, qty: 3, unit: "pz", variant: null },
+            ],
+          });
+        },
+      },
+      escalationModel: swapStrong.model,
+    });
+    assert(swapMiniCalls === 1 && swapStrong.calls() === 1 && swapHit.model === "gpt-5.5", "un cambio con el total distinto no saltó");
+    assert(swapHit.cart.find((line) => line.productId === polloG.id)?.qty === 3, "el salto no dejó la grande en 3");
+    assert(logs.includes("[catalogOrder] escalate reason=swap"), "el cambio de total no se anotó");
+
+    const exactStrong = counted("gpt-5.5", (request) => {
+      assert(request.repairErrors?.some((error) => /marinad/i.test(error)) === true, "el nombre exacto no explicó el parecido");
+      return emptyAi({ cart: [{ product_id: plainPork.id, qty: 1.25, unit: "kg", variant: null }] });
+    });
+    let exactMiniCalls = 0;
+    const exactHit = await runCatalogOrderTurn({
+      message: "kilo y cuarto de bistec de puerco",
+      cart: [],
+      pending: null,
+      history: [],
+      catalog: central,
+      model: {
+        name: "gpt-4o-mini",
+        async interpret() {
+          exactMiniCalls += 1;
+          return emptyAi({ cart: [{ product_id: marinPork.id, qty: 1.25, unit: "kg", variant: null }] });
+        },
+      },
+      escalationModel: exactStrong.model,
+    });
+    assert(exactMiniCalls === 1 && exactStrong.calls() === 1 && exactHit.model === "gpt-5.5", "el nombre exacto se corrigió en mini sin saltar");
+    assert(exactHit.cart[0]?.productId === plainPork.id && exactHit.cart[0]?.qty === 1.25, "el salto dejó el bistec de puerco marinado");
+    assert(logs.includes("[catalogOrder] escalate reason=exact-name"), "el nombre exacto no se anotó");
+
+    const lookStrong = counted("gpt-5.5", (request) => {
+      assert(request.repairErrors?.some((error) => /parecid/i.test(error)) === true, "el parecido no explicó el cambio de fila");
+      return emptyAi({ cart: [{ product_id: quesadilla.id, qty: 2, unit: "pz", variant: null }] });
+    });
+    let lookMiniCalls = 0;
+    const lookHit = await runCatalogOrderTurn({
+      message: "dos quesadillas de tocino, una con ingrediente extra",
+      cart: [],
+      pending: null,
+      history: [],
+      catalog: george,
+      model: {
+        name: "gpt-4o-mini",
+        async interpret() {
+          lookMiniCalls += 1;
+          return emptyAi({ cart: [{ product_id: sincronizada.id, qty: 2, unit: "pz", variant: null }] });
+        },
+      },
+      escalationModel: lookStrong.model,
+    });
+    assert(lookMiniCalls === 1 && lookStrong.calls() === 1 && lookHit.model === "gpt-5.5", "quesadilla contra sincronizada no saltó");
+    assert(lookHit.cart[0]?.productId === quesadilla.id, "el salto dejó la sincronizada");
+    assert(logs.includes("[catalogOrder] escalate reason=look-alike"), "el parecido no se anotó");
+
+    const beforeClean = logs.length;
+    const cleanMini = counted("gpt-4o-mini", () => burgerLine);
+    const cleanStrong = counted("gpt-5.5", () => burgerLine);
+    const cleanHit = await runCatalogOrderTurn({
+      message: "una hamburguesa de res grande",
+      cart: [],
+      pending: null,
+      history: [],
+      catalog: george,
+      model: cleanMini.model,
+      escalationModel: cleanStrong.model,
+    });
+    assert(cleanMini.calls() === 1 && cleanStrong.calls() === 0 && cleanHit.model === "gpt-4o-mini" && cleanHit.fallback === false, "un turno limpio saltó a gpt-5.5");
+    assert(!logs.slice(beforeClean).some((line) => line.startsWith("[catalogOrder] escalate")), "un turno limpio anotó un salto");
+
+    const partialStrong = counted("gpt-5.5", () => burgerLine);
+    const partialHit = await runCatalogOrderTurn({
+      message: "una hamburguesa y algo raro",
+      cart: [],
+      pending: null,
+      history: [],
+      catalog: george,
+      model: counted("gpt-4o-mini", () => emptyAi({
+        cart: [
+          { product_id: burger.id, qty: 1, unit: "pz", variant: null },
+          { product_id: 999999, qty: 1, unit: "pz", variant: null },
+        ],
+      })).model,
+      escalationModel: partialStrong.model,
+    });
+    assert(partialStrong.calls() === 0 && partialHit.cart.length === 1 && partialHit.model === "gpt-4o-mini", "una línea válida junto a una mala saltó");
+
+    const blankStrong = counted("gpt-5.5", () => burgerLine);
+    await runCatalogOrderTurn({
+      message: "???",
+      cart: [],
+      pending: null,
+      history: [],
+      catalog: george,
+      model: counted("gpt-4o-mini", () => emptyAi()).model,
+      escalationModel: blankStrong.model,
+    });
+    assert(blankStrong.calls() === 0, "un mensaje sin contenido saltó");
+
+    const okSwapStrong = counted("gpt-5.5", () => emptyAi());
+    await runCatalogOrderTurn({
+      message: "una de esas que sea chica",
+      cart: fourGrandes,
+      pending: null,
+      history: [],
+      catalog: george,
+      model: counted("gpt-4o-mini", () => emptyAi({
+        cart: [
+          { product_id: polloG.id, qty: 3, unit: "pz", variant: null },
+          { product_id: polloC.id, qty: 1, unit: "pz", variant: null },
+        ],
+      })).model,
+      escalationModel: okSwapStrong.model,
+    });
+    assert(okSwapStrong.calls() === 0, "un cambio con el total igual saltó");
+
+    let disabledCalls = 0;
+    const disabledStrong = counted("gpt-5.5", () => burgerLine);
+    await runCatalogOrderTurn({
+      message: "la de chorizo no",
+      cart: bothSync,
+      pending: null,
+      history: [],
+      catalog: george,
+      model: {
+        name: "gpt-4o-mini",
+        async interpret() {
+          disabledCalls += 1;
+          if (disabledCalls === 1) {
+            return emptyAi({
+              cart: [
+                { product_id: chorizoSync.id, qty: 1, unit: "pz", variant: null },
+                { product_id: arraSync.id, qty: 1, unit: "pz", variant: null },
+              ],
+            });
+          }
+          return emptyAi({ cart: [{ product_id: arraSync.id, qty: 1, unit: "pz", variant: null }] });
+        },
+      },
+      escalationModel: null,
+    });
+    assert(disabledCalls === 2 && disabledStrong.calls() === 0, "con el salto apagado la corrección no se quedó en mini");
+
+    const logged = logs.filter((line) => line.startsWith("[catalogOrder] escalate"));
+    assert(orderStats().escalations === logged.length && logged.length >= 8, "la tasa de salto no cuenta cada reason");
+  } finally {
+    console.log = previousLog;
+  }
+
   const previousEngine = process.env.CATALOG_ENGINE;
   process.env.CATALOG_ENGINE = "v1";
   assert(catalogEngineMode() === "v1", "CATALOG_ENGINE=v1 no se reconoce");
@@ -774,7 +1120,7 @@ function printReport(label: string, pass: number, total: number, fails: string[]
   for (const line of fails.slice(0, 40)) console.log(`  ${line}`);
 }
 
-async function runSet(label: string, cases: CorpusCase[], modelFor: (item: CorpusCase) => CatalogModel | null): Promise<{ pass: number; total: number }> {
+async function runSet(label: string, cases: CorpusCase[], modelFor: (item: CorpusCase) => TurnModels): Promise<{ pass: number; total: number }> {
   const fails: string[] = [];
   for (const item of cases) {
     const { cart, reply } = await runCase(item, modelFor(item));
@@ -791,13 +1137,32 @@ function isNewRecording(value: unknown): boolean {
   return Array.isArray(row.cart) && Array.isArray(row.not_on_menu) && typeof row.confirmed === "boolean";
 }
 
+/** USD por millón de tokens. gpt-4o-mini es la lista pública; gpt-5.5 no tiene precio aquí. */
+const USD_PER_MILLION: Record<string, { input: number; output: number }> = {
+  "gpt-4o-mini": { input: 0.15, output: 0.6 },
+  "gpt-4.1-mini": { input: 0.4, output: 1.6 },
+};
+
+function printOrderStats(): void {
+  const stats = orderStats();
+  const turns = stats.primaryTurns;
+  const rate = turns ? (stats.escalations / turns) * 100 : 0;
+  console.log(`\nescalaciones: ${stats.escalations}/${turns} (${rate.toFixed(1)}%)`);
+  if (!stats.usage.length) console.log("sin llamadas al modelo");
+  for (const row of stats.usage) {
+    const price = USD_PER_MILLION[row.model];
+    const usd = price ? (row.promptTokens * price.input + row.completionTokens * price.output) / 1_000_000 : null;
+    const money = usd == null ? "usd=sin precio de lista" : `usd=${usd.toFixed(4)}`;
+    console.log(`${row.model}: llamadas=${row.calls} entrada=${row.promptTokens} salida=${row.completionTokens} ${money}`);
+  }
+}
+
 async function live(): Promise<void> {
   if (!process.env.OPENAI_API_KEY) {
     console.log("--live pendiente: no hay OPENAI_API_KEY en este entorno.");
     process.exitCode = 1;
     return;
   }
-  const { createOpenAICatalogModel } = await import("../src/lib/catalogOrder/parser");
   const picked = process.argv[3];
   const chosen = sets.filter(([label]) => !picked || picked === label);
   if (!chosen.length) {
@@ -805,25 +1170,29 @@ async function live(): Promise<void> {
     process.exitCode = 1;
     return;
   }
+  resetOrderStats();
   const recordings: Record<string, Array<AiOutput | null>> = {};
-  for (const [label, cases] of chosen) {
-    await runSet(label, cases, (item) => {
-      const sink: Array<AiOutput | null> = [];
-      recordings[item.id] = sink;
-      const inner = createOpenAICatalogModel();
-      return {
-        name: inner.name,
-        async interpret(request) {
-          const output = await inner.interpret(request);
-          sink.push(output);
-          return output;
-        },
-      };
-    });
+  let active: Array<AiOutput | null> | null = null;
+  setOrderCallSink((output) => {
+    active?.push(output);
+  });
+  console.log(`modelo=${orderModel()} salto=${escalationModelName() ?? "(apagado)"}`);
+  try {
+    for (const [label, cases] of chosen) {
+      await runSet(label, cases, (item) => {
+        const sink: Array<AiOutput | null> = [];
+        recordings[item.id] = sink;
+        active = sink;
+        return {};
+      });
+    }
+  } finally {
+    setOrderCallSink(null);
   }
   const out = resolve(root, "catalog-llm-recordings.live.json");
   writeFileSync(out, JSON.stringify(recordings, null, 1));
   console.log(`\ngrabaciones: ${out}`);
+  printOrderStats();
 }
 
 async function replay(): Promise<void> {
@@ -850,11 +1219,10 @@ async function replay(): Promise<void> {
     await runSet(label, cases, (item) => {
       const turns = recordings[item.id] ?? [];
       let index = 0;
+      const next = async () => turns[index++] ?? null;
       return {
-        name: "replay",
-        async interpret() {
-          return turns[index++] ?? null;
-        },
+        model: { name: "replay", interpret: next },
+        escalationModel: { name: "replay-escalation", interpret: next },
       };
     });
   }

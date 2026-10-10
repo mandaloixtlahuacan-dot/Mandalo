@@ -3,7 +3,10 @@ import { GENERIC_DOGO } from "@/lib/catalogOrder/catalog";
 import { fold } from "@/lib/catalogOrder/text";
 import type { AiOutput, AiPendingLine, CatalogModel, CatalogRow, InterpretRequest, SellUnit } from "@/lib/catalogOrder/types";
 
-export const DEFAULT_ORDER_MODEL = "gpt-5.5";
+export const DEFAULT_ORDER_MODEL = "gpt-4o-mini";
+
+/** Salto de un turno. Vacío en OPENAI_ORDER_ESCALATION_MODEL lo apaga. */
+export const DEFAULT_ESCALATION_MODEL = "gpt-5.5";
 
 /** 8 s: gpt-5.5 con esfuerzo low no cabe en 6. */
 export const ORDER_TIMEOUT_MS = 8000;
@@ -98,6 +101,61 @@ function accessError(error: unknown): { status: number; code: string } | null {
 export function orderModel(): string {
   const configured = String(process.env.OPENAI_ORDER_MODEL ?? "").trim();
   return configured || DEFAULT_ORDER_MODEL;
+}
+
+/** undefined = gpt-5.5. Cadena vacía = sin salto. */
+export function escalationModelName(): string | null {
+  if (process.env.OPENAI_ORDER_ESCALATION_MODEL === undefined) return DEFAULT_ESCALATION_MODEL;
+  const configured = process.env.OPENAI_ORDER_ESCALATION_MODEL.trim();
+  return configured || null;
+}
+
+/** gpt-4o-mini y el resto van a temperatura 0. gpt-5 no acepta temperature. */
+export function orderSampling(modelName: string): { temperature?: 0; reasoning_effort?: "none" | "low" } {
+  return omitsTemperature(modelName) ? { reasoning_effort: reasoningEffort() } : { temperature: 0 };
+}
+
+type UsageRow = { model: string; calls: number; promptTokens: number; completionTokens: number };
+
+const usageRows: UsageRow[] = [];
+let escalationCount = 0;
+let primaryTurns = 0;
+let orderCallSink: ((output: AiOutput | null) => void) | null = null;
+
+export function resetOrderStats(): void {
+  usageRows.length = 0;
+  escalationCount = 0;
+  primaryTurns = 0;
+}
+
+export function orderStats(): { escalations: number; primaryTurns: number; usage: UsageRow[] } {
+  return {
+    escalations: escalationCount,
+    primaryTurns,
+    usage: usageRows.map((row) => ({ ...row })),
+  };
+}
+
+export function notePrimaryTurn(): void {
+  primaryTurns += 1;
+}
+
+export function logEscalation(reason: string): void {
+  escalationCount += 1;
+  console.log(`[catalogOrder] escalate reason=${reason}`);
+}
+
+export function setOrderCallSink(sink: ((output: AiOutput | null) => void) | null): void {
+  orderCallSink = sink;
+}
+
+function recordOrderUsage(modelName: string, promptTokens: number, completionTokens: number): void {
+  const found = usageRows.find((row) => row.model === modelName);
+  const row = found ?? { model: modelName, calls: 0, promptTokens: 0, completionTokens: 0 };
+  if (!found) usageRows.push(row);
+  row.calls += 1;
+  row.promptTokens += promptTokens;
+  row.completionTokens += completionTokens;
 }
 
 function aliasSuffix(row: CatalogRow): string {
@@ -279,14 +337,17 @@ export function createOpenAICatalogModel(modelName = orderModel()): CatalogModel
     name: modelName,
     async interpret(request) {
       const apiKey = String(process.env.OPENAI_API_KEY ?? "").trim();
-      if (!apiKey) return null;
+      if (!apiKey) {
+        orderCallSink?.(null);
+        return null;
+      }
       const ids = request.catalog.rows.map((row) => row.id);
       const once = async (timeoutMs: number): Promise<AiOutput> => {
         const client = new OpenAI({ apiKey, timeout: timeoutMs });
         const response = await client.chat.completions.create(
           {
             model: modelName,
-            ...(omitsTemperature(modelName) ? { reasoning_effort: reasoningEffort() } : { temperature: 0 }),
+            ...orderSampling(modelName),
             messages: [
               { role: "system", content: buildOrderPrompt(request) },
               { role: "user", content: request.message },
@@ -298,14 +359,21 @@ export function createOpenAICatalogModel(modelName = orderModel()): CatalogModel
           },
           { signal: AbortSignal.timeout(timeoutMs) },
         );
+        const usage = response.usage as { prompt_tokens?: number; completion_tokens?: number; input_tokens?: number; output_tokens?: number } | undefined;
+        recordOrderUsage(
+          modelName,
+          Number(usage?.prompt_tokens ?? usage?.input_tokens ?? 0),
+          Number(usage?.completion_tokens ?? usage?.output_tokens ?? 0),
+        );
         return parseModelJson(response.choices?.[0]?.message?.content ?? "") ?? unreadable();
       };
+      let output: AiOutput | null = null;
       try {
         try {
-          return await once(ORDER_TIMEOUT_MS);
+          output = await once(ORDER_TIMEOUT_MS);
         } catch (error) {
           if (!isOrderTimeout(error)) throw error;
-          return await once(ORDER_RETRY_TIMEOUT_MS);
+          output = await once(ORDER_RETRY_TIMEOUT_MS);
         }
       } catch (error) {
         const denied = accessError(error);
@@ -319,11 +387,13 @@ export function createOpenAICatalogModel(modelName = orderModel()): CatalogModel
               `[catalogOrder] OpenAI rechazó el modelo ${modelName} (${status}${code}). La llave no tiene acceso o el modelo no existe. Este turno usa el lector de respaldo. El mismo rechazo no se vuelve a anunciar.`,
             );
           }
-          return null;
+        } else {
+          console.error("[catalogOrder] modelo falló", error instanceof Error ? error.message : error);
         }
-        console.error("[catalogOrder] modelo falló", error instanceof Error ? error.message : error);
-        return null;
+        output = null;
       }
+      orderCallSink?.(output);
+      return output;
     },
   };
 }

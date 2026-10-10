@@ -2,7 +2,16 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 10 de octubre de 2026. La evaluación en vivo
+> Última actualización: 10 de octubre de 2026. El motor de catálogo
+> usa `gpt-4o-mini` (temperatura 0) por defecto. `gpt-5.5` (esfuerzo
+> none, sin temperature) entra solo en ese turno si mini falla: error
+> o corte de la API, JSON ilegible o fuera de esquema, nada usable
+> cuando el mensaje sí traía contenido, o una corrección (quitar sin
+> mover el carrito, cambio de una parte con el total distinto, o nombre
+> exacto / parecido). `OPENAI_ORDER_ESCALATION_MODEL` vacío apaga el
+> salto. Si el salto también falla, sigue el lector de respaldo. El bot
+> general no cambia. No está mergeado ni desplegado. La base no se tocó.
+> Actualización anterior del mismo día: la evaluación en vivo
 > de `0f1d4e1` (`gpt-5.5`, esfuerzo none) dejó el corpus en 182–183/185
 > sin graves. El guardia del nombre exacto convertía «bistec de res
 > marinado» en la fila sin marinar: si el mensaje dice marin*, no se
@@ -12,7 +21,6 @@
 > (en el prompt). Un corte de 8 s se reintenta 5 s antes del respaldo.
 > «seis kilos y tres cuartos» son 6.75, y la pregunta del respaldo
 > conserva la cantidad. «boneles» no termina en «No le entendí».
-> No está mergeado ni desplegado. La base no se tocó.
 > Actualización anterior del mismo día: el menú cerrado que ya está en
 > producción (PR #33, `0abd169`) se simplifica en un PR nuevo. El modelo
 > devuelve el carrito completo. Cada llamada lleva el paso, el menú de
