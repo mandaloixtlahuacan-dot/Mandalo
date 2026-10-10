@@ -742,7 +742,11 @@ function parsePieces(message: string, catalog: CatalogSnapshot, pending: Pending
       lines.push(result.line);
     } else if (result.kind === "ask") {
       asks.push(result);
-      unmatched.push(result.unmatched);
+      unmatched.push({
+        ...result.unmatched,
+        qty: result.unmatched.qty ?? result.qty,
+        unit: result.unmatched.unit ?? result.unit,
+      });
     }
   }
 

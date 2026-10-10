@@ -8,6 +8,17 @@ export const DEFAULT_ORDER_MODEL = "gpt-5.5";
 /** 8 s: gpt-5.5 con esfuerzo low no cabe en 6. */
 export const ORDER_TIMEOUT_MS = 8000;
 
+/** Si la primera llamada se corta, un reintento de 5 s antes del respaldo. */
+export const ORDER_RETRY_TIMEOUT_MS = 5000;
+
+export function isOrderTimeout(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const name = "name" in error ? String((error as { name?: unknown }).name ?? "") : "";
+  const message = error instanceof Error ? error.message : "";
+  if (name === "TimeoutError" || name === "AbortError" || name === "APIUserAbortError") return true;
+  return /timeout|aborted|abort/i.test(`${name} ${message}`);
+}
+
 const RULES = [
   "Devuelve el carrito COMPLETO de esta tienda, no un delta. Si el cliente no quitó una línea, sigue en el carrito.",
   "No inventes tamaño, sabor ni tipo. Si falta uno y hay varias opciones, va en pending y esa línea no va en el carrito. Si solo hay una opción, agrégala. No preguntes con una sola opción.",
@@ -52,6 +63,9 @@ function examplesFor(profile: InterpretRequest["catalog"]["profile"]): string {
     "«4 grandes» y luego «una de esas que sea chica» → Grande 3 y Chica 1.",
     "«tres tortas de chorizo» y luego «una de ellas mejor de arrachera» → Chorizo 2 y Arrachera 1.",
     "«unas papas» o «una orden de papas» sin tipo → pending con las dos papas, sin elegir.",
+    "«dos quesadillas de tocino, una con ingrediente extra» → Quesadilla de Tocino 2 e Ingrediente Extra 1. Quesadilla no es Sincronizada.",
+    "«una sincronizada de chorizo y una de arrachera» y luego «la de chorizo no» → solo la de arrachera.",
+    "Con Dogo Clásico, «el doridogo», «de arrachera» o «el cubano» (sin cantidad, sin «otro» ni «y») reemplaza el Clásico, misma cantidad, pending []. «otro de arrachera» o «y un doridogo» agregan una línea.",
     dogo,
     "«sí está bien» → confirmed true, pending [], carrito igual.",
   ].filter(Boolean).join("\n");
@@ -266,9 +280,9 @@ export function createOpenAICatalogModel(modelName = orderModel()): CatalogModel
     async interpret(request) {
       const apiKey = String(process.env.OPENAI_API_KEY ?? "").trim();
       if (!apiKey) return null;
-      const client = new OpenAI({ apiKey, timeout: ORDER_TIMEOUT_MS });
       const ids = request.catalog.rows.map((row) => row.id);
-      try {
+      const once = async (timeoutMs: number): Promise<AiOutput> => {
+        const client = new OpenAI({ apiKey, timeout: timeoutMs });
         const response = await client.chat.completions.create(
           {
             model: modelName,
@@ -282,9 +296,17 @@ export function createOpenAICatalogModel(modelName = orderModel()): CatalogModel
               json_schema: { name: "catalog_order", strict: true, schema: orderJsonSchema(ids) },
             },
           },
-          { signal: AbortSignal.timeout(ORDER_TIMEOUT_MS) },
+          { signal: AbortSignal.timeout(timeoutMs) },
         );
         return parseModelJson(response.choices?.[0]?.message?.content ?? "") ?? unreadable();
+      };
+      try {
+        try {
+          return await once(ORDER_TIMEOUT_MS);
+        } catch (error) {
+          if (!isOrderTimeout(error)) throw error;
+          return await once(ORDER_RETRY_TIMEOUT_MS);
+        }
       } catch (error) {
         const denied = accessError(error);
         if (denied) {

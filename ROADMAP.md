@@ -3,17 +3,16 @@
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
 > Última actualización: 10 de octubre de 2026. La evaluación en vivo
-> de `c963e80` (`gpt-5.5`, esfuerzo none) dejó el corpus en 182/185
-> sin graves, y 7 pedidos graves en los juegos nuevos. Un «sí» o
-> «eso es todo» con pregunta abierta vuelve a preguntar y no confirma,
-> en cualquier paso. Si el modelo no deja nada usable y ya había líneas,
-> esas líneas se quedan y se vuelve a preguntar. «una de esas/ellas»
-> tiene que conservar el total; si no, se pide una corrección. El nombre
-> exacto de una fila gana sobre la marinada. «unas papas» se pregunta.
-> «boneles» y «bonles» son Boneless. «un dogo / hot dog / jocho» sigue
-> en el Dogo Clásico, en una sola constante (`GENERIC_DOGO`) por si el
-> dueño prefiere preguntar. El modelo por defecto sigue `gpt-5.5` con
-> esfuerzo none. No está mergeado ni desplegado. La base no se tocó.
+> de `0f1d4e1` (`gpt-5.5`, esfuerzo none) dejó el corpus en 182–183/185
+> sin graves. El guardia del nombre exacto convertía «bistec de res
+> marinado» en la fila sin marinar: si el mensaje dice marin*, no se
+> toca, y solo se corrigen líneas nuevas. Quesadilla no se cambia por
+> sincronizada. «la de X no» pide una corrección si el carrito no se
+> movió. Un doridogo o «de arrachera» después del Clásico lo reemplaza
+> (en el prompt). Un corte de 8 s se reintenta 5 s antes del respaldo.
+> «seis kilos y tres cuartos» son 6.75, y la pregunta del respaldo
+> conserva la cantidad. «boneles» no termina en «No le entendí».
+> No está mergeado ni desplegado. La base no se tocó.
 > Actualización anterior del mismo día: el menú cerrado que ya está en
 > producción (PR #33, `0abd169`) se simplifica en un PR nuevo. El modelo
 > devuelve el carrito completo. Cada llamada lleva el paso, el menú de

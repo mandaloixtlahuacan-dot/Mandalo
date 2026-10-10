@@ -27,7 +27,8 @@ import { resolve } from "node:path";
 import { checkAiOutput, pesosToKg } from "../src/lib/catalogOrder/accept";
 import { buildCatalog, catalogEngineMode, runCatalogOrderTurn, type AiOutput, type CartLine, type CatalogModel, type CatalogSnapshot, type PendingCatalogAsk, type RawCatalogRow } from "../src/lib/catalogOrder";
 import { GENERIC_DOGO } from "../src/lib/catalogOrder/catalog";
-import { buildOrderPrompt, DEFAULT_ORDER_MODEL, ORDER_TIMEOUT_MS, orderJsonSchema, parseModelJson } from "../src/lib/catalogOrder/parser";
+import { buildOrderPrompt, DEFAULT_ORDER_MODEL, isOrderTimeout, ORDER_RETRY_TIMEOUT_MS, ORDER_TIMEOUT_MS, orderJsonSchema, parseModelJson } from "../src/lib/catalogOrder/parser";
+import { parseQuantity } from "../src/lib/catalogOrder/quantities";
 
 type ExpectItem = { name: string; qty: number; unit: string; variant?: string };
 type CorpusCase = {
@@ -192,6 +193,11 @@ async function offline(): Promise<void> {
   assert(!noFlavor.cart.some((line) => line.productId === drink.id), "el refresco sin sabor se quedó en el carrito");
   assert(noFlavor.question?.candidateIds.includes(drink.id) === true, "un refresco sin sabor no pregunta el sabor");
   assert(ORDER_TIMEOUT_MS === 8000, "el tiempo de espera del modelo no es 8 s");
+  assert(ORDER_RETRY_TIMEOUT_MS === 5000, "el reintento por corte no es de 5 s");
+  assert(isOrderTimeout(Object.assign(new Error("aborted"), { name: "APIUserAbortError" })), "un corte de tiempo no se reintenta");
+  assert(!isOrderTimeout(Object.assign(new Error("no"), { status: 401 })), "un 401 se tomó como corte de tiempo");
+  assert(parseQuantity("seis kilos y tres cuartos de diezmillo", "carniceria").qty === 6.75, "seis kilos y tres cuartos no son 6.75");
+  assert(parseQuantity("tres cuartos de pulpa", "carniceria").qty === 0.75, "tres cuartos solos dejaron de ser 0.75");
 
   const prompt = buildOrderPrompt({
     catalog: george,
@@ -223,6 +229,9 @@ async function offline(): Promise<void> {
   assert(prompt.includes("dos grandes y una chica"), "el prompt no reparte dos tamaños");
   assert(prompt.includes("una de ellas mejor de arrachera"), "el prompt no muestra el cambio de una parte");
   assert(prompt.includes("unas papas"), "el prompt no pregunta el tipo de papas");
+  assert(prompt.includes("Quesadilla no es Sincronizada"), "el prompt no separa quesadilla de sincronizada");
+  assert(prompt.includes("la de chorizo no"), "el prompt no quita con «la de X no»");
+  assert(prompt.includes("reemplaza el Clásico"), "el prompt no reemplaza el dogo clásico");
   assert(prompt.includes("nombre exacto de una fila"), "el prompt no prefiere el nombre exacto");
   assert(prompt.includes(`${burger.id} ${burger.name}`), "el prompt no trae el menú de esta tienda");
   assert(prompt.includes(`"product_id":${drink.id}`), "el prompt no trae el carrito");
@@ -363,6 +372,100 @@ async function offline(): Promise<void> {
     model: scripted([emptyAi({ cart: [{ product_id: marinPork.id, qty: 1, unit: "kg", variant: null }] })]),
   });
   assert(saidMarin.cart[0]?.productId === marinPork.id, "el marinado dicho se cambió a la fila sin marinar");
+  const resMarin = byName(central, "Bistec de res Marinada");
+  const keptMarin = await runCatalogOrderTurn({
+    message: "750 gramos de bistec de res marinado",
+    cart: [],
+    pending: null,
+    history: [],
+    catalog: central,
+    model: scripted([emptyAi({ cart: [{ product_id: resMarin.id, qty: 0.75, unit: "kg", variant: null }] })]),
+  });
+  assert(keptMarin.cart[0]?.productId === resMarin.id && keptMarin.cart[0]?.qty === 0.75, "bistec de res marinado se volvió la fila sin marinar");
+  const spacedMarin = await runCatalogOrderTurn({
+    message: "750 gramos de bistec de res mari nado",
+    cart: [],
+    pending: null,
+    history: [],
+    catalog: central,
+    model: scripted([emptyAi({ cart: [{ product_id: resMarin.id, qty: 0.75, unit: "kg", variant: null }] })]),
+  });
+  assert(spacedMarin.cart[0]?.productId === resMarin.id, "«mari nado» se volvió la fila sin marinar");
+  const alreadyMarin: CartLine[] = [{ productId: resMarin.id, qty: 1, unit: "kg", variant: null, notes: null }];
+  const leftAlone = await runCatalogOrderTurn({
+    message: "y medio kilo de bistec de res",
+    cart: alreadyMarin,
+    pending: null,
+    history: [],
+    catalog: central,
+    model: scripted([emptyAi({ cart: [{ product_id: resMarin.id, qty: 1, unit: "kg", variant: null }] })]),
+  });
+  assert(leftAlone.cart[0]?.productId === resMarin.id, "una línea que ya estaba se cambió de marinada a res");
+
+  const quesadilla = byName(george, "Quesadilla de Tocino");
+  const sincronizada = byName(george, "Sincronizada de Tocino");
+  const looked = await runCatalogOrderTurn({
+    message: "dos quesadillas de tocino, una con ingrediente extra",
+    cart: [],
+    pending: null,
+    history: [],
+    catalog: george,
+    model: scripted([emptyAi({ cart: [{ product_id: sincronizada.id, qty: 2, unit: "pz", variant: null }] })]),
+  });
+  assert(looked.cart[0]?.productId === quesadilla.id && looked.cart[0]?.qty === 2, "quesadilla de tocino se quedó en sincronizada");
+
+  const chorizoSync = byName(george, "Sincronizada de Chorizo");
+  const arraSync = byName(george, "Sincronizada de Arrachera");
+  const bothSync: CartLine[] = [
+    { productId: chorizoSync.id, qty: 1, unit: "pz", variant: null, notes: null },
+    { productId: arraSync.id, qty: 1, unit: "pz", variant: null, notes: null },
+  ];
+  let removalCalls = 0;
+  const removed = await runCatalogOrderTurn({
+    message: "la de chorizo no",
+    cart: bothSync,
+    pending: null,
+    history: [],
+    catalog: george,
+    model: {
+      name: "script",
+      async interpret(request) {
+        removalCalls += 1;
+        if (removalCalls === 1) {
+          return emptyAi({
+            cart: [
+              { product_id: chorizoSync.id, qty: 1, unit: "pz", variant: null },
+              { product_id: arraSync.id, qty: 1, unit: "pz", variant: null },
+            ],
+          });
+        }
+        assert(request.repairErrors?.some((error) => error.includes("quitó")) === true, "la corrección no dijo que había que quitar");
+        return emptyAi({ cart: [{ product_id: arraSync.id, qty: 1, unit: "pz", variant: null }] });
+      },
+    },
+  });
+  assert(removalCalls === 2 && removed.cart.length === 1 && removed.cart[0]?.productId === arraSync.id, "«la de chorizo no» no pidió quitarla");
+
+  const bonelessOnly = await runCatalogOrderTurn({
+    message: "unos boneles",
+    cart: [],
+    pending: null,
+    history: [],
+    catalog: george,
+    model: scripted([emptyAi()]),
+  });
+  assert(bonelessOnly.cart.length === 1 && /boneless/i.test(george.byId.get(bonelessOnly.cart[0]?.productId ?? 0)?.name ?? ""), "boneles no entró al carrito");
+  assert(!bonelessOnly.reply.includes("palabras sencillas"), "boneles terminó en «No le entendí»");
+
+  const kilos = await runCatalogOrderTurn({
+    message: "dos kilos de bistec",
+    cart: [],
+    pending: null,
+    history: [],
+    catalog: central,
+    model: null,
+  });
+  assert(kilos.fallback === true && kilos.pending?.qty === 2, "la pregunta del respaldo perdió los dos kilos");
 
   const fourGrandes: CartLine[] = [{ productId: polloG.id, qty: 4, unit: "pz", variant: null, notes: null }];
   let swapCalls = 0;
