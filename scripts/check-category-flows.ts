@@ -144,7 +144,8 @@ function qty(item: PedidoItemInput | undefined): number | null {
 function helpAfterList(message: string): string {
   const marker = "*¿Están bien estos productos?*";
   const at = message.indexOf(marker);
-  return at === -1 ? message : message.slice(at + marker.length);
+  const rest = at === -1 ? message : message.slice(at + marker.length);
+  return rest.replace(/^\s*\*Si tu pedido está bien, responde sí\.\*\s*/, "");
 }
 
 function georgeOrder(incoming: PedidoItemInput[]) {

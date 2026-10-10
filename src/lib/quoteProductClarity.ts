@@ -1,5 +1,5 @@
 import { presentFollowUp, stripBotDecorations } from "@/lib/messageStyle";
-import { isProductListRequest, isYesConfirmation } from "@/lib/messages";
+import { isProductListRequest, isProductListYes, isYesConfirmation } from "@/lib/messages";
 import {
   applyCustomerEdits,
   pickRemoval,
@@ -2701,6 +2701,7 @@ const MENTION_NOISE = new Set([
   "deslactosada", "grande", "chica", "chico", "mediana", "paquete", "paquetes",
   "caja", "cajas", "bolsa", "bolsas", "pieza", "piezas", "rollo", "rollos",
   "sobre", "sobres", "misma", "mismo", "gracias", "correcto", "listo",
+  "bien", "pedido", "todo", "asi", "ya", "perfecto", "vien", "okey", "sale",
   "seria", "serian", "seran", "agrega", "agregame",
   "google", "maps", "https", "http", "www", "whatsapp", "location",
 ]);
@@ -2708,7 +2709,7 @@ const MENTION_NOISE = new Set([
 const KEEP_NAMED = new Set(["tang", "tangs", "zuko", "zukos", "boing", "boings", "tank", "tanks", "task", "tasks"]);
 
 function keepSpokenMentions(items: PedidoItemInput[], message: string): PedidoItemInput[] {
-  if (!message.trim() || looksLikeAddress(message) || isYesConfirmation(message) || isProductListRequest(message)) return items;
+  if (!message.trim() || looksLikeAddress(message) || isYesConfirmation(message) || isProductListYes(message) || isProductListRequest(message)) return items;
   if (/https?:\/\/|maps\.google|goo\.gl|whatsapp/i.test(message)) return items;
   const scan = stripRemovalPhrases(message)
     .replace(/\bno (?:era|es|son|eran)\b[^,.]*/gi, " ");

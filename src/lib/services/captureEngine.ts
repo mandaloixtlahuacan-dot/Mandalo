@@ -1,7 +1,7 @@
 import { specExampleLines, summaryStoreLabel, type StoreKind } from "@/lib/categoryCopy";
 import { formatHowToEditList, formatPreConfirmFeeNote } from "@/lib/customerUx";
 import { formatCheckedLine, formatCheckedLines, joinBlocks } from "@/lib/messageStyle";
-import { isYesConfirmation, messageCorrectsOrder } from "@/lib/messages";
+import { isProductListYes, isYesConfirmation, messageCorrectsOrder } from "@/lib/messages";
 import type { CatalogPriceRow } from "@/lib/catalogQuantities";
 import { advanceMenuAsk } from "@/lib/catalogOrderSpeech";
 import { assembleCapturedItems } from "@/lib/orderGrounding";
@@ -557,7 +557,7 @@ export const ADDRESS_ASK_MESSAGE =
   '(ej. "frente a la tortillería", "casa azul").';
 
 export function formatProductListConfirm(items: PedidoItemInput[], kind: StoreKind = "abarrotes"): string {
-  return `OK, pediste:\n\n🛒 *Tu pedido*\n\n${formatItems(items)}\n\n*¿Están bien estos productos?*\n\n${formatHowToEditList(kind)}`;
+  return `OK, pediste:\n\n🛒 *Tu pedido*\n\n${formatItems(items)}\n\n*¿Están bien estos productos?*\n\n*Si tu pedido está bien, responde sí.*\n\n${formatHowToEditList(kind)}`;
 }
 
 export function isProductListConfirmMessage(text: string): boolean {
@@ -723,7 +723,9 @@ export function createCaptureEngine(deps: CaptureEngineDeps) {
         if (!validation.readyForConfirmation && spoken.reply) {
           const productsConfirmed = !mustReconfirm && mergedSnapshot.flags?.productosConfirmados === true;
           const needsAddress = !spoken.missing && !validation.validatedAddress?.isValid;
-          const note = spoken.aside?.trim() ? `${spoken.aside.trim()}\n\n` : "";
+          const asideText = spoken.aside?.trim() ?? "";
+          const alreadySaid = Boolean(asideText && (spoken.reply ?? "").includes(asideText));
+          const note = asideText && !alreadySaid ? `${asideText}\n\n` : "";
           const reply =
             needsAddress && productsConfirmed
               ? `${note}${spoken.reply}\n\n${ADDRESS_ASK_MESSAGE}`
@@ -777,7 +779,7 @@ export function createCaptureEngine(deps: CaptureEngineDeps) {
 
       const said = String(input.userMessage ?? "").trim();
       const productMessages = [...(priorSnapshot?.productMessages ?? [])];
-      if (said && !input.pinnedLocation && !isYesConfirmation(said)) productMessages.push(said);
+      if (said && !input.pinnedLocation && !isYesConfirmation(said) && !isProductListYes(said)) productMessages.push(said);
 
       const nextSnapshot: PedidoSnapshot = {
         ...snapshotForValidation,
