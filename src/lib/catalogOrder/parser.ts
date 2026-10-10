@@ -1,13 +1,51 @@
 import OpenAI from "openai";
-import type { CatalogModel, InterpretRequest, ModelOutput, SellUnit } from "@/lib/catalogOrder/types";
+import { fold } from "@/lib/catalogOrder/text";
+import type { AiOutput, CatalogModel, CatalogRow, InterpretRequest, SellUnit } from "@/lib/catalogOrder/types";
 
 export const DEFAULT_ORDER_MODEL = "gpt-4.1-mini";
 
 const ORDER_TIMEOUT_MS = 6000;
 
-/** gpt-5 rechaza temperature; se pide sin razonamiento. */
+const RULES = [
+  "Devuelve el carrito COMPLETO de esta tienda. No un delta.",
+  "No inventes tamaño, sabor ni tipo. Si hay más de una opción y no la dijo, haz una sola pregunta y no agregues esa línea. Si solo hay una, agrégala.",
+  "cambia X por Y reemplaza esa línea. quita la borra. otra u otro suma 1. cambia N por un sabor mueve solo esa cantidad.",
+  "medio=0.5, cuarto=0.25, kilo y medio=1.5, N kilos y tres cuartos=N.75. Quince, veinte, doscientos son números.",
+  "En carne, $100 o cien pesos: unit pesos, qty 100. Solo en filas kg.",
+  "«la que no es marinada», «sin marinar» o «normal» es la fila sin marinar.",
+  "Lo que no está en el menú va en not_on_menu y no se agrega. Si hay una familia cercana, la pregunta la ofrece.",
+  "sí, listo, así está bien o correcto: confirmed true y el mismo carrito. No es un producto.",
+].join("\n");
+
+function examplesFor(profile: InterpretRequest["catalog"]["profile"]): string {
+  if (profile === "carniceria") {
+    return [
+      "«bistec» → question «¿El bistec de res o de puerco?», sin esa línea.",
+      "«un kilo de diezmillo» → esa fila, qty 1, unit kg.",
+      "«$150 de pastor» → unit pesos, qty 150.",
+      "«seis kilos y tres cuartos» → qty 6.75, unit kg.",
+      "«la que no es marinada» → la fila sin marinar.",
+      "«una pizza» → not_on_menu [\"pizza\"].",
+      "«sí está bien» → confirmed true, carrito igual.",
+    ].join("\n");
+  }
+  return [
+    "«2 hamburguesas» → question «¿Cuál hamburguesa?», sin esa línea.",
+    "«una de res chica» → esa fila, qty 1, question null.",
+    "Carrito con Pepsi x3 y «cambia una por seven» → Pepsi x2 y Seven x1.",
+    "«otra» con una Pepsi → Pepsi x2. «otro de pollo» es el de pollo, no suma al anterior.",
+    "«una pizza» → not_on_menu [\"pizza\"].",
+    "«sí está bien» → confirmed true, carrito igual.",
+  ].join("\n");
+}
+
+/** gpt-5 rechaza temperature. El esfuerzo se elige con OPENAI_REASONING_EFFORT (none o low). */
 function omitsTemperature(modelName: string): boolean {
   return /^gpt-5/i.test(modelName.trim());
+}
+
+function reasoningEffort(): "none" | "low" {
+  return String(process.env.OPENAI_REASONING_EFFORT ?? "").trim().toLowerCase() === "low" ? "low" : "none";
 }
 
 const announcedAccess = new Set<string>();
@@ -25,161 +63,137 @@ function accessError(error: unknown): { status: number; code: string } | null {
   return null;
 }
 
-function orderModel(): string {
+export function orderModel(): string {
   const configured = String(process.env.OPENAI_ORDER_MODEL ?? "").trim();
   return configured || DEFAULT_ORDER_MODEL;
 }
 
-function catalogLines(request: InterpretRequest): string {
+function aliasSuffix(row: CatalogRow): string {
+  const name = fold(`${row.name} ${row.searchName}`);
+  const extra = row.alias
+    .map((item) => item.trim())
+    .filter((item) => item.length >= 3 && !name.includes(fold(item)));
+  const unique = extra.filter((item, index) => extra.findIndex((other) => fold(other) === fold(item)) === index);
+  return unique.length ? ` (${unique.join(", ")})` : "";
+}
+
+function menuLines(request: InterpretRequest): string {
   return request.catalog.rows
     .map((row) => {
-      const variants = row.variants.length ? ` | ${row.variants.join("/")}` : "";
-      return `${row.id} | ${row.name} | ${row.precio} | ${row.unit}${variants}`;
+      const flavors = row.variants.length ? ` [${row.variants.join("/")}]` : "";
+      return `${row.id} ${row.name} $${row.precio} ${row.unit}${flavors}${aliasSuffix(row)}`;
     })
     .join("\n");
 }
 
-function schemaFor(ids: number[]): Record<string, unknown> {
+function cartJson(request: InterpretRequest): string {
+  const lines = request.cart.map((line) => ({
+    product_id: line.productId,
+    qty: line.qty,
+    unit: line.unit,
+    variant: line.variant,
+  }));
+  return JSON.stringify(lines);
+}
+
+function stepLine(request: InterpretRequest): string {
+  if (request.repairErrors?.length) return `Corrige el JSON. ${request.repairErrors.join(" ")}`;
+  if (request.pending) return `Pregunta pendiente: ${request.pending.question}`;
+  if (request.awaitingList) return "Ya vio la lista. Un sí la confirma. Un cambio la edita.";
+  return "Armando el pedido.";
+}
+
+/** Lo único que ve el modelo: reglas cortas, el paso, el menú de esta tienda y el carrito. */
+export function buildOrderPrompt(request: InterpretRequest): string {
+  return [
+    RULES,
+    examplesFor(request.catalog.profile),
+    stepLine(request),
+    "Menú (id nombre precio unidad):",
+    menuLines(request),
+    "Carrito:",
+    cartJson(request),
+  ].join("\n");
+}
+
+export function orderJsonSchema(ids: number[]): Record<string, unknown> {
   const idEnum = ids.length ? ids : [0];
-  const nullableId = { anyOf: [{ type: "integer", enum: idEnum }, { type: "null" }] };
   return {
     type: "object",
     additionalProperties: false,
-    required: ["intent", "cart", "changes", "unmatched", "confidence"],
+    required: ["cart", "question", "not_on_menu", "confirmed"],
     properties: {
-      intent: { type: "string", enum: ["order", "edit", "confirm", "answer", "question", "other"] },
       cart: {
         type: "array",
         items: {
           type: "object",
           additionalProperties: false,
-          required: ["product_id", "qty", "unit", "variant", "notes"],
+          required: ["product_id", "qty", "unit", "variant"],
           properties: {
             product_id: { type: "integer", enum: idEnum },
             qty: { type: "number" },
             unit: { type: "string", enum: ["pz", "kg", "pesos"] },
             variant: { anyOf: [{ type: "string" }, { type: "null" }] },
-            notes: { anyOf: [{ type: "string" }, { type: "null" }] },
           },
         },
       },
-      changes: {
-        type: "array",
-        items: {
-          type: "object",
-          additionalProperties: false,
-          required: ["op", "product_id", "from_product_id", "source_text"],
-          properties: {
-            op: { type: "string", enum: ["add", "set_qty", "remove", "replace", "set_variant"] },
-            product_id: nullableId,
-            from_product_id: nullableId,
-            source_text: { type: "string" },
+      question: {
+        anyOf: [
+          { type: "null" },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["text", "candidate_ids"],
+            properties: {
+              text: { type: "string" },
+              candidate_ids: { type: "array", items: { type: "integer" } },
+            },
           },
-        },
+        ],
       },
-      unmatched: {
-        type: "array",
-        items: {
-          type: "object",
-          additionalProperties: false,
-          required: ["source_text", "reason", "candidate_ids"],
-          properties: {
-            source_text: { type: "string" },
-            reason: { type: "string", enum: ["ambiguous", "not_on_menu", "unclear"] },
-            candidate_ids: { type: "array", items: { type: "integer", enum: idEnum } },
-          },
-        },
-      },
-      confidence: { type: "string", enum: ["high", "medium", "low"] },
+      not_on_menu: { type: "array", items: { type: "string" } },
+      confirmed: { type: "boolean" },
     },
   };
 }
 
-function promptFor(request: InterpretRequest): string {
-  const place = request.catalog.profile === "carniceria" ? "carnicería La Central (kilos; carbón y salsas por pieza)" : "restaurante George (todo por pieza)";
-  const cart = request.cart
-    .map((line) => `${line.productId} x${line.qty} ${line.unit}${line.variant ? ` ${line.variant}` : ""}`)
-    .join(", ") || "(vacío)";
-  const pending = request.pending
-    ? `Pregunta pendiente: "${request.pending.question}" candidatos=${request.pending.candidateIds.join(",")} qty=${request.pending.qty} ${request.pending.unit}`
-    : "Sin pregunta pendiente.";
-  const history = request.history.slice(-6).map((turn) => `${turn.role}: ${turn.text}`).join("\n") || "(sin historial)";
-  return [
-    `Eres el lector de pedidos de Mándalo para ${place}.`,
-    "Devuelve solo el JSON del esquema. El carrito final usa únicamente ids del menú.",
-    "Entiende faltas, jerga y voz a texto. Cantidades en palabras y fracciones (1/4, un cuarto, medio, kilo y medio, 3/4, 250 g).",
-    "En carne, '$100 de pastor' o 'cien pesos de chorizo' van con unit pesos.",
-    "otra/otro igual/una más suma 1 a la línea de la que se habla. Si 'otra' trae otro producto, es ese producto, no un extra de la anterior.",
-    "El tamaño aplica al producto que acompaña. No inventes filas.",
-    "Nunca elijas tamaño, tipo ni sabor por default. Si el cliente no lo dijo, unmatched reason ambiguous con las filas que sí caben.",
-    "Una línea de carrito por sabor. Dos sabores en el mismo mensaje son dos líneas, cada una con su variant.",
-    "No sustituyas. not_on_menu cuando ninguna fila comparte una palabra real con lo que dijo (molida, pechuga, jugo, taco). ambiguous solo si esas filas sí coinciden con sus palabras. No listes productos que no se parecen.",
-    "Un monto en pesos se queda en el producto que lo acompaña. Cientos y miles en palabras (doscientos, trescientos, quinientos, mil) son la cantidad, no se parten.",
-    "«sin marinar», «natural» o «normal» es la fila sin marinar. «marinada» o «adobada» es la marinada.",
-    "Si dice el nombre exacto de un producto, no preguntes.",
-    "Si dos o más filas caben y ninguna quedó nombrada completa, unmatched reason ambiguous con sus ids. No preguntes cuando solo hay una fila.",
-    "Un sí, 'así está bien' o 'correcto' es intent confirm y no agrega productos.",
-    "Un elemento de changes por producto. source_text va copiado del mensaje.",
-    "cámbialo o cambia X por Y es op replace: from_product_id es la línea que sale y product_id la que entra. No dejes las dos.",
-    "otra, otro, agrega otro y otra igual suman 1 a esa línea (op add o set_qty con la cantidad nueva).",
-    "En una quesadilla, 'con ingrediente extra' es la fila Ingrediente Extra en Quesadilla, además de la quesadilla.",
-    "",
-    "Menú (id | nombre | precio | unidad | variantes):",
-    catalogLines(request),
-    "",
-    `Carrito actual: ${cart}`,
-    pending,
-    "Historial:",
-    history,
-    "",
-    `Mensaje nuevo: ${request.message}`,
-  ].join("\n");
+function asUnit(value: unknown): SellUnit | null {
+  return value === "pz" || value === "kg" || value === "pesos" ? value : null;
 }
 
-function asUnit(value: unknown): SellUnit {
-  return value === "kg" || value === "pesos" ? value : "pz";
+function unreadable(): AiOutput {
+  return {
+    cart: [{ product_id: -1, qty: 1, unit: "pz", variant: null }],
+    question: null,
+    not_on_menu: [],
+    confirmed: false,
+  };
 }
 
-export function parseModelJson(raw: unknown): ModelOutput | null {
+export function parseModelJson(raw: unknown): AiOutput | null {
   const body = typeof raw === "string" ? safeJson(raw) : raw;
   if (!body || typeof body !== "object") return null;
   const record = body as Record<string, unknown>;
-  const intent = record.intent;
-  if (intent !== "order" && intent !== "edit" && intent !== "confirm" && intent !== "answer" && intent !== "question" && intent !== "other") {
-    return null;
-  }
-  const cart = Array.isArray(record.cart) ? record.cart : [];
-  const changes = Array.isArray(record.changes) ? record.changes : [];
-  const unmatched = Array.isArray(record.unmatched) ? record.unmatched : [];
-  const confidence = record.confidence === "low" || record.confidence === "medium" ? record.confidence : "high";
+  if (!Array.isArray(record.cart) || !Array.isArray(record.not_on_menu) || typeof record.confirmed !== "boolean") return null;
+  const questionRecord = record.question;
+  let question: AiOutput["question"] = null;
+  if (questionRecord && typeof questionRecord === "object") {
+    const row = questionRecord as Record<string, unknown>;
+    const ids = Array.isArray(row.candidate_ids) ? row.candidate_ids.map((id) => Number(id)).filter((id) => Number.isFinite(id)) : [];
+    question = { text: String(row.text ?? ""), candidate_ids: ids };
+  } else if (questionRecord != null) return null;
   return {
-    intent,
-    confidence,
-    cart: cart.map((item) => {
+    confirmed: record.confirmed,
+    not_on_menu: record.not_on_menu.map((item) => String(item)).filter((item) => item.trim()),
+    question,
+    cart: record.cart.map((item) => {
       const row = item as Record<string, unknown>;
       return {
         product_id: Number(row.product_id),
         qty: Number(row.qty),
-        unit: asUnit(row.unit),
-        variant: row.variant == null ? null : String(row.variant),
-        notes: row.notes == null ? null : String(row.notes),
+        unit: asUnit(row.unit) ?? String(row.unit ?? ""),
+        variant: row.variant == null || String(row.variant).trim() === "" ? null : String(row.variant),
       };
-    }),
-    changes: changes.map((item) => {
-      const row = item as Record<string, unknown>;
-      const op = row.op;
-      return {
-        op: op === "set_qty" || op === "remove" || op === "replace" || op === "set_variant" ? op : "add",
-        product_id: row.product_id == null ? null : Number(row.product_id),
-        from_product_id: row.from_product_id == null ? null : Number(row.from_product_id),
-        source_text: String(row.source_text ?? ""),
-      };
-    }),
-    unmatched: unmatched.map((item) => {
-      const row = item as Record<string, unknown>;
-      const reason = row.reason === "not_on_menu" || row.reason === "unclear" ? row.reason : "ambiguous";
-      const ids = Array.isArray(row.candidate_ids) ? row.candidate_ids.map((id) => Number(id)).filter((id) => Number.isFinite(id)) : [];
-      return { source_text: String(row.source_text ?? ""), reason, candidate_ids: ids };
     }),
   };
 }
@@ -200,28 +214,23 @@ export function createOpenAICatalogModel(modelName = orderModel()): CatalogModel
       if (!apiKey) return null;
       const client = new OpenAI({ apiKey, timeout: ORDER_TIMEOUT_MS });
       const ids = request.catalog.rows.map((row) => row.id);
-      const ask = async () => {
+      try {
         const response = await client.chat.completions.create(
           {
             model: modelName,
-            ...(omitsTemperature(modelName) ? { reasoning_effort: "none" as const } : { temperature: 0 }),
+            ...(omitsTemperature(modelName) ? { reasoning_effort: reasoningEffort() } : { temperature: 0 }),
             messages: [
-              { role: "system", content: promptFor(request) },
+              { role: "system", content: buildOrderPrompt(request) },
               { role: "user", content: request.message },
             ],
             response_format: {
               type: "json_schema",
-              json_schema: { name: "catalog_order", strict: true, schema: schemaFor(ids) },
+              json_schema: { name: "catalog_order", strict: true, schema: orderJsonSchema(ids) },
             },
           },
           { signal: AbortSignal.timeout(ORDER_TIMEOUT_MS) },
         );
-        return parseModelJson(response.choices?.[0]?.message?.content ?? "");
-      };
-      try {
-        const first = await ask();
-        if (first) return first;
-        return await ask();
+        return parseModelJson(response.choices?.[0]?.message?.content ?? "") ?? unreadable();
       } catch (error) {
         const denied = accessError(error);
         if (denied) {

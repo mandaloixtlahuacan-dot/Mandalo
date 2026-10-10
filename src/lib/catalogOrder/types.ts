@@ -95,17 +95,42 @@ export type ModelOutput = {
 
 export type HistoryTurn = { role: "user" | "assistant"; text: string };
 
+export type AiCartLine = {
+  product_id: number;
+  qty: number;
+  unit: string;
+  variant: string | null;
+};
+
+export type AiQuestion = {
+  text: string;
+  candidate_ids: number[];
+};
+
+/** El modelo devuelve el carrito completo. No es un delta. */
+export type AiOutput = {
+  cart: AiCartLine[];
+  question: AiQuestion | null;
+  not_on_menu: string[];
+  confirmed: boolean;
+};
+
 export type InterpretRequest = {
   catalog: CatalogSnapshot;
   cart: CartLine[];
   pending: PendingCatalogAsk | null;
+  /** El motor nuevo no lo manda al modelo. Queda por compatibilidad del turno. */
   history: HistoryTurn[];
   message: string;
+  /** La lista ya se mostró y un sí limpio pasa a la ubicación. */
+  awaitingList?: boolean;
+  /** Errores del chequeo anterior, para el único reintento. */
+  repairErrors?: string[];
 };
 
 export type CatalogModel = {
   name: string;
-  interpret(request: InterpretRequest): Promise<ModelOutput | null>;
+  interpret(request: InterpretRequest): Promise<AiOutput | null>;
 };
 
 export type CatalogTurnInput = {
@@ -118,6 +143,8 @@ export type CatalogTurnInput = {
   awaitingList?: boolean;
   model?: CatalogModel | null;
 };
+
+export type CatalogEngineMode = "legacy" | "v1" | "v2";
 
 export type CatalogTurnResult = {
   cart: CartLine[];

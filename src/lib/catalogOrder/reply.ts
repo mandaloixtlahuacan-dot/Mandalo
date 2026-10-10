@@ -246,3 +246,65 @@ export function buildCatalogReply(params: {
   });
   return { reply: formatProductListConfirm(items, kindOf(catalog)), pending: null };
 }
+
+function listReply(catalog: CatalogSnapshot, cart: CartLine[]): string {
+  const items = cart.map((line) => {
+    const row = catalog.byId.get(line.productId);
+    return { nombre_producto: row ? lineLabel(line, row) : "producto" };
+  });
+  return formatProductListConfirm(items, kindOf(catalog));
+}
+
+/** Respuesta del motor nuevo: la pregunta es la del modelo. No se reescribe el carrito. */
+export function buildAiReply(params: {
+  catalog: CatalogSnapshot;
+  cart: CartLine[];
+  notOnMenu: string[];
+  question: { text: string; candidateIds: number[] } | null;
+  pending: PendingCatalogAsk | null;
+  confirmedList: boolean;
+}): { reply: string; pending: PendingCatalogAsk | null } {
+  const { catalog, cart } = params;
+  if (params.confirmedList) return { reply: "", pending: null };
+
+  const notes = params.notOnMenu.map((term) => notAvailable(catalog, term));
+  const question = params.question;
+  if (question) {
+    const same = params.pending && fold(params.pending.question) === fold(question.text);
+    const count = same ? params.pending!.count + 1 : 1;
+    let prose = question.text;
+    if (count >= 2 && question.candidateIds.length > 1) {
+      const rows = question.candidateIds.map((id) => catalog.byId.get(id)?.name ?? "").filter(Boolean);
+      if (rows.length) {
+        prose = formatClarificationOptions({
+          title: "¿Cuál de estos?",
+          emoji: catalog.profile === "carniceria" ? "🥩" : "🍔",
+          choices: rows,
+        });
+      }
+    }
+    const pending: PendingCatalogAsk = {
+      sourceText: params.pending?.sourceText || question.text,
+      candidateIds: question.candidateIds,
+      qty: params.pending?.qty ?? 1,
+      unit: params.pending?.unit ?? (catalog.profile === "carniceria" ? "kg" : "pz"),
+      variant: null,
+      family: sharedFamily(catalog, question.candidateIds),
+      question: question.text,
+      count,
+    };
+    return { reply: [...notes, prose].filter(Boolean).join("\n\n"), pending };
+  }
+
+  if (!cart.length) {
+    const invite = catalog.profile === "carniceria"
+      ? "Dime el corte y los kilos, o cuántos pesos."
+      : "Dime qué se te antoja del menú y cuántos.";
+    const reply = notes.length ? notes.join("\n\n") : invite;
+    return { reply, pending: null };
+  }
+
+  const list = listReply(catalog, cart);
+  const reply = notes.length ? `${notes.join("\n\n")}\n\n${list}` : list;
+  return { reply, pending: null };
+}
