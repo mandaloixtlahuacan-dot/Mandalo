@@ -26,6 +26,7 @@ import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { checkAiOutput, pesosToKg } from "../src/lib/catalogOrder/accept";
 import { buildCatalog, catalogEngineMode, runCatalogOrderTurn, type AiOutput, type CartLine, type CatalogModel, type CatalogSnapshot, type PendingCatalogAsk, type RawCatalogRow } from "../src/lib/catalogOrder";
+import { GENERIC_DOGO } from "../src/lib/catalogOrder/catalog";
 import { buildOrderPrompt, DEFAULT_ORDER_MODEL, ORDER_TIMEOUT_MS, orderJsonSchema, parseModelJson } from "../src/lib/catalogOrder/parser";
 
 type ExpectItem = { name: string; qty: number; unit: string; variant?: string };
@@ -219,6 +220,10 @@ async function offline(): Promise<void> {
   assert(prompt.includes("1 orden = 10 piezas"), "el menú no marca la orden de alitas");
   assert(prompt.includes("No preguntes con una sola opción"), "el prompt no prohíbe la pregunta de una sola opción");
   assert(prompt.includes("not_on_menu"), "el prompt no manda lo de fuera del menú a not_on_menu");
+  assert(prompt.includes("dos grandes y una chica"), "el prompt no reparte dos tamaños");
+  assert(prompt.includes("una de ellas mejor de arrachera"), "el prompt no muestra el cambio de una parte");
+  assert(prompt.includes("unas papas"), "el prompt no pregunta el tipo de papas");
+  assert(prompt.includes("nombre exacto de una fila"), "el prompt no prefiere el nombre exacto");
   assert(prompt.includes(`${burger.id} ${burger.name}`), "el prompt no trae el menú de esta tienda");
   assert(prompt.includes(`"product_id":${drink.id}`), "el prompt no trae el carrito");
   const centralPrompt = buildOrderPrompt({
@@ -229,6 +234,13 @@ async function offline(): Promise<void> {
     message: "un kilo",
   });
   assert(!centralPrompt.includes("Hamburguesa de Res"), "el menú de La Central incluye productos de George");
+  assert(centralPrompt.includes("sin escoger una"), "el prompt no pregunta por carne de puerco");
+  assert(centralPrompt.includes("no el marinado"), "el prompt no separa el bistec de puerco del marinado");
+  assert(GENERIC_DOGO === "clasico", "el dogo genérico cambió de modo");
+  const dogo = george.rows.find((row) => row.name === "Dogo Clásico");
+  const boneless = george.rows.find((row) => /boneless/i.test(row.name));
+  assert(dogo?.alias.includes("hot dog") && dogo.alias.includes("jocho"), "el alias del dogo genérico se movió");
+  assert(boneless?.alias.includes("boneles") && boneless.alias.includes("bonles"), "boneles no es alias de Boneless");
   const schema = JSON.stringify(orderJsonSchema(george.rows.map((row) => row.id)));
   assert(schema.includes("confirmed") && schema.includes("not_on_menu") && schema.includes("pending") && schema.includes("source_text"), "el esquema no trae pending");
   assert(!schema.includes("removed_ids"), "el esquema todavía pide removed_ids");
@@ -298,6 +310,115 @@ async function offline(): Promise<void> {
   );
   assert(openPending.cart[0]?.productId === burger.id && openPending.pending.length === 1, "pending se perdió o se reescribió el carrito");
 
+  const plainPork = byName(central, "Bistec de puerco");
+  const marinPork = byName(central, "Bistec de puerco marinado");
+  const polloG = byName(george, "Hamburguesa de Pollo Grande");
+  const polloC = byName(george, "Hamburguesa de Pollo Chica");
+  const openDogo: PendingCatalogAsk = {
+    sourceText: "de pollo",
+    candidateIds: [burger.id],
+    qty: 1,
+    unit: "pz",
+    variant: null,
+    family: null,
+    question: "¿Cuál de pollo?",
+    count: 1,
+  };
+  let closeCalls = 0;
+  const closeModel: CatalogModel = {
+    name: "script",
+    async interpret() {
+      closeCalls += 1;
+      return emptyAi({ confirmed: true, cart: [] });
+    },
+  };
+  const closed = await runCatalogOrderTurn({
+    message: "eso es todo",
+    cart: [{ productId: burger.id, qty: 1, unit: "pz", variant: null, notes: null }],
+    pending: openDogo,
+    history: [],
+    catalog: george,
+    awaitingList: false,
+    model: closeModel,
+  });
+  assert(closeCalls === 0 && !closed.confirmedList, "eso es todo con pregunta abierta confirmó o llamó al modelo");
+  assert(closed.reply.includes("¿Cuál de pollo?") && closed.pending?.question === "¿Cuál de pollo?", "eso es todo soltó la pregunta");
+  assert(closed.cart.length === 1 && closed.cart[0]?.productId === burger.id, "eso es todo vació el carrito");
+
+  const exactPork = await runCatalogOrderTurn({
+    message: "kilo y cuarto de bistec de puerco",
+    cart: [],
+    pending: null,
+    history: [],
+    catalog: central,
+    model: scripted([emptyAi({ cart: [{ product_id: marinPork.id, qty: 1.25, unit: "kg", variant: null }] })]),
+  });
+  assert(exactPork.cart.length === 1 && exactPork.cart[0]?.productId === plainPork.id && exactPork.cart[0]?.qty === 1.25, "el nombre exacto se fue a la fila marinada");
+  const saidMarin = await runCatalogOrderTurn({
+    message: "un kilo de bistec de puerco marinado",
+    cart: [],
+    pending: null,
+    history: [],
+    catalog: central,
+    model: scripted([emptyAi({ cart: [{ product_id: marinPork.id, qty: 1, unit: "kg", variant: null }] })]),
+  });
+  assert(saidMarin.cart[0]?.productId === marinPork.id, "el marinado dicho se cambió a la fila sin marinar");
+
+  const fourGrandes: CartLine[] = [{ productId: polloG.id, qty: 4, unit: "pz", variant: null, notes: null }];
+  let swapCalls = 0;
+  const swapped = await runCatalogOrderTurn({
+    message: "una de esas que sea chica",
+    cart: fourGrandes,
+    pending: null,
+    history: [],
+    catalog: george,
+    model: {
+      name: "script",
+      async interpret(request) {
+        swapCalls += 1;
+        if (swapCalls === 1) {
+          return emptyAi({
+            cart: [
+              { product_id: polloC.id, qty: 4, unit: "pz", variant: null },
+              { product_id: polloG.id, qty: 3, unit: "pz", variant: null },
+            ],
+          });
+        }
+        assert(request.repairErrors?.some((error) => error.includes("cantidad total")) === true, "la corrección no dijo que el total cambió");
+        return emptyAi({
+          cart: [
+            { product_id: polloG.id, qty: 3, unit: "pz", variant: null },
+            { product_id: polloC.id, qty: 1, unit: "pz", variant: null },
+          ],
+        });
+      },
+    },
+  });
+  assert(swapCalls === 2, "un cambio de una parte con el total distinto no pidió corrección");
+  assert(swapped.cart.find((line) => line.productId === polloG.id)?.qty === 3, "la grande no quedó en 3");
+  assert(swapped.cart.find((line) => line.productId === polloC.id)?.qty === 1, "la chica no quedó en 1");
+  let okSwapCalls = 0;
+  await runCatalogOrderTurn({
+    message: "una de esas que sea chica",
+    cart: fourGrandes,
+    pending: null,
+    history: [],
+    catalog: george,
+    model: {
+      name: "script",
+      async interpret() {
+        okSwapCalls += 1;
+        return emptyAi({
+          cart: [
+            { product_id: polloG.id, qty: 3, unit: "pz", variant: null },
+            { product_id: polloC.id, qty: 1, unit: "pz", variant: null },
+          ],
+        });
+      },
+    },
+  });
+  assert(okSwapCalls === 1, "un cambio de una parte con el total igual se volvió a pedir");
+
   const previousEngine = process.env.CATALOG_ENGINE;
   process.env.CATALOG_ENGINE = "v1";
   assert(catalogEngineMode() === "v1", "CATALOG_ENGINE=v1 no se reconoce");
@@ -353,7 +474,7 @@ async function offline(): Promise<void> {
     });
   }).then((kept) => {
     assert(kept.fallback === false && kept.cart.length === 1 && kept.cart[0]?.qty === 1, "al fallar dos veces no se conservó el carrito anterior");
-    assert(kept.reply.includes("palabras sencillas"), "sin una línea válida no se pidió repetir");
+    assert(kept.reply.includes("¿Están bien estos productos?") && !kept.reply.includes("palabras sencillas"), "con líneas previas se vació el carrito o se dijo que no se entendió");
     const nothing = scripted([
       emptyAi({ cart: [{ product_id: 999999, qty: 1, unit: "pz", variant: null }] }),
       emptyAi({ cart: [{ product_id: 999999, qty: 1, unit: "pz", variant: null }] }),

@@ -3,19 +3,17 @@
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
 > Última actualización: 10 de octubre de 2026. La evaluación en vivo
-> de `f8f783a` mostró que el chequeo reescribía carritos que el modelo
-> ya había armado bien: reponía líneas quitadas, cambiaba el paquete de
-> alitas y rechazaba una fila válida por no estar en las opciones de la
-> pregunta. Eso se quitó. El carrito se acepta tal cual si cada línea
-> tiene id del menú, cantidad positiva, unidad permitida y piezas
-> enteras. Una línea mala se descarta o se pregunta; las demás se quedan.
-> `pending` sale del modelo y, mientras no esté vacío, no se confirma.
-> El paquete (alitas de 5/10/15/20/30, docena = 12) va en el menú y en
-> el prompt, no en el código. El modelo por defecto es `gpt-5.5` con
-> `OPENAI_REASONING_EFFORT=none`. `gpt-4.1-mini` sigue con
-> `OPENAI_ORDER_MODEL`. El tiempo de espera es 8 s. No está mergeado ni
-> desplegado. La base no se tocó. Abarrotes sigue igual. La siguiente
-> evaluación en vivo la corre el dueño con la llave.
+> de `c963e80` (`gpt-5.5`, esfuerzo none) dejó el corpus en 182/185
+> sin graves, y 7 pedidos graves en los juegos nuevos. Un «sí» o
+> «eso es todo» con pregunta abierta vuelve a preguntar y no confirma,
+> en cualquier paso. Si el modelo no deja nada usable y ya había líneas,
+> esas líneas se quedan y se vuelve a preguntar. «una de esas/ellas»
+> tiene que conservar el total; si no, se pide una corrección. El nombre
+> exacto de una fila gana sobre la marinada. «unas papas» se pregunta.
+> «boneles» y «bonles» son Boneless. «un dogo / hot dog / jocho» sigue
+> en el Dogo Clásico, en una sola constante (`GENERIC_DOGO`) por si el
+> dueño prefiere preguntar. El modelo por defecto sigue `gpt-5.5` con
+> esfuerzo none. No está mergeado ni desplegado. La base no se tocó.
 > Actualización anterior del mismo día: el menú cerrado que ya está en
 > producción (PR #33, `0abd169`) se simplifica en un PR nuevo. El modelo
 > devuelve el carrito completo. Cada llamada lleva el paso, el menú de

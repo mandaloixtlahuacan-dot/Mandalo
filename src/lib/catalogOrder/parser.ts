@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { GENERIC_DOGO } from "@/lib/catalogOrder/catalog";
 import { fold } from "@/lib/catalogOrder/text";
 import type { AiOutput, AiPendingLine, CatalogModel, CatalogRow, InterpretRequest, SellUnit } from "@/lib/catalogOrder/types";
 
@@ -16,8 +17,10 @@ const RULES = [
   "Si la fila dice «1 orden = N piezas», qty es cuántas órdenes. «dos de 20» es esa fila con qty 2. Si esa medida no existe, va en pending y se listan las medidas, sin adivinar.",
   "En carne, $100 o cien pesos: unit pesos, qty 100. Solo en filas kg.",
   "«la que no es marinada», «sin marinar» o «normal» es la fila sin marinar.",
+  "Si el cliente dice el nombre exacto de una fila y no dice marinado, es esa fila. No la cambies por la marinada. Una frase con varias filas (carne de puerco, unas papas) va en pending, sin escoger.",
+  "Si la pregunta es de tamaño y la respuesta reparte (dos grandes y una chica), parte la cantidad y deja pending vacío. «una de esas» o «una de ellas» mueve esa cantidad de la línea original a la nueva: el total queda igual.",
   "Lo que no está en el menú va SOLO en not_on_menu, sin pregunta. Lo demás del mismo mensaje se queda en el carrito.",
-  "sí, listo, ya sería todo o eso es todo: confirmed true, pending vacío y el mismo carrito. Nunca confirmes un carrito vacío ni con pending.",
+  "sí, listo, ya sería todo o eso es todo, sin pregunta pendiente: confirmed true, pending vacío y el mismo carrito. Con pregunta pendiente, eso no confirma: la pregunta sigue. Nunca confirmes un carrito vacío.",
 ].join("\n");
 
 function examplesFor(profile: InterpretRequest["catalog"]["profile"]): string {
@@ -28,9 +31,14 @@ function examplesFor(profile: InterpretRequest["catalog"]["profile"]): string {
       "«$150 de pastor» → unit pesos, qty 150.",
       "«un pollo entero y un kilo de bistec» → not_on_menu [\"pollo\"] y el bistec en el carrito, pending [].",
       "«la que no es marinada» → la fila sin marinar.",
+      "«un kilo de bistec de puerco» → Bistec de puerco, no el marinado.",
+      "«un kilo de carne de puerco» → pending con las filas de puerco, sin escoger una.",
       "«sí está bien» → confirmed true, pending [], carrito igual.",
     ].join("\n");
   }
+  const dogo = GENERIC_DOGO === "ask"
+    ? "«un dogo», «un hot dog» o «un jocho» sin tipo → pending «¿Cuál dogo?», sin esa línea."
+    : "";
   return [
     "«2 hamburguesas» → pending con «¿Cuál hamburguesa?», qty 2, unit pz, source_text «2 hamburguesas», sin esa línea.",
     "«una de res chica» → esa fila, qty 1, pending []. Si solo hay una opción, se agrega y no se pregunta.",
@@ -40,8 +48,13 @@ function examplesFor(profile: InterpretRequest["catalog"]["profile"]): string {
     "«otra de pierna» suma 1 de pierna y deja lo demás. «otra» sola suma 1 a la última.",
     "«un pizzadogo» es Pizzadogo. «una manzanita» es Refresco sabor Manzana.",
     "«una pizza y dos dogos» → not_on_menu [\"pizza\"] y los dogos en el carrito, pending [].",
+    "Pregunta de 3, «dos grandes y una chica» → Grande qty 2 y Chica qty 1, pending [].",
+    "«4 grandes» y luego «una de esas que sea chica» → Grande 3 y Chica 1.",
+    "«tres tortas de chorizo» y luego «una de ellas mejor de arrachera» → Chorizo 2 y Arrachera 1.",
+    "«unas papas» o «una orden de papas» sin tipo → pending con las dos papas, sin elegir.",
+    dogo,
     "«sí está bien» → confirmed true, pending [], carrito igual.",
-  ].join("\n");
+  ].filter(Boolean).join("\n");
 }
 
 /** gpt-5 rechaza temperature. El esfuerzo se elige con OPENAI_REASONING_EFFORT (none o low). */
