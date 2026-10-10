@@ -21,6 +21,7 @@ const PRODUCT_EMOJI_RULES: EmojiRule[] = [
   { emoji: "🌭", test: /\b(hot\s*dogs?|hotdogs?|dogos?|dogo|salchichas?)\b/ },
   { emoji: "🍔", test: /\b(hamburguesas?|burger)\b/ },
   { emoji: "🍟", test: /\b(papas?\s+gajo|papas?\s+a\s+la\s+francesa|papas?\s+francesas?|salchi\s*locos)\b/ },
+  { emoji: "🍗", test: /\b(boneless|alitas)\b/ },
   { emoji: "🌮", test: /\bpastor\b/ },
   { emoji: "🔥", test: /\b(carbon|firo|fino)\b/ },
   { emoji: "🍜", test: /\b(maruchan|maruchanes|ramen|sopas?|instantanea)\b/ },

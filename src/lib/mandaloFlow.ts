@@ -6,6 +6,15 @@ import { buildMandaloSystemPrompt } from "@/lib/mandaloPrompt";
 import { normalizeWhatsAppText, waapiSendImage, waapiSendText } from "@/lib/waapi";
 import { detectActorByPhone, ensureMxWhatsappIntl, normalizePhone } from "@/lib/roles";
 import { priceCatalogOrder, type CatalogPriceRow } from "@/lib/catalogQuantities";
+import {
+  buildCatalog,
+  catalogEngineIsLegacy,
+  runCatalogOrderTurn,
+  type CartLine,
+  type PendingCatalogAsk,
+  type RawCatalogRow,
+} from "@/lib/catalogOrder";
+import { fold as foldCatalog } from "@/lib/catalogOrder/text";
 import { assembleCapturedItems } from "@/lib/orderGrounding";
 import { formatNameQtyLine, joinBlocks } from "@/lib/messageStyle";
 import { storeKindFromCategoria, type StoreKind } from "@/lib/customerUx";
@@ -1858,6 +1867,344 @@ async function tryDeterministicCustomerUx(params: {
   return { ok: true, role: "cliente", accion: `ux_${turn.type}` };
 }
 
+function catalogPendingOf(snapshot: PedidoV2Record["snapshot_json"]): PendingCatalogAsk | null {
+  const pending = snapshot.pendingAsk?.catalog;
+  if (!pending || !Array.isArray(pending.candidateIds)) return null;
+  return pending;
+}
+
+function itemsToCatalogCart(items: PedidoItemInput[] | null | undefined, catalog: ReturnType<typeof buildCatalog>): CartLine[] {
+  const lines: CartLine[] = [];
+  for (const item of items ?? []) {
+    const row = catalog.rows.find((candidate) => foldCatalog(candidate.name) === foldCatalog(item.nombre_producto));
+    if (!row) continue;
+    const unitName = foldCatalog(item.unidad ?? "");
+    const unit = unitName === "kilo" || unitName === "kg" ? "kg" : unitName === "pesos" ? "pesos" : "pz";
+    const presentation = String(item.presentacion ?? "").trim();
+    const variant = row.variants.find((option) => foldCatalog(option) === foldCatalog(presentation)) ?? null;
+    const qty = Number(item.cantidad);
+    lines.push({
+      productId: row.id,
+      qty: Number.isFinite(qty) && qty > 0 ? qty : 1,
+      unit,
+      variant,
+      notes: item.notas ?? null,
+    });
+  }
+  return lines;
+}
+
+function catalogCartToItems(cart: CartLine[], catalog: ReturnType<typeof buildCatalog>): PedidoItemInput[] {
+  return cart.map((line) => {
+    const row = catalog.byId.get(line.productId);
+    const unidad = line.unit === "kg" ? "kilo" : line.unit === "pesos" ? "pesos" : "pz";
+    const presentacion = line.unit === "pesos" ? `$${line.qty}` : line.variant;
+    return {
+      nombre_producto: row?.name ?? "producto",
+      cantidad: line.qty,
+      unidad,
+      presentacion,
+      marca: null,
+      notas: line.notes,
+    };
+  });
+}
+
+async function loadFixedCatalogRows(tiendaId: number): Promise<RawCatalogRow[]> {
+  const base = await pedidoRepositoryV2.getProductosTiendaActivos(tiendaId);
+  const aliasById = new Map<number, string[]>();
+  try {
+    const supabase = getSupabaseAdmin();
+    const { data, error } = await supabase.from("productos_tienda").select("id, alias").eq("tienda_id", tiendaId);
+    if (!error) {
+      for (const row of data ?? []) {
+        const id = Number((row as { id?: unknown }).id);
+        const alias = Array.isArray((row as { alias?: unknown }).alias)
+          ? ((row as { alias: unknown[] }).alias).map((item) => String(item))
+          : [];
+        if (Number.isFinite(id)) aliasById.set(id, alias);
+      }
+    }
+  } catch {
+    // La columna alias puede no estar en un entorno viejo. Los alias del código alcanzan.
+  }
+  return base.map((row) => ({
+    id: row.id,
+    nombreProducto: row.nombreProducto,
+    precio: row.precio,
+    categoria: row.categoria,
+    alias: aliasById.get(row.id) ?? [],
+    disponible: true,
+  }));
+}
+
+async function catalogProfileFor(
+  pedido: PedidoV2Record,
+  tiendaId: number,
+): Promise<"restaurante" | "carniceria" | null> {
+  const kind = pedido.snapshot_json.storeKind;
+  if (kind === "abarrotes") return null;
+  if (kind === "carniceria" || kind === "restaurante") return kind;
+  const stores = await loadUxStores().catch(() => []);
+  const store = stores.find((item) => item.id === tiendaId);
+  if (!store) return null;
+  const resolved = storeKindFromCategoria(store.categoria);
+  if (resolved === "abarrotes") return null;
+  return resolved;
+}
+
+async function completeFixedCatalogConfirmation(
+  telefono: string,
+  mensaje: string,
+  pedido: PedidoV2Record,
+  ubicacionCoords: Coordinates | null,
+): Promise<JsonObject> {
+  const snapshot = {
+    ...pedido.snapshot_json,
+    pendingAsk: null,
+    flags: {
+      ...(pedido.snapshot_json.flags ?? {}),
+      productosConfirmados: true,
+      awaitingProductConfirm: false,
+    },
+  };
+  if (ubicacionCoords) {
+    snapshot.addressText = buildAddressTextFromCoords();
+    snapshot.latitud = ubicacionCoords.latitude;
+    snapshot.longitud = ubicacionCoords.longitude;
+  }
+  const full = await pedidoRepositoryV2.getPedidoById(pedido.id).catch(() => null);
+  const knownZoneNames = await fetchZonasCobertura();
+  const validation = validationEngine.validateCaptureForConfirmation({
+    snapshot,
+    items: snapshot.items ?? [],
+    knownZoneNames,
+    quoteStore: false,
+    userMessage: "",
+  });
+  const nextState = validation.readyForConfirmation ? "confirmacion_cliente" : "seleccion_productos";
+  const nextSnapshot = {
+    ...snapshot,
+    items: validation.validatedItems.items,
+    flags: {
+      ...(snapshot.flags ?? {}),
+      addressValidated: Boolean(validation.validatedAddress?.isValid),
+      itemsValidated: validation.validatedItems.allItemsSpecific,
+      readyForConfirmation: validation.readyForConfirmation,
+      productosConfirmados: true,
+      awaitingProductConfirm: false,
+    },
+  };
+  await pedidoRepositoryV2.updatePedidoSnapshot({
+    pedidoId: pedido.id,
+    estado: nextState,
+    snapshot: nextSnapshot,
+    addressText: validation.validatedAddress?.isValid
+      ? validation.validatedAddress.raw || nextSnapshot.addressText || null
+      : nextSnapshot.addressText ?? null,
+    latitud: nextSnapshot.latitud ?? null,
+    longitud: nextSnapshot.longitud ?? null,
+    tiendaId: validation.validatedBusiness.businessId,
+  });
+  await pedidoRepositoryV2.replacePedidoItems({ pedidoId: pedido.id, items: validation.validatedItems.items });
+  await pedidoRepositoryV2.appendPedidoEvento({
+    pedidoId: pedido.id,
+    tipoEvento: "productos_confirmados",
+    estadoOrigen: "seleccion_productos",
+    estadoDestino: nextState,
+    actorTipo: "cliente",
+    payload: { userMessage: mensaje, catalogoFijo: true },
+  });
+
+  let feeNote = formatPreConfirmFeeNote("catalogo");
+  let pricedLines: string | null = null;
+  if (validation.readyForConfirmation && full?.tienda?.tiendaId) {
+    const priced = await catalogPriceLines(full.tienda.tiendaId, validation.validatedItems.items).catch(() => null);
+    if (priced) {
+      pricedLines = priced.lines.join("\n");
+      feeNote = formatCatalogReceiptFee(priced.subtotal);
+    }
+  }
+  const pendingQuestion = validation.issues.find((issue) => issue.customerQuestion)?.customerQuestion ?? "";
+  const msg = validation.readyForConfirmation
+    ? buildCustomerMessage({
+        validation,
+        snapshot: nextSnapshot,
+        items: validation.validatedItems.items,
+        feeNote,
+        pricedLines,
+      })
+    : pendingQuestion && !isProductListConfirmMessage(pendingQuestion) && !pendingQuestion.includes("ubicación por GPS")
+      ? pendingQuestion
+      : ADDRESS_ASK_MESSAGE;
+  await sendWhatsApp(telefono, msg);
+  await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+  return { ok: true, role: "cliente", accion: "productos_confirmados", stage: nextState, pedidoId: pedido.id };
+}
+
+/** Menú cerrado (George y La Central). Abarrotes y CATALOG_ENGINE=legacy no entran. */
+async function handleFixedCatalogTurn(
+  telefono: string,
+  mensaje: string,
+  pedido: PedidoV2Record,
+  ubicacionCoords: Coordinates | null,
+): Promise<JsonObject | null> {
+  if (catalogEngineIsLegacy()) return null;
+  if (pedido.estado !== "seleccion_productos") return null;
+  const full = await pedidoRepositoryV2.getPedidoById(pedido.id).catch(() => null);
+  if (!full?.tienda?.usaCatalogoFijo || !full.tienda.tiendaId) return null;
+  const profile = await catalogProfileFor(pedido, full.tienda.tiendaId);
+  if (!profile) return null;
+
+  const text = String(mensaje ?? "").trim();
+  const flags = pedido.snapshot_json.flags;
+  const waitingAddress =
+    flags?.productosConfirmados === true &&
+    pedido.snapshot_json.latitud == null &&
+    !String(pedido.snapshot_json.addressText ?? "").trim();
+
+  if (!text && ubicacionCoords && waitingAddress) {
+    return completeFixedCatalogConfirmation(telefono, mensaje, pedido, ubicacionCoords);
+  }
+  if (!text && ubicacionCoords) {
+    const snapshot = {
+      ...pedido.snapshot_json,
+      addressText: buildAddressTextFromCoords(),
+      latitud: ubicacionCoords.latitude,
+      longitud: ubicacionCoords.longitude,
+    };
+    await pedidoRepositoryV2.updatePedidoSnapshot({
+      pedidoId: pedido.id,
+      estado: "seleccion_productos",
+      snapshot,
+      addressText: snapshot.addressText,
+      latitud: snapshot.latitud,
+      longitud: snapshot.longitud,
+      tiendaId: full.tienda.tiendaId,
+    });
+    const msg = "Ya guardé el pin.\n\nPrimero confirmamos los productos con un *sí*.";
+    await sendWhatsApp(telefono, msg);
+    await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+    return { ok: true, role: "cliente", accion: "pin_antes_de_productos", pedidoId: pedido.id };
+  }
+  if (!text) return null;
+
+  if (!ubicacionCoords) {
+    const early = await tryDeterministicCustomerUx({ telefono, mensaje, openPedido: pedido }).catch((e: unknown) => {
+      console.error("[mandalo] UX determinista falló en menú cerrado", { message: getErrorMessage(e) });
+      return null;
+    });
+    if (early) return early;
+  }
+
+  const pending = catalogPendingOf(pedido.snapshot_json);
+  const replyKind = classifyProductListReply(mensaje);
+  if (!pending && flags?.awaitingProductConfirm && replyKind === "cancel") {
+    await cancelOpenPedido(pedido, telefono, "cliente_rechazo_productos");
+    const msg = `✅ *Pedido #${pedido.id} cancelado.*\n\nNo se te cobra nada.\n\nCuando quieras hacer uno nuevo, aquí estoy.`;
+    await sendWhatsApp(telefono, msg);
+    await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+    return { ok: true, role: "cliente", accion: "rechazo_productos", pedidoId: pedido.id };
+  }
+  if (!pending && flags?.awaitingProductConfirm && replyKind === "relist") {
+    const msg = formatProductListConfirm(pedido.snapshot_json.items ?? [], profile);
+    await sendWhatsApp(telefono, msg);
+    await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+    return { ok: true, role: "cliente", accion: "lista_reenviada", pedidoId: pedido.id };
+  }
+  if (waitingAddress && !pending && replyKind === "confirm" && !ubicacionCoords) {
+    await sendWhatsApp(telefono, ADDRESS_ASK_MESSAGE);
+    await guardarMensajeChat({ telefono, texto: ADDRESS_ASK_MESSAGE, estado: "bot" }).catch(() => {});
+    return { ok: true, role: "cliente", accion: "pide_ubicacion", pedidoId: pedido.id };
+  }
+
+  let rows: RawCatalogRow[];
+  try {
+    rows = await loadFixedCatalogRows(full.tienda.tiendaId);
+  } catch (e: unknown) {
+    console.error("[mandalo] no pude leer el menú cerrado", { message: getErrorMessage(e) });
+    const msg = "No pude abrir el menú en este momento. Inténtalo de nuevo en un minuto.";
+    await sendWhatsApp(telefono, msg);
+    await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+    return { ok: true, role: "cliente", accion: "catalogo_no_disponible", pedidoId: pedido.id };
+  }
+  const catalog = buildCatalog(rows, profile, "priced");
+  const historial = await fetchHistorialReciente(telefono, 6).catch(() => []);
+  const history = historial
+    .slice()
+    .reverse()
+    .map((item) => ({
+      role: item.estado === "bot" ? ("assistant" as const) : ("user" as const),
+      text: String(item.texto ?? ""),
+    }))
+    .filter((item) => item.text.trim());
+
+  const result = await runCatalogOrderTurn({
+    message: mensaje,
+    cart: itemsToCatalogCart(pedido.snapshot_json.items, catalog),
+    pending,
+    history,
+    catalog,
+    awaitingList: flags?.awaitingProductConfirm === true,
+  });
+
+  const items = catalogCartToItems(result.cart, catalog);
+  const showedList = result.reply.includes("¿Están bien estos productos?");
+  const nextSnapshot = {
+    ...pedido.snapshot_json,
+    items,
+    pendingAsk: result.pending
+      ? {
+          itemKey: "catalog",
+          slots: [],
+          question: result.pending.question,
+          count: result.pending.count,
+          mode: result.pending.count >= 2 ? ("options" as const) : ("ask" as const),
+          catalog: result.pending,
+        }
+      : null,
+    flags: {
+      ...(pedido.snapshot_json.flags ?? {}),
+      productosConfirmados: result.confirmedList,
+      awaitingProductConfirm: showedList,
+      itemsValidated: result.cart.length > 0 && !result.pending,
+    },
+  };
+  if (ubicacionCoords) {
+    nextSnapshot.addressText = buildAddressTextFromCoords();
+    nextSnapshot.latitud = ubicacionCoords.latitude;
+    nextSnapshot.longitud = ubicacionCoords.longitude;
+  }
+
+  await guardarMensajeChat({ telefono, texto: mensaje, estado: "cliente" }).catch(() => {});
+  await pedidoRepositoryV2.updatePedidoSnapshot({
+    pedidoId: pedido.id,
+    estado: "seleccion_productos",
+    snapshot: nextSnapshot,
+    addressText: nextSnapshot.addressText ?? null,
+    latitud: nextSnapshot.latitud ?? null,
+    longitud: nextSnapshot.longitud ?? null,
+    tiendaId: full.tienda.tiendaId,
+  });
+  await pedidoRepositoryV2.replacePedidoItems({ pedidoId: pedido.id, items });
+
+  if (result.confirmedList) {
+    return completeFixedCatalogConfirmation(
+      telefono,
+      mensaje,
+      { ...pedido, snapshot_json: nextSnapshot },
+      ubicacionCoords,
+    );
+  }
+
+  const msg = result.reply.trim() || (profile === "carniceria"
+    ? "Dime el corte y los kilos, o cuántos pesos."
+    : "Dime qué se te antoja del menú y cuántos.");
+  await sendWhatsApp(telefono, msg);
+  await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+  return { ok: true, role: "cliente", accion: "catalogo_fijo", pedidoId: pedido.id };
+}
+
 async function handleClienteMessage(telefono: string, mensaje: string, ubicacion?: unknown): Promise<JsonObject> {
   const ubicacionCoords = extractCoordsFromUbicacion(ubicacion);
 
@@ -2032,6 +2379,14 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
       }
     }
     // estado === "seleccion_productos": seguimos abajo con el flujo de captura.
+  }
+
+  if (openPedido && openPedido.estado === "seleccion_productos" && !catalogEngineIsLegacy()) {
+    const catalogTurn = await handleFixedCatalogTurn(telefono, mensaje, openPedido, ubicacionCoords).catch((e: unknown) => {
+      console.error("[mandalo] menú cerrado falló, sigo con el flujo de siempre", { message: getErrorMessage(e) });
+      return null;
+    });
+    if (catalogTurn) return catalogTurn;
   }
 
   if (openPedido && openPedido.estado === "seleccion_productos" && String(mensaje ?? "").trim()) {
