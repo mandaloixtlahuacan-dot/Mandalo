@@ -1,8 +1,8 @@
 import OpenAI from "openai";
 import { getEnv } from "@/lib/env";
 
-export const DEFAULT_MODEL = "gpt-4-turbo";
-export const FALLBACK_MODEL = "gpt-3.5-turbo";
+export const DEFAULT_MODEL = "gpt-4.1-mini";
+export const FALLBACK_MODEL = "gpt-4o-mini";
 
 type ChatCompletionMessage = OpenAI.Chat.ChatCompletionMessageParam;
 type ChatCompletionCreateParams = Omit<OpenAI.Chat.ChatCompletionCreateParamsNonStreaming, "model" | "messages"> & {
@@ -37,30 +37,40 @@ function getOpenAIErrorMessage(error: unknown): string {
   return String(error);
 }
 
+/**
+ * `max_tokens` está deprecado y no es compatible con los modelos nuevos.
+ * El límite sale como `max_completion_tokens` (gpt-4.1-mini y el fallback
+ * gpt-4o-mini). El resto de la petición, incluido `response_format`, se reenvía igual.
+ */
+function buildChatRequest(
+  params: ChatCompletionCreateParams,
+  model: string,
+): OpenAI.Chat.ChatCompletionCreateParamsNonStreaming {
+  const request: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming = {
+    ...params,
+    model,
+    messages: params.messages,
+    temperature: params.temperature ?? 0,
+  };
+  const completionLimit = request.max_completion_tokens ?? request.max_tokens;
+  delete request.max_tokens;
+  if (completionLimit !== undefined) request.max_completion_tokens = completionLimit;
+  return request;
+}
+
 export async function getChatCompletion(params: ChatCompletionCreateParams): Promise<string> {
   const openai = getOpenAI();
-  const messages = params.messages;
   const requestedModel = String(params.model ?? getOpenAIModel() ?? DEFAULT_MODEL).trim() || DEFAULT_MODEL;
 
   try {
-    const response = await openai.chat.completions.create({
-      ...params,
-      model: requestedModel,
-      messages,
-      temperature: params.temperature ?? 0,
-    });
+    const response = await openai.chat.completions.create(buildChatRequest(params, requestedModel));
     return response.choices?.[0]?.message?.content ?? "";
   } catch (error: unknown) {
     console.error("[OpenAI Error]", getOpenAIErrorMessage(error));
 
     if (shouldFallbackOpenAIError(error)) {
       console.log(`Intentando fallback con ${FALLBACK_MODEL}...`);
-      const fallbackResponse = await openai.chat.completions.create({
-        ...params,
-        model: FALLBACK_MODEL,
-        messages,
-        temperature: params.temperature ?? 0,
-      });
+      const fallbackResponse = await openai.chat.completions.create(buildChatRequest(params, FALLBACK_MODEL));
       return fallbackResponse.choices?.[0]?.message?.content ?? "";
     }
 

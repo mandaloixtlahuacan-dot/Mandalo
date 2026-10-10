@@ -38,7 +38,7 @@ console.log("OPENAI_API_KEY detectado:", {
   preview: key.slice(0, 7) + "..." + key.slice(-4), // NO imprimir completa
 });
 
-const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
+const model = process.env.OPENAI_MODEL || "gpt-4.1-mini";
 console.log("Modelo:", model);
 
 try {
@@ -51,7 +51,7 @@ try {
     body: JSON.stringify({
       model,
       messages: [{ role: "user", content: "Hola" }],
-      max_tokens: 30,
+      max_completion_tokens: 30,
       temperature: 0,
     }),
   });

@@ -446,7 +446,7 @@ export async function getLLMResponse(params: {
   // + la lista completa de items, BLOQUE 4). Con 600 tokens, la IA a veces
   // se quedaba sin espacio y omitía "customer_reply" para priorizar terminar
   // bien el order_state — ver nota más abajo sobre qué pasaba en ese caso.
-  const text = await getChatCompletion({ model, messages, max_tokens: 900, temperature: 0 });
+  const text = await getChatCompletion({ model, messages, max_completion_tokens: 900, temperature: 0 });
 
   // Reparación del parser:
   // - NUNCA hacemos JSON.parse sobre texto sin antes extraer un bloque {...} por regex.
@@ -1528,7 +1528,7 @@ async function extractReplacementProduct(params: { itemNombre: string; mensaje: 
         { role: "system", content: system },
         { role: "user", content: params.mensaje },
       ],
-      max_tokens: 150,
+      max_completion_tokens: 150,
       temperature: 0,
     });
   } catch (e: unknown) {
