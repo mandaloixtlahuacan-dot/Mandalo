@@ -1,0 +1,7736 @@
+{
+ "G001": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 2,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 2,
+     "from_product_id": null,
+     "source_text": "Quiero una hamburguesa de res grande"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G002": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 3,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 3,
+     "from_product_id": null,
+     "source_text": "2 hamburguesas de pollo chicas"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G003": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 21,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 21,
+     "from_product_id": null,
+     "source_text": "Me das un dogo clásico"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G004": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 15,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 15,
+     "from_product_id": null,
+     "source_text": "unas papas a la francesa"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G005": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 19,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 19,
+     "from_product_id": null,
+     "source_text": "una orden de boneless"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G006": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 55,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 55,
+     "from_product_id": null,
+     "source_text": "Quiero alitas de 20 piezas"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G007": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 33,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 33,
+     "from_product_id": null,
+     "source_text": "una torta cubana por favor"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G008": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 49,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 49,
+     "from_product_id": null,
+     "source_text": "2 quesadillas de chorizo"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G009": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 38,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 38,
+     "from_product_id": null,
+     "source_text": "una sincronizada de pierna y tocino"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G010": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 29,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 29,
+     "from_product_id": null,
+     "source_text": "Un pizzadogo"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G011": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 20,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 20,
+     "from_product_id": null,
+     "source_text": "una botana completa"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G012": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 27,
+     "qty": 3,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 27,
+     "from_product_id": null,
+     "source_text": "3 doridogos"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G013": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 2,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 2,
+     "from_product_id": null,
+     "source_text": "kiero una amburgesa de res grande"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G014": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 7,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 7,
+     "from_product_id": null,
+     "source_text": "2 hamburgesas hawayanas chicas"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G015": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 21,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 24,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 21,
+     "from_product_id": null,
+     "source_text": "un dogo clasico"
+    },
+    {
+     "op": "add",
+     "product_id": 24,
+     "from_product_id": null,
+     "source_text": "un dogo hawayano"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G016": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 21,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 21,
+     "from_product_id": null,
+     "source_text": "2 jochos clásicos"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G017": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 22,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 22,
+     "from_product_id": null,
+     "source_text": "un hot dog de pollo"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G018": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 19,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 19,
+     "from_product_id": null,
+     "source_text": "unos boneles"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G019": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 18,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 18,
+     "from_product_id": null,
+     "source_text": "dedos de keso"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G020": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 17,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 17,
+     "from_product_id": null,
+     "source_text": "unas salchilocas"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G021": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 45,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 45,
+     "from_product_id": null,
+     "source_text": "una quesadiya de camaron"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G022": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 41,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 41,
+     "from_product_id": null,
+     "source_text": "una sincronisada de arrachera"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G023": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 53,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": "10 piezas"
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 53,
+     "from_product_id": null,
+     "source_text": "10 alitas"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G024": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 18,
+     "qty": 6,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 18,
+     "from_product_id": null,
+     "source_text": "media docena de dedos de queso"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G025": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 30,
+     "qty": 1,
+     "unit": "pz",
+     "variant": "Coca",
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 30,
+     "from_product_id": null,
+     "source_text": "una coca"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G026": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 30,
+     "qty": 3,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 30,
+     "from_product_id": null,
+     "source_text": "2 pepsis y un seven"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G027": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 30,
+     "qty": 1,
+     "unit": "pz",
+     "variant": "Manzana",
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 30,
+     "from_product_id": null,
+     "source_text": "una manzanita"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G028": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 26,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 26,
+     "from_product_id": null,
+     "source_text": "un dogoburger"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G029": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 31,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 37,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 31,
+     "from_product_id": null,
+     "source_text": "una torta de pierna"
+    },
+    {
+     "op": "add",
+     "product_id": 37,
+     "from_product_id": null,
+     "source_text": "una campechana"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G030": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 12,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 12,
+     "from_product_id": null,
+     "source_text": "una hamburguesa mar y tierra grandee"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G031": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 16,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 16,
+     "from_product_id": null,
+     "source_text": "papas gajos"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G032": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 47,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 47,
+     "from_product_id": null,
+     "source_text": "una quesaburra"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G033": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 6,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 24,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 6,
+     "from_product_id": null,
+     "source_text": "una hamburguesa, de camarón, grande"
+    },
+    {
+     "op": "add",
+     "product_id": 24,
+     "from_product_id": null,
+     "source_text": "dos, dogos hawaianos"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G034": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 2,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 16,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 2,
+     "from_product_id": null,
+     "source_text": "Este quiero dos hamburguesas de res grandes"
+    },
+    {
+     "op": "add",
+     "product_id": 16,
+     "from_product_id": null,
+     "source_text": "y este unas papas gajo"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G035": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 14,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 30,
+     "qty": 3,
+     "unit": "pz",
+     "variant": "Pepsi",
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 14,
+     "from_product_id": null,
+     "source_text": "dos hamburguesas de arrachera. Grandes."
+    },
+    {
+     "op": "add",
+     "product_id": 30,
+     "from_product_id": null,
+     "source_text": "Y tres refrescos, Pepsi"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G036": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 9,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 9,
+     "from_product_id": null,
+     "source_text": "Me mandas una. Hamburguesa cubana chica. Por favor"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G037": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 24,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 17,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 24,
+     "from_product_id": null,
+     "source_text": "Quiero 2 Dogs hawaianos"
+    },
+    {
+     "op": "add",
+     "product_id": 17,
+     "from_product_id": null,
+     "source_text": "y unos Salchi locos"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G038": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 4,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 1,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 4,
+     "from_product_id": null,
+     "source_text": "Oye quiero una hamburguesa de pollo grande, eh, y una de res chica"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G039": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 29,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 27,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 26,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 29,
+     "from_product_id": null,
+     "source_text": "un pizza dogo"
+    },
+    {
+     "op": "add",
+     "product_id": 27,
+     "from_product_id": null,
+     "source_text": "un dori dogo"
+    },
+    {
+     "op": "add",
+     "product_id": 26,
+     "from_product_id": null,
+     "source_text": "un dogo burguer"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G040": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 53,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 30,
+     "qty": 1,
+     "unit": "pz",
+     "variant": "Coca",
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 53,
+     "from_product_id": null,
+     "source_text": "quiero alitas de 10, unas de 10 piezas"
+    },
+    {
+     "op": "add",
+     "product_id": 30,
+     "from_product_id": null,
+     "source_text": "y una coca"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G041": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 2,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 11,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 18,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 19,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 21,
+     "qty": 3,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 30,
+     "qty": 3,
+     "unit": "pz",
+     "variant": "Pepsi",
+     "notes": null
+    },
+    {
+     "product_id": 30,
+     "qty": 2,
+     "unit": "pz",
+     "variant": "Manzana",
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 2,
+     "from_product_id": null,
+     "source_text": "Quiero una hamburguesa de res grande"
+    },
+    {
+     "op": "add",
+     "product_id": 11,
+     "from_product_id": null,
+     "source_text": "quiero otra hamburguesa de mar y tierra chica"
+    },
+    {
+     "op": "add",
+     "product_id": 18,
+     "from_product_id": null,
+     "source_text": "Quiero unos dedos de queso"
+    },
+    {
+     "op": "add",
+     "product_id": 19,
+     "from_product_id": null,
+     "source_text": "también unos Boneless"
+    },
+    {
+     "op": "add",
+     "product_id": 21,
+     "from_product_id": null,
+     "source_text": "también quiero tres clásicos"
+    },
+    {
+     "op": "add",
+     "product_id": 30,
+     "from_product_id": null,
+     "source_text": "y serían tres Pepsi"
+    },
+    {
+     "op": "add",
+     "product_id": 30,
+     "from_product_id": null,
+     "source_text": "y dos manzanitas"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G042": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 6,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 17,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 24,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 30,
+     "qty": 3,
+     "unit": "pz",
+     "variant": "Coca",
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 6,
+     "from_product_id": null,
+     "source_text": "2 hamburguesas de camarón grandes"
+    },
+    {
+     "op": "add",
+     "product_id": 17,
+     "from_product_id": null,
+     "source_text": "unos salchilocos"
+    },
+    {
+     "op": "add",
+     "product_id": 24,
+     "from_product_id": null,
+     "source_text": "2 dogos hawaianos"
+    },
+    {
+     "op": "add",
+     "product_id": 30,
+     "from_product_id": null,
+     "source_text": "3 refrescos de coca"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G043": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 34,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 36,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 44,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 30,
+     "qty": 2,
+     "unit": "pz",
+     "variant": "Coca",
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 34,
+     "from_product_id": null,
+     "source_text": "una torta mexicana"
+    },
+    {
+     "op": "add",
+     "product_id": 36,
+     "from_product_id": null,
+     "source_text": "una torta de chorizo"
+    },
+    {
+     "op": "add",
+     "product_id": 44,
+     "from_product_id": null,
+     "source_text": "2 quesadillas de tocino"
+    },
+    {
+     "op": "add",
+     "product_id": 30,
+     "from_product_id": null,
+     "source_text": "2 cocas"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G044": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 21,
+     "qty": 3,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 22,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 23,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 21,
+     "from_product_id": null,
+     "source_text": "Me mandas 3 dogos clásicos"
+    },
+    {
+     "op": "add",
+     "product_id": 22,
+     "from_product_id": null,
+     "source_text": "2 de pollo"
+    },
+    {
+     "op": "add",
+     "product_id": 23,
+     "from_product_id": null,
+     "source_text": "y uno cubano"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G045": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 8,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 10,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 15,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 8,
+     "from_product_id": null,
+     "source_text": "una hamburguesa hawaiana grande"
+    },
+    {
+     "op": "add",
+     "product_id": 10,
+     "from_product_id": null,
+     "source_text": "una cubana grande"
+    },
+    {
+     "op": "add",
+     "product_id": 15,
+     "from_product_id": null,
+     "source_text": "unas papas a la francesa"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G046": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 54,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 19,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 18,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 30,
+     "qty": 2,
+     "unit": "pz",
+     "variant": "Mirinda",
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 54,
+     "from_product_id": null,
+     "source_text": "alitas de 15"
+    },
+    {
+     "op": "add",
+     "product_id": 19,
+     "from_product_id": null,
+     "source_text": "boneless"
+    },
+    {
+     "op": "add",
+     "product_id": 18,
+     "from_product_id": null,
+     "source_text": "dedos de queso"
+    },
+    {
+     "op": "add",
+     "product_id": 30,
+     "from_product_id": null,
+     "source_text": "2 mirindas"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G047": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 1,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 2,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 30,
+     "qty": 1,
+     "unit": "pz",
+     "variant": "Pepsi",
+     "notes": null
+    },
+    {
+     "product_id": 30,
+     "qty": 1,
+     "unit": "pz",
+     "variant": "Coca",
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 1,
+     "from_product_id": null,
+     "source_text": "Quiero dos hamburguesas de res, una chica y una grande"
+    },
+    {
+     "op": "add",
+     "product_id": 2,
+     "from_product_id": null,
+     "source_text": "Quiero dos hamburguesas de res, una chica y una grande"
+    },
+    {
+     "op": "add",
+     "product_id": 30,
+     "from_product_id": null,
+     "source_text": "y una Pepsi y una Coca"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G048": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 43,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 50,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 46,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 43,
+     "from_product_id": null,
+     "source_text": "una sincronizada campechana"
+    },
+    {
+     "op": "add",
+     "product_id": 50,
+     "from_product_id": null,
+     "source_text": "una quesadilla campechana"
+    },
+    {
+     "op": "add",
+     "product_id": 46,
+     "from_product_id": null,
+     "source_text": "una burrita"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G049": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 25,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 28,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 25,
+     "from_product_id": null,
+     "source_text": "4 dogos: 2 de camarón y 2 de arrachera"
+    },
+    {
+     "op": "add",
+     "product_id": 28,
+     "from_product_id": null,
+     "source_text": "4 dogos: 2 de camarón y 2 de arrachera"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G050": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 4,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 1,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 16,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 15,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 4,
+     "from_product_id": null,
+     "source_text": "una hamburguesa de pollo grande"
+    },
+    {
+     "op": "add",
+     "product_id": 1,
+     "from_product_id": null,
+     "source_text": "2 de res chicas"
+    },
+    {
+     "op": "add",
+     "product_id": 16,
+     "from_product_id": null,
+     "source_text": "unas papas gajo"
+    },
+    {
+     "op": "add",
+     "product_id": 15,
+     "from_product_id": null,
+     "source_text": "unas a la francesa"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G051": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 3,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 3,
+     "from_product_id": null,
+     "source_text": "una hamburguesa de pollo"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G052": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 2,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 2,
+     "from_product_id": null,
+     "source_text": "dos hamburguesas de res grandes"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G053": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 1,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 2,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 1,
+     "from_product_id": null,
+     "source_text": "una hamburguesa de res chica"
+    },
+    {
+     "op": "add",
+     "product_id": 2,
+     "from_product_id": null,
+     "source_text": "y una grande"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G054": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 5,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 5,
+     "from_product_id": null,
+     "source_text": "una hamburguesa de camarón"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "edit",
+   "cart": [
+    {
+     "product_id": 6,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "replace",
+     "product_id": 6,
+     "from_product_id": 5,
+     "source_text": "grande"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G055": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 7,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 7,
+     "from_product_id": null,
+     "source_text": "2 hamburguesas hawaianas"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "edit",
+   "cart": [
+    {
+     "product_id": 8,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "replace",
+     "product_id": 8,
+     "from_product_id": 7,
+     "source_text": "las dos grandes"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G056": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 2,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 2,
+     "from_product_id": null,
+     "source_text": "2 hamburguesas de res"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "edit",
+   "cart": [
+    {
+     "product_id": 1,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 2,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "set_qty",
+     "product_id": 1,
+     "from_product_id": null,
+     "source_text": "una chica y una grande"
+    },
+    {
+     "op": "set_qty",
+     "product_id": 2,
+     "from_product_id": null,
+     "source_text": "una chica y una grande"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G057": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 52,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 52,
+     "from_product_id": null,
+     "source_text": "alitas"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G058": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 52,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 52,
+     "from_product_id": null,
+     "source_text": "unas alitas"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 53,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "replace",
+     "product_id": 53,
+     "from_product_id": 52,
+     "source_text": "de 10"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G059": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 56,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": "30 piezas"
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 56,
+     "from_product_id": null,
+     "source_text": "30 alitas"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G060": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 21,
+     "qty": 20,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 21,
+     "from_product_id": null,
+     "source_text": "veinte dogos clásicos"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G061": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 1,
+     "qty": 12,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 1,
+     "from_product_id": null,
+     "source_text": "doce hamburguesas de res chicas"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G062": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 35,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 35,
+     "from_product_id": null,
+     "source_text": "un par de tortas de arrachera"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G063": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 30,
+     "qty": 5,
+     "unit": "pz",
+     "variant": "Coca",
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 30,
+     "from_product_id": null,
+     "source_text": "cinco cocas"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G064": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 30,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 30,
+     "from_product_id": null,
+     "source_text": "un refresco"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G065": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 30,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 30,
+     "from_product_id": null,
+     "source_text": "2 refrescos"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  null
+ ],
+ "G066": [
+  {
+   "intent": "order",
+   "cart": [],
+   "changes": [],
+   "unmatched": [
+    {
+     "source_text": "unos tacos de pastor",
+     "reason": "not_on_menu",
+     "candidate_ids": []
+    }
+   ],
+   "confidence": "high"
+  }
+ ],
+ "G067": [
+  {
+   "intent": "order",
+   "cart": [],
+   "changes": [],
+   "unmatched": [
+    {
+     "source_text": "una cerveza",
+     "reason": "not_on_menu",
+     "candidate_ids": []
+    }
+   ],
+   "confidence": "high"
+  }
+ ],
+ "G068": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 2,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": "doble con tocino"
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 2,
+     "from_product_id": null,
+     "source_text": "una hamburguesa doble con tocino"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "medium"
+  }
+ ],
+ "G069": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 2,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 2,
+     "from_product_id": null,
+     "source_text": "una hamburguesa de res grande"
+    }
+   ],
+   "unmatched": [
+    {
+     "source_text": "un agua de horchata",
+     "reason": "not_on_menu",
+     "candidate_ids": []
+    }
+   ],
+   "confidence": "high"
+  }
+ ],
+ "G070": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 21,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 21,
+     "from_product_id": null,
+     "source_text": "2 dogos clásicos"
+    }
+   ],
+   "unmatched": [
+    {
+     "source_text": "unos nachos",
+     "reason": "not_on_menu",
+     "candidate_ids": []
+    }
+   ],
+   "confidence": "high"
+  }
+ ],
+ "G071": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 30,
+     "qty": 1,
+     "unit": "pz",
+     "variant": "Sprite",
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 30,
+     "from_product_id": null,
+     "source_text": "un sprite"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G072": [
+  {
+   "intent": "order",
+   "cart": [],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 29,
+     "from_product_id": null,
+     "source_text": "una pizza grande de peperoni"
+    }
+   ],
+   "unmatched": [
+    {
+     "source_text": "una pizza grande de peperoni",
+     "reason": "not_on_menu",
+     "candidate_ids": []
+    }
+   ],
+   "confidence": "high"
+  }
+ ],
+ "G073": [
+  {
+   "intent": "order",
+   "cart": [],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": null,
+     "from_product_id": null,
+     "source_text": "unos hotcakes"
+    }
+   ],
+   "unmatched": [
+    {
+     "source_text": "unos hotcakes",
+     "reason": "not_on_menu",
+     "candidate_ids": []
+    }
+   ],
+   "confidence": "high"
+  }
+ ],
+ "G074": [
+  {
+   "intent": "order",
+   "cart": [],
+   "changes": [],
+   "unmatched": [
+    {
+     "source_text": "una torta ahogada",
+     "reason": "not_on_menu",
+     "candidate_ids": []
+    }
+   ],
+   "confidence": "high"
+  }
+ ],
+ "G075": [
+  {
+   "intent": "order",
+   "cart": [],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 53,
+     "from_product_id": null,
+     "source_text": "alitas de 12"
+    }
+   ],
+   "unmatched": [
+    {
+     "source_text": "alitas de 12",
+     "reason": "ambiguous",
+     "candidate_ids": [
+      52,
+      53,
+      54,
+      55,
+      56
+     ]
+    }
+   ],
+   "confidence": "medium"
+  }
+ ],
+ "G076": [
+  {
+   "intent": "order",
+   "cart": [],
+   "changes": [],
+   "unmatched": [
+    {
+     "source_text": "una hamburguesa",
+     "reason": "ambiguous",
+     "candidate_ids": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14
+     ]
+    }
+   ],
+   "confidence": "high"
+  }
+ ],
+ "G077": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 26,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 26,
+     "from_product_id": null,
+     "source_text": "un dogo"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G078": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 31,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 31,
+     "from_product_id": null,
+     "source_text": "una torta"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G079": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 46,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 46,
+     "from_product_id": null,
+     "source_text": "una quesadilla"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G080": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 15,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 15,
+     "from_product_id": null,
+     "source_text": "unas papas"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G081": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 2,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 2,
+     "from_product_id": null,
+     "source_text": "una hamburguesa de res grande"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 2,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 18,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 18,
+     "from_product_id": null,
+     "source_text": "y unos dedos de queso"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 2,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 18,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 30,
+     "qty": 1,
+     "unit": "pz",
+     "variant": "Coca",
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 30,
+     "from_product_id": null,
+     "source_text": "y una coca"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G082": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 24,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 24,
+     "from_product_id": null,
+     "source_text": "2 dogos hawaianos"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 24,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 19,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 19,
+     "from_product_id": null,
+     "source_text": "también unos boneless"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 24,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 19,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 30,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 30,
+     "from_product_id": null,
+     "source_text": "y 2 pepsis"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G083": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 53,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 53,
+     "from_product_id": null,
+     "source_text": "quiero alitas de 10"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 53,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 53,
+     "from_product_id": null,
+     "source_text": "otra orden de alitas de 10"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G084": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 33,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 33,
+     "from_product_id": null,
+     "source_text": "una torta cubana"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 33,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 33,
+     "from_product_id": 33,
+     "source_text": "otra igual"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G085": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 2,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 16,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 2,
+     "from_product_id": null,
+     "source_text": "2 hamburguesas de res grandes"
+    },
+    {
+     "op": "add",
+     "product_id": 16,
+     "from_product_id": null,
+     "source_text": "unas papas gajo"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "edit",
+   "cart": [
+    {
+     "product_id": 2,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "remove",
+     "product_id": 16,
+     "from_product_id": null,
+     "source_text": "quita las papas"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G086": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 2,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 2,
+     "from_product_id": null,
+     "source_text": "2 hamburguesas de res grandes"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "edit",
+   "cart": [
+    {
+     "product_id": 2,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 1,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "replace",
+     "product_id": 1,
+     "from_product_id": 2,
+     "source_text": "mejor que una sea chica"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G087": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 21,
+     "qty": 3,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 21,
+     "from_product_id": null,
+     "source_text": "3 dogos clásicos"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "edit",
+   "cart": [
+    {
+     "product_id": 21,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "set_qty",
+     "product_id": 21,
+     "from_product_id": 21,
+     "source_text": "mejor que sean 2"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G088": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 4,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 4,
+     "from_product_id": null,
+     "source_text": "una hamburguesa de pollo grande"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "edit",
+   "cart": [
+    {
+     "product_id": 6,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "replace",
+     "product_id": 6,
+     "from_product_id": 4,
+     "source_text": "cámbiala por una de camarón grande"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G089": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 30,
+     "qty": 3,
+     "unit": "pz",
+     "variant": "Pepsi",
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 30,
+     "from_product_id": null,
+     "source_text": "2 pepsis y una coca"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "edit",
+   "cart": [
+    {
+     "product_id": 30,
+     "qty": 2,
+     "unit": "pz",
+     "variant": "Pepsi",
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "set_qty",
+     "product_id": 30,
+     "from_product_id": 30,
+     "source_text": "quita una pepsi"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G090": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 21,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 21,
+     "from_product_id": null,
+     "source_text": "un dogo clásico"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 21,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "set_qty",
+     "product_id": 21,
+     "from_product_id": 21,
+     "source_text": "agrega otro"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G091": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 7,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 7,
+     "from_product_id": null,
+     "source_text": "una hamburguesa hawaiana chica"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "edit",
+   "cart": [
+    {
+     "product_id": 8,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "replace",
+     "product_id": 8,
+     "from_product_id": 7,
+     "source_text": "la quiero grande"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G092": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 19,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 53,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 19,
+     "from_product_id": null,
+     "source_text": "unos boneless"
+    },
+    {
+     "op": "add",
+     "product_id": 53,
+     "from_product_id": null,
+     "source_text": "unas alitas de 10"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "edit",
+   "cart": [
+    {
+     "product_id": 19,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 54,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "replace",
+     "product_id": 54,
+     "from_product_id": 53,
+     "source_text": "ya no quiero las alitas, mejor de 15"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G093": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 31,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 31,
+     "from_product_id": null,
+     "source_text": "2 tortas de pierna"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "edit",
+   "cart": [
+    {
+     "product_id": 31,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 30,
+     "qty": 2,
+     "unit": "pz",
+     "variant": "Coca",
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 30,
+     "from_product_id": null,
+     "source_text": "agrega una coca y una manzana"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G094": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 30,
+     "qty": 2,
+     "unit": "pz",
+     "variant": "Pepsi",
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 30,
+     "from_product_id": null,
+     "source_text": "2 refrescos de pepsi"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "edit",
+   "cart": [
+    {
+     "product_id": 30,
+     "qty": 1,
+     "unit": "pz",
+     "variant": "Pepsi",
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "set_qty",
+     "product_id": 30,
+     "from_product_id": 30,
+     "source_text": "quita la pepsi, de 2 quiero uno"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G095": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 2,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 15,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 2,
+     "from_product_id": null,
+     "source_text": "una hamburguesa de res grande"
+    },
+    {
+     "op": "add",
+     "product_id": 15,
+     "from_product_id": null,
+     "source_text": "unas papas a la francesa"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "edit",
+   "cart": [
+    {
+     "product_id": 2,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 16,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "replace",
+     "product_id": 16,
+     "from_product_id": 15,
+     "source_text": "cambia las papas por gajo"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G096": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 49,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 49,
+     "from_product_id": null,
+     "source_text": "una quesadilla de chorizo"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "edit",
+   "cart": [
+    {
+     "product_id": 49,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": "con ingrediente extra"
+    }
+   ],
+   "changes": [
+    {
+     "op": "set_qty",
+     "product_id": 51,
+     "from_product_id": 49,
+     "source_text": "con ingrediente extra"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G097": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 2,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 2,
+     "from_product_id": null,
+     "source_text": "una hamburguesa de res grande"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "confirm",
+   "cart": [
+    {
+     "product_id": 2,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "set_qty",
+     "product_id": 2,
+     "from_product_id": 2,
+     "source_text": "Si está bien mi pedido"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "G098": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 21,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 21,
+     "from_product_id": null,
+     "source_text": "2 dogos clásicos"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "confirm",
+   "cart": [
+    {
+     "product_id": 21,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "set_qty",
+     "product_id": 21,
+     "from_product_id": 21,
+     "source_text": "así está bien gracias"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C001": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 59,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 59,
+     "from_product_id": null,
+     "source_text": "1 kilo de arrachera marinada"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C002": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 62,
+     "qty": 2,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 62,
+     "from_product_id": null,
+     "source_text": "2 kilos de bistec de res"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C003": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 70,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 70,
+     "from_product_id": null,
+     "source_text": "un kilo de costilla de puerco"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C004": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 68,
+     "qty": 0.5,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 68,
+     "from_product_id": null,
+     "source_text": "medio kilo de chorizo argentino"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C005": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 58,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 58,
+     "from_product_id": null,
+     "source_text": "1 kilo de cocido de res"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C006": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 67,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 67,
+     "from_product_id": null,
+     "source_text": "una salsa BBQ"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C007": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 73,
+     "qty": 2,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 73,
+     "from_product_id": null,
+     "source_text": "2 kilos de ribeye de res con hueso"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C008": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 75,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 75,
+     "from_product_id": null,
+     "source_text": "1 kilo de chorizo"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C009": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 57,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 57,
+     "from_product_id": null,
+     "source_text": "un kilo de bistec de puerco marinado"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C010": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 64,
+     "qty": 1.5,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 64,
+     "from_product_id": null,
+     "source_text": "kilo y medio de chamberete"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C011": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 72,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 72,
+     "from_product_id": null,
+     "source_text": "un kilo de peinecillo"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C012": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 72,
+     "qty": 2,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 72,
+     "from_product_id": null,
+     "source_text": "2 kilos de peine cillo"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C013": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 72,
+     "qty": 0.5,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 72,
+     "from_product_id": null,
+     "source_text": "medio de peinesillo"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C014": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 61,
+     "qty": 3,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 61,
+     "from_product_id": null,
+     "source_text": "tres kilos de 10 millo"
+    }
+   ],
+   "unmatched": [
+    {
+     "source_text": "10 millo",
+     "reason": "not_on_menu",
+     "candidate_ids": []
+    }
+   ],
+   "confidence": "medium"
+  }
+ ],
+ "C015": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 61,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 61,
+     "from_product_id": null,
+     "source_text": "un kilo de diesmillo"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C016": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 61,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 61,
+     "from_product_id": null,
+     "source_text": "1 kilo de diez millo"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C017": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 74,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 74,
+     "from_product_id": null,
+     "source_text": "un kilo de pura de puerco"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C018": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 74,
+     "qty": 2,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 74,
+     "from_product_id": null,
+     "source_text": "2 kilos de pulpa de cerdo"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C019": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 59,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 59,
+     "from_product_id": null,
+     "source_text": "1 kg de arachera"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C020": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 64,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 64,
+     "from_product_id": null,
+     "source_text": "un kilo de chambarete"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C021": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 58,
+     "qty": 2,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 58,
+     "from_product_id": null,
+     "source_text": "2 kilos de cosido de res"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C022": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 73,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 73,
+     "from_product_id": null,
+     "source_text": "un kilo de rib eye"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C023": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 70,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 70,
+     "from_product_id": null,
+     "source_text": "un kilo de costiya de cerdo"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C024": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 71,
+     "qty": 0.5,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 71,
+     "from_product_id": null,
+     "source_text": "medio de pastor"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C025": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 71,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 71,
+     "from_product_id": null,
+     "source_text": "un kilo de carne al pastor"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C026": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 63,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 63,
+     "from_product_id": null,
+     "source_text": "una bolsa de carbon"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C027": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 63,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 63,
+     "from_product_id": null,
+     "source_text": "un carbón firo"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C028": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 67,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 67,
+     "from_product_id": null,
+     "source_text": "una salsa barbecue"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C029": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 69,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 69,
+     "from_product_id": null,
+     "source_text": "una salsa de alitas"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C030": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 68,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 68,
+     "from_product_id": null,
+     "source_text": "1 kilo de chorizo argentin"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C031": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 65,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 65,
+     "from_product_id": null,
+     "source_text": "un kilo de bisteck de res marinado"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C032": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 71,
+     "qty": 0.25,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 71,
+     "from_product_id": null,
+     "source_text": "1/4 de carne de puerco al pastor"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C033": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 75,
+     "qty": 0.25,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 75,
+     "from_product_id": null,
+     "source_text": "un cuarto de chorizo"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C034": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 61,
+     "qty": 0.75,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 61,
+     "from_product_id": null,
+     "source_text": "3/4 de diezmillo"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C035": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 68,
+     "qty": 0.25,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 68,
+     "from_product_id": null,
+     "source_text": "250 gramos de chorizo argentino"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C036": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 62,
+     "qty": 0.5,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 62,
+     "from_product_id": null,
+     "source_text": "500 g de bistec de res"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C037": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 60,
+     "qty": 2.5,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 60,
+     "from_product_id": null,
+     "source_text": "dos kilos y medio de costilla de puerco marinada"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C038": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 71,
+     "qty": 100,
+     "unit": "pesos",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 71,
+     "from_product_id": null,
+     "source_text": "$100 de pastor"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C039": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 75,
+     "qty": 100,
+     "unit": "pesos",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 75,
+     "from_product_id": null,
+     "source_text": "cien pesos de chorizo"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C040": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 59,
+     "qty": 0.7142857142857143,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 59,
+     "from_product_id": null,
+     "source_text": "200 pesos de arrachera"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C041": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 66,
+     "qty": 50,
+     "unit": "pesos",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 66,
+     "from_product_id": null,
+     "source_text": "de a 50 pesos de bistec de puerco"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C042": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 62,
+     "qty": 1.25,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 62,
+     "from_product_id": null,
+     "source_text": "un kilo y cuarto de bistec de res"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C043": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 63,
+     "qty": 3,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 63,
+     "from_product_id": null,
+     "source_text": "3 carbones"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C044": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 69,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 69,
+     "from_product_id": null,
+     "source_text": "2 salsas hot wings"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C045": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 59,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 61,
+     "qty": 3,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 74,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 75,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 63,
+     "qty": 3,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 71,
+     "qty": 0.25,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 59,
+     "from_product_id": null,
+     "source_text": "Quiero un kilo de Arrachera marinada"
+    },
+    {
+     "op": "add",
+     "product_id": 61,
+     "from_product_id": null,
+     "source_text": "quiero tres kilos de 10 millo"
+    },
+    {
+     "op": "add",
+     "product_id": 74,
+     "from_product_id": null,
+     "source_text": "un kilo de pura de puerco"
+    },
+    {
+     "op": "add",
+     "product_id": 75,
+     "from_product_id": null,
+     "source_text": "un kilo de chorizo"
+    },
+    {
+     "op": "add",
+     "product_id": 63,
+     "from_product_id": null,
+     "source_text": "tres carbones fino"
+    },
+    {
+     "op": "add",
+     "product_id": 71,
+     "from_product_id": null,
+     "source_text": "1/4 de carne al pastor"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C046": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 59,
+     "qty": 1,
+     "unit": "kg",
+     "variant": "Marinada",
+     "notes": null
+    },
+    {
+     "product_id": 72,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 74,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 71,
+     "qty": 0.25,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 63,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 59,
+     "from_product_id": null,
+     "source_text": "Quiero un kilo de Arrachera, marinada"
+    },
+    {
+     "op": "add",
+     "product_id": 72,
+     "from_product_id": null,
+     "source_text": "un kilo de Peinecillo"
+    },
+    {
+     "op": "add",
+     "product_id": 74,
+     "from_product_id": null,
+     "source_text": "un kilo de pura de puerco"
+    },
+    {
+     "op": "add",
+     "product_id": 71,
+     "from_product_id": null,
+     "source_text": "1/4 de carne de puerco al pastor"
+    },
+    {
+     "op": "add",
+     "product_id": 63,
+     "from_product_id": null,
+     "source_text": "un carbón fino"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C047": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 62,
+     "qty": 2,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 68,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 67,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 63,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 62,
+     "from_product_id": null,
+     "source_text": "2 kilos de bistec de res"
+    },
+    {
+     "op": "add",
+     "product_id": 68,
+     "from_product_id": null,
+     "source_text": "1 de chorizo argentino"
+    },
+    {
+     "op": "add",
+     "product_id": 67,
+     "from_product_id": null,
+     "source_text": "una salsa bbq"
+    },
+    {
+     "op": "add",
+     "product_id": 63,
+     "from_product_id": null,
+     "source_text": "2 carbones"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C048": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 61,
+     "qty": 0.5,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 72,
+     "qty": 0.5,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 60,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 61,
+     "from_product_id": null,
+     "source_text": "medio de diezmillo"
+    },
+    {
+     "op": "add",
+     "product_id": 72,
+     "from_product_id": null,
+     "source_text": "medio de peinesillo"
+    },
+    {
+     "op": "add",
+     "product_id": 60,
+     "from_product_id": null,
+     "source_text": "un kilo de costilla de puerco marinada"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C049": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 59,
+     "qty": 2,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 75,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 63,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 69,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 59,
+     "from_product_id": null,
+     "source_text": "2 kilos de arrachera"
+    },
+    {
+     "op": "add",
+     "product_id": 75,
+     "from_product_id": null,
+     "source_text": "1 de chorizo"
+    },
+    {
+     "op": "add",
+     "product_id": 63,
+     "from_product_id": null,
+     "source_text": "2 carbones"
+    },
+    {
+     "op": "add",
+     "product_id": 69,
+     "from_product_id": null,
+     "source_text": "una salsa hot wings"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C050": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 71,
+     "qty": 3,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 74,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 75,
+     "qty": 0.5,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 71,
+     "from_product_id": null,
+     "source_text": "3 kilos de pastor"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C051": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 66,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 62,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 58,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 66,
+     "from_product_id": null,
+     "source_text": "un kilo de bistec de puerco"
+    },
+    {
+     "op": "add",
+     "product_id": 62,
+     "from_product_id": null,
+     "source_text": "un kilo de bistec de res"
+    },
+    {
+     "op": "add",
+     "product_id": 58,
+     "from_product_id": null,
+     "source_text": "un kilo de cocido"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C052": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 64,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 58,
+     "qty": 0.5,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 64,
+     "from_product_id": null,
+     "source_text": "Quiero, este, un kilo, de chamberete"
+    },
+    {
+     "op": "add",
+     "product_id": 58,
+     "from_product_id": null,
+     "source_text": "y, medio, de cocido de res"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C053": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 61,
+     "qty": 2,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 70,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 63,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 61,
+     "from_product_id": null,
+     "source_text": "Me mandas dos kilos de diez millo."
+    },
+    {
+     "op": "add",
+     "product_id": 70,
+     "from_product_id": null,
+     "source_text": "Un kilo de costilla de puerco."
+    },
+    {
+     "op": "add",
+     "product_id": 63,
+     "from_product_id": null,
+     "source_text": "Y un carbón"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C054": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 75,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 68,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 75,
+     "from_product_id": null,
+     "source_text": "1 kilo de chorizo"
+    },
+    {
+     "op": "add",
+     "product_id": 68,
+     "from_product_id": null,
+     "source_text": "1 kilo de chorizo argentino"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C055": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 62,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 62,
+     "from_product_id": null,
+     "source_text": "un kilo de bistec"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C056": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 70,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 70,
+     "from_product_id": null,
+     "source_text": "un kilo de costilla"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C057": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 67,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 67,
+     "from_product_id": null,
+     "source_text": "una salsa"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C058": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 57,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 57,
+     "from_product_id": null,
+     "source_text": "un kilo de bistec marinado"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C059": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 66,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 66,
+     "from_product_id": null,
+     "source_text": "un kilo de carne de puerco"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C060": [
+  {
+   "intent": "other",
+   "cart": [],
+   "changes": [
+    {
+     "op": "remove",
+     "product_id": null,
+     "from_product_id": null,
+     "source_text": "un kilo de pollo"
+    }
+   ],
+   "unmatched": [
+    {
+     "source_text": "un kilo de pollo",
+     "reason": "not_on_menu",
+     "candidate_ids": []
+    }
+   ],
+   "confidence": "high"
+  }
+ ],
+ "C061": [
+  {
+   "intent": "order",
+   "cart": [],
+   "changes": [],
+   "unmatched": [
+    {
+     "source_text": "medio kilo de carne molida",
+     "reason": "not_on_menu",
+     "candidate_ids": []
+    }
+   ],
+   "confidence": "high"
+  }
+ ],
+ "C062": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 59,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 59,
+     "from_product_id": null,
+     "source_text": "un kilo de arrachera"
+    }
+   ],
+   "unmatched": [
+    {
+     "source_text": "medio de pechuga",
+     "reason": "not_on_menu",
+     "candidate_ids": []
+    }
+   ],
+   "confidence": "high"
+  }
+ ],
+ "C063": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 70,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 70,
+     "from_product_id": null,
+     "source_text": "un kilo de chuletas"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C064": [
+  {
+   "intent": "order",
+   "cart": [],
+   "changes": [],
+   "unmatched": [
+    {
+     "source_text": "un paquete de salchichas",
+     "reason": "not_on_menu",
+     "candidate_ids": []
+    }
+   ],
+   "confidence": "high"
+  }
+ ],
+ "C065": [
+  {
+   "intent": "order",
+   "cart": [],
+   "changes": [],
+   "unmatched": [
+    {
+     "source_text": "1 kilo de cecina",
+     "reason": "not_on_menu",
+     "candidate_ids": []
+    }
+   ],
+   "confidence": "high"
+  }
+ ],
+ "C066": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 71,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 71,
+     "from_product_id": null,
+     "source_text": "un kilo de tortillas y un kilo de pastor"
+    }
+   ],
+   "unmatched": [
+    {
+     "source_text": "un kilo de tortillas",
+     "reason": "not_on_menu",
+     "candidate_ids": []
+    }
+   ],
+   "confidence": "high"
+  }
+ ],
+ "C067": [
+  {
+   "intent": "other",
+   "cart": [],
+   "changes": [],
+   "unmatched": [
+    {
+     "source_text": "un kilo de tocino",
+     "reason": "not_on_menu",
+     "candidate_ids": []
+    }
+   ],
+   "confidence": "high"
+  }
+ ],
+ "C068": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 62,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 62,
+     "from_product_id": null,
+     "source_text": "un kilo de bistec"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "edit",
+   "cart": [
+    {
+     "product_id": 62,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "set_qty",
+     "product_id": 62,
+     "from_product_id": 62,
+     "source_text": "de res"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C069": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 62,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 62,
+     "from_product_id": null,
+     "source_text": "un kilo de bistec"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 57,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 57,
+     "from_product_id": null,
+     "source_text": "de puerco marinado"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C070": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 70,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 70,
+     "from_product_id": null,
+     "source_text": "un kilo de costilla"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "edit",
+   "cart": [
+    {
+     "product_id": 70,
+     "qty": 1,
+     "unit": "kg",
+     "variant": "marinada",
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "set_variant",
+     "product_id": 70,
+     "from_product_id": 70,
+     "source_text": "la marinada"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C071": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 67,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 67,
+     "from_product_id": null,
+     "source_text": "una salsa"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 67,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 67,
+     "from_product_id": null,
+     "source_text": "bbq"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C072": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 62,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 62,
+     "from_product_id": null,
+     "source_text": "un kilo de bistec"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "edit",
+   "cart": [],
+   "changes": [
+    {
+     "op": "remove",
+     "product_id": 62,
+     "from_product_id": 62,
+     "source_text": "no de res"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C073": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 59,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 59,
+     "from_product_id": null,
+     "source_text": "un kilo de arrachera"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 59,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 75,
+     "qty": 0.5,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 75,
+     "from_product_id": null,
+     "source_text": "y medio de chorizo"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 59,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 75,
+     "qty": 0.5,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 63,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 63,
+     "from_product_id": null,
+     "source_text": "y 2 carbones"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C074": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 71,
+     "qty": 2,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 71,
+     "from_product_id": null,
+     "source_text": "2 kilos de pastor"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "edit",
+   "cart": [
+    {
+     "product_id": 71,
+     "qty": 2,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 74,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 74,
+     "from_product_id": null,
+     "source_text": "agrégale un kilo de pulpa"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C075": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 61,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 61,
+     "from_product_id": null,
+     "source_text": "1 kilo de diezmillo"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 61,
+     "qty": 2,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "set_qty",
+     "product_id": 61,
+     "from_product_id": 61,
+     "source_text": "otro kilo de diezmillo"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C076": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 59,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 75,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 59,
+     "from_product_id": null,
+     "source_text": "1 kilo de arrachera"
+    },
+    {
+     "op": "add",
+     "product_id": 75,
+     "from_product_id": null,
+     "source_text": "1 kilo de chorizo"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "edit",
+   "cart": [
+    {
+     "product_id": 59,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "remove",
+     "product_id": 75,
+     "from_product_id": null,
+     "source_text": "quita el chorizo"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C077": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 59,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 59,
+     "from_product_id": null,
+     "source_text": "1 kilo de arrachera"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "edit",
+   "cart": [
+    {
+     "product_id": 59,
+     "qty": 2,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "set_qty",
+     "product_id": 59,
+     "from_product_id": 59,
+     "source_text": "mejor que sean 2 kilos"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C078": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 75,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 75,
+     "from_product_id": null,
+     "source_text": "1 kilo de chorizo"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "edit",
+   "cart": [
+    {
+     "product_id": 68,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "replace",
+     "product_id": 68,
+     "from_product_id": 75,
+     "source_text": "cámbialo por argentino"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C079": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 62,
+     "qty": 2,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 62,
+     "from_product_id": null,
+     "source_text": "2 kilos de bistec de res"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "edit",
+   "cart": [
+    {
+     "product_id": 62,
+     "qty": 0.5,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "set_qty",
+     "product_id": 62,
+     "from_product_id": 62,
+     "source_text": "mejor medio kilo"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C080": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 71,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 63,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 71,
+     "from_product_id": null,
+     "source_text": "1 kilo de pastor"
+    },
+    {
+     "op": "add",
+     "product_id": 63,
+     "from_product_id": null,
+     "source_text": "un carbón"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "edit",
+   "cart": [
+    {
+     "product_id": 71,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 63,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "set_qty",
+     "product_id": 63,
+     "from_product_id": 63,
+     "source_text": "agrega otro carbón"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C081": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 72,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 72,
+     "from_product_id": null,
+     "source_text": "1 kilo de peinesillo"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "edit",
+   "cart": [
+    {
+     "product_id": 61,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "replace",
+     "product_id": 61,
+     "from_product_id": 72,
+     "source_text": "cambia el peinesillo por diezmillo"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C082": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 70,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 70,
+     "from_product_id": null,
+     "source_text": "un kilo de costilla de puerco"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "edit",
+   "cart": [
+    {
+     "product_id": 60,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "replace",
+     "product_id": 60,
+     "from_product_id": 70,
+     "source_text": "que sea la marinada"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C083": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 74,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 62,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 74,
+     "from_product_id": null,
+     "source_text": "1 kilo de pulpa de puerco"
+    },
+    {
+     "op": "add",
+     "product_id": 62,
+     "from_product_id": null,
+     "source_text": "y 1 de bistec de res"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "edit",
+   "cart": [
+    {
+     "product_id": 74,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 62,
+     "qty": 2,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "set_qty",
+     "product_id": 62,
+     "from_product_id": 62,
+     "source_text": "del bistec mejor 2 kilos"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C084": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 59,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 59,
+     "from_product_id": null,
+     "source_text": "Quiero un kilo de arrachera"
+    }
+   ],
+   "unmatched": [
+    {
+     "source_text": "tres kilos de 10 millo",
+     "reason": "not_on_menu",
+     "candidate_ids": []
+    }
+   ],
+   "confidence": "high"
+  },
+  {
+   "intent": "edit",
+   "cart": [
+    {
+     "product_id": 59,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 61,
+     "qty": 3,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 61,
+     "from_product_id": null,
+     "source_text": "perdón, diezmillo"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C085": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 72,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 72,
+     "from_product_id": null,
+     "source_text": "un kilo de peinecillo"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "confirm",
+   "cart": [
+    {
+     "product_id": 72,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "set_qty",
+     "product_id": 72,
+     "from_product_id": 72,
+     "source_text": "me refiero a peinesillo"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C086": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 59,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 59,
+     "from_product_id": null,
+     "source_text": "1 kilo de arrachera"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "confirm",
+   "cart": [
+    {
+     "product_id": 59,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "set_qty",
+     "product_id": 59,
+     "from_product_id": 59,
+     "source_text": "sí así está bien"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "C087": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 75,
+     "qty": 0.5,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 75,
+     "from_product_id": null,
+     "source_text": "medio de chorizo"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "confirm",
+   "cart": [
+    {
+     "product_id": 75,
+     "qty": 0.5,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "set_qty",
+     "product_id": 75,
+     "from_product_id": 75,
+     "source_text": "correcto"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "H01": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 4,
+     "qty": 3,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 7,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 4,
+     "from_product_id": null,
+     "source_text": "kiero 3 amburguesas de pollo grandes"
+    },
+    {
+     "op": "add",
+     "product_id": 7,
+     "from_product_id": null,
+     "source_text": "y 2 hawaianas chicas"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "H02": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 35,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 42,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 35,
+     "from_product_id": null,
+     "source_text": "Me, das, una torta, de arrachera"
+    },
+    {
+     "op": "add",
+     "product_id": 42,
+     "from_product_id": null,
+     "source_text": "y, una sincronizada, de chorizo, porfa"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "H03": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 25,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 29,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 15,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 55,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 30,
+     "qty": 2,
+     "unit": "pz",
+     "variant": "Coca",
+     "notes": null
+    },
+    {
+     "product_id": 30,
+     "qty": 2,
+     "unit": "pz",
+     "variant": "Mirinda",
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 25,
+     "from_product_id": null,
+     "source_text": "2 dogos de camaron"
+    },
+    {
+     "op": "add",
+     "product_id": 29,
+     "from_product_id": null,
+     "source_text": "un pizzadogo"
+    },
+    {
+     "op": "add",
+     "product_id": 15,
+     "from_product_id": null,
+     "source_text": "unas papas a la francesa"
+    },
+    {
+     "op": "add",
+     "product_id": 55,
+     "from_product_id": null,
+     "source_text": "alitas de 20"
+    },
+    {
+     "op": "add",
+     "product_id": 30,
+     "from_product_id": null,
+     "source_text": "4 refrescos 2 de coca y 2 de mirinda"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "H04": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 48,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 44,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 48,
+     "from_product_id": null,
+     "source_text": "una quesadiya de arachera"
+    },
+    {
+     "op": "add",
+     "product_id": 44,
+     "from_product_id": null,
+     "source_text": "una de tosino"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "H05": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 19,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 20,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 19,
+     "from_product_id": null,
+     "source_text": "unos boneles"
+    },
+    {
+     "op": "add",
+     "product_id": 20,
+     "from_product_id": null,
+     "source_text": "una votana completa"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "H06": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 10,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 10,
+     "from_product_id": null,
+     "source_text": "una hamburguesa cubana grande"
+    }
+   ],
+   "unmatched": [
+    {
+     "source_text": "café americano",
+     "reason": "not_on_menu",
+     "candidate_ids": []
+    }
+   ],
+   "confidence": "high"
+  }
+ ],
+ "H07": [
+  {
+   "intent": "order",
+   "cart": [],
+   "changes": [],
+   "unmatched": [
+    {
+     "source_text": "me mandas unas enchiladas verdes",
+     "reason": "not_on_menu",
+     "candidate_ids": []
+    }
+   ],
+   "confidence": "high"
+  }
+ ],
+ "H08": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 33,
+     "qty": 3,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 33,
+     "from_product_id": null,
+     "source_text": "3 tortas cubanas"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "edit",
+   "cart": [
+    {
+     "product_id": 33,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 31,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "set_qty",
+     "product_id": 33,
+     "from_product_id": 33,
+     "source_text": "mejor solo 1 cubana"
+    },
+    {
+     "op": "add",
+     "product_id": 31,
+     "from_product_id": null,
+     "source_text": "y agrega una torta de pierna"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "H09": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 26,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 27,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 26,
+     "from_product_id": null,
+     "source_text": "un dogoburguer"
+    },
+    {
+     "op": "add",
+     "product_id": 27,
+     "from_product_id": null,
+     "source_text": "y un doridogo"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "edit",
+   "cart": [
+    {
+     "product_id": 26,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "remove",
+     "product_id": 27,
+     "from_product_id": 27,
+     "source_text": "quita el doridogo"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "H10": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 30,
+     "qty": 3,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 30,
+     "from_product_id": null,
+     "source_text": "3 pepsis"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "edit",
+   "cart": [
+    {
+     "product_id": 30,
+     "qty": 3,
+     "unit": "pz",
+     "variant": "Seven",
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "set_variant",
+     "product_id": 30,
+     "from_product_id": 30,
+     "source_text": "cambia una por seven"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "H11": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 5,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 5,
+     "from_product_id": null,
+     "source_text": "una hamburguesa de camaron chica"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 5,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 6,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 6,
+     "from_product_id": 5,
+     "source_text": "otra igual pero grande"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "H12": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 13,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 13,
+     "from_product_id": null,
+     "source_text": "2 hamburguesas de arrachera"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "edit",
+   "cart": [
+    {
+     "product_id": 13,
+     "qty": 4,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "set_qty",
+     "product_id": 13,
+     "from_product_id": 13,
+     "source_text": "chicas"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "H13": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 24,
+     "qty": 3,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 30,
+     "qty": 1,
+     "unit": "pz",
+     "variant": "Coca",
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 24,
+     "from_product_id": null,
+     "source_text": "Quiero. Tres. Jochos hawaianos."
+    },
+    {
+     "op": "add",
+     "product_id": 30,
+     "from_product_id": null,
+     "source_text": "Y una. Coca."
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "H14": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 21,
+     "qty": 6,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 21,
+     "from_product_id": null,
+     "source_text": "media docena de dogos clasicos"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "H15": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 47,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 47,
+     "from_product_id": null,
+     "source_text": "me das una quesaburra porfa"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "confirm",
+   "cart": [
+    {
+     "product_id": 47,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "set_qty",
+     "product_id": 47,
+     "from_product_id": 47,
+     "source_text": "todo bien así mándalo"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "H16": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 52,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 56,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 52,
+     "from_product_id": null,
+     "source_text": "unas alitas de 5"
+    },
+    {
+     "op": "add",
+     "product_id": 56,
+     "from_product_id": null,
+     "source_text": "otras de 30"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "H17": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 68,
+     "qty": 150,
+     "unit": "pesos",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 68,
+     "from_product_id": null,
+     "source_text": "150 pesos de chorizo argentino"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "H18": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 71,
+     "qty": 100,
+     "unit": "pesos",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 59,
+     "qty": 200,
+     "unit": "pesos",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 71,
+     "from_product_id": null,
+     "source_text": "dame de a cien de pastor"
+    },
+    {
+     "op": "add",
+     "product_id": 59,
+     "from_product_id": null,
+     "source_text": "doscientos pesos de arrachera"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "H19": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 62,
+     "qty": 80,
+     "unit": "pesos",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 62,
+     "from_product_id": null,
+     "source_text": "Me, das, 80 pesos, de bistec, de res"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "H20": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 57,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 60,
+     "qty": 0.5,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 57,
+     "from_product_id": null,
+     "source_text": "un kilo de vistec de puerko marinado"
+    },
+    {
+     "op": "add",
+     "product_id": 60,
+     "from_product_id": null,
+     "source_text": "medio de costiya marinada"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "H21": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 73,
+     "qty": 2,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 64,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 73,
+     "from_product_id": null,
+     "source_text": "Quiero, dos kilos, de rib, eye, y un, kilo de, chamberete"
+    },
+    {
+     "op": "add",
+     "product_id": 64,
+     "from_product_id": null,
+     "source_text": "Quiero, dos kilos, de rib, eye, y un, kilo de, chamberete"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "H22": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 59,
+     "qty": 3,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 68,
+     "qty": 2,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 70,
+     "qty": 1.5,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 63,
+     "qty": 4,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 67,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 69,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 59,
+     "from_product_id": null,
+     "source_text": "pa la carne asada 3 kilos de arrachera"
+    },
+    {
+     "op": "add",
+     "product_id": 68,
+     "from_product_id": null,
+     "source_text": "2 de chorizo argentino"
+    },
+    {
+     "op": "add",
+     "product_id": 70,
+     "from_product_id": null,
+     "source_text": "kilo y medio de costilla de puerco"
+    },
+    {
+     "op": "add",
+     "product_id": 63,
+     "from_product_id": null,
+     "source_text": "4 carbones"
+    },
+    {
+     "op": "add",
+     "product_id": 67,
+     "from_product_id": null,
+     "source_text": "una bbq"
+    },
+    {
+     "op": "add",
+     "product_id": 69,
+     "from_product_id": null,
+     "source_text": "una hot wings"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "H23": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 62,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 62,
+     "from_product_id": null,
+     "source_text": "2 kilos de pechuga de pollo y un kilo de bistec de res"
+    }
+   ],
+   "unmatched": [
+    {
+     "source_text": "2 kilos de pechuga de pollo",
+     "reason": "not_on_menu",
+     "candidate_ids": [
+      57,
+      58,
+      59,
+      60,
+      61,
+      62,
+      63,
+      64,
+      65,
+      66,
+      67,
+      68,
+      69,
+      70,
+      71,
+      72,
+      73,
+      74,
+      75
+     ]
+    }
+   ],
+   "confidence": "high"
+  }
+ ],
+ "H24": [
+  {
+   "intent": "order",
+   "cart": [],
+   "changes": [],
+   "unmatched": [
+    {
+     "source_text": "un kilo de lengua",
+     "reason": "not_on_menu",
+     "candidate_ids": []
+    }
+   ],
+   "confidence": "high"
+  }
+ ],
+ "H25": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 61,
+     "qty": 2,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 74,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 61,
+     "from_product_id": null,
+     "source_text": "2 kilos de diezmillo y 1 de pulpa"
+    },
+    {
+     "op": "add",
+     "product_id": 74,
+     "from_product_id": null,
+     "source_text": "2 kilos de diezmillo y 1 de pulpa"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "edit",
+   "cart": [
+    {
+     "product_id": 61,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 74,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "set_qty",
+     "product_id": 61,
+     "from_product_id": 61,
+     "source_text": "del diezmillo nomas uno"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "H26": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 58,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 58,
+     "from_product_id": null,
+     "source_text": "kilo de cocido de res"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "edit",
+   "cart": [
+    {
+     "product_id": 64,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 63,
+     "qty": 2,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "replace",
+     "product_id": 64,
+     "from_product_id": 58,
+     "source_text": "cámbialo por chamberete"
+    },
+    {
+     "op": "add",
+     "product_id": 63,
+     "from_product_id": null,
+     "source_text": "agrega 2 carbones"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "H27": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 71,
+     "qty": 0.5,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 67,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 69,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 71,
+     "from_product_id": null,
+     "source_text": "medio de pastor"
+    },
+    {
+     "op": "add",
+     "product_id": 67,
+     "from_product_id": null,
+     "source_text": "una salsa bbq"
+    },
+    {
+     "op": "add",
+     "product_id": 69,
+     "from_product_id": null,
+     "source_text": "una hot wings"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "edit",
+   "cart": [
+    {
+     "product_id": 71,
+     "qty": 0.5,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    },
+    {
+     "product_id": 67,
+     "qty": 1,
+     "unit": "pz",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "remove",
+     "product_id": 69,
+     "from_product_id": 69,
+     "source_text": "ya no quiero la hot wings"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "H28": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 65,
+     "qty": 0.75,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 65,
+     "from_product_id": null,
+     "source_text": "750 gramos de bistec de res marinado"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "H29": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 62,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 62,
+     "from_product_id": null,
+     "source_text": "1 kg de bistec"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "edit",
+   "cart": [
+    {
+     "product_id": 66,
+     "qty": 1,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "replace",
+     "product_id": 66,
+     "from_product_id": 62,
+     "source_text": "el de puerco normal"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ],
+ "H30": [
+  {
+   "intent": "order",
+   "cart": [
+    {
+     "product_id": 72,
+     "qty": 2,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "add",
+     "product_id": 72,
+     "from_product_id": null,
+     "source_text": "2 kilos de peinesillo"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  },
+  {
+   "intent": "confirm",
+   "cart": [
+    {
+     "product_id": 72,
+     "qty": 2,
+     "unit": "kg",
+     "variant": null,
+     "notes": null
+    }
+   ],
+   "changes": [
+    {
+     "op": "set_qty",
+     "product_id": 72,
+     "from_product_id": 72,
+     "source_text": "ándale así está perfecto"
+    }
+   ],
+   "unmatched": [],
+   "confidence": "high"
+  }
+ ]
+}

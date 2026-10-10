@@ -1,0 +1,456 @@
+{
+ "tienda_5_george": [
+  {
+   "id": 1,
+   "nombreProducto": "Hamburguesa de Res Chica",
+   "precio": 60,
+   "categoria": "hamburguesas"
+  },
+  {
+   "id": 2,
+   "nombreProducto": "Hamburguesa de Res Grande",
+   "precio": 100,
+   "categoria": "hamburguesas"
+  },
+  {
+   "id": 3,
+   "nombreProducto": "Hamburguesa de Pollo Chica",
+   "precio": 70,
+   "categoria": "hamburguesas"
+  },
+  {
+   "id": 4,
+   "nombreProducto": "Hamburguesa de Pollo Grande",
+   "precio": 110,
+   "categoria": "hamburguesas"
+  },
+  {
+   "id": 5,
+   "nombreProducto": "Hamburguesa de Camarón Chica",
+   "precio": 90,
+   "categoria": "hamburguesas"
+  },
+  {
+   "id": 6,
+   "nombreProducto": "Hamburguesa de Camarón Grande",
+   "precio": 130,
+   "categoria": "hamburguesas"
+  },
+  {
+   "id": 7,
+   "nombreProducto": "Hamburguesa Hawaiana Chica",
+   "precio": 90,
+   "categoria": "hamburguesas"
+  },
+  {
+   "id": 8,
+   "nombreProducto": "Hamburguesa Hawaiana Grande",
+   "precio": 120,
+   "categoria": "hamburguesas"
+  },
+  {
+   "id": 9,
+   "nombreProducto": "Hamburguesa Cubana Chica",
+   "precio": 90,
+   "categoria": "hamburguesas"
+  },
+  {
+   "id": 10,
+   "nombreProducto": "Hamburguesa Cubana Grande",
+   "precio": 120,
+   "categoria": "hamburguesas"
+  },
+  {
+   "id": 11,
+   "nombreProducto": "Hamburguesa Mar y Tierra Chica",
+   "precio": 90,
+   "categoria": "hamburguesas"
+  },
+  {
+   "id": 12,
+   "nombreProducto": "Hamburguesa Mar y Tierra Grande",
+   "precio": 140,
+   "categoria": "hamburguesas"
+  },
+  {
+   "id": 13,
+   "nombreProducto": "Hamburguesa de Arrachera Chica",
+   "precio": 70,
+   "categoria": "hamburguesas"
+  },
+  {
+   "id": 14,
+   "nombreProducto": "Hamburguesa de Arrachera Grande",
+   "precio": 100,
+   "categoria": "hamburguesas"
+  },
+  {
+   "id": 15,
+   "nombreProducto": "Papas a la Francesa 300g",
+   "precio": 70,
+   "categoria": "papas"
+  },
+  {
+   "id": 16,
+   "nombreProducto": "Papas Gajo 315g",
+   "precio": 70,
+   "categoria": "papas"
+  },
+  {
+   "id": 17,
+   "nombreProducto": "Salchilocos 310g",
+   "precio": 70,
+   "categoria": "botanas"
+  },
+  {
+   "id": 18,
+   "nombreProducto": "Dedos de Queso 6 piezas",
+   "precio": 85,
+   "categoria": "botanas"
+  },
+  {
+   "id": 19,
+   "nombreProducto": "Boneless 10 piezas",
+   "precio": 130,
+   "categoria": "botanas"
+  },
+  {
+   "id": 20,
+   "nombreProducto": "Botana Completa",
+   "precio": 100,
+   "categoria": "botanas"
+  },
+  {
+   "id": 21,
+   "nombreProducto": "Dogo Clásico",
+   "precio": 35,
+   "categoria": "hotdogs"
+  },
+  {
+   "id": 22,
+   "nombreProducto": "Dogo de Pollo",
+   "precio": 45,
+   "categoria": "hotdogs"
+  },
+  {
+   "id": 23,
+   "nombreProducto": "Dogo Cubano",
+   "precio": 60,
+   "categoria": "hotdogs"
+  },
+  {
+   "id": 24,
+   "nombreProducto": "Dogo Hawaiano",
+   "precio": 60,
+   "categoria": "hotdogs"
+  },
+  {
+   "id": 25,
+   "nombreProducto": "Dogo de Camarón",
+   "precio": 60,
+   "categoria": "hotdogs"
+  },
+  {
+   "id": 26,
+   "nombreProducto": "Dogoburguer",
+   "precio": 50,
+   "categoria": "hotdogs"
+  },
+  {
+   "id": 27,
+   "nombreProducto": "Doridogo",
+   "precio": 45,
+   "categoria": "hotdogs"
+  },
+  {
+   "id": 28,
+   "nombreProducto": "Dogo Arrachera",
+   "precio": 45,
+   "categoria": "hotdogs"
+  },
+  {
+   "id": 29,
+   "nombreProducto": "Pizzadogo",
+   "precio": 45,
+   "categoria": "hotdogs"
+  },
+  {
+   "id": 30,
+   "nombreProducto": "Refresco (Pepsi, Seven, Coca, Mirinda o Manzana)",
+   "precio": 20,
+   "categoria": "refrescos"
+  },
+  {
+   "id": 31,
+   "nombreProducto": "Torta de Pierna",
+   "precio": 80,
+   "categoria": "tortas"
+  },
+  {
+   "id": 32,
+   "nombreProducto": "Torta Hawaiana",
+   "precio": 100,
+   "categoria": "tortas"
+  },
+  {
+   "id": 33,
+   "nombreProducto": "Torta Cubana",
+   "precio": 100,
+   "categoria": "tortas"
+  },
+  {
+   "id": 34,
+   "nombreProducto": "Torta Mexicana",
+   "precio": 100,
+   "categoria": "tortas"
+  },
+  {
+   "id": 35,
+   "nombreProducto": "Torta de Arrachera",
+   "precio": 80,
+   "categoria": "tortas"
+  },
+  {
+   "id": 36,
+   "nombreProducto": "Torta de Chorizo",
+   "precio": 80,
+   "categoria": "tortas"
+  },
+  {
+   "id": 37,
+   "nombreProducto": "Torta Campechana",
+   "precio": 80,
+   "categoria": "tortas"
+  },
+  {
+   "id": 38,
+   "nombreProducto": "Sincronizada de Pierna y Tocino",
+   "precio": 70,
+   "categoria": "sincronizadas"
+  },
+  {
+   "id": 39,
+   "nombreProducto": "Sincronizada de Tocino",
+   "precio": 60,
+   "categoria": "sincronizadas"
+  },
+  {
+   "id": 40,
+   "nombreProducto": "Sincronizada de Camarón",
+   "precio": 80,
+   "categoria": "sincronizadas"
+  },
+  {
+   "id": 41,
+   "nombreProducto": "Sincronizada de Arrachera",
+   "precio": 70,
+   "categoria": "sincronizadas"
+  },
+  {
+   "id": 42,
+   "nombreProducto": "Sincronizada de Chorizo",
+   "precio": 70,
+   "categoria": "sincronizadas"
+  },
+  {
+   "id": 43,
+   "nombreProducto": "Sincronizada Campechana",
+   "precio": 70,
+   "categoria": "sincronizadas"
+  },
+  {
+   "id": 44,
+   "nombreProducto": "Quesadilla de Tocino",
+   "precio": 35,
+   "categoria": "quesadillas"
+  },
+  {
+   "id": 45,
+   "nombreProducto": "Quesadilla de Camarón",
+   "precio": 80,
+   "categoria": "quesadillas"
+  },
+  {
+   "id": 46,
+   "nombreProducto": "Quesadilla Burrita",
+   "precio": 35,
+   "categoria": "quesadillas"
+  },
+  {
+   "id": 47,
+   "nombreProducto": "Quesadilla Quesaburra",
+   "precio": 70,
+   "categoria": "quesadillas"
+  },
+  {
+   "id": 48,
+   "nombreProducto": "Quesadilla de Arrachera",
+   "precio": 45,
+   "categoria": "quesadillas"
+  },
+  {
+   "id": 49,
+   "nombreProducto": "Quesadilla de Chorizo",
+   "precio": 45,
+   "categoria": "quesadillas"
+  },
+  {
+   "id": 50,
+   "nombreProducto": "Quesadilla Campechana",
+   "precio": 55,
+   "categoria": "quesadillas"
+  },
+  {
+   "id": 51,
+   "nombreProducto": "Ingrediente Extra en Quesadilla",
+   "precio": 20,
+   "categoria": "quesadillas"
+  },
+  {
+   "id": 52,
+   "nombreProducto": "Alitas 5 piezas",
+   "precio": 70,
+   "categoria": "alitas"
+  },
+  {
+   "id": 53,
+   "nombreProducto": "Alitas 10 piezas",
+   "precio": 130,
+   "categoria": "alitas"
+  },
+  {
+   "id": 54,
+   "nombreProducto": "Alitas 15 piezas",
+   "precio": 185,
+   "categoria": "alitas"
+  },
+  {
+   "id": 55,
+   "nombreProducto": "Alitas 20 piezas",
+   "precio": 225,
+   "categoria": "alitas"
+  },
+  {
+   "id": 56,
+   "nombreProducto": "Alitas 30 piezas",
+   "precio": 325,
+   "categoria": "alitas"
+  }
+ ],
+ "tienda_6_la_central": [
+  {
+   "id": 57,
+   "nombreProducto": "Bistec de puerco marinado",
+   "precio": 120,
+   "categoria": "Puerco"
+  },
+  {
+   "id": 58,
+   "nombreProducto": "Cocido de res",
+   "precio": 155,
+   "categoria": "Res"
+  },
+  {
+   "id": 59,
+   "nombreProducto": "Arrachera Marinada",
+   "precio": 280,
+   "categoria": "Res marinada"
+  },
+  {
+   "id": 60,
+   "nombreProducto": "Costilla de puerco marinada",
+   "precio": 120,
+   "categoria": "Puerco"
+  },
+  {
+   "id": 61,
+   "nombreProducto": "Diezmillo",
+   "precio": 215,
+   "categoria": "Res"
+  },
+  {
+   "id": 62,
+   "nombreProducto": "Bistec de res",
+   "precio": 210,
+   "categoria": "Res"
+  },
+  {
+   "id": 63,
+   "nombreProducto": "Carbón fino",
+   "precio": 75,
+   "categoria": "Extras"
+  },
+  {
+   "id": 64,
+   "nombreProducto": "Chamberete",
+   "precio": 155,
+   "categoria": "Res"
+  },
+  {
+   "id": 65,
+   "nombreProducto": "Bistec de res Marinada",
+   "precio": 210,
+   "categoria": "Res marinada"
+  },
+  {
+   "id": 66,
+   "nombreProducto": "Bistec de puerco",
+   "precio": 120,
+   "categoria": "Puerco"
+  },
+  {
+   "id": 67,
+   "nombreProducto": "Salsa BBQ",
+   "precio": 59,
+   "categoria": "Extras"
+  },
+  {
+   "id": 68,
+   "nombreProducto": "Chorizo Argentino",
+   "precio": 135,
+   "categoria": "Embutidos"
+  },
+  {
+   "id": 69,
+   "nombreProducto": "Salsa Hot Wings",
+   "precio": 55,
+   "categoria": "Extras"
+  },
+  {
+   "id": 70,
+   "nombreProducto": "Costilla de puerco",
+   "precio": 110,
+   "categoria": "Puerco"
+  },
+  {
+   "id": 71,
+   "nombreProducto": "Carne de puerco al pastor",
+   "precio": 120,
+   "categoria": "Carne de puerco al pastor"
+  },
+  {
+   "id": 72,
+   "nombreProducto": "Peinesillo",
+   "precio": 215,
+   "categoria": "Res"
+  },
+  {
+   "id": 73,
+   "nombreProducto": "Ribeye de res con hueso",
+   "precio": 210,
+   "categoria": "Res"
+  },
+  {
+   "id": 74,
+   "nombreProducto": "Pulpa de puerco",
+   "precio": 115,
+   "categoria": "Puerco"
+  },
+  {
+   "id": 75,
+   "nombreProducto": "Chorizo",
+   "precio": 115,
+   "categoria": "Embutidos"
+  }
+ ]
+}

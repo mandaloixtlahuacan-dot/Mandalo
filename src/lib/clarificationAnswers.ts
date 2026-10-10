@@ -22,6 +22,17 @@ export type PendingAsk = {
   count: number;
   mode: "ask" | "options";
   choices?: string[];
+  /** Pregunta del menú cerrado. Abarrotes no la llena. */
+  catalog?: {
+    sourceText: string;
+    candidateIds: number[];
+    qty: number;
+    unit: "pz" | "kg" | "pesos";
+    variant: string | null;
+    family: string | null;
+    question: string;
+    count: number;
+  } | null;
 };
 
 export type QuoteTurn = {

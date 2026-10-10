@@ -2,7 +2,32 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 8 de octubre de 2026. Solo cambió cómo se ven los
+> Última actualización: 10 de octubre de 2026. Tercera evaluación en vivo
+> del menú cerrado (sobre `c8d2021`, `gpt-4.1-mini`, dos pasadas): corpus
+> 179/185 estricto; 50 casos nuevos 40–41/50 estricto y 45–46/50 sin
+> fallas graves. Las 11 fallas graves de la segunda pasada ya no salieron.
+> Las nuevas salían porque el validador rehacía una lectura que el modelo
+> ya tenía bien. Ahora acepta cantidad, unidad, pesos y sabor cuando
+> cuadran con el texto, y solo corrige si el id no está en el menú, el
+> número no se dijo, falta algo que sí nombró, o el monto no se sostiene.
+> Replay de la segunda y la tercera: corpus 185/185, held-out 30/30,
+> 40 casos 40/40 y los 50 nuevos 50/50, en las dos pasadas de mini y en
+> `gpt-5.5` (esa grabación no trae los 50). La cuarta evaluación en vivo
+> sigue pendiente. No está mergeado ni desplegado. La base de producción
+> no se tocó. Abarrotes sigue igual. Se apaga con `CATALOG_ENGINE=legacy`.
+> Actualización anterior del mismo día: segunda evaluación (commit
+> `0f7c1d6`). El monto se queda en su línea, los cientos en palabras se
+> leen, y lo que sí está en el menú no se pierde. Replay de esas
+> grabaciones: corpus 185/185, held-out 30/30 y 40 casos nuevos 40/40.
+> Actualización anterior del mismo día: el lector quedó en
+> `gpt-4.1-mini` (`OPENAI_ORDER_MODEL`; `gpt-5.5` se puede elegir y no
+> manda temperature). El validador ya no acepta un tamaño, tipo o sabor
+> que el cliente no dijo, y un cambio reemplaza la línea.
+> Actualización anterior del mismo día: motor de pedido contra menú
+> cerrado para George (tienda 5) y Carnicería La Central (tienda 6), en
+> rama y PR en borrador. Sin `OPENAI_API_KEY` en el entorno del agente,
+> el corpus de 185 pasa en simulado y con el lector de respaldo.
+> Actualización anterior: 8 de octubre de 2026. Solo cambió cómo se ven los
 > mensajes de WhatsApp: títulos, nombre de la tienda, productos, precios,
 > la línea de $25 y las instrucciones van en *negrita*; cada producto o
 > opción va en su propia línea, con una línea en blanco entre varios.
