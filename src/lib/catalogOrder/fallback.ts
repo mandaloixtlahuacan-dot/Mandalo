@@ -183,6 +183,11 @@ function splitClauses(raw: string): string[] {
   return glued.map((part) => part.replace(/\s+/g, " ").trim()).filter(Boolean);
 }
 
+/** Trozo del mensaje, ya normalizado, para no mezclar cantidades de otro producto. */
+export function messageClauses(raw: string): string[] {
+  return splitClauses(raw);
+}
+
 function sizeWord(text: string): "chica" | "grande" | null {
   if (/\bgrande\b/.test(text)) return "grande";
   if (/\bchica\b/.test(text)) return "chica";
@@ -937,12 +942,26 @@ export function resolvePending(pending: PendingCatalogAsk, message: string, cata
   if (drink) {
     const flavors = drink.variants.filter((variant) => new RegExp(`\\b${fold(variant)}\\b`).test(answer) || (fold(variant) === "manzana" && /\bmanzana\b/.test(answer)));
     if (flavors.length >= 2) {
-      return flavors.map((variant) => lineOf(drink, 1, "pz", variant));
+      return flavors.map((variant) => lineOf(drink, qtyBesideFlavor(answer, variant), "pz", variant));
     }
     if (flavors.length === 1) return [lineOf(drink, pending.qty || 1, "pz", flavors[0])];
   }
 
   const pool = pending.candidateIds.map((id) => catalog.byId.get(id)).filter((row): row is CatalogRow => Boolean(row));
+  const plainAnswer = /\bsin marinar\b|\bnatural\b|\bnormal\b|\bsencilla\b|\bla otra\b|\bla que no esta marinada\b|\bno esta marinada\b/.test(answer);
+  const seasonedAnswer = !plainAnswer && /\bmarinad|\badobad/.test(answer);
+  if ((plainAnswer || seasonedAnswer) && pool.some((row) => /marinad|adobad/.test(fold(row.name)))) {
+    let rows = pool.filter((row) => /marinad|adobad/.test(fold(row.name)) === seasonedAnswer);
+    if (pending.family) {
+      const inFamily = rows.filter((row) => row.family === pending.family);
+      if (inFamily.length) rows = inFamily;
+    }
+    if (!rows.length && plainAnswer && pending.family) {
+      rows = familyRows(catalog, pending.family).filter((row) => !/marinad|adobad/.test(fold(row.name)));
+    }
+    if (rows.length === 1) return [lineOf(rows[0], pending.qty || 1, pending.unit, null)];
+  }
+
   const saidMarinado = /\bmarinad/.test(answer);
   let filtered = pool.filter((row) => {
     const blob = fold(`${row.name} ${row.family} ${row.categoria ?? ""}`);
@@ -956,6 +975,17 @@ export function resolvePending(pending: PendingCatalogAsk, message: string, cata
   }
   if (filtered.length === 1) return [lineOf(filtered[0], pending.qty || 1, pending.unit === "pesos" ? "pesos" : filtered[0].unit, null)];
   return null;
+}
+
+function qtyBesideFlavor(answer: string, variant: string): number {
+  const key = fold(variant);
+  const parts = fold(answer).split(/\s+y\s+|,|;/);
+  const part = parts.find((clause) => new RegExp(`\\b${key}\\b`).test(clause) || (key === "manzana" && /\bmanzan/.test(clause)));
+  if (!part) return 1;
+  const said = /\d/.test(part) || /\b(un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|catorce|quince|veinte|treinta|cuarenta|cincuenta)\b/.test(part);
+  if (!said) return 1;
+  const parsed = parseQuantity(part, "restaurante");
+  return parsed.qty > 0 ? parsed.qty : 1;
 }
 
 function toModelCart(cart: CartLine[]): ModelOutput["cart"] {

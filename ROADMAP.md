@@ -2,13 +2,20 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 10 de octubre de 2026. El lector del menú cerrado
-> quedó en `gpt-4.1-mini` (`OPENAI_ORDER_MODEL`; `gpt-5.5` se puede elegir
-> y no manda temperature). El validador ya no acepta un tamaño, tipo o
-> sabor que el cliente no dijo, y un cambio reemplaza la línea. La
-> evaluación en vivo de esta pasada sigue pendiente de volver a correr.
-> No está mergeado ni desplegado. La base de producción no se tocó.
-> Abarrotes sigue igual. Se apaga con `CATALOG_ENGINE=legacy`.
+> Última actualización: 10 de octubre de 2026. Segunda evaluación en vivo
+> del menú cerrado (commit `0f7c1d6`): el validador dejaba pasar un peso
+> de más, un kilo de menos o un producto que el cliente sí dijo. Ahora
+> el monto se queda en su línea, los cientos en palabras se leen, y lo
+> que sí está en el menú no se pierde. Replay de esas grabaciones:
+> corpus 185/185, held-out 30/30 y 40 casos nuevos 40/40, en las dos
+> pasadas de `gpt-4.1-mini` y en `gpt-5.5`. La tercera evaluación en
+> vivo, con casos nuevos, sigue pendiente. No está mergeado ni
+> desplegado. La base de producción no se tocó. Abarrotes sigue igual.
+> Se apaga con `CATALOG_ENGINE=legacy`.
+> Actualización anterior del mismo día: el lector quedó en
+> `gpt-4.1-mini` (`OPENAI_ORDER_MODEL`; `gpt-5.5` se puede elegir y no
+> manda temperature). El validador ya no acepta un tamaño, tipo o sabor
+> que el cliente no dijo, y un cambio reemplaza la línea.
 > Actualización anterior del mismo día: motor de pedido contra menú
 > cerrado para George (tienda 5) y Carnicería La Central (tienda 6), en
 > rama y PR en borrador. Sin `OPENAI_API_KEY` en el entorno del agente,

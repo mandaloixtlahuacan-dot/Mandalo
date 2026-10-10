@@ -7,15 +7,17 @@
  *   npx tsx scripts/check-catalog-orders.ts --replay
  *   npx tsx scripts/check-catalog-orders.ts --live
  *
- * --replay califica el corpus y el held-out con las grabaciones de
- * gpt-4.1-mini y gpt-5.5. No forma parte del default: el lector de
- * respaldo no se afina contra el held-out.
+ * --replay califica el corpus, el held-out y los 40 casos nuevos
+ * con las grabaciones de gpt-4.1-mini (dos pasadas) y gpt-5.5.
+ * No forma parte del default: el lector de respaldo no se afina contra esos casos.
  * --live llama a OpenAI (gpt-4.1-mini y gpt-5.5) si hay OPENAI_API_KEY.
  * Sin llave, el default deja el vivo pendiente y exige mock 100% y fallback >= 85%.
  */
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { buildCatalog, runCatalogOrderTurn, validateModelOutput, type CartLine, type CatalogModel, type CatalogSnapshot, type ModelOutput, type RawCatalogRow } from "../src/lib/catalogOrder";
+import { buildCatalog, runCatalogOrderTurn, validateModelOutput, type CartLine, type CatalogModel, type CatalogSnapshot, type ModelOutput, type PendingCatalogAsk, type RawCatalogRow } from "../src/lib/catalogOrder";
+import { resolvePending } from "../src/lib/catalogOrder/fallback";
+import { parseQuantity } from "../src/lib/catalogOrder/quantities";
 import { fold, tokens } from "../src/lib/catalogOrder/text";
 
 type ExpectItem = { name: string; qty: number; unit: string; variant?: string };
@@ -35,6 +37,10 @@ const corpus = JSON.parse(readFileSync(resolve(root, "catalog-order-corpus.json"
 const heldoutPath = resolve(root, "catalog-order-heldout.json");
 const heldout = existsSync(heldoutPath)
   ? (JSON.parse(readFileSync(heldoutPath, "utf8")) as { cases: CorpusCase[] })
+  : { cases: [] as CorpusCase[] };
+const unseenPath = resolve(root, "catalog-order-unseen.json");
+const unseen = existsSync(unseenPath)
+  ? (JSON.parse(readFileSync(unseenPath, "utf8")) as { cases: CorpusCase[] })
   : { cases: [] as CorpusCase[] };
 const catalogs = JSON.parse(readFileSync(resolve(root, "catalogs.json"), "utf8")) as {
   tienda_5_george: RawCatalogRow[];
@@ -324,6 +330,276 @@ function adversarial(): void {
   });
   assert(asked.cart.some((line) => line.productId === peinesillo.id) && !asked.unmatched.some((item) => item.reason === "ambiguous"), "Peinesillo es una sola fila: no se pregunta el tipo");
   console.log("adversarial: 6/6");
+  guardrails();
+}
+
+function lineOf(cart: CartLine[], name: string, catalog: CatalogSnapshot): CartLine | undefined {
+  const row = catalog.rows.find((item) => item.name === name);
+  return cart.find((item) => item.productId === row?.id);
+}
+
+function guardrails(): void {
+  assert(parseQuantity("quinientos pesos de ribeye", "carniceria").qty === 500, "quinientos pesos son 500");
+  assert(parseQuantity("doscientos cincuenta pesos de ribeye", "carniceria").qty === 250, "doscientos cincuenta son 250");
+  assert(parseQuantity("trescientos pesos de arrachera", "carniceria").qty === 300, "trescientos pesos son 300");
+  assert(Math.abs(parseQuantity("tres cuartos de pulpa", "carniceria").qty - 0.75) < 0.001, "tres cuartos son 0.75 kg");
+  assert(Math.abs(parseQuantity("y medio de pulpa", "carniceria").qty - 0.5) < 0.001, "y medio son 0.5 kg");
+  assert(Math.abs(parseQuantity("kilo y medio de chamberete", "carniceria").qty - 1.5) < 0.001, "kilo y medio sigue en 1.5");
+  assert(parseQuantity("de a cien de pastor", "carniceria").unit === "pesos" && parseQuantity("de a cien de pastor", "carniceria").qty === 100, "de a cien son $100");
+
+  const pulpa = central.rows.find((row) => row.name === "Pulpa de puerco");
+  const arrachera = central.rows.find((row) => row.name === "Arrachera Marinada");
+  const costilla = central.rows.find((row) => row.name === "Costilla de puerco");
+  const costillaM = central.rows.find((row) => row.name === "Costilla de puerco marinada");
+  const chamberete = central.rows.find((row) => row.name === "Chamberete");
+  const diezmillo = central.rows.find((row) => row.name === "Diezmillo");
+  const carbon = central.rows.find((row) => row.name === "Carbón fino");
+  const refresco = george.rows.find((row) => row.variants.length > 0);
+  const alitas5 = george.rows.find((row) => row.family === "alitas" && row.size === "5");
+  const alitas15 = george.rows.find((row) => row.family === "alitas" && row.size === "15");
+  const alitas20 = george.rows.find((row) => row.family === "alitas" && row.size === "20");
+  assert(pulpa && arrachera && costilla && costillaM && chamberete && diezmillo && carbon && refresco && alitas5 && alitas15 && alitas20, "faltan filas para las guardas");
+
+  const spread = validateModelOutput({
+    output: {
+      intent: "order",
+      confidence: "high",
+      cart: [
+        { product_id: pulpa.id, qty: 0.25, unit: "kg", variant: null, notes: null },
+        { product_id: arrachera.id, qty: 300, unit: "pesos", variant: null, notes: null },
+      ],
+      changes: [
+        { op: "add", product_id: pulpa.id, from_product_id: null, source_text: "ponme trescientos pesos de arrachera y un cuarto de pulpa" },
+        { op: "add", product_id: arrachera.id, from_product_id: null, source_text: "ponme trescientos pesos de arrachera y un cuarto de pulpa" },
+      ],
+      unmatched: [],
+    },
+    prior: [],
+    message: "ponme trescientos pesos de arrachera y un cuarto de pulpa",
+    catalog: central,
+  });
+  const pulpaLine = lineOf(spread.cart, "Pulpa de puerco", central);
+  const arraLine = lineOf(spread.cart, "Arrachera Marinada", central);
+  assert(pulpaLine?.unit === "kg" && Math.abs((pulpaLine?.qty ?? 0) - 0.25) < 0.001, "el monto en pesos no se copia a la otra carne");
+  assert(arraLine?.unit === "pesos" && arraLine.qty === 300, "trescientos pesos se quedan en la arrachera");
+
+  const tiny = validateModelOutput({
+    output: {
+      intent: "order",
+      confidence: "high",
+      cart: [{ product_id: arrachera.id, qty: 1, unit: "pesos", variant: null, notes: null }],
+      changes: [{ op: "add", product_id: arrachera.id, from_product_id: null, source_text: "ochenta pesos de arrachera" }],
+      unmatched: [],
+    },
+    prior: [],
+    message: "ochenta pesos de arrachera",
+    catalog: central,
+  });
+  assert(lineOf(tiny.cart, "Arrachera Marinada", central)?.qty === 80, "ochenta pesos no se quedan en $1");
+
+  const rejected = validateModelOutput({
+    output: {
+      intent: "order",
+      confidence: "high",
+      cart: [{ product_id: arrachera.id, qty: 1, unit: "pesos", variant: null, notes: null }],
+      changes: [{ op: "add", product_id: arrachera.id, from_product_id: null, source_text: "arrachera por favor" }],
+      unmatched: [],
+    },
+    prior: [],
+    message: "arrachera por favor",
+    catalog: central,
+  });
+  assert(!rejected.cart.some((line) => line.unit === "pesos" && line.qty < 20), "no sale un peso inventado");
+
+  const half = validateModelOutput({
+    output: {
+      intent: "order",
+      confidence: "high",
+      cart: [{ product_id: pulpa.id, qty: 1.5, unit: "kg", variant: null, notes: null }],
+      changes: [{ op: "add", product_id: pulpa.id, from_product_id: null, source_text: "y medio de pulpa" }],
+      unmatched: [],
+    },
+    prior: [],
+    message: "y medio de pulpa",
+    catalog: central,
+  });
+  assert(Math.abs((lineOf(half.cart, "Pulpa de puerco", central)?.qty ?? 0) - 0.5) < 0.001, "y medio de pulpa es 0.5 kg");
+
+  const wings = validateModelOutput({
+    output: {
+      intent: "order",
+      confidence: "high",
+      cart: [{ product_id: alitas5.id, qty: 3, unit: "pz", variant: null, notes: null }],
+      changes: [{ op: "add", product_id: alitas5.id, from_product_id: null, source_text: "15 alitas" }],
+      unmatched: [],
+    },
+    prior: [],
+    message: "15 alitas",
+    catalog: george,
+  });
+  const wingLine = lineOf(wings.cart, alitas15.name, george);
+  assert(wingLine?.qty === 1, "15 alitas es una orden del paquete de 15, no tres de 5");
+
+  const repeat = validateModelOutput({
+    output: {
+      intent: "order",
+      confidence: "high",
+      cart: [{ product_id: alitas20.id, qty: 2, unit: "pz", variant: null, notes: null }],
+      changes: [
+        { op: "add", product_id: alitas20.id, from_product_id: null, source_text: "alitas de 20" },
+        { op: "add", product_id: alitas20.id, from_product_id: null, source_text: "unas de 20 piezas" },
+      ],
+      unmatched: [],
+    },
+    prior: [],
+    message: "alitas de 20, unas de 20 piezas",
+    catalog: george,
+  });
+  assert(lineOf(repeat.cart, alitas20.name, george)?.qty === 1, "repetir el mismo paquete es una orden");
+
+  const flavors = validateModelOutput({
+    output: {
+      intent: "order",
+      confidence: "high",
+      cart: [
+        { product_id: refresco.id, qty: 4, unit: "pz", variant: "Coca", notes: null },
+        { product_id: refresco.id, qty: 1, unit: "pz", variant: "Coca", notes: null },
+      ],
+      changes: [
+        { op: "add", product_id: refresco.id, from_product_id: null, source_text: "cuatro pepsis" },
+        { op: "add", product_id: refresco.id, from_product_id: null, source_text: "una mirinda" },
+      ],
+      unmatched: [],
+    },
+    prior: [],
+    message: "cuatro pepsis y una mirinda",
+    catalog: george,
+  });
+  const pepsi = flavors.cart.find((line) => line.productId === refresco.id && line.variant === "Pepsi");
+  const mirinda = flavors.cart.find((line) => line.productId === refresco.id && line.variant === "Mirinda");
+  assert(pepsi?.qty === 4 && mirinda?.qty === 1, "el sabor sale del texto de cada línea");
+
+  const leaked = validateModelOutput({
+    output: {
+      intent: "order",
+      confidence: "high",
+      cart: [
+        { product_id: arrachera.id, qty: 0.5, unit: "kg", variant: null, notes: null },
+        { product_id: costillaM.id, qty: 1, unit: "kg", variant: null, notes: null },
+      ],
+      changes: [
+        { op: "add", product_id: arrachera.id, from_product_id: null, source_text: "medio de arrachera marinada" },
+        { op: "add", product_id: costillaM.id, from_product_id: null, source_text: "un kilo de costiya" },
+      ],
+      unmatched: [],
+    },
+    prior: [],
+    message: "ponme medio de arrachera marinada y un kilo de costiya",
+    catalog: central,
+  });
+  assert(lineOf(leaked.cart, "Arrachera Marinada", central)?.unit === "kg", "la arrachera marinada sí entra");
+  assert(!leaked.cart.some((line) => line.productId === costillaM.id), "marinado no se pega a la costilla");
+  assert(leaked.unmatched.some((item) => item.reason === "ambiguous" || item.reason === "unclear"), "la costilla sin tipo se pregunta");
+
+  const dropped = validateModelOutput({
+    output: {
+      intent: "order",
+      confidence: "high",
+      cart: [],
+      changes: [],
+      unmatched: [{ source_text: "medio kilo de molida", reason: "not_on_menu", candidate_ids: [arrachera.id] }],
+    },
+    prior: [],
+    message: "medio kilo de molida y un kilo de chamberete",
+    catalog: central,
+  });
+  assert(lineOf(dropped.cart, "Chamberete", central)?.qty === 1, "lo que sí está en el menú no se pierde");
+  assert(dropped.unmatched.some((item) => item.reason === "not_on_menu"), "la molida sigue fuera del menú");
+
+  const voice = validateModelOutput({
+    output: {
+      intent: "order",
+      confidence: "high",
+      cart: [],
+      changes: [],
+      unmatched: [{ source_text: "cuatro kilos de 10 millo", reason: "not_on_menu", candidate_ids: [diezmillo.id, chamberete.id] }],
+    },
+    prior: [],
+    message: "cuatro kilos de 10 millo",
+    catalog: central,
+  });
+  assert(lineOf(voice.cart, "Diezmillo", central)?.qty === 4, "10 millo se lee como diezmillo");
+
+  const firo = validateModelOutput({
+    output: {
+      intent: "order",
+      confidence: "high",
+      cart: [],
+      changes: [],
+      unmatched: [{ source_text: "tres carbones firo", reason: "not_on_menu", candidate_ids: [carbon.id] }],
+    },
+    prior: [],
+    message: "tres carbones firo",
+    catalog: central,
+  });
+  assert(lineOf(firo.cart, "Carbón fino", central)?.qty === 3, "firo se lee como carbón fino");
+
+  const apple = validateModelOutput({
+    output: {
+      intent: "order",
+      confidence: "high",
+      cart: [],
+      changes: [],
+      unmatched: [{ source_text: "dos manzanitas", reason: "not_on_menu", candidate_ids: [refresco.id] }],
+    },
+    prior: [],
+    message: "dos manzanitas",
+    catalog: george,
+  });
+  assert(apple.cart.some((line) => line.productId === refresco.id && line.variant === "Manzana" && line.qty === 2), "manzanita es el refresco de manzana");
+
+  const pending: PendingCatalogAsk = {
+    sourceText: "3 refrescos",
+    candidateIds: [refresco.id],
+    qty: 3,
+    unit: "pz",
+    variant: null,
+    family: "refresco",
+    question: "¿El refresco de qué sabor?",
+    count: 1,
+  };
+  const split = resolvePending(pending, "dos de pepsi y una de mirinda", george);
+  const splitPepsi = split?.find((line) => line.variant === "Pepsi");
+  const splitMirinda = split?.find((line) => line.variant === "Mirinda");
+  assert(splitPepsi?.qty === 2 && splitMirinda?.qty === 1, "al partir sabores se conserva el número de cada uno");
+
+  const meatPending: PendingCatalogAsk = {
+    sourceText: "1 kg de costiya",
+    candidateIds: [costillaM.id, costilla.id],
+    qty: 1,
+    unit: "kg",
+    variant: null,
+    family: costilla.family,
+    question: "¿La costilla normal o la marinada?",
+    count: 1,
+  };
+  const plain = resolvePending(meatPending, "sin marinar", central);
+  assert(plain?.length === 1 && plain[0].productId === costilla.id && plain[0].qty === 1, "sin marinar elige la fila sin marinar");
+
+  const unclear = validateModelOutput({
+    output: {
+      intent: "order",
+      confidence: "low",
+      cart: [],
+      changes: [],
+      unmatched: [{ source_text: "medio de pura de cerdo", reason: "unclear", candidate_ids: [pulpa.id] }],
+    },
+    prior: [],
+    message: "medio de pura de cerdo",
+    catalog: central,
+  });
+  assert(Math.abs((lineOf(unclear.cart, "Pulpa de puerco", central)?.qty ?? 0) - 0.5) < 0.001, "un solo candidato nombrado no se vuelve pregunta");
+  console.log("guardrails: 16/16");
 }
 
 async function live(): Promise<void> {
@@ -363,11 +639,16 @@ async function live(): Promise<void> {
 
 async function replay(): Promise<void> {
   const files = [
-    ["gpt-4.1-mini", "catalog-llm-recordings.gpt-4.1-mini.json"],
-    ["gpt-5.5", "catalog-llm-recordings.gpt-5.5_re-none.json"],
+    ["gpt-4.1-mini run1", "catalog-llm-recordings.gpt-4.1-mini.run1.json"],
+    ["gpt-4.1-mini run2", "catalog-llm-recordings.gpt-4.1-mini.run2.json"],
+    ["gpt-5.5", "catalog-llm-recordings.gpt-5.5.eval2.json"],
   ] as const;
   if (heldout.cases.length !== 30) {
     console.log(`held-out: se esperaban 30 casos y hay ${heldout.cases.length}`);
+    process.exitCode = 1;
+  }
+  if (unseen.cases.length !== 40) {
+    console.log(`unseen: se esperaban 40 casos y hay ${unseen.cases.length}`);
     process.exitCode = 1;
   }
   for (const [label, file] of files) {
@@ -380,6 +661,7 @@ async function replay(): Promise<void> {
     const recordings = JSON.parse(readFileSync(path, "utf8")) as Record<string, ModelOutput[]>;
     printReport(`${label} corpus`, await runCases(corpus.cases, "replay", recordings), 80);
     printReport(`${label} held-out`, await runCases(heldout.cases, "replay", recordings), 80);
+    printReport(`${label} unseen`, await runCases(unseen.cases, "replay", recordings), 80);
   }
 }
 
@@ -409,6 +691,10 @@ async function main(): Promise<void> {
   adversarial();
   if (heldout.cases.length !== 30) {
     console.error(`held-out: se esperaban 30 casos y hay ${heldout.cases.length}`);
+    process.exitCode = 1;
+  }
+  if (unseen.cases.length !== 40) {
+    console.error(`unseen: se esperaban 40 casos y hay ${unseen.cases.length}`);
     process.exitCode = 1;
   }
   const mocked = await runCases(corpus.cases, "mock");
