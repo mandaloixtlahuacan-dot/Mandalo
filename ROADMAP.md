@@ -2,18 +2,24 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 10 de octubre de 2026. El menú cerrado que ya
-> está en producción (PR #33, `0abd169`) se simplifica en un PR nuevo.
-> El modelo devuelve el carrito completo. El código solo revisa que el
-> id exista, la cantidad sea positiva y la unidad sea la de esa fila;
-> los pesos se muestran en kilos con el precio del menú. Si el JSON no
-> pasa, se le pide corregirlo una vez. Si tampoco, se deja el carrito
-> anterior y se pide repetir. El modelo por defecto sigue siendo
-> `gpt-4.1-mini`. Cada llamada lleva el paso, el menú de esa tienda y
-> el carrito; no lleva historial ni otras tiendas. `CATALOG_ENGINE=v1`
-> vuelve al motor anterior. `CATALOG_ENGINE=legacy` lo apaga. No está
+> Última actualización: 10 de octubre de 2026. La evaluación en vivo
+> del motor que arma el carrito (`d15146a`) bajó en el corpus y no
+> mejoró en los juegos nuevos: la pregunta pendiente no llevaba el
+> producto, la cantidad ni las opciones, y un carrito parcial reemplazaba
+> al anterior. Ahora la pregunta es parte del paso (palabras del cliente,
+> cantidad, unidad e ids). Si el mensaje no quita una línea, esa línea se
+> queda. Una línea mala no tira las demás. Lo que no está en el menú se
+> dice aparte y no borra lo que sí se pidió. El paquete de alitas lo elige
+> el número de piezas. El tiempo de espera del modelo es 8 s. Sigue
+> `gpt-4.1-mini`; `gpt-5.5` se elige con `OPENAI_ORDER_MODEL`. No está
 > mergeado ni desplegado. La base no se tocó. Abarrotes sigue igual.
-> La evaluación en vivo de este motor la corre el dueño con la llave.
+> La siguiente evaluación en vivo la corre el dueño con la llave.
+> Actualización anterior del mismo día: el menú cerrado que ya está en
+> producción (PR #33, `0abd169`) se simplifica en un PR nuevo. El modelo
+> devuelve el carrito completo. Cada llamada lleva el paso, el menú de
+> esa tienda y el carrito; no lleva historial ni otras tiendas.
+> `CATALOG_ENGINE=v1` vuelve al motor anterior. `CATALOG_ENGINE=legacy`
+> lo apaga.
 > Actualización anterior del mismo día: segunda evaluación (commit
 > `0f7c1d6`). El monto se queda en su línea, los cientos en palabras se
 > leen, y lo que sí está en el menú no se pierde. Replay de esas

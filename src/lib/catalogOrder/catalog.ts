@@ -48,6 +48,7 @@ const SEEDED: Record<string, string[]> = {
   "dogo clasico": ["jocho", "jochos", "hot dog", "hotdog", "clasico", "clasicos", "dogo clasico"],
   dogoburguer: ["dogoburger", "dogo burger", "dogo burguer", "dogoburguer"],
   pizzadogo: ["pizza dogo", "pizzadogo"],
+  refresco: ["manzanita", "manzanitas"],
   doridogo: ["dori dogo", "doridogo"],
   salchilocos: ["salchi locos", "salchilocas", "salchilocas"],
   "dedos de queso 6 piezas": ["dedos de keso", "dedos de queso", "media docena de dedos"],

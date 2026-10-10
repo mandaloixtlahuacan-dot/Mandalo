@@ -1,9 +1,10 @@
-import { checkAiOutput } from "@/lib/catalogOrder/accept";
+import { checkAiOutput, type CheckResult } from "@/lib/catalogOrder/accept";
 import { cartFromModel, fallbackInterpret } from "@/lib/catalogOrder/fallback";
 import { createOpenAICatalogModel } from "@/lib/catalogOrder/parser";
 import { buildAiReply, buildCatalogReply } from "@/lib/catalogOrder/reply";
+import { fold } from "@/lib/catalogOrder/text";
 import { classifyProductListReply } from "@/lib/messages";
-import type { AiOutput, CatalogEngineMode, CatalogTurnInput, CatalogTurnResult, InterpretRequest } from "@/lib/catalogOrder/types";
+import type { AiOutput, CartLine, CatalogEngineMode, CatalogTurnInput, CatalogTurnResult, InterpretRequest } from "@/lib/catalogOrder/types";
 
 const REPEAT = "No le entendí. Repítemelo con palabras sencillas.";
 
@@ -73,6 +74,36 @@ function fromFallback(input: CatalogTurnInput, started: number, modelName: strin
   });
 }
 
+function cartKey(line: CartLine): string {
+  return `${line.productId}|${line.qty}|${line.unit}|${line.variant ?? ""}`;
+}
+
+function sameCart(left: CartLine[], right: CartLine[]): boolean {
+  if (left.length !== right.length) return false;
+  const a = left.map(cartKey).sort();
+  const b = right.map(cartKey).sort();
+  return a.every((item, index) => item === b[index]);
+}
+
+function messageConfirms(message: string): boolean {
+  const text = fold(message).replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
+  return /^(ya seria todo|ya serian todo|eso es todo|eso seria todo|es todo|seria todo|ya esta|asi esta bien|esta bien|asi dejalo|listo)$/.test(text);
+}
+
+function useful(checked: CheckResult): boolean {
+  return checked.cart.length > 0 || checked.question != null || checked.notOnMenu.length > 0;
+}
+
+function unionCart(base: CartLine[], extra: CartLine[]): CartLine[] {
+  const out = base.map((line) => ({ ...line }));
+  for (const line of extra) {
+    if (!out.some((item) => item.productId === line.productId && item.unit === line.unit && (item.variant ?? null) === (line.variant ?? null))) {
+      out.push({ ...line });
+    }
+  }
+  return out;
+}
+
 function keepPrevious(input: CatalogTurnInput, started: number, modelName: string): CatalogTurnResult {
   return finish(started, {
     cart: input.cart.map((line) => ({ ...line })),
@@ -123,7 +154,8 @@ async function runAiTurn(input: CatalogTurnInput): Promise<CatalogTurnResult> {
   }
   if (!output) return fromFallback(input, started, "fallback");
 
-  let checked = checkAiOutput(output, input.catalog);
+  const ctx = { prior: input.cart, message: input.message, pending: input.pending };
+  let checked = checkAiOutput(output, input.catalog, ctx);
   if (checked.errors.length) {
     let repaired: AiOutput | null = null;
     try {
@@ -132,25 +164,32 @@ async function runAiTurn(input: CatalogTurnInput): Promise<CatalogTurnResult> {
       repaired = null;
     }
     if (!repaired) return fromFallback(input, started, "fallback");
-    output = repaired;
-    checked = checkAiOutput(output, input.catalog);
-    if (checked.errors.length) return keepPrevious(input, started, modelName);
+    const second = checkAiOutput(repaired, input.catalog, { ...ctx, prior: unionCart(input.cart, checked.cart) });
+    if (second.errors.length < checked.errors.length || !useful(checked)) {
+      output = repaired;
+      checked = second;
+    }
   }
+  if (!useful(checked)) return keepPrevious(input, started, modelName);
 
-  const question = output.question?.text.trim()
-    ? { text: output.question.text.trim(), candidateIds: output.question.candidate_ids }
-    : null;
-  const notOnMenu = output.not_on_menu.map((item) => item.trim()).filter(Boolean);
-  const confirmedList = false;
+  const question = checked.question;
+  const notOnMenu = checked.notOnMenu;
+  const confirmedList = input.awaitingList === true
+    && !question
+    && checked.cart.length > 0
+    && output.confirmed === true
+    && sameCart(checked.cart, input.cart)
+    && messageConfirms(input.message);
   const spoken = buildAiReply({
     catalog: input.catalog,
     cart: checked.cart,
     notOnMenu,
     question,
     pending: input.pending,
+    message: input.message,
     confirmedList,
   });
-  const intent = question ? "question" : notOnMenu.length && !checked.cart.length ? "other" : "order";
+  const intent = confirmedList ? "confirm" : question ? "question" : notOnMenu.length && !checked.cart.length ? "other" : "order";
   return finish(started, {
     cart: checked.cart,
     pending: spoken.pending,

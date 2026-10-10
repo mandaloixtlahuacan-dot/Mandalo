@@ -105,6 +105,11 @@ export type AiCartLine = {
 export type AiQuestion = {
   text: string;
   candidate_ids: number[];
+  /** Cantidad de lo que se está preguntando. Null si el modelo no la mandó. */
+  qty?: number | null;
+  unit?: string | null;
+  /** Palabras del cliente para esa línea, no el texto de la pregunta. */
+  source_text?: string | null;
 };
 
 /** El modelo devuelve el carrito completo. No es un delta. */
@@ -113,6 +118,10 @@ export type AiOutput = {
   question: AiQuestion | null;
   not_on_menu: string[];
   confirmed: boolean;
+  /** Ids que el cliente sí pidió quitar. Si no viene, se trata como vacío. */
+  removed_ids?: number[];
+  /** Ids que este mensaje tocó. Si no viene, se trata como vacío. */
+  changed_ids?: number[];
 };
 
 export type InterpretRequest = {

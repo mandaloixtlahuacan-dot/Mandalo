@@ -255,13 +255,14 @@ function listReply(catalog: CatalogSnapshot, cart: CartLine[]): string {
   return formatProductListConfirm(items, kindOf(catalog));
 }
 
-/** Respuesta del motor nuevo: la pregunta es la del modelo. No se reescribe el carrito. */
+/** Respuesta del motor nuevo: la pregunta guarda las palabras, la cantidad y las opciones. */
 export function buildAiReply(params: {
   catalog: CatalogSnapshot;
   cart: CartLine[];
   notOnMenu: string[];
-  question: { text: string; candidateIds: number[] } | null;
+  question: { text: string; candidateIds: number[]; qty?: number | null; unit?: SellUnit | null; sourceText?: string | null } | null;
   pending: PendingCatalogAsk | null;
+  message?: string;
   confirmedList: boolean;
 }): { reply: string; pending: PendingCatalogAsk | null } {
   const { catalog, cart } = params;
@@ -283,11 +284,25 @@ export function buildAiReply(params: {
         });
       }
     }
+    const parsed = parseQuantity(question.sourceText || params.message || "", catalog.profile);
+    const sourceText = question.sourceText?.trim()
+      || (same ? params.pending?.sourceText : "")
+      || params.message?.trim()
+      || question.text;
+    const qty = question.qty != null && question.qty > 0
+      ? question.qty
+      : same && params.pending
+        ? params.pending.qty
+        : parsed.qty > 0 ? parsed.qty : 1;
+    const unit: SellUnit = question.unit
+      ?? (same ? params.pending?.unit : null)
+      ?? (parsed.unit === "kg" || parsed.unit === "pesos" ? parsed.unit : null)
+      ?? (catalog.profile === "carniceria" ? "kg" : "pz");
     const pending: PendingCatalogAsk = {
-      sourceText: params.pending?.sourceText || question.text,
+      sourceText,
       candidateIds: question.candidateIds,
-      qty: params.pending?.qty ?? 1,
-      unit: params.pending?.unit ?? (catalog.profile === "carniceria" ? "kg" : "pz"),
+      qty,
+      unit,
       variant: null,
       family: sharedFamily(catalog, question.candidateIds),
       question: question.text,

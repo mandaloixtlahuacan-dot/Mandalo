@@ -4,37 +4,42 @@ import type { AiOutput, CatalogModel, CatalogRow, InterpretRequest, SellUnit } f
 
 export const DEFAULT_ORDER_MODEL = "gpt-4.1-mini";
 
-const ORDER_TIMEOUT_MS = 6000;
+/** 8 s: gpt-5.5 con esfuerzo low no cabe en 6. */
+export const ORDER_TIMEOUT_MS = 8000;
 
 const RULES = [
-  "Devuelve el carrito COMPLETO de esta tienda. No un delta.",
-  "No inventes tamaño, sabor ni tipo. Si hay más de una opción y no la dijo, haz una sola pregunta y no agregues esa línea. Si solo hay una, agrégala.",
-  "cambia X por Y reemplaza esa línea. quita la borra. otra u otro suma 1. cambia N por un sabor mueve solo esa cantidad.",
-  "medio=0.5, cuarto=0.25, kilo y medio=1.5, N kilos y tres cuartos=N.75. Quince, veinte, doscientos son números.",
+  "Devuelve el carrito COMPLETO de esta tienda, no un delta. removed_ids solo si el cliente quitó esa línea. changed_ids son las que este mensaje tocó.",
+  "No inventes tamaño, sabor ni tipo. Si falta uno y hay varias opciones, una sola pregunta y esa línea NO va en el carrito. Si solo hay una, agrégala.",
+  "La pregunta lleva qty, unit, source_text (las palabras del cliente) y candidate_ids.",
+  "«no es X, es Y» o «cámbialo por Y» reemplaza y conserva cantidad y tamaño. quita borra. «otra» sola suma 1 a la última. «otra de Y» suma 1 de Y y deja lo demás. «una de cada una» es una de cada opción de la pregunta, no todo el menú.",
+  "medio=0.5, cuarto=0.25, kilo y medio=1.5, N kilos y tres cuartos=N.75. En piezas, qty es un entero.",
+  "En alitas, boneless o dedos, «N» o «de N» elige la fila de N piezas y qty es cuántas órdenes. Si esa medida no existe, pregunta y lista las medidas, sin línea.",
   "En carne, $100 o cien pesos: unit pesos, qty 100. Solo en filas kg.",
   "«la que no es marinada», «sin marinar» o «normal» es la fila sin marinar.",
-  "Lo que no está en el menú va en not_on_menu y no se agrega. Si hay una familia cercana, la pregunta la ofrece.",
-  "sí, listo, así está bien o correcto: confirmed true y el mismo carrito. No es un producto.",
+  "Lo que no está en el menú va SOLO en not_on_menu, sin pregunta. Lo demás del mismo mensaje se queda en el carrito.",
+  "sí, listo, ya sería todo o eso es todo: confirmed true y el mismo carrito. Nunca confirmes un carrito vacío.",
 ].join("\n");
 
 function examplesFor(profile: InterpretRequest["catalog"]["profile"]): string {
   if (profile === "carniceria") {
     return [
-      "«bistec» → question «¿El bistec de res o de puerco?», sin esa línea.",
+      "«bistec» → question «¿El bistec de res o de puerco?», qty y source_text del cliente, sin esa línea.",
       "«un kilo de diezmillo» → esa fila, qty 1, unit kg.",
       "«$150 de pastor» → unit pesos, qty 150.",
-      "«seis kilos y tres cuartos» → qty 6.75, unit kg.",
+      "«otro de diezmillo» suma 1 y deja lo demás. «nomás un carbón» no borra el resto.",
+      "«un pollo entero y un kilo de bistec» → not_on_menu [\"pollo\"] y el bistec en el carrito.",
       "«la que no es marinada» → la fila sin marinar.",
-      "«una pizza» → not_on_menu [\"pizza\"].",
       "«sí está bien» → confirmed true, carrito igual.",
     ].join("\n");
   }
   return [
-    "«2 hamburguesas» → question «¿Cuál hamburguesa?», sin esa línea.",
+    "«2 hamburguesas» → question «¿Cuál hamburguesa?», qty 2, unit pz, source_text «2 hamburguesas», sin esa línea.",
     "«una de res chica» → esa fila, qty 1, question null.",
-    "Carrito con Pepsi x3 y «cambia una por seven» → Pepsi x2 y Seven x1.",
-    "«otra» con una Pepsi → Pepsi x2. «otro de pollo» es el de pollo, no suma al anterior.",
-    "«una pizza» → not_on_menu [\"pizza\"].",
+    "«10 alitas» → la fila de 10 piezas, qty 1. «alitas de 12» → pregunta con las medidas, sin línea.",
+    "«no es cubana, es hawaiana» con una Grande → la hawaiana Grande, misma qty.",
+    "«otra de pierna» suma 1 de pierna y deja lo demás. «otra» sola suma 1 a la última.",
+    "«un pizzadogo» es Pizzadogo. «una manzanita» es Refresco sabor Manzana.",
+    "«una pizza y dos dogos» → not_on_menu [\"pizza\"] y los dogos en el carrito.",
     "«sí está bien» → confirmed true, carrito igual.",
   ].join("\n");
 }
@@ -98,7 +103,16 @@ function cartJson(request: InterpretRequest): string {
 
 function stepLine(request: InterpretRequest): string {
   if (request.repairErrors?.length) return `Corrige el JSON. ${request.repairErrors.join(" ")}`;
-  if (request.pending) return `Pregunta pendiente: ${request.pending.question}`;
+  if (request.pending) {
+    const pending = request.pending;
+    const options = pending.candidateIds
+      .map((id) => {
+        const row = request.catalog.byId.get(id);
+        return row ? `${id} ${row.name}` : String(id);
+      })
+      .join(", ");
+    return `Pregunta pendiente: ${pending.question}. Era: "${pending.sourceText}", qty ${pending.qty} ${pending.unit}. Opciones: ${options}`;
+  }
   if (request.awaitingList) return "Ya vio la lista. Un sí la confirma. Un cambio la edita.";
   return "Armando el pedido.";
 }
@@ -121,7 +135,7 @@ export function orderJsonSchema(ids: number[]): Record<string, unknown> {
   return {
     type: "object",
     additionalProperties: false,
-    required: ["cart", "question", "not_on_menu", "confirmed"],
+    required: ["cart", "question", "not_on_menu", "confirmed", "removed_ids", "changed_ids"],
     properties: {
       cart: {
         type: "array",
@@ -143,16 +157,21 @@ export function orderJsonSchema(ids: number[]): Record<string, unknown> {
           {
             type: "object",
             additionalProperties: false,
-            required: ["text", "candidate_ids"],
+            required: ["text", "candidate_ids", "qty", "unit", "source_text"],
             properties: {
               text: { type: "string" },
               candidate_ids: { type: "array", items: { type: "integer" } },
+              qty: { anyOf: [{ type: "number" }, { type: "null" }] },
+              unit: { anyOf: [{ type: "string", enum: ["pz", "kg", "pesos"] }, { type: "null" }] },
+              source_text: { anyOf: [{ type: "string" }, { type: "null" }] },
             },
           },
         ],
       },
       not_on_menu: { type: "array", items: { type: "string" } },
       confirmed: { type: "boolean" },
+      removed_ids: { type: "array", items: { type: "integer", enum: idEnum } },
+      changed_ids: { type: "array", items: { type: "integer", enum: idEnum } },
     },
   };
 }
@@ -167,6 +186,8 @@ function unreadable(): AiOutput {
     question: null,
     not_on_menu: [],
     confirmed: false,
+    removed_ids: [],
+    changed_ids: [],
   };
 }
 
@@ -180,11 +201,20 @@ export function parseModelJson(raw: unknown): AiOutput | null {
   if (questionRecord && typeof questionRecord === "object") {
     const row = questionRecord as Record<string, unknown>;
     const ids = Array.isArray(row.candidate_ids) ? row.candidate_ids.map((id) => Number(id)).filter((id) => Number.isFinite(id)) : [];
-    question = { text: String(row.text ?? ""), candidate_ids: ids };
+    const qty = row.qty == null || row.qty === "" ? null : Number(row.qty);
+    question = {
+      text: String(row.text ?? ""),
+      candidate_ids: ids,
+      qty: qty != null && Number.isFinite(qty) ? qty : null,
+      unit: asUnit(row.unit),
+      source_text: row.source_text == null ? null : String(row.source_text),
+    };
   } else if (questionRecord != null) return null;
   return {
     confirmed: record.confirmed,
     not_on_menu: record.not_on_menu.map((item) => String(item)).filter((item) => item.trim()),
+    removed_ids: Array.isArray(record.removed_ids) ? record.removed_ids.map((id) => Number(id)).filter((id) => Number.isFinite(id)) : [],
+    changed_ids: Array.isArray(record.changed_ids) ? record.changed_ids.map((id) => Number(id)).filter((id) => Number.isFinite(id)) : [],
     question,
     cart: record.cart.map((item) => {
       const row = item as Record<string, unknown>;
