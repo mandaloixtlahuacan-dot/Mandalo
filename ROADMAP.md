@@ -3,17 +3,19 @@
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
 > Última actualización: 10 de octubre de 2026. La evaluación en vivo
-> del motor que arma el carrito (`d15146a`) bajó en el corpus y no
-> mejoró en los juegos nuevos: la pregunta pendiente no llevaba el
-> producto, la cantidad ni las opciones, y un carrito parcial reemplazaba
-> al anterior. Ahora la pregunta es parte del paso (palabras del cliente,
-> cantidad, unidad e ids). Si el mensaje no quita una línea, esa línea se
-> queda. Una línea mala no tira las demás. Lo que no está en el menú se
-> dice aparte y no borra lo que sí se pidió. El paquete de alitas lo elige
-> el número de piezas. El tiempo de espera del modelo es 8 s. Sigue
-> `gpt-4.1-mini`; `gpt-5.5` se elige con `OPENAI_ORDER_MODEL`. No está
-> mergeado ni desplegado. La base no se tocó. Abarrotes sigue igual.
-> La siguiente evaluación en vivo la corre el dueño con la llave.
+> de `f8f783a` mostró que el chequeo reescribía carritos que el modelo
+> ya había armado bien: reponía líneas quitadas, cambiaba el paquete de
+> alitas y rechazaba una fila válida por no estar en las opciones de la
+> pregunta. Eso se quitó. El carrito se acepta tal cual si cada línea
+> tiene id del menú, cantidad positiva, unidad permitida y piezas
+> enteras. Una línea mala se descarta o se pregunta; las demás se quedan.
+> `pending` sale del modelo y, mientras no esté vacío, no se confirma.
+> El paquete (alitas de 5/10/15/20/30, docena = 12) va en el menú y en
+> el prompt, no en el código. El modelo por defecto es `gpt-5.5` con
+> `OPENAI_REASONING_EFFORT=none`. `gpt-4.1-mini` sigue con
+> `OPENAI_ORDER_MODEL`. El tiempo de espera es 8 s. No está mergeado ni
+> desplegado. La base no se tocó. Abarrotes sigue igual. La siguiente
+> evaluación en vivo la corre el dueño con la llave.
 > Actualización anterior del mismo día: el menú cerrado que ya está en
 > producción (PR #33, `0abd169`) se simplifica en un PR nuevo. El modelo
 > devuelve el carrito completo. Cada llamada lleva el paso, el menú de

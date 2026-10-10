@@ -7,8 +7,9 @@
  *     pruebas offline, sin OpenAI. Esto es lo que corre `npm run check`.
  *
  *   OPENAI_API_KEY=sk-... npx tsx scripts/check-catalog-orders.ts --live
+ *   OPENAI_API_KEY=sk-... npx tsx scripts/check-catalog-orders.ts --live
  *   OPENAI_API_KEY=sk-... OPENAI_ORDER_MODEL=gpt-4.1-mini npx tsx scripts/check-catalog-orders.ts --live
- *   OPENAI_API_KEY=sk-... OPENAI_ORDER_MODEL=gpt-5.5 OPENAI_REASONING_EFFORT=low npx tsx scripts/check-catalog-orders.ts --live
+ *   OPENAI_API_KEY=sk-... OPENAI_ORDER_MODEL=gpt-5.5 OPENAI_REASONING_EFFORT=none npx tsx scripts/check-catalog-orders.ts --live
  *
  *   npx tsx scripts/check-catalog-orders.ts --replay scripts/fixtures/catalog-llm-recordings.live.json
  *
@@ -17,7 +18,7 @@
  * Escribe las grabaciones del esquema nuevo en
  * scripts/fixtures/catalog-llm-recordings.live.json
  *
- * OPENAI_ORDER_MODEL: gpt-4.1-mini (default), gpt-4o-mini o gpt-5.5.
+ * OPENAI_ORDER_MODEL: gpt-5.5 (default), gpt-4.1-mini o gpt-4o-mini.
  * OPENAI_REASONING_EFFORT: none (default) o low. Solo aplica a gpt-5.
  * CATALOG_ENGINE: vacío = este motor; v1 = el motor anterior; legacy = sin menú cerrado.
  */
@@ -158,7 +159,7 @@ async function offline(): Promise<void> {
   for (const [label, cases] of sets) {
     assert(cases.length === expected[label as keyof typeof expected], `${label}: se esperaban ${expected[label as keyof typeof expected]} y hay ${cases.length}`);
   }
-  assert(DEFAULT_ORDER_MODEL === "gpt-4.1-mini", "el modelo por defecto dejó de ser gpt-4.1-mini");
+  assert(DEFAULT_ORDER_MODEL === "gpt-5.5", "el modelo por defecto dejó de ser gpt-5.5");
   assert(catalogEngineMode() === "v2", "sin CATALOG_ENGINE el motor es v2");
 
   const burger = george.rows.find((row) => row.name === "Hamburguesa de Res Grande");
@@ -185,7 +186,6 @@ async function offline(): Promise<void> {
   const noFlavor = checkAiOutput(
     emptyAi({ cart: [{ product_id: drink.id, qty: 1, unit: "pz", variant: null }, { product_id: burger.id, qty: 1, unit: "pz", variant: null }] }),
     george,
-    { message: "una hamburguesa y un refresco" },
   );
   assert(noFlavor.cart.some((line) => line.productId === burger.id), "un refresco sin sabor se llevó la hamburguesa");
   assert(!noFlavor.cart.some((line) => line.productId === drink.id), "el refresco sin sabor se quedó en el carrito");
@@ -215,6 +215,10 @@ async function offline(): Promise<void> {
   assert(prompt.includes("¿Cuál hamburguesa?"), "el prompt no trae la pregunta pendiente");
   assert(prompt.includes(`Era: "hamburguesa", qty 1 pz`), "el prompt no trae las palabras ni la cantidad de la pregunta");
   assert(prompt.includes(`Opciones: ${burger.id} ${burger.name}`), "el prompt no trae las opciones de la pregunta");
+  assert(prompt.includes("Docena = 12"), "el prompt no dice que docena son 12");
+  assert(prompt.includes("1 orden = 10 piezas"), "el menú no marca la orden de alitas");
+  assert(prompt.includes("No preguntes con una sola opción"), "el prompt no prohíbe la pregunta de una sola opción");
+  assert(prompt.includes("not_on_menu"), "el prompt no manda lo de fuera del menú a not_on_menu");
   assert(prompt.includes(`${burger.id} ${burger.name}`), "el prompt no trae el menú de esta tienda");
   assert(prompt.includes(`"product_id":${drink.id}`), "el prompt no trae el carrito");
   const centralPrompt = buildOrderPrompt({
@@ -226,7 +230,8 @@ async function offline(): Promise<void> {
   });
   assert(!centralPrompt.includes("Hamburguesa de Res"), "el menú de La Central incluye productos de George");
   const schema = JSON.stringify(orderJsonSchema(george.rows.map((row) => row.id)));
-  assert(schema.includes("confirmed") && schema.includes("not_on_menu") && schema.includes("source_text") && schema.includes("removed_ids"), "el esquema no trae la pregunta con contexto");
+  assert(schema.includes("confirmed") && schema.includes("not_on_menu") && schema.includes("pending") && schema.includes("source_text"), "el esquema no trae pending");
+  assert(!schema.includes("removed_ids"), "el esquema todavía pide removed_ids");
   assert(!schema.includes('"changes"') && !schema.includes("unmatched"), "el esquema nuevo no reemplazó al delta");
   assert(parseModelJson({ intent: "order", cart: [], changes: [], unmatched: [], confidence: "high" }) == null, "el JSON viejo se aceptó como carrito");
 
@@ -235,228 +240,63 @@ async function offline(): Promise<void> {
     if (!row) throw new Error(`falta ${name}`);
     return row;
   };
-  const arrachera = byName(central, "Arrachera Marinada");
   const diezmillo = byName(central, "Diezmillo");
-  const carbon = byName(central, "Carbón fino");
-  const bistecRes = byName(central, "Bistec de res");
-  const bistecPuerco = byName(central, "Bistec de puerco");
-  const bistecPuercoM = byName(central, "Bistec de puerco marinado");
-  const wings5 = byName(george, "Alitas 5 piezas");
-  const wings15 = byName(george, "Alitas 15 piezas");
-  const wings20 = byName(george, "Alitas 20 piezas");
-  const dedos = byName(george, "Dedos de Queso 6 piezas");
-  const pizzadogo = byName(george, "Pizzadogo");
+  const wings30 = byName(george, "Alitas 30 piezas");
   const tortaMex = byName(george, "Torta Mexicana");
-  const tortaHaw = byName(george, "Torta Hawaiana");
-  const cubanaG = byName(george, "Hamburguesa Cubana Grande");
   const cubanaC = byName(george, "Hamburguesa Cubana Chica");
-  const hawG = byName(george, "Hamburguesa Hawaiana Grande");
-  const hawC = byName(george, "Hamburguesa Hawaiana Chica");
-  const dogoCubano = byName(george, "Dogo Cubano");
-  const polloC = byName(george, "Hamburguesa de Pollo Chica");
-  const polloG = byName(george, "Hamburguesa de Pollo Grande");
-  const salsaBbq = byName(central, "Salsa BBQ");
-  const salsaHot = byName(central, "Salsa Hot Wings");
-  const kg = (id: number, qty: number): CartLine => ({ productId: id, qty, unit: "kg", variant: null, notes: null });
-  const pz = (id: number, qty: number, variant: string | null = null): CartLine => ({ productId: id, qty, unit: "pz", variant, notes: null });
+  const bistecPuerco = byName(central, "Bistec de puerco");
 
-  const keptArrachera = checkAiOutput(
+  const dropped = checkAiOutput(
     emptyAi({ cart: [{ product_id: diezmillo.id, qty: 1, unit: "kg", variant: null }] }),
     central,
-    { prior: [kg(arrachera.id, 1)], message: "otro de diezmillo" },
   );
-  assert(keptArrachera.cart.some((line) => line.productId === arrachera.id), "«otro de diezmillo» se llevó la arrachera");
-  assert(keptArrachera.cart.some((line) => line.productId === diezmillo.id && line.qty === 1), "«otro de diezmillo» no sumó el diezmillo");
+  assert(dropped.cart.length === 1 && dropped.cart[0]?.productId === diezmillo.id && dropped.cart[0]?.qty === 1, "se reescribió el carrito que el modelo ya mandó");
 
-  const keptDiezmillo = checkAiOutput(
-    emptyAi({ cart: [{ product_id: carbon.id, qty: 1, unit: "pz", variant: null }] }),
-    central,
-    { prior: [kg(diezmillo.id, 1), pz(carbon.id, 1)], message: "nomás un carbón" },
+  const packKept = checkAiOutput(
+    emptyAi({ cart: [{ product_id: wings30.id, qty: 2, unit: "pz", variant: null }] }),
+    george,
   );
-  assert(keptDiezmillo.cart.some((line) => line.productId === diezmillo.id), "«nomás un carbón» borró el diezmillo");
+  assert(packKept.cart[0]?.productId === wings30.id && packKept.cart[0]?.qty === 2, "se cambió la cantidad de un paquete que el modelo ya eligió");
 
-  const pack15 = checkAiOutput(
-    emptyAi({ cart: [{ product_id: wings5.id, qty: 3, unit: "pz", variant: null }] }),
-    george,
-    { message: "quince alitas" },
-  );
-  const wings10 = byName(george, "Alitas 10 piezas");
-  const tenWings = checkAiOutput(
-    emptyAi({ cart: [{ product_id: wings5.id, qty: 2, unit: "pz", variant: null }] }),
-    george,
-    { message: "10 alitas" },
-  );
-  assert(tenWings.cart.length === 1 && tenWings.cart[0]?.productId === wings10.id && tenWings.cart[0]?.qty === 1, "«10 alitas» se partió en órdenes de 5");
-  assert(pack15.cart.length === 1 && pack15.cart[0]?.productId === wings15.id && pack15.cart[0]?.qty === 1, "«quince alitas» no eligió la orden de 15");
-  const packTimes = checkAiOutput(
-    emptyAi({ cart: [{ product_id: wings15.id, qty: 15, unit: "pz", variant: null }] }),
-    george,
-    { message: "quince alitas" },
-  );
-  assert(packTimes.cart[0]?.productId === wings15.id && packTimes.cart[0]?.qty === 1, "«quince alitas» se multiplicó por 15");
-  const pack20 = checkAiOutput(
-    emptyAi({ cart: [{ product_id: wings5.id, qty: 1.5, unit: "pz", variant: null }] }),
-    george,
-    { message: "que sean de 20 piezas" },
-  );
-  assert(pack20.cart[0]?.productId === wings20.id && pack20.cart[0]?.qty === 1, "«de 20 piezas» no eligió la orden de 20");
-  const pack12 = checkAiOutput(
-    emptyAi({ cart: [{ product_id: wings5.id, qty: 12, unit: "pz", variant: null }] }),
-    george,
-    { message: "alitas de 12" },
-  );
-  assert(!pack12.cart.some((line) => line.productId === wings5.id) && pack12.question != null, "«alitas de 12» adivinó un paquete");
-  const halfDozen = checkAiOutput(
-    emptyAi({ cart: [{ product_id: dedos.id, qty: 0.5, unit: "pz", variant: null }] }),
-    george,
-    { message: "media docena de dedos" },
-  );
-  assert(halfDozen.cart[0]?.productId === dedos.id && halfDozen.cart[0]?.qty === 1, "«media docena de dedos» quedó en 0.5");
-  const fraction = checkAiOutput(emptyAi({ cart: [{ product_id: burger.id, qty: 1.5, unit: "pz", variant: null }] }), george, { message: "una y media" });
-  assert(fraction.cart.length === 0 && fraction.errors.some((error) => error.includes("entero")), "una cantidad fraccionaria de piezas pasó");
-
-  const pizzaDogo = checkAiOutput(emptyAi({ not_on_menu: ["pizzadogo"] }), george, { message: "Un pizzadogo" });
-  assert(pizzaDogo.cart[0]?.productId === pizzadogo.id && pizzaDogo.notOnMenu.length === 0, "pizzadogo se trató como fuera del menú");
-  const manzanita = checkAiOutput(emptyAi({ not_on_menu: ["manzanita"] }), george, { message: "una manzanita" });
-  assert(manzanita.cart[0]?.productId === drink.id && manzanita.cart[0]?.variant === "Manzana" && manzanita.notOnMenu.length === 0, "manzanita no cayó en el sabor Manzana");
-  const barePizza = checkAiOutput(emptyAi({ not_on_menu: ["pizza"] }), george, { message: "una pizza" });
-  assert(barePizza.notOnMenu.includes("pizza") && barePizza.cart.length === 0, "«pizza» se convirtió en pizzadogo");
-
-  const hawaiana = checkAiOutput(
-    emptyAi({ cart: [{ product_id: tortaMex.id, qty: 1, unit: "pz", variant: "hawaiana" }] }),
-    george,
-    { prior: [pz(tortaMex.id, 1)], message: "mejor que sean hawaianas" },
-  );
-  assert(hawaiana.cart.some((line) => line.productId === tortaHaw.id), "«hawaianas» se descartó");
-  assert(!hawaiana.cart.some((line) => line.productId === tortaMex.id), "la torta mexicana se quedó junto con la hawaiana");
-
-  const sizeKept = checkAiOutput(
-    emptyAi({ cart: [{ product_id: hawC.id, qty: 1, unit: "pz", variant: null }] }),
-    george,
-    { prior: [pz(cubanaG.id, 1)], message: "no es cubana, es hawaiana" },
-  );
-  assert(sizeKept.cart.some((line) => line.productId === hawG.id && line.qty === 1), "el cambio de hawaiana perdió el tamaño grande");
-  assert(!sizeKept.cart.some((line) => line.productId === cubanaG.id || line.productId === cubanaC.id), "la cubana se quedó después del cambio");
-
-  const pendingDogos: PendingCatalogAsk = {
-    sourceText: "mándame un dogo",
-    candidateIds: [dogoCubano.id, byName(george, "Dogo Hawaiano").id, byName(george, "Dogo de Camarón").id],
-    qty: 1,
-    unit: "pz",
-    variant: null,
-    family: "dogo",
-    question: "¿Cuál dogo?",
-    count: 1,
-  };
-  const cubano = checkAiOutput(
+  const anyRow = checkAiOutput(
     emptyAi({ cart: [{ product_id: cubanaC.id, qty: 1, unit: "pz", variant: null }] }),
     george,
-    { message: "el cubano", pending: pendingDogos },
   );
-  assert(cubano.cart.some((line) => line.productId === dogoCubano.id), "«el cubano» de un dogo se volvió hamburguesa");
-  assert(!cubano.cart.some((line) => line.productId === cubanaC.id), "la hamburguesa cubana se quedó en la respuesta del dogo");
+  assert(anyRow.cart[0]?.productId === cubanaC.id, "se rechazó una fila válida del menú");
 
-  const pendingPollo: PendingCatalogAsk = {
-    sourceText: "cuatro hamburguesas de pollo",
-    candidateIds: [polloC.id, polloG.id, burger.id, byName(george, "Hamburguesa de Res Chica").id],
-    qty: 4,
-    unit: "pz",
-    variant: null,
-    family: null,
-    question: "¿Chica o grande?",
-    count: 1,
-  };
-  const sizes = checkAiOutput(
-    emptyAi({ cart: [{ product_id: burger.id, qty: 3, unit: "pz", variant: null }] }),
+  const flavorOnPlain = checkAiOutput(
+    emptyAi({ cart: [{ product_id: tortaMex.id, qty: 1, unit: "pz", variant: "hawaiana" }] }),
     george,
-    { message: "tres grandes y una chica", pending: pendingPollo },
   );
-  assert(sizes.cart.some((line) => line.productId === polloG.id && line.qty === 3), "«tres grandes» no se quedó en pollo");
-  assert(sizes.cart.some((line) => line.productId === polloC.id && line.qty === 1), "«una chica» no se quedó en pollo");
+  assert(flavorOnPlain.cart.length === 1 && flavorOnPlain.cart[0]?.productId === tortaMex.id && flavorOnPlain.cart[0]?.variant == null, "un sabor ajeno cambió de producto");
 
-  const pendingBistec: PendingCatalogAsk = {
-    sourceText: "dos kilitos de bistec",
-    candidateIds: [bistecRes.id, bistecPuerco.id, bistecPuercoM.id],
-    qty: 2,
-    unit: "kg",
-    variant: null,
-    family: null,
-    question: "¿El bistec de res o de puerco?",
-    count: 1,
-  };
-  const twoKilos = checkAiOutput(
-    emptyAi({ cart: [{ product_id: bistecPuercoM.id, qty: 1, unit: "kg", variant: null }] }),
-    central,
-    { message: "del de puerco, el marinado", pending: pendingBistec },
-  );
-  assert(twoKilos.cart.some((line) => line.productId === bistecPuercoM.id && line.qty === 2), "la respuesta del bistec perdió los 2 kg");
-  const pendingHaw: PendingCatalogAsk = {
-    sourceText: "dos hamburguesas hawaianas",
-    candidateIds: [hawC.id, hawG.id, burger.id, polloG.id],
-    qty: 2,
-    unit: "pz",
-    variant: null,
-    family: null,
-    question: "¿Chica o grande?",
-    count: 1,
-  };
-  const grandes = checkAiOutput(
-    emptyAi({
-      cart: [
-        { product_id: burger.id, qty: 1, unit: "pz", variant: null },
-        { product_id: polloG.id, qty: 1, unit: "pz", variant: null },
-      ],
-    }),
+  const fractionKept = checkAiOutput(
+    emptyAi({ cart: [{ product_id: burger.id, qty: 1, unit: "pz", variant: null }, { product_id: wings30.id, qty: 1.5, unit: "pz", variant: null }] }),
     george,
-    { message: "grandes las dos", pending: pendingHaw },
   );
-  assert(grandes.cart.length === 1 && grandes.cart[0]?.productId === hawG.id && grandes.cart[0]?.qty === 2, "«grandes las dos» no se quedó en la hawaiana");
-  const deRes = checkAiOutput(emptyAi(), central, {
-    message: "de res",
-    pending: { ...pendingBistec, qty: 1, sourceText: "un kilo de bistec" },
-  });
-  assert(deRes.cart.some((line) => line.productId === bistecRes.id && line.qty === 1 && line.unit === "kg"), "«de res» dejó el carrito vacío");
-
-  const guessed = checkAiOutput(
-    emptyAi({
-      cart: [{ product_id: polloC.id, qty: 1, unit: "pz", variant: null }],
-      question: { text: "¿Chica o grande?", candidate_ids: [polloC.id, polloG.id] },
-    }),
-    george,
-    { message: "una hamburguesa de pollo" },
-  );
-  assert(guessed.cart.length === 0 && guessed.question != null, "la línea adivinada se quedó mientras se preguntaba");
-
-  const wholeMenu = checkAiOutput(
-    emptyAi({ cart: central.rows.slice(0, 10).map((row) => ({ product_id: row.id, qty: 1, unit: row.unit, variant: null })) }),
-    central,
-    {
-      message: "una de cada una",
-      pending: {
-        sourceText: "dos salsas",
-        candidateIds: [salsaBbq.id, salsaHot.id],
-        qty: 2,
-        unit: "pz",
-        variant: null,
-        family: null,
-        question: "¿Cuál salsa?",
-        count: 1,
-      },
-    },
-  );
-  assert(wholeMenu.cart.length === 2 && wholeMenu.cart.every((line) => line.productId === salsaBbq.id || line.productId === salsaHot.id), "«una de cada una» agregó el menú completo");
+  assert(fractionKept.cart.length === 1 && fractionKept.cart[0]?.productId === burger.id, "una pieza fraccionaria se llevó la línea válida");
+  assert(fractionKept.errors.some((error) => error.includes("entero")), "una cantidad fraccionaria de piezas pasó");
 
   const offAndValid = checkAiOutput(
     emptyAi({
       cart: [{ product_id: bistecPuerco.id, qty: 1, unit: "kg", variant: null }],
-      question: { text: "¿El pollo es de esta tienda?", candidate_ids: [] },
+      pending: [{ text: "¿El pollo es de esta tienda?", candidate_ids: [], qty: 1, unit: "pz", source_text: "pollo entero" }],
       not_on_menu: ["pollo entero"],
     }),
     central,
-    { message: "un pollo entero y un kilo de bistec de puerco" },
   );
-  assert(offAndValid.cart.some((line) => line.productId === bistecPuerco.id), "el pollo entero se llevó el bistec");
-  assert(offAndValid.notOnMenu.includes("pollo entero") && offAndValid.question == null, "el pollo entero se volvió pregunta");
+  assert(offAndValid.cart.some((line) => line.productId === bistecPuerco.id), "lo de fuera del menú se llevó el bistec");
+  assert(offAndValid.notOnMenu.includes("pollo entero") && offAndValid.pending.length === 1, "se confirmó con una línea pendiente");
+
+  const openPending = checkAiOutput(
+    emptyAi({
+      cart: [{ product_id: burger.id, qty: 1, unit: "pz", variant: null }],
+      pending: [{ text: "¿Cuál dogo?", candidate_ids: [cubanaC.id], qty: 1, unit: "pz", source_text: "un dogo" }],
+      confirmed: true,
+    }),
+    george,
+  );
+  assert(openPending.cart[0]?.productId === burger.id && openPending.pending.length === 1, "pending se perdió o se reescribió el carrito");
 
   const previousEngine = process.env.CATALOG_ENGINE;
   process.env.CATALOG_ENGINE = "v1";
@@ -512,8 +352,8 @@ async function offline(): Promise<void> {
       model: stuck,
     });
   }).then((kept) => {
-    assert(kept.fallback === false && kept.cart.length === 1 && kept.cart[0]?.qty === 1, "al fallar dos veces no se conservó el carrito");
-    assert(!kept.reply.includes("palabras sencillas"), "una línea inválida borró el carrito que sí estaba");
+    assert(kept.fallback === false && kept.cart.length === 1 && kept.cart[0]?.qty === 1, "al fallar dos veces no se conservó el carrito anterior");
+    assert(kept.reply.includes("palabras sencillas"), "sin una línea válida no se pidió repetir");
     const nothing = scripted([
       emptyAi({ cart: [{ product_id: 999999, qty: 1, unit: "pz", variant: null }] }),
       emptyAi({ cart: [{ product_id: 999999, qty: 1, unit: "pz", variant: null }] }),
@@ -558,7 +398,79 @@ async function offline(): Promise<void> {
     }).then((confirmed) => {
       assert(!called && confirmed.confirmedList && confirmed.cart[0]?.qty === 1 && confirmed.reply === "", "un sí limpio movió el carrito o llamó al modelo");
 
+      let pendingCalls = 0;
+      const pendingNosy: CatalogModel = {
+        name: "script",
+        async interpret() {
+          pendingCalls += 1;
+          return emptyAi({ confirmed: true });
+        },
+      };
+      const openAsk: PendingCatalogAsk = {
+        sourceText: "un dogo",
+        candidateIds: [burger.id],
+        qty: 1,
+        unit: "pz",
+        variant: null,
+        family: burger.family,
+        question: "¿Cuál dogo?",
+        count: 1,
+      };
       return runCatalogOrderTurn({
+        message: "así está bien",
+        cart: prior,
+        pending: openAsk,
+        history: [],
+        catalog: george,
+        awaitingList: true,
+        model: pendingNosy,
+      }).then((held) => {
+        assert(pendingCalls === 0, "un sí con pregunta abierta llamó al modelo");
+        assert(!held.confirmedList && held.reply.includes("¿Cuál dogo?"), "un sí con pregunta abierta confirmó o no volvió a preguntar");
+        assert(held.cart.length === 1 && held.cart[0]?.qty === 1 && held.cart[0]?.productId === burger.id, "un sí con pregunta abierta movió el carrito");
+
+        let partialCalls = 0;
+        const partial: CatalogModel = {
+          name: "script",
+          async interpret() {
+            partialCalls += 1;
+            return emptyAi({
+              cart: [
+                { product_id: burger.id, qty: 1, unit: "pz", variant: null },
+                { product_id: 999999, qty: 1, unit: "pz", variant: null },
+              ],
+            });
+          },
+        };
+        return runCatalogOrderTurn({
+          message: "una hamburguesa y algo raro",
+          cart: [],
+          pending: null,
+          history: [],
+          catalog: george,
+          model: partial,
+        }).then((keptLine) => {
+          assert(partialCalls === 1 && keptLine.fallback === false, "una línea mala reintentó o usó el respaldo");
+          assert(keptLine.cart.length === 1 && keptLine.cart[0]?.productId === burger.id, "una línea mala se llevó la buena");
+          assert(!keptLine.reply.includes("palabras sencillas"), "una línea válida pidió repetir");
+          return keptLine;
+        });
+      }).then(() => runCatalogOrderTurn({
+        message: "ya sería todo",
+        cart: prior,
+        pending: null,
+        history: [],
+        catalog: george,
+        awaitingList: true,
+        model: scripted([emptyAi({
+          cart: [{ product_id: burger.id, qty: 1, unit: "pz", variant: null }],
+          pending: [{ text: "¿Cuál dogo?", candidate_ids: [burger.id], qty: 1, unit: "pz", source_text: "un dogo" }],
+          confirmed: true,
+        })]),
+      })).then((blocked) => {
+        assert(!blocked.confirmedList && blocked.reply.includes("¿Cuál dogo?") && blocked.cart[0]?.productId === burger.id, "se confirmó con pending");
+
+        return runCatalogOrderTurn({
         message: "una pizza",
         cart: [],
         pending: null,
@@ -629,6 +541,7 @@ async function offline(): Promise<void> {
   }).then((emptyConfirm) => {
     assert(!emptyConfirm.confirmedList, "un carrito vacío se confirmó");
     console.log("offline: ok");
+  });
   });
 }
 

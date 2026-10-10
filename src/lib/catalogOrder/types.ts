@@ -54,6 +54,14 @@ export type PendingCatalogAsk = {
   family: string | null;
   question: string;
   count: number;
+  /** Otras líneas sin resolver, además de esta pregunta. */
+  queue?: Array<{
+    sourceText: string;
+    candidateIds: number[];
+    qty: number;
+    unit: SellUnit;
+    question: string;
+  }>;
 };
 
 export type Unmatched = {
@@ -102,7 +110,7 @@ export type AiCartLine = {
   variant: string | null;
 };
 
-export type AiQuestion = {
+export type AiPendingLine = {
   text: string;
   candidate_ids: number[];
   /** Cantidad de lo que se está preguntando. Null si el modelo no la mandó. */
@@ -112,16 +120,17 @@ export type AiQuestion = {
   source_text?: string | null;
 };
 
+/** @deprecated El modelo nuevo manda `pending`. Se acepta para grabaciones y pruebas viejas. */
+export type AiQuestion = AiPendingLine;
+
 /** El modelo devuelve el carrito completo. No es un delta. */
 export type AiOutput = {
   cart: AiCartLine[];
-  question: AiQuestion | null;
+  /** Líneas que todavía no se pueden anotar. Vacío cuando el pedido se puede confirmar. */
+  pending?: AiPendingLine[];
+  question?: AiQuestion | null;
   not_on_menu: string[];
   confirmed: boolean;
-  /** Ids que el cliente sí pidió quitar. Si no viene, se trata como vacío. */
-  removed_ids?: number[];
-  /** Ids que este mensaje tocó. Si no viene, se trata como vacío. */
-  changed_ids?: number[];
 };
 
 export type InterpretRequest = {

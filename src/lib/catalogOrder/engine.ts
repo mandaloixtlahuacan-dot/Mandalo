@@ -1,4 +1,4 @@
-import { checkAiOutput, type CheckResult } from "@/lib/catalogOrder/accept";
+import { checkAiOutput, type AcceptedQuestion, type CheckResult } from "@/lib/catalogOrder/accept";
 import { cartFromModel, fallbackInterpret } from "@/lib/catalogOrder/fallback";
 import { createOpenAICatalogModel } from "@/lib/catalogOrder/parser";
 import { buildAiReply, buildCatalogReply } from "@/lib/catalogOrder/reply";
@@ -91,17 +91,7 @@ function messageConfirms(message: string): boolean {
 }
 
 function useful(checked: CheckResult): boolean {
-  return checked.cart.length > 0 || checked.question != null || checked.notOnMenu.length > 0;
-}
-
-function unionCart(base: CartLine[], extra: CartLine[]): CartLine[] {
-  const out = base.map((line) => ({ ...line }));
-  for (const line of extra) {
-    if (!out.some((item) => item.productId === line.productId && item.unit === line.unit && (item.variant ?? null) === (line.variant ?? null))) {
-      out.push({ ...line });
-    }
-  }
-  return out;
+  return checked.cart.length > 0 || checked.pending.length > 0 || checked.notOnMenu.length > 0;
 }
 
 function keepPrevious(input: CatalogTurnInput, started: number, modelName: string): CatalogTurnResult {
@@ -110,6 +100,47 @@ function keepPrevious(input: CatalogTurnInput, started: number, modelName: strin
     pending: input.pending,
     reply: REPEAT,
     intent: "other",
+    fallback: false,
+    model: modelName,
+    ms: 0,
+    unmatched: [],
+    freeText: [],
+    confirmedList: false,
+  });
+}
+
+function reaskPending(input: CatalogTurnInput, started: number, modelName: string): CatalogTurnResult {
+  const pending = input.pending;
+  const question: AcceptedQuestion | null = pending
+    ? {
+        text: pending.question,
+        candidateIds: pending.candidateIds,
+        qty: pending.qty,
+        unit: pending.unit,
+        sourceText: pending.sourceText,
+      }
+    : null;
+  const spoken = buildAiReply({
+    catalog: input.catalog,
+    cart: input.cart,
+    notOnMenu: [],
+    question,
+    pending,
+    pendingQueue: (pending?.queue ?? []).map((item) => ({
+      text: item.question,
+      candidateIds: item.candidateIds,
+      qty: item.qty,
+      unit: item.unit,
+      sourceText: item.sourceText,
+    })),
+    message: input.message,
+    confirmedList: false,
+  });
+  return finish(started, {
+    cart: input.cart.map((line) => ({ ...line })),
+    pending: spoken.pending,
+    reply: spoken.reply,
+    intent: "question",
     fallback: false,
     model: modelName,
     ms: 0,
@@ -141,6 +172,7 @@ async function runAiTurn(input: CatalogTurnInput): Promise<CatalogTurnResult> {
   const modelName = model?.name ?? "fallback";
 
   if (input.awaitingList && classifyProductListReply(input.message) === "confirm") {
+    if (input.pending) return reaskPending(input, started, modelName);
     return confirmPrevious(input, started, modelName);
   }
 
@@ -154,9 +186,8 @@ async function runAiTurn(input: CatalogTurnInput): Promise<CatalogTurnResult> {
   }
   if (!output) return fromFallback(input, started, "fallback");
 
-  const ctx = { prior: input.cart, message: input.message, pending: input.pending };
-  let checked = checkAiOutput(output, input.catalog, ctx);
-  if (checked.errors.length) {
+  let checked = checkAiOutput(output, input.catalog);
+  if (checked.errors.length && !useful(checked)) {
     let repaired: AiOutput | null = null;
     try {
       repaired = await model.interpret(requestOf(input, checked.errors));
@@ -164,8 +195,8 @@ async function runAiTurn(input: CatalogTurnInput): Promise<CatalogTurnResult> {
       repaired = null;
     }
     if (!repaired) return fromFallback(input, started, "fallback");
-    const second = checkAiOutput(repaired, input.catalog, { ...ctx, prior: unionCart(input.cart, checked.cart) });
-    if (second.errors.length < checked.errors.length || !useful(checked)) {
+    const second = checkAiOutput(repaired, input.catalog);
+    if (useful(second) || second.errors.length < checked.errors.length) {
       output = repaired;
       checked = second;
     }
@@ -175,7 +206,7 @@ async function runAiTurn(input: CatalogTurnInput): Promise<CatalogTurnResult> {
   const question = checked.question;
   const notOnMenu = checked.notOnMenu;
   const confirmedList = input.awaitingList === true
-    && !question
+    && checked.pending.length === 0
     && checked.cart.length > 0
     && output.confirmed === true
     && sameCart(checked.cart, input.cart)
@@ -186,6 +217,7 @@ async function runAiTurn(input: CatalogTurnInput): Promise<CatalogTurnResult> {
     notOnMenu,
     question,
     pending: input.pending,
+    pendingQueue: checked.pending.slice(1),
     message: input.message,
     confirmedList,
   });

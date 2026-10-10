@@ -262,6 +262,7 @@ export function buildAiReply(params: {
   notOnMenu: string[];
   question: { text: string; candidateIds: number[]; qty?: number | null; unit?: SellUnit | null; sourceText?: string | null } | null;
   pending: PendingCatalogAsk | null;
+  pendingQueue?: Array<{ text: string; candidateIds: number[]; qty?: number | null; unit?: SellUnit | null; sourceText?: string | null }>;
   message?: string;
   confirmedList: boolean;
 }): { reply: string; pending: PendingCatalogAsk | null } {
@@ -298,6 +299,17 @@ export function buildAiReply(params: {
       ?? (same ? params.pending?.unit : null)
       ?? (parsed.unit === "kg" || parsed.unit === "pesos" ? parsed.unit : null)
       ?? (catalog.profile === "carniceria" ? "kg" : "pz");
+    const queue = (params.pendingQueue ?? []).filter((item) => item.text.trim()).map((item) => {
+      const itemQty = item.qty != null && item.qty > 0 ? item.qty : qty;
+      const itemUnit: SellUnit = item.unit ?? unit;
+      return {
+        sourceText: item.sourceText?.trim() || sourceText,
+        candidateIds: item.candidateIds,
+        qty: itemQty,
+        unit: itemUnit,
+        question: item.text,
+      };
+    });
     const pending: PendingCatalogAsk = {
       sourceText,
       candidateIds: question.candidateIds,
@@ -307,6 +319,7 @@ export function buildAiReply(params: {
       family: sharedFamily(catalog, question.candidateIds),
       question: question.text,
       count,
+      queue,
     };
     return { reply: [...notes, prose].filter(Boolean).join("\n\n"), pending };
   }
