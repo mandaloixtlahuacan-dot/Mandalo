@@ -20,7 +20,7 @@ Sistema de delivery automatizado por WhatsApp para **Ixtlahuacán del Río**. Un
 
 ## 3. Stack tecnológico
 
-- **NLP:** OpenAI GPT-4-turbo, fallback GPT-3.5-turbo
+- **NLP:** OpenAI GPT-4.1-mini, fallback GPT-4o-mini
 - **Canal:** WhatsApp vía Whapi.cloud (+52 33 1169 2798)
 - **Base de datos:** Supabase (única fuente de verdad)
 - **Hosting:** Vercel, plan Hobby → **arquitectura event-driven** (sin cron jobs frecuentes), workers reactivos activados por Webhooks de Supabase
