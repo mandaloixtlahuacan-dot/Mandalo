@@ -11,7 +11,11 @@
 > `supabase/data-fixes/20261015_repartidores_mateo_roberto.sql`.
 > Ninguno se aplicó. Hay que correrlos antes de desplegar: sin
 > `horario_json` el despacho no encuentra repartidor y cancela con el
-> aviso al admin. No se borra ninguna fila.
+> aviso al admin. No se borra ninguna fila. Hueco ya existente, fuera
+> de este cambio: el recordatorio y la cancelación de timeout usan la
+> misma llave de outbox para cliente y tienda, así que el aviso a la
+> tienda de esa cancelación no se encola. El aviso a cada repartidor
+> sí lleva su propia llave.
 > Actualización anterior: 15 de octubre de 2026. El cron de timeouts fallaba
 > al reclamar el outbox (`PGRST203`): en la base hay dos funciones
 > `claim_admin_notificaciones_batch` y el worker no mandaba `p_pedido_id`
