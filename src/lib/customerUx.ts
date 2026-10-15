@@ -352,7 +352,7 @@ export function formatNicheSwitchList(niche: StoreNiche, stores: UxStore[]): str
 
 export const ABARROTES_PRODUCT_REQUEST =
   "Mándame cada producto por separado, con marca, tamaño y cuántos.\n\n" +
-  "*Ejemplo:*\n\n" +
+  "_Solo es un ejemplo, no está en tu pedido:_\n\n" +
   joinBlocks([
     formatCheckedLine("2 Coca-Cola de 600 ml"),
     formatCheckedLine("1 Pinol de 1 litro"),

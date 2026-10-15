@@ -36,6 +36,25 @@ export function resetOutboundGuard(): void {
   sentByPhone.clear();
 }
 
+function foldBody(body: string): string {
+  return String(body ?? "")
+    .replace(/[*_~]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+/** El texto entero es uno que este proceso ya mandó a ese número. Un "ok" o un "sí" no cuentan. */
+export function wasRecentlySent(to: string, body: string, now = Date.now()): boolean {
+  const folded = foldBody(body);
+  if (folded.length < 12) return false;
+  return load(phoneKey(to), now).some((item) => foldBody(item.body) === folded);
+}
+
+export function outboundSendsLeft(to: string, now = Date.now()): number {
+  return Math.max(0, OUTBOUND_MAX_PER_MINUTE - load(phoneKey(to), now).length);
+}
+
 export function outboundDecision(to: string, body: string, now = Date.now()): OutboundVerdict {
   const history = load(phoneKey(to), now);
   const text = String(body ?? "");

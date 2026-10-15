@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getChatCompletion, getOpenAIModel } from "@/lib/openaiClient";
 import { buildMandaloSystemPrompt } from "@/lib/mandaloPrompt";
 import { normalizeWhatsAppText, waapiSendImage, waapiSendText } from "@/lib/waapi";
+import { outboundSendsLeft } from "@/lib/outboundGuard";
 import { detectActorByPhone, ensureMxWhatsappIntl, normalizePhone } from "@/lib/roles";
 import { priceCatalogOrder, type CatalogPriceRow } from "@/lib/catalogQuantities";
 import {
@@ -82,7 +83,7 @@ import {
   mensajeTiendaProductoNoEncontrado,
 } from "@/lib/ordenes";
 import { canTransition, isTerminalState, type OrderState } from "@/lib/orderStateMachine";
-import { planStoreFreeText, shouldRestartOnGreeting, buildingIdleMs } from "@/lib/reliability";
+import { classifyRoleChatter, planStoreFreeText, shouldRestartOnGreeting, buildingIdleMs } from "@/lib/reliability";
 import { confirmationCustomerMessage, planConfirmationAmendment, renderPedidoSummary } from "@/lib/confirmationAmendment";
 import {
   extractCoordsFromUbicacion,
@@ -2836,6 +2837,13 @@ async function handleClienteMessage(
     return { ok: true, role: "cliente", accion: "rechazado_fuera_de_zona" };
   }
 
+  // Un número que ya recibió el tope de este minuto no vuelve a disparar
+  // el modelo ni otra repregunta. La tienda y el repartidor no pasan por aquí.
+  if (outboundSendsLeft(telefono) === 0) {
+    console.warn("[outbound-guard] sin cupo para este número; no sigo el mensaje", { to: telefono });
+    return { ok: true, role: "cliente", ignored: "RATE" };
+  }
+
   let openPedido = await pedidoRepositoryV2.getOpenPedidoByCustomerPhone(telefono).catch((e: unknown) => {
     console.error("[mandalo] getOpenPedidoByCustomerPhone falló", { message: getErrorMessage(e) });
     return null;
@@ -3476,6 +3484,12 @@ async function handleTiendaAcuse(telefono: string, tiendaId: number, ordenId: nu
 }
 
 async function handleTiendaMessage(telefono: string, mensaje: string, tiendaId: number): Promise<JsonObject> {
+  const chatter = classifyRoleChatter(String(mensaje));
+  if (chatter !== "message") {
+    console.log("[mandalo] tienda: no contesto un eco ni un acuse suelto", { chatter });
+    return { ok: true, role: "tienda", ignored: chatter === "echo" ? "ECHO" : "ACK" };
+  }
+
   const acuse = extraerAcuseOk(String(mensaje));
   if (acuse) return handleTiendaAcuse(telefono, tiendaId, acuse);
 
@@ -3493,6 +3507,9 @@ async function handleTiendaMessage(telefono: string, mensaje: string, tiendaId: 
       return [] as number[];
     });
     const plan = planStoreFreeText({ text: String(mensaje), openOrderIds: openIds });
+    if (plan.action === "ignore") {
+      return { ok: true, role: "tienda", ignored: "ECHO" };
+    }
     if (plan.action === "guide") {
       await sendWhatsApp(telefono, plan.body);
       return { ok: true, role: "tienda", accion: "guia_formato" };
@@ -3535,6 +3552,11 @@ async function handleTiendaMessage(telefono: string, mensaje: string, tiendaId: 
 
 async function handleRepartidorMessage(telefono: string, mensaje: string): Promise<JsonObject> {
   const text = String(mensaje ?? "");
+  const chatter = classifyRoleChatter(text);
+  if (chatter !== "message") {
+    console.log("[mandalo] repartidor: no contesto un eco ni un acuse suelto", { chatter });
+    return { ok: true, role: "repartidor", ignored: chatter === "echo" ? "ECHO" : "ACK" };
+  }
   const parseResult = await courierCommandParser.handleIncomingCommand({ senderPhone: telefono, text });
 
   if (!parseResult.ok) {

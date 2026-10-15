@@ -715,7 +715,7 @@ async function main(): Promise<void> {
 
   assert(scenarios.length === 345, "siguen los 345 escenarios");
   assert(greeting.includes("¿De dónde quieres?"), "el menú de categorías sigue igual");
-  assert(pekesWelcome.includes("Ejemplo") && georgeWelcome.includes("Te paso el menú"), "los avisos de tienda siguen igual");
+  assert(pekesWelcome.includes("Solo es un ejemplo") && georgeWelcome.includes("Te paso el menú"), "los avisos de tienda siguen igual");
 
   console.log(`Matriz del flujo: ${scenarios.length} escenarios.`);
   console.log(`Antes se salían y ahora quedan en el flujo: ${fixed.length}.`);

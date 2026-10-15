@@ -3,6 +3,7 @@
  * Correr: npx tsx scripts/check-business-hours.ts
  */
 import {
+  checkMandaloSchedule,
   checkTiendaSchedule,
   describeHorarioTienda,
   weekdayInMandalo,
@@ -92,5 +93,44 @@ assert(
     sabadoConDomingoDistinto.abreTexto === "abre mañana a las 9am",
   "la próxima apertura usa la hora del día que sigue, no la del horario base",
 );
+
+const pekes = {
+  horaApertura: "07:30",
+  horaCierre: "21:00",
+  horarioPorDia: {
+    "0": { abre: "09:00", cierra: "15:00" },
+    "1": { abre: "07:30", cierra: "21:00" },
+    "2": { abre: "07:30", cierra: "21:00" },
+    "3": { abre: "07:30", cierra: "21:00" },
+    "4": { abre: "07:30", cierra: "21:00" },
+    "5": { abre: "07:30", cierra: "21:00" },
+    "6": { abre: "08:00", cierra: "21:00" },
+  },
+};
+const lunesTemprano = new Date("2026-10-12T13:00:00Z");
+const lunesAbre = new Date("2026-10-12T13:30:00Z");
+const lunesNoche = new Date("2026-10-13T02:59:00Z");
+const lunesCierra = new Date("2026-10-13T03:00:00Z");
+assert(weekdayInMandalo(lunesTemprano) === 1, "07:00 del lunes 12 oct 2026 es lunes");
+assert(!checkTiendaSchedule({ ...pekes, now: lunesTemprano }).withinSchedule, "Peke's lunes a las 7:00 está cerrado");
+assert(checkTiendaSchedule({ ...pekes, now: lunesAbre }).withinSchedule, "Peke's lunes a las 7:30 está abierto");
+assert(checkTiendaSchedule({ ...pekes, now: lunesNoche }).withinSchedule, "Peke's lunes a las 20:59 sigue abierto");
+assert(!checkTiendaSchedule({ ...pekes, now: lunesCierra }).withinSchedule, "Peke's lunes a las 21:00 ya cerró");
+const sabadoAntes = new Date("2026-10-10T13:59:00Z");
+const sabadoAbre = new Date("2026-10-10T14:00:00Z");
+assert(!checkTiendaSchedule({ ...pekes, now: sabadoAntes }).withinSchedule, "Peke's sábado a las 7:59 está cerrado");
+assert(checkTiendaSchedule({ ...pekes, now: sabadoAbre }).withinSchedule, "Peke's sábado a las 8:00 está abierto");
+const domingoAntes = new Date("2026-10-11T14:59:00Z");
+const domingoAbre = new Date("2026-10-11T15:00:00Z");
+const domingoPekeCierra = new Date("2026-10-11T21:00:00Z");
+assert(!checkTiendaSchedule({ ...pekes, now: domingoAntes }).withinSchedule, "Peke's domingo a las 8:59 está cerrado");
+assert(checkTiendaSchedule({ ...pekes, now: domingoAbre }).withinSchedule, "Peke's domingo a las 9:00 está abierto");
+assert(!checkTiendaSchedule({ ...pekes, now: domingoPekeCierra }).withinSchedule, "Peke's domingo a las 15:00 ya cerró");
+
+assert(!checkMandaloSchedule(lunesTemprano).withinSchedule, "Mándalo a las 7:00 todavía no reparte");
+assert(!checkMandaloSchedule(lunesAbre).withinSchedule, "Mándalo a las 7:30 todavía no reparte; abre a las 8:00");
+assert(checkMandaloSchedule(new Date("2026-10-12T14:00:00Z")).withinSchedule, "Mándalo a las 8:00 reparte");
+assert(checkMandaloSchedule(lunesNoche).withinSchedule, "Mándalo a las 20:59 todavía reparte");
+assert(!checkMandaloSchedule(lunesCierra).withinSchedule, "Mándalo a las 21:00 ya no reparte");
 
 console.log("check-business-hours: ok");

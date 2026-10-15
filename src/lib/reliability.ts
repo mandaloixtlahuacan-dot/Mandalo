@@ -44,15 +44,81 @@ export function priceConfirmTimeoutApplies(metadata: Record<string, unknown> | n
 
 export type StoreFreeTextPlan =
   | { action: "price"; pedidoId: number; amount: number }
-  | { action: "guide"; body: string };
+  | { action: "guide"; body: string }
+  | { action: "ignore" };
+
+function foldEcho(text: string): string {
+  return String(text ?? "")
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/[*_~]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
 
 /**
  * Texto libre de la tienda. Un precio se acepta solo si no hay duda de cuál
  * pedido es: el parser ya sacó el monto y hay un solo pedido esperando, o el
  * mensaje completo es un número y hay un solo pedido. Si no, se guía.
  */
+/** El aviso que nosotros mandamos trae el ejemplo y el comando de faltante juntos. No es una cotización. */
+export function isBotInstructionPaste(text: string): boolean {
+  const folded = foldEcho(text);
+  if (folded.includes("asi me contestas")) return true;
+  if (folded.includes("nombre del producto") && /no_?disponible/.test(folded)) return true;
+  if (folded.includes("responde asi") && /precio\s+150\b/.test(folded) && /no_?disponible/.test(folded)) return true;
+  if (folded.includes("comando invalido")) return true;
+  const commands = ["#confirmo", "#recogi", "#entregado"].filter((token) => folded.includes(token));
+  return commands.length >= 2;
+}
+
+const OWN_COPY_SNIPPETS = [
+  "soy mandalo, tu mandadero",
+  "solo es un ejemplo, no esta en tu pedido",
+  "tuve un problema procesando tu mensaje",
+  "esa ubicacion en tiempo real no la manejamos",
+  "por ahora solo podemos atender mensajes de texto",
+  "de cual te hago el mandado",
+  "cual categoria te late",
+  "cual te encargo",
+  "gracias por tu compra y por confiar en nosotros",
+];
+
+/** Copia de un texto que este bot manda. Vale en cualquier proceso, sin memoria. */
+export function isOwnOutboundCopy(text: string): boolean {
+  if (isBotInstructionPaste(text)) return true;
+  const folded = foldEcho(text);
+  if (folded.length < 12) return false;
+  if (OWN_COPY_SNIPPETS.some((snippet) => folded.includes(snippet))) return true;
+  if (folded.includes("envio y servicio") && folded.includes("confirmas tu pedido")) return true;
+  if (folded.includes("tienes un nuevo pedido") && folded.includes("#confirmo")) return true;
+  return false;
+}
+
+const ACK_WORD =
+  /^(ok|okey|okay|si|sip|recibido|recibi|gracias|listo|va|sale|enterado|acuerdo|perfecto|bueno|hola|buen|dia|dias|buenos|buenas|tarde|tardes|noche|noches|de|👍|✅)$/u;
+
+/** "ok" o "recibido" de la tienda o del repartidor. No trae pedido ni precio. */
+export function isBareAck(text: string): boolean {
+  const folded = foldEcho(text)
+    .replace(/[^\p{L}\p{N}\s👍✅]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!folded || folded.length > 40 || /\d/.test(folded)) return false;
+  const words = folded.split(" ");
+  return words.length > 0 && words.length <= 4 && words.every((word) => ACK_WORD.test(word));
+}
+
+export function classifyRoleChatter(text: string): "echo" | "ack" | "message" {
+  if (isOwnOutboundCopy(text)) return "echo";
+  if (isBareAck(text)) return "ack";
+  return "message";
+}
+
 export function planStoreFreeText(params: { text: string; openOrderIds: number[] }): StoreFreeTextPlan {
   const ids = [...new Set(params.openOrderIds.filter((id) => Number.isInteger(id) && id > 0))];
+  if (isBotInstructionPaste(params.text)) return { action: "ignore" };
   const fromCommand = extraerPrecio(params.text);
   const ordenId = extraerOrdenId(params.text);
   if (fromCommand != null && fromCommand > 0) {

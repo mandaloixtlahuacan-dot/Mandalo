@@ -2,7 +2,16 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 15 de octubre de 2026. El PR #43, ya en `main`,
+> Última actualización: 15 de octubre de 2026. Auditoría previa al
+> deploy, en el mismo borrador del PR #44, sin merge y sin deploy.
+> Un eco del aviso a la tienda (trae `PRECIO 150` y `NO_DISPONIBLE
+> nombre del producto`) ya no se cotiza ni se marca como faltante.
+> Lo mismo un eco de la oferta al repartidor. «ok» o «recibido» de
+> tienda o repartidor no reciben otra guía. El cliente que reenvía un
+> texto nuestro (saludo, ejemplo, error, ubicación en tiempo real) no
+> se vuelve a procesar, aunque el proceso no tenga memoria del envío.
+> Prueba offline: `scripts/check-outbound-loops.ts`.
+> Actualización anterior: 15 de octubre de 2026. El PR #43, ya en `main`,
 > contestaba los eventos `system`/`unknown` de Whapi (sin texto y sin
 > adjunto) como si fueran un archivo. Cada respuesta generaba otro
 > evento igual y el bot se quedaba en bucle. Producción se regresó al

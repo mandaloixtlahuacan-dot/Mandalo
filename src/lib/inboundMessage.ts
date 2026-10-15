@@ -14,6 +14,9 @@ export const LIVE_LOCATION_REPLY =
 
 export const GPS_PLACEHOLDER = "📍 (Cliente compartió su ubicación GPS)";
 
+export const WEBHOOK_PROCESS_ERROR_REPLY =
+  "⚠️ Tuve un problema procesando tu mensaje. Intenta escribirlo de nuevo en un momento — si sigue sin funcionar, ya le avisé a nuestro equipo. 🙏";
+
 export type UnsupportedMedia = "sticker" | "image" | "audio" | "video" | "document" | "contact" | "unsupported";
 
 export type ClassifiedInbound =
@@ -52,15 +55,49 @@ function isFromMe(payload: unknown): boolean {
   return [body.fromMe, body.from_me, message.fromMe, message.from_me, message.isFromMe].some((value) => value === true);
 }
 
-function isStatusEvent(payload: unknown): boolean {
+function eventLabel(payload: unknown): string {
   const body = asRecord(payload);
-  const event = String(body.event ?? "").toLowerCase();
-  if (["statuses", "status", "ack", "acks", "presence", "presences", "calls", "chats", "groups", "users", "labels", "channel"].includes(event)) {
-    return true;
-  }
+  const data = asRecord(body.data);
+  const event = body.event ?? data.event;
+  if (typeof event === "string") return event.toLowerCase();
+  const record = asRecord(event);
+  return `${String(record.type ?? "")} ${String(record.event ?? "")}`.trim().toLowerCase();
+}
+
+function isStatusEvent(payload: unknown): boolean {
+  const label = eventLabel(payload);
+  const names = ["statuses", "status", "ack", "acks", "presence", "presences", "calls", "chats", "groups", "users", "labels", "channel", "receipts", "receipt"];
+  if (names.some((name) => label === name || label.startsWith(`${name} `) || label.endsWith(` ${name}`))) return true;
+  const body = asRecord(payload);
   const message = messageObject(payload);
   const hasMessage = Object.keys(message).length > 0 || typeof body.text === "string" || typeof body.body === "string";
-  return Array.isArray(body.statuses) && !hasMessage;
+  return (Array.isArray(body.statuses) || Array.isArray(body.acks)) && !hasMessage;
+}
+
+function collectIds(payload: unknown): string[] {
+  const body = asRecord(payload);
+  const data = asRecord(body.data);
+  const message = messageObject(payload);
+  return [body.chatId, body.chat_id, body.from, body.to, data.chatId, data.chat_id, data.from, message.chatId, message.chat_id, message.from, message.to, message.sender, message.author].filter(
+    (value): value is string => typeof value === "string" && value.trim() !== "",
+  );
+}
+
+function isNonDirectChat(payload: unknown): boolean {
+  return collectIds(payload).some((id) => {
+    const lower = id.trim().toLowerCase();
+    return lower.includes("@g.us") || lower.includes("@broadcast") || lower.includes("@newsletter");
+  });
+}
+
+function isEditOrDelete(payload: unknown): boolean {
+  const message = messageObject(payload);
+  const type = messageType(payload);
+  if (["edit", "edited", "message_edit", "revoke", "revoked", "delete", "deleted"].includes(type)) return true;
+  if (message.edited === true || message.is_edited === true || message.isEdit === true) return true;
+  const protocol = asRecord(message.protocol);
+  const subtype = String(message.subtype ?? protocol.type ?? "").toLowerCase();
+  return ["message_edit", "edit", "revoke", "revoked", "delete", "deleted"].includes(subtype);
 }
 
 function firstString(values: unknown[]): string | null {
@@ -160,11 +197,30 @@ const NON_MESSAGE_TYPES = new Set([
   "unknown",
   "system",
   "revoked",
+  "revoke",
   "e2e_notification",
   "call_log",
+  "call",
+  "voice_call",
+  "video_call",
   "reaction",
   "action",
   "notification",
+  "receipt",
+  "receipts",
+  "ack",
+  "acks",
+  "edit",
+  "edited",
+  "message_edit",
+  "delete",
+  "deleted",
+  "protocol",
+  "ciphertext",
+  "ephemeral",
+  "group_invite",
+  "newsletter",
+  "broadcast",
 ]);
 
 function messageSource(payload: unknown): string {
@@ -187,6 +243,8 @@ function ignoreNoise(payload: unknown, why: string): ClassifiedInbound {
 export function classifyInbound(payload: unknown): ClassifiedInbound {
   if (isFromMe(payload)) return { kind: "ignore", reason: "from_me" };
   if (isStatusEvent(payload)) return { kind: "ignore", reason: "not_a_message" };
+  if (isNonDirectChat(payload)) return ignoreNoise(payload, "chat_no_directo");
+  if (isEditOrDelete(payload)) return ignoreNoise(payload, "edicion_o_borrado");
 
   const type = messageType(payload);
   if (messageSource(payload) === "system") return ignoreNoise(payload, "source_system");
