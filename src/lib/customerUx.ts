@@ -611,6 +611,56 @@ const GENERIC_RESTAURANT_TOKENS = new Set([
   "carnicerias",
 ]);
 
+// Palabras del nombre que también son un producto o la categoría.
+// "agua" en "Abarrotes Agua Santa" no es la tienda. "George" sí.
+const STORE_TOKEN_NOISE = new Set([
+  ...GENERIC_RESTAURANT_TOKENS,
+  "abarrotes",
+  "abarrote",
+  "agua",
+  "aguas",
+  "mini",
+  "super",
+  "tienda",
+  "tiendas",
+  "tiendita",
+  "santa",
+  "taco",
+  "hot",
+  "dogs",
+  "carnes",
+  "la",
+  "el",
+  "los",
+  "las",
+  "de",
+  "del",
+]);
+
+function escapeStoreToken(token: string): string {
+  return token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function storeNameWords(nombre: string): string[] {
+  return normalizeUxText(nombre).split(" ").filter(Boolean);
+}
+
+function distinctiveStoreTokens(nombre: string): string[] {
+  return storeNameWords(nombre).filter((word) => word.length >= 4 && !STORE_TOKEN_NOISE.has(word));
+}
+
+function storeNamePhrases(nombre: string): string[] {
+  const words = storeNameWords(nombre);
+  const phrases: string[] = [];
+  for (let size = words.length - 1; size >= 2; size -= 1) {
+    for (let index = 0; index <= words.length - size; index += 1) {
+      const phrase = words.slice(index, index + size).join(" ");
+      if (phrase.length >= 6) phrases.push(phrase);
+    }
+  }
+  return phrases;
+}
+
 function messageNamesRestaurant(message: string, store: UxStore): boolean {
   if (!isRestaurantStore(store) && store.usaCatalogoFijo !== true) return false;
   const text = normalizeUxText(message);
@@ -645,8 +695,39 @@ function textMentionsStore(text: string, nombre: string): boolean {
   const needle = normalizeUxText(nombre);
   if (!haystack || !needle) return false;
   if (haystack.includes(needle)) return true;
-  const tokens = needle.split(" ").filter((word) => word.length >= 4);
-  return tokens.some((word) => new RegExp(`(?:^|\\s)${word}(?:\\s|$)`).test(haystack));
+  // "Agua Santa" es el nombre. "agua mineral" no: hace falta la frase, no la palabra suelta.
+  if (storeNamePhrases(nombre).some((phrase) => haystack.includes(phrase))) return true;
+  return distinctiveStoreTokens(nombre).some((word) => new RegExp(`(?:^|\\s)${escapeStoreToken(word)}(?:\\s|$)`).test(haystack));
+}
+
+function customerAsksToChangeStore(message: string, store: UxStore): boolean {
+  const text = normalizeUxText(message);
+  if (!textMentionsStore(text, store.nombre)) return false;
+  if (messageIsStorePickOnly(message, store)) return true;
+  if (/\b(cambia|cambiar|cambiala|cambialo|mejor|otra tienda|pasame)\b/.test(text) || /\ben vez\b/.test(text)) return true;
+  const names = [normalizeUxText(store.nombre), ...storeNamePhrases(store.nombre), ...distinctiveStoreTokens(store.nombre)];
+  return names.some((token) => token.length > 0 && new RegExp(`\\b(en|de|a|para|con)\\s+(la\\s+|el\\s+|los\\s+)?${escapeStoreToken(token)}\\b`).test(text));
+}
+
+/**
+ * Cambio de tienda durante la captura.
+ * Con pedido en curso solo si el cliente lo pide (nombre solo, "en George", "cambia a…").
+ * Una palabra suelta del nombre ("agua") no cuenta.
+ */
+export function storeSwitchFromCapture(params: {
+  message: string;
+  stores: UxStore[];
+  currentStoreId: number | null;
+  orderInProgress: boolean;
+}): UxStore | null {
+  const mentioned = singleStoreMentioned(params.message, params.stores);
+  if (!mentioned) return null;
+  if (params.currentStoreId != null && mentioned.id === params.currentStoreId) return null;
+  const fullName = normalizeUxText(params.message).includes(normalizeUxText(mentioned.nombre));
+  const explicit = customerAsksToChangeStore(params.message, mentioned);
+  if (params.orderInProgress) return explicit ? mentioned : null;
+  if (fullName || explicit) return mentioned;
+  return null;
 }
 
 export function singleStoreMentioned(text: string, stores: UxStore[]): UxStore | null {

@@ -34,6 +34,7 @@ const STOP = new Set([
   "gracias", "serian", "seria", "seran", "hola", "buenas", "bueno", "entonces",
   "nomas", "solo", "pura", "puro", "ejemplo", "esta", "este", "eso", "esa",
   "mas", "muy", "bien", "ok", "va", "dale", "sale", "necesito", "ocupo", "ocupa",
+  "pedi", "pediste", "pedimos", "pedido",
   "hay", "tienes", "tiene", "kilo", "kilos", "kg", "gramo", "gramos", "litro",
   "litros", "ml", "lt", "lts", "mililitro", "mililitros", "pieza", "piezas",
   "pza", "pzas", "paquete", "paquetes", "caja", "cajas", "botella", "botellas",

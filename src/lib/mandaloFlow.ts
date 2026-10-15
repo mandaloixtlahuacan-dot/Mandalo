@@ -16,6 +16,17 @@ import {
   type RawCatalogRow,
 } from "@/lib/catalogOrder";
 import { fold as foldCatalog } from "@/lib/catalogOrder/text";
+import {
+  agentLinesFromCatalogCart,
+  agentLinesFromItems,
+  agentPendingFromCatalog,
+  agentProductsFromCatalog,
+  catalogCartFromAgent,
+  catalogPendingFromAgent,
+  itemsFromAgentLines,
+  orderAgentEnabled,
+  runOrderAgentTurn,
+} from "@/lib/orderAgent";
 import { assembleCapturedItems } from "@/lib/orderGrounding";
 import { formatNameQtyLine, joinBlocks } from "@/lib/messageStyle";
 import { storeKindFromCategoria, type StoreKind } from "@/lib/customerUx";
@@ -59,6 +70,7 @@ import {
   replyClaimsMissingMenu,
   restaurantCatalogStore,
   storeMentionedInMessage,
+  storeSwitchFromCapture,
   type UxStore,
 } from "@/lib/customerUx";
 import {
@@ -2046,6 +2058,162 @@ async function completeFixedCatalogConfirmation(
 }
 
 /** Menú cerrado (George y La Central). CATALOG_ENGINE=legacy no entra. CATALOG_ENGINE=v1 usa el motor anterior. */
+async function runFixedCatalogAgent(params: {
+  telefono: string;
+  mensaje: string;
+  pedidoId: number;
+  tiendaId: number;
+  tiendaNombre: string;
+  profile: "restaurante" | "carniceria";
+  catalog: ReturnType<typeof buildCatalog>;
+  cart: CartLine[];
+  pending: PendingCatalogAsk | null;
+  history: Array<{ role: "user" | "assistant"; text: string }>;
+  awaitingList: boolean;
+}): Promise<{ cart: CartLine[]; pending: PendingCatalogAsk | null; reply: string; confirmedList: boolean }> {
+  const history = params.history.length
+    ? params.history
+    : (await fetchHistorialReciente(params.telefono, 8).catch(() => []))
+        .slice()
+        .reverse()
+        .map((item) => ({
+          role: item.estado === "bot" ? ("assistant" as const) : ("user" as const),
+          text: String(item.texto ?? ""),
+        }))
+        .filter((item) => item.text.trim());
+  const agent = await runOrderAgentTurn({
+    message: params.mensaje,
+    cart: agentLinesFromCatalogCart(params.cart, params.catalog),
+    pending: agentPendingFromCatalog(params.pending),
+    history,
+    store: {
+      id: params.tiendaId,
+      name: params.tiendaNombre,
+      category: params.profile,
+      catalogMode: "fixed",
+    },
+    products: agentProductsFromCatalog(params.catalog),
+    pedidoId: params.pedidoId,
+    awaitingList: params.awaitingList,
+  });
+  return {
+    cart: catalogCartFromAgent(agent.cart),
+    pending: catalogPendingFromAgent(agent.pending),
+    reply: agent.reply,
+    confirmedList: agent.confirmedList,
+  };
+}
+
+async function handleOrderAgentQuoteTurn(
+  telefono: string,
+  mensaje: string,
+  pedido: PedidoV2Record,
+  ubicacionCoords: Coordinates | null,
+): Promise<JsonObject | null> {
+  if (!orderAgentEnabled()) return null;
+  if (pedido.estado !== "seleccion_productos") return null;
+  const full = await pedidoRepositoryV2.getPedidoById(pedido.id).catch(() => null);
+  if (!full?.tienda?.tiendaId || full.tienda.usaCatalogoFijo) return null;
+  const kind = pedido.snapshot_json.storeKind ?? storeKindFromCategoria(null);
+  if (kind !== "abarrotes") return null;
+  const text = String(mensaje ?? "").trim();
+  if (!text) return null;
+
+  const historial = await fetchHistorialReciente(telefono, 8).catch(() => []);
+  const pendingAsk = pedido.snapshot_json.pendingAsk;
+  const agent = await runOrderAgentTurn({
+    message: text,
+    cart: agentLinesFromItems(pedido.snapshot_json.items ?? []),
+    pending: pendingAsk?.question
+      ? {
+          question: pendingAsk.question,
+          candidateIds: pendingAsk.catalog?.candidateIds ?? [],
+          qty: pendingAsk.catalog?.qty ?? null,
+          unit: pendingAsk.catalog?.unit === "kg" || pendingAsk.catalog?.unit === "pesos" ? pendingAsk.catalog.unit : "pz",
+          axis: null,
+        }
+      : null,
+    history: historial
+      .slice()
+      .reverse()
+      .map((item) => ({
+        role: item.estado === "bot" ? ("assistant" as const) : ("user" as const),
+        text: String(item.texto ?? ""),
+      }))
+      .filter((item) => item.text.trim()),
+    store: {
+      id: full.tienda.tiendaId,
+      name: full.tienda.nombre ?? "la tienda",
+      category: "abarrotes",
+      catalogMode: "list",
+    },
+    products: [],
+    search: async (query) => {
+      const rows = await pedidoRepositoryV2.getListaProductosTienda(full.tienda!.tiendaId, query);
+      return rows.map((row) => ({
+        id: row.id,
+        name: row.nombreProducto,
+        price: row.precio,
+        available: true,
+        unit: "pz" as const,
+        variants: [],
+        brand: row.marca,
+        presentation: row.presentacion,
+        alias: row.alias,
+        category: row.categoria,
+      }));
+    },
+    pedidoId: pedido.id,
+    awaitingList: pedido.snapshot_json.flags?.awaitingProductConfirm === true,
+  });
+
+  const items = itemsFromAgentLines(agent.cart);
+  const showedList = agent.reply.includes("¿Están bien estos productos?");
+  const nextSnapshot = {
+    ...pedido.snapshot_json,
+    items,
+    pendingAsk: agent.pending
+      ? {
+          itemKey: "agent",
+          slots: [],
+          question: agent.pending.question,
+          count: 1,
+          mode: "ask" as const,
+          catalog: catalogPendingFromAgent(agent.pending),
+        }
+      : null,
+    flags: {
+      ...(pedido.snapshot_json.flags ?? {}),
+      productosConfirmados: agent.confirmedList,
+      awaitingProductConfirm: showedList,
+      itemsValidated: agent.cart.length > 0 && !agent.pending,
+    },
+  };
+  if (ubicacionCoords) {
+    nextSnapshot.addressText = buildAddressTextFromCoords();
+    nextSnapshot.latitud = ubicacionCoords.latitude;
+    nextSnapshot.longitud = ubicacionCoords.longitude;
+  }
+  await guardarMensajeChat({ telefono, texto: text, estado: "cliente" }).catch(() => {});
+  await pedidoRepositoryV2.updatePedidoSnapshot({
+    pedidoId: pedido.id,
+    estado: "seleccion_productos",
+    snapshot: nextSnapshot,
+    addressText: nextSnapshot.addressText ?? null,
+    latitud: nextSnapshot.latitud ?? null,
+    longitud: nextSnapshot.longitud ?? null,
+    tiendaId: full.tienda.tiendaId,
+  });
+  await pedidoRepositoryV2.replacePedidoItems({ pedidoId: pedido.id, items });
+  if (agent.confirmedList) {
+    return handleAwaitingProductList(telefono, mensaje, { ...pedido, snapshot_json: nextSnapshot }, ubicacionCoords);
+  }
+  const msg = agent.reply.trim() || "Dime qué se te antoja, con marca y tamaño si lo tienes.";
+  await sendWhatsApp(telefono, msg);
+  await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+  return { ok: true, role: "cliente", accion: "order_agent", pedidoId: pedido.id };
+}
+
 async function handleFixedCatalogTurn(
   telefono: string,
   mensaje: string,
@@ -2150,14 +2318,29 @@ async function handleFixedCatalogTurn(
     );
   }
 
-  const result = await runCatalogOrderTurn({
-    message: mensaje,
-    cart: itemsToCatalogCart(pedido.snapshot_json.items, catalog),
-    pending,
-    history,
-    catalog,
-    awaitingList: flags?.awaitingProductConfirm === true,
-  });
+  const catalogCart = itemsToCatalogCart(pedido.snapshot_json.items, catalog);
+  const result = orderAgentEnabled()
+    ? await runFixedCatalogAgent({
+        telefono,
+        mensaje,
+        pedidoId: pedido.id,
+        tiendaId: full.tienda.tiendaId,
+        tiendaNombre: full.tienda.nombre ?? "la tienda",
+        profile,
+        catalog,
+        cart: catalogCart,
+        pending,
+        history,
+        awaitingList: flags?.awaitingProductConfirm === true,
+      })
+    : await runCatalogOrderTurn({
+        message: mensaje,
+        cart: catalogCart,
+        pending,
+        history,
+        catalog,
+        awaitingList: flags?.awaitingProductConfirm === true,
+      });
 
   const items = catalogCartToItems(result.cart, catalog);
   const showedList = result.reply.includes("¿Están bien estos productos?");
@@ -2476,6 +2659,14 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
     return { ok: true, role: "cliente", accion: "modo_conversacion" };
   }
 
+  if (openPedido && openPedido.estado === "seleccion_productos" && orderAgentEnabled() && String(mensaje ?? "").trim()) {
+    const agentTurn = await handleOrderAgentQuoteTurn(telefono, mensaje, openPedido, ubicacionCoords).catch((e: unknown) => {
+      console.error("[mandalo] agente de abarrotes falló, sigo con el flujo de siempre", { message: getErrorMessage(e) });
+      return null;
+    });
+    if (agentTurn) return agentTurn;
+  }
+
   // Flujo de captura (IA + captureEngine): pedido nuevo o seguimos en seleccion_productos.
   await guardarMensajeChat({ telefono, texto: String(mensaje ?? ""), estado: "cliente" }).catch((e: unknown) => {
     console.error("[mandalo] guardarMensajeChat(cliente) falló", { message: getErrorMessage(e) });
@@ -2575,14 +2766,22 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
   let storeKind: StoreKind | null = null;
   try {
     const uxStores = await loadUxStores();
-    const mentioned = storeMentionedInMessage(mensaje, uxStores);
+    const currentId = Number((currentOrderState as { businessId?: unknown }).businessId);
+    const currentItems = Array.isArray((currentOrderState as { items?: unknown }).items)
+      ? (currentOrderState as { items: unknown[] }).items
+      : [];
+    const mentioned = storeSwitchFromCapture({
+      message: mensaje,
+      stores: uxStores,
+      currentStoreId: Number.isFinite(currentId) && currentId > 0 ? currentId : null,
+      orderInProgress: currentItems.length > 0,
+    });
     const kindId = Number(
       (llmOrderState as { business_id?: unknown } | null)?.business_id ??
         (currentOrderState as { businessId?: unknown }).businessId,
     );
-    const currentStore = uxStores.find((store) => store.id === (mentioned?.id ?? kindId));
+    const currentStore = uxStores.find((store) => store.id === (mentioned?.id ?? (Number.isFinite(currentId) && currentId > 0 ? currentId : kindId)));
     if (currentStore) storeKind = storeKindFromCategoria(currentStore.categoria);
-    const currentId = Number((currentOrderState as { businessId?: unknown }).businessId);
     if (mentioned && (!Number.isFinite(currentId) || currentId <= 0 || mentioned.id !== currentId)) {
       const text = normalizeUxText(mensaje);
       const rawItems = Array.isArray((llmOrderState as { items?: unknown } | null)?.items)

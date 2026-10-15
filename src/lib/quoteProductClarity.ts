@@ -61,6 +61,7 @@ const STOP = new Set([
   "hola", "buenas", "bueno", "entonces", "nomas", "solo", "pura", "puro",
   "tambien", "ademas", "ejemplo", "esta", "este", "eso", "esa", "mas", "muy",
   "bien", "ok", "va", "dale", "sale", "ocupa", "necesito", "pide", "pedir",
+  "pedi", "pediste", "pedimos", "pedido",
   "cotiza", "cotizar", "tienda", "abarrotes", "marca", "presentacion",
   "tamano", "tipo", "cual", "como", "cuando", "donde", "producto", "productos",
   "antoja", "antojo", "hacer", "trae", "traes", "tienes", "hay", "ocupo",

@@ -919,8 +919,9 @@ function distributeSizes(message: string, catalog: CatalogSnapshot): { lines: Ca
 
 export function resolvePending(pending: PendingCatalogAsk, message: string, catalog: CatalogSnapshot): CartLine[] | null {
   const text = normalizeMessage(message);
-  if (/^\d+$/.test(text.trim())) {
-    const n = Number(text.trim());
+  const asNumber = text.trim().match(/^(?:(?:la|el|opcion|numero)\s+)?(\d+)$/);
+  if (asNumber) {
+    const n = Number(asNumber[1]);
     const id = pending.candidateIds[n - 1];
     const row = id ? catalog.byId.get(id) : null;
     return row ? [lineOf(row, pending.qty, pending.unit, pending.variant)] : null;
@@ -932,8 +933,12 @@ export function resolvePending(pending: PendingCatalogAsk, message: string, cata
 
   const answer = text.replace(/^no,?\s+/, "");
   const sized = /\bgrandes?\b/.test(answer) ? "grande" : /\bchicas?\b/.test(answer) ? "chica" : sizeWord(answer);
-  if (sized && pending.family) {
-    const siblings = familyRows(catalog, pending.family).filter((row) => pending.candidateIds.includes(row.id));
+  if (sized) {
+    const pool = pending.candidateIds.map((id) => catalog.byId.get(id)).filter((row): row is CatalogRow => Boolean(row));
+    const inFamily = pending.family
+      ? familyRows(catalog, pending.family).filter((row) => pending.candidateIds.includes(row.id))
+      : [];
+    const siblings = inFamily.length ? inFamily : pool;
     const row = siblings.find((item) => item.size === sized);
     if (row) {
       if (/\buna chica y una grande\b|\buna grande y una chica\b/.test(answer)) {
@@ -981,6 +986,9 @@ export function resolvePending(pending: PendingCatalogAsk, message: string, cata
     }
     if (rows.length === 1) return [lineOf(rows[0], pending.qty || 1, pending.unit, null)];
   }
+  if (plainAnswer && pool.length === 1 && !/marinad|adobad/.test(fold(pool[0].name))) {
+    return [lineOf(pool[0], pending.qty || 1, pending.unit, null)];
+  }
 
   const saidMarinado = /\bmarinad/.test(answer);
   let filtered = pool.filter((row) => {
@@ -995,6 +1003,46 @@ export function resolvePending(pending: PendingCatalogAsk, message: string, cata
   }
   if (filtered.length === 1) return [lineOf(filtered[0], pending.qty || 1, pending.unit === "pesos" ? "pesos" : filtered[0].unit, null)];
   return null;
+}
+
+function pendingAnswerNamesSomethingElse(message: string, pending: PendingCatalogAsk, catalog: CatalogSnapshot): boolean {
+  const candidateTokens = new Set(
+    pending.candidateIds.flatMap((id) => tokens(catalog.byId.get(id)?.searchName ?? "")),
+  );
+  return tokens(message).some((token) => {
+    if (/^\d+$/.test(token)) return false;
+    if (/^(chica|chicas|grande|grandes|marinada|marinado|normal|natural|sencilla)$/.test(token)) return false;
+    if (candidateTokens.has(token)) return false;
+    const drink = pending.candidateIds.map((id) => catalog.byId.get(id)).find((row) => row && row.variants.length);
+    if (drink?.variants.some((variant) => fold(variant) === token)) return false;
+    return catalog.rows.some((row) => tokens(row.searchName).includes(token));
+  });
+}
+
+function cartAfterPendingAnswer(prior: CartLine[], resolved: CartLine[], candidateIds: number[]): CartLine[] {
+  const drop = new Set(candidateIds);
+  const cart = prior.filter((line) => !drop.has(line.productId)).map((line) => ({ ...line }));
+  for (const line of resolved) {
+    const index = cart.findIndex(
+      (have) => have.productId === line.productId && have.unit === line.unit && (have.variant ?? null) === (line.variant ?? null),
+    );
+    if (index >= 0) cart[index] = { ...line };
+    else cart.push({ ...line });
+  }
+  return cart;
+}
+
+/** La respuesta corta (número, tamaño, sabor, normal/marinada) cierra la pregunta. No borra el resto del carrito. */
+export function applyPendingAnswer(params: {
+  pending: PendingCatalogAsk;
+  message: string;
+  catalog: CatalogSnapshot;
+  cart: CartLine[];
+}): CartLine[] | null {
+  const resolved = resolvePending(params.pending, params.message, params.catalog);
+  if (!resolved?.length) return null;
+  if (pendingAnswerNamesSomethingElse(params.message, params.pending, params.catalog)) return null;
+  return cartAfterPendingAnswer(params.cart, resolved, params.pending.candidateIds);
 }
 
 function qtyBesideFlavor(answer: string, variant: string): number {

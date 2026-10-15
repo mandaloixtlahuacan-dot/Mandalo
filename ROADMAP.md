@@ -2,7 +2,20 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 15 de octubre de 2026. La lista de abarrotes ya no
+> Última actualización: 15 de octubre de 2026. Hay un agente de pedido
+> con herramientas en `src/lib/orderAgent/`. Está apagado:
+> `ORDER_AGENT=off` es el default y producción sigue el flujo de
+> siempre. Se prende con `ORDER_AGENT=on`. El modelo es
+> `OPENAI_ORDER_MODEL` (default `gpt-4o-mini`). Si un turno falla la
+> validación dos veces, ese turno sigue con
+> `OPENAI_ORDER_ESCALATION_MODEL` (default `gpt-4.1-mini`, aunque el
+> catálogo viejo use otro default). Cada turno se anota en
+> `pedido_eventos` con `tipo_evento` `agent_turn`. No hay migración:
+> esa columna ya es texto. Los arreglos de cambio de tienda, respuesta
+> corta y pregunta inventada van prendidos aunque el agente esté
+> apagado. No está mergeado ni desplegado. Falta la prueba en
+> WhatsApp real con el interruptor prendido.
+> Actualización anterior: 15 de octubre de 2026. La lista de abarrotes ya no
 > se corta en 1000 filas. Mini Super Peke's (tienda 7, unos 12,865
 > productos) se busca en el servidor: a lo más 80 candidatos por el
 > mensaje, y `matchLista` corre sobre esos. Agua Santa, con 1000 o
