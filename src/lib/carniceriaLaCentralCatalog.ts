@@ -5,8 +5,8 @@
  * Carnes, cocido, pastor y carbón se cobran por kilo; las salsas, por pieza.
  * El carbón del menú se llama "Carbón fino". Si el cliente dice firo, fino o
  * carbón, es el mismo producto. La foto está en
- * `public/menus/carniceria-la-central.png`. El pie del arte dice $25 de envío
- * y servicio; ese número es el cargo al cliente y no se lee de la imagen.
+ * `public/menus/carniceria-la-central.png`. El cargo al cliente no se lee
+ * de la imagen: sale de la tarifa vigente de envío y servicio.
  */
 
 export const CARNICERIA_LA_CENTRAL_NOMBRE = "Carnicería La Central";

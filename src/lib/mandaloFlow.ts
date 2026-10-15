@@ -1876,7 +1876,7 @@ async function deliverToCustomer(telefono: string, body: string): Promise<void> 
 }
 
 /**
- * Menú fijo: el SÍ de la lista (con precios y $25) ya es el último.
+ * Menú fijo: el SÍ de la lista (con precios y envío y servicio) ya es el último.
  * Con ubicación se manda. Sin repartidor se cancela con el aviso correcto,
  * y la tienda no recibe "Prepáralo" si todavía no se le había enviado.
  */

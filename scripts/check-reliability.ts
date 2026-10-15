@@ -169,8 +169,8 @@ check(
   "ticket-antes-del-si",
   /Hamburguesa de pollo/.test(ticket.reply) &&
     ticket.reply.includes("$55") &&
-    ticket.reply.includes("*Envío y servicio: $25*") &&
-    ticket.reply.includes("*Total: $80*") &&
+    ticket.reply.includes("*Envío y servicio: $35*") &&
+    ticket.reply.includes("*Total: $90*") &&
     /responde sí/i.test(ticket.reply) &&
     !/te mando el total|confirme el precio/i.test(ticket.reply),
   ticket.reply,
@@ -194,27 +194,27 @@ const direct = formatCatalogFinalTicket({
   subtotal: 55,
   kind: "restaurante",
 });
-check("ticket-directo", direct.includes("$25") && /responde sí/i.test(direct) && direct.indexOf("$25") < direct.toLowerCase().indexOf("responde sí"));
+check("ticket-directo", direct.includes("$35") && /responde sí/i.test(direct) && direct.indexOf("$35") < direct.toLowerCase().indexOf("responde sí"));
 
 const receipt = formatCatalogReceiptNotice({
   tiendaNombre: "Hamburguesas Hotdogs George",
   pedidoId: 9,
   subtotal: 55,
-  total: 80,
+  total: 90,
   itemLines: ["1 Hamburguesa de pollo — $55"],
 });
 check(
   "recibo-sin-segundo-si",
   receipt.includes("*Pedido #9*") &&
-    receipt.includes("*Envío y servicio: $25*") &&
-    receipt.includes("*Total a pagar: $80*") &&
+    receipt.includes("*Envío y servicio: $35*") &&
+    receipt.includes("*Total a pagar: $90*") &&
     !/responde \*sí\*/i.test(receipt),
 );
 
 const order = scheduledCustomerMessageOrder(true);
 check("orden-programado", order[0] === "ya_se_envio" && order[1] === "total");
 const sent = formatScheduledSentNotice(9, "Hamburguesas Hotdogs George", true);
-check("aviso-ya-se-envio", /Ya se envió/.test(sent) && !/\$25/.test(sent) && !/total/i.test(sent));
+check("aviso-ya-se-envio", /Ya se envió/.test(sent) && !/\$35/.test(sent) && !/\$25/.test(sent) && !/total/i.test(sent));
 
 const stores: UxStore[] = [
   { id: 1, nombre: "Abarrotes Agua Santa", categoria: "Abarrotes", telefono: "1", abierta: true, abreTexto: "", usaCatalogoFijo: false },

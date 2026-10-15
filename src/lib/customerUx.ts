@@ -1,5 +1,5 @@
 /**
- * Copy y decisiones deterministas del cliente (filtros, listas, menú, $25).
+ * Copy y decisiones deterministas del cliente (filtros, listas, menú, envío y servicio).
  *
  * WhatsApp se lleva mal con listas armadas por la IA: el modelo aplana saltos
  * de línea y, un turno después de elegir tienda, el catálogo a veces todavía
@@ -144,7 +144,7 @@ export function formatScheduledSentNotice(pedidoId: number, tiendaNombre: string
 }
 
 /**
- * Ticket del menú fijo ANTES del único SÍ: productos con precio, $25 y total.
+ * Ticket del menú fijo ANTES del único SÍ: productos con precio, envío y servicio, y total.
  * Ese SÍ ya es la confirmación final. No se vuelve a pedir otro.
  */
 export function formatCatalogFinalTicket(params: {
@@ -254,6 +254,7 @@ export function formatCustomerQuoteMessage(params: {
   );
 }
 
+/** Detecta el desglose viejo ($10 de Mándalo y $25 de envío). El cargo vigente es una sola línea. */
 export function customerCopySplitsFee(text: string): boolean {
   const t = normalizeUxText(text);
   const mentionsServiceSlice = t.includes("servicio mandalo") || /\$\s*10\b/.test(text);

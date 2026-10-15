@@ -1,6 +1,6 @@
 # Mensajes de WhatsApp — vista previa
 
-Solo presentación. El pedido, los precios y el cargo de **$25 de envío y servicio** no cambian.
+Solo presentación. El pedido, los precios y el cargo de **$35 de envío y servicio** no cambian.
 
 Cómo se lee: un asterisco abre y cierra la negrita de WhatsApp (`*así*`). Cada producto va en su línea, con una línea en blanco antes del siguiente. La palomita marca lo confirmado y el emoji dice qué es. En el ticket, cada renglón trae cantidad, producto y precio. Los comandos de tienda y repartidor (`ORDEN #…`, `#CONFIRMO`, `#RECOGI`, `#ENTREGADO`) van sin negrita, para copiarlos igual.
 
@@ -34,7 +34,7 @@ ABARROTES — lista de tiendas
 
 2. *Abarrotes Agua Santa* (cerrada, abre mañana a las 8am)
 
-*La tienda cotiza tus productos, más $25 de envío y servicio.*
+*La tienda cotiza tus productos, más $35 de envío y servicio.*
 
 *¿De cuál te hago el mandado?*
 
@@ -55,7 +55,7 @@ Mándame cada producto por separado, con marca, tamaño y cuántos.
 
 ✅ 🫓 *1 kg de tortillas*
 
-*La tienda cotiza y se suman $25 de envío y servicio.*
+*La tienda cotiza y se suman $35 de envío y servicio.*
 
 
 ================================================================
@@ -78,7 +78,7 @@ Mándame cada producto por separado, con marca, tamaño y cuántos.
 
 Lo armamos igual y se manda en cuanto abra.
 
-*La tienda cotiza y se suman $25 de envío y servicio.*
+*La tienda cotiza y se suman $35 de envío y servicio.*
 
 
 ================================================================
@@ -178,7 +178,7 @@ ABARROTES — resumen antes del SÍ final
 
 ✅ 🫓 *Tortillas, de maíz, 1 kilo*
 
-*La tienda cotiza tus productos, más $25 de envío y servicio.*
+*La tienda cotiza tus productos, más $35 de envío y servicio.*
 
 📍 *Entrega:*
 Calle Hidalgo 12, frente a la tortillería
@@ -217,9 +217,9 @@ ABARROTES — ticket cuando la tienda ya cotizó
 
 *Subtotal: $97*
 
-*Envío y servicio: $25*
+*Envío y servicio: $35*
 
-💵 *Total a pagar: $122*
+💵 *Total a pagar: $132*
 
 ¿Confirmas tu pedido? Responde *SÍ*
 
@@ -366,7 +366,7 @@ GEORGE — lista de restaurantes
 
 1. *Hamburguesas Hotdogs George*
 
-*El menú trae precio, más $25 de envío y servicio.*
+*El menú trae precio, más $35 de envío y servicio.*
 
 *¿De cuál te hago el mandado?*
 
@@ -389,7 +389,7 @@ Te armo el mandado.
 
 4. *Bebidas*
 
-*Envío y servicio: $25*, aparte del menú.
+*Envío y servicio: $35*, aparte del menú.
 
 
 ================================================================
@@ -400,7 +400,7 @@ GEORGE — menú
 
 Pídeme lo que se te antoje, como sale en la foto.
 
-*Envío y servicio: $25*, aparte.
+*Envío y servicio: $35*, aparte.
 
 
 ================================================================
@@ -469,9 +469,9 @@ GEORGE — ticket
 
 ✅ 🍟 *1 Papas Gajo 315g — $45*
 
-*Envío y servicio: $25*
+*Envío y servicio: $35*
 
-*Total: $185*
+*Total: $195*
 
 📍 *Entrega:*
 Calle Hidalgo 12, frente a la tortillería
@@ -509,7 +509,7 @@ LA CENTRAL — lista
 
 1. *Carnicería La Central* (cerrada, abre mañana a las 8am)
 
-*El menú trae precio, más $25 de envío y servicio.*
+*El menú trae precio, más $35 de envío y servicio.*
 
 *¿De cuál te hago el mandado?*
 
@@ -526,7 +526,7 @@ Pídeme lo que se te antoje, como sale en la foto.
 
 Lo armamos y se manda en cuanto abra.
 
-*Envío y servicio: $25*, aparte.
+*Envío y servicio: $35*, aparte.
 
 
 ================================================================
@@ -589,9 +589,9 @@ LA CENTRAL — ticket
 
 ✅ 🥩 *0.5 kg Arrachera Marinada — $140*
 
-*Envío y servicio: $25*
+*Envío y servicio: $35*
 
-*Total: $280*
+*Total: $290*
 
 📍 *Entrega:*
 Calle Hidalgo 12, frente a la tortillería
@@ -713,7 +713,7 @@ https://maps.google.com/?q=20.86,-103.24
 
 ✅ 🫓 *Tortillas x1*
 
-💵 *Cobrar: $122*
+💵 *Cobrar: $132*
 
 *Tel. cliente:* 5213312345678
 

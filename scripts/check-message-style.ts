@@ -81,25 +81,25 @@ assert(
 );
 
 const fee = formatCustomerFeeLine();
-assert(fee === "*Envío y servicio: $25*", `la línea de $25 cambió: ${fee}`);
-assert(fee.includes("Envío y servicio: $25"), "el cargo sigue siendo una sola frase");
+assert(fee === "*Envío y servicio: $35*", `la línea de $35 cambió: ${fee}`);
+assert(fee.includes("Envío y servicio: $35"), "el cargo sigue siendo una sola frase");
 
 const ticket = formatCustomerQuoteMessage({
   tiendaNombre: "ZAGU",
   pedidoId: 12,
   subtotal: 80,
-  total: 105,
+  total: 115,
   itemLines: ["Coca-Cola 2 litros — $40", "Pinol 1 litro — $40"],
 });
 assert(ticket.includes("*ZAGU*") || ticket.includes("en ZAGU*"), "el ticket pone la tienda en negrita");
-assert(ticket.includes("*Envío y servicio: $25*"), "el ticket pone el $25 en negrita");
-assert(ticket.includes("*Total a pagar: $105*"), "el total va en negrita");
+assert(ticket.includes("*Envío y servicio: $35*"), "el ticket pone el $35 en negrita");
+assert(ticket.includes("*Total a pagar: $115*"), "el total va en negrita");
 assert(ticket.includes("*Coca-Cola 2 litros — $40*"), "el precio del producto va en negrita");
 assert(ticket.includes("\n\n✅ "), "el ticket separa los productos");
 
 const receipt = formatCatalogReceiptFee(60);
-assert(receipt.includes("*Envío y servicio: $25*"), "el menú fijo deja el $25 en negrita");
-assert(receipt.includes("*Total: $85*"), "el total del menú fijo va en negrita");
+assert(receipt.includes("*Envío y servicio: $35*"), "el menú fijo deja el $35 en negrita");
+assert(receipt.includes("*Total: $95*"), "el total del menú fijo va en negrita");
 assert(receipt.includes("\n\n*Total:"), "el total va en su propio bloque");
 
 const greeting = buildGreeting();
