@@ -2,6 +2,8 @@ import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { normalizePhone } from "@/lib/roles";
 
+const ORDER_PHASES = new Set(["categoria", "tienda", "ejemplo", "pedido", "ubicacion", "resumen"]);
+
 export type ChatMessageRole = "cliente" | "bot";
 
 export type ChatHistoryItem = {
@@ -116,8 +118,57 @@ export async function resetChatHistory(telefono: string): Promise<void> {
   const metadata = await getClienteMetadata(tel);
   const { error } = await supabase
     .from("clientes")
-    .update({ metadata_json: { ...metadata, chat_history: [] } })
+    .update({ metadata_json: { ...metadata, chat_history: [], order_phase: "categoria", order_niche: null } })
     .eq("telefono", tel);
+  if (error) throw error;
+}
+
+export type OrderCursor = { phase: string | null; nicheId: string | null };
+
+export async function readOrderCursor(telefono: string): Promise<OrderCursor> {
+  const normalized = normalizePhone(String(telefono ?? ""));
+  if (!normalized) return { phase: null, nicheId: null };
+  const metadata = await getClienteMetadata(normalized);
+  const phase = String(metadata.order_phase ?? "");
+  const niche = String(metadata.order_niche ?? "").trim();
+  return {
+    phase: ORDER_PHASES.has(phase) ? phase : null,
+    nicheId: niche || null,
+  };
+}
+
+export async function writeOrderCursor(telefono: string, phase: string, nicheId: string | null): Promise<void> {
+  const tel = normalizePhone(String(telefono ?? ""));
+  if (!tel || !ORDER_PHASES.has(phase)) return;
+  const supabase = getSupabaseAdmin();
+  const metadata = await getClienteMetadata(tel);
+  const { error } = await supabase.from("clientes").upsert(
+    { telefono: tel, metadata_json: { ...metadata, order_phase: phase, order_niche: nicheId } },
+    { onConflict: "telefono" },
+  );
+  if (error) throw error;
+}
+
+/** Cancelación: el siguiente texto libre cae en el menú de categorías. */
+export async function resetCustomerToCategoryMenu(telefono: string, botText: string): Promise<void> {
+  const tel = normalizePhone(String(telefono ?? ""));
+  if (!tel) return;
+  const supabase = getSupabaseAdmin();
+  const metadata = await getClienteMetadata(tel);
+  const history = Array.isArray(metadata.chat_history) ? (metadata.chat_history as ChatHistoryItem[]) : [];
+  const entry: ChatHistoryItem = { texto: botText, estado: "bot", created_at: new Date().toISOString() };
+  const { error } = await supabase.from("clientes").upsert(
+    {
+      telefono: tel,
+      metadata_json: {
+        ...metadata,
+        chat_history: [...history, entry].slice(-CHAT_HISTORY_STORAGE_LIMIT),
+        order_phase: "categoria",
+        order_niche: null,
+      },
+    },
+    { onConflict: "telefono" },
+  );
   if (error) throw error;
 }
 

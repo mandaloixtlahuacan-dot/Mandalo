@@ -107,10 +107,23 @@ import {
   orderingStepAfterCustomer,
   normalizeMessageIntentText as normalizeText,
   parseIncomingWhatsAppMessage,
+  readOrderCursor,
+  resetCustomerToCategoryMenu,
   saveChatMessage as guardarMensajeChat,
   sanitizeCustomerReply,
+  writeOrderCursor,
   type IncomingWhatsAppMessage,
 } from "@/lib/messages";
+import {
+  applySummaryNegation,
+  effectiveOrderPhase,
+  gateGeneralBot,
+  inferOrderPhase,
+  isOrderPhase,
+  phaseForUxTurn,
+  summaryCorrectionKind,
+  withCategoryMenu,
+} from "@/lib/orderSession";
 import type { PedidoFullRecord } from "@/lib/repositories/pedidoRepositoryV2";
 import type { PedidoV2Record } from "@/lib/services/captureEngine";
 
@@ -212,6 +225,61 @@ function getSessionFlag(phone: string) {
 
 function setSessionFlag(phone: string, flag: { pedido_en_proceso: boolean }) {
   sessionFlags.set(normalizePhone(phone), { ...flag, at: Date.now() });
+}
+
+async function rememberCursor(telefono: string, phase: string, nicheId: string | null): Promise<void> {
+  await writeOrderCursor(telefono, phase, nicheId).catch((e: unknown) => {
+    console.error("[mandalo] no se pudo guardar la fase del pedido", { message: getErrorMessage(e) });
+  });
+}
+
+async function holdGeneralBot(
+  telefono: string,
+  mensaje: string,
+  openPedido: PedidoV2Record | null,
+  orderAgentOn: boolean,
+): Promise<JsonObject | null> {
+  const snapshot = openPedido?.snapshot_json;
+  const businessId = typeof snapshot?.businessId === "number" ? snapshot.businessId : null;
+  const hasBusiness = businessId != null && businessId > 0;
+  const waitingAddress =
+    snapshot?.flags?.productosConfirmados === true &&
+    snapshot.latitud == null &&
+    !String(snapshot.addressText ?? "").trim();
+  const cursor = await readOrderCursor(telefono).catch(() => ({ phase: null, nicheId: null }));
+  const historial = await fetchHistorialReciente(telefono, 4).catch(() => []);
+  const lastBotText = historial.find((item) => item.estado === "bot")?.texto ?? "";
+  const inferred = inferOrderPhase({
+    hasOpenOrder: Boolean(openPedido),
+    estado: openPedido?.estado ?? null,
+    hasBusiness,
+    hasItems: Array.isArray(snapshot?.items) && snapshot.items.some((item) => String(item?.nombre_producto ?? "").trim()),
+    lastBotText,
+    awaitingAddress: waitingAddress,
+  });
+  const phase = effectiveOrderPhase(isOrderPhase(cursor.phase) ? cursor.phase : null, inferred, Boolean(openPedido));
+  const stores = await loadUxStores().catch(() => []);
+  const blocked = gateGeneralBot({
+    phase,
+    message: mensaje,
+    hasBusiness,
+    orderAgentOn,
+    waitingAddress,
+    nicheId: cursor.nicheId,
+    lastBotText,
+    stores,
+    businessId,
+  });
+  if (!blocked) return null;
+  await guardarMensajeChat({ telefono, texto: String(mensaje ?? ""), estado: "cliente" }).catch(() => {});
+  await sendWhatsApp(telefono, blocked.text);
+  await guardarMensajeChat({ telefono, texto: blocked.text, estado: "bot" }).catch(() => {});
+  await rememberCursor(telefono, blocked.phase, blocked.nicheId);
+  return { ok: true, role: "cliente", accion: "fase_repregunta", phase: blocked.phase };
+}
+
+function customerCancelText(lead: string): string {
+  return withCategoryMenu(lead);
 }
 
 export { parseIncomingWhatsAppMessage };
@@ -988,7 +1056,8 @@ async function handleAwaitingProductList(
 
   if (replyKind === "cancel") {
     await cancelOpenPedido(pedido, telefono, "cliente_rechazo_productos");
-    const msg = `✅ *Pedido #${pedido.id} cancelado.*\n\nNo se te cobra nada.\n\nCuando quieras hacer uno nuevo, aquí estoy.`;
+    const msg = customerCancelText(`✅ *Pedido #${pedido.id} cancelado.*\n\nNo se te cobra nada.\n\nCuando quieras hacer uno nuevo, aquí estoy.`);
+    await rememberCursor(telefono, "categoria", null);
     await sendWhatsApp(telefono, msg);
     await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
     return { ok: true, role: "cliente", accion: "rechazo_productos", pedidoId: pedido.id };
@@ -1156,7 +1225,8 @@ async function handleEsperandoConfirmacionInicial(
   if (orderingStepAfterCustomer({ step: "final_ticket", customerMessage: mensaje }) !== "store") {
     if (isBareOrderRejection(mensaje)) {
       await cancelOpenPedido(pedido, telefono, "cliente_rechazo_confirmacion_inicial");
-      const msg = `✅ *Pedido #${pedido.id} cancelado.*\n\nNo se te cobra nada.\n\nCuando quieras hacer uno nuevo, aquí estoy.`;
+      const msg = customerCancelText(`✅ *Pedido #${pedido.id} cancelado.*\n\nNo se te cobra nada.\n\nCuando quieras hacer uno nuevo, aquí estoy.`);
+      await rememberCursor(telefono, "categoria", null);
       await sendWhatsApp(telefono, msg);
       await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
       return { ok: true, role: "cliente", accion: "rechazo_confirmacion_inicial", pedidoId: pedido.id };
@@ -1177,7 +1247,113 @@ async function handleEsperandoConfirmacionInicial(
 
     // Un cambio de productos se queda en este mismo pedido. Lo que no es un
     // producto (ni un sí, que ya se fue por arriba) vuelve a mostrar el resumen.
+    // "no pedí X" / "es Y" no se mezclan: se quita o se reemplaza y se vuelve a
+    // mostrar el resumen fijo. Con el agente prendido, cualquier otro texto
+    // también regresa a selección y lo atiende el agente.
     if (String(mensaje ?? "").trim()) {
+      const correction = summaryCorrectionKind(mensaje);
+      const quoteAgent = orderAgentEnabled() && Boolean(full.tienda?.tiendaId) && !full.tienda?.usaCatalogoFijo;
+      if (quoteAgent && (correction === "edit" || correction === "other")) {
+        try {
+          const seeded = applySummaryNegation(snapshot.items ?? [], mensaje);
+          const seededItems = seeded.changed ? seeded.items : (snapshot.items ?? []);
+          const selecting: PedidoV2Record = {
+            ...pedido,
+            estado: "seleccion_productos",
+            snapshot_json: { ...snapshot, items: seededItems },
+          };
+          await pedidoRepositoryV2.updatePedidoSnapshot({
+            pedidoId: pedido.id,
+            estado: "seleccion_productos",
+            snapshot: selecting.snapshot_json,
+            addressText: snapshot.addressText ?? null,
+            latitud: snapshot.latitud ?? null,
+            longitud: snapshot.longitud ?? null,
+            tiendaId: full.tienda?.tiendaId ?? null,
+          });
+          await pedidoRepositoryV2.replacePedidoItems({ pedidoId: pedido.id, items: seededItems });
+          await rememberCursor(telefono, "pedido", null);
+          const agentTurn = await handleOrderAgentQuoteTurn(telefono, mensaje, selecting, ubicacionCoords, {
+            suppressSend: true,
+            fromSummary: true,
+          });
+          const fresh = await pedidoRepositoryV2.getPedidoById(pedido.id);
+          const agentItems = (fresh?.snapshot.items ?? seededItems) as PedidoItemInput[];
+          const cleaned = applySummaryNegation(agentItems, mensaje);
+          const finalItems = cleaned.changed ? cleaned.items : agentItems;
+          if (agentTurn?.agentPending) {
+            const question = String(agentTurn.agentReply ?? "").trim() || "Dime cómo lo dejo y te lo vuelvo a armar.";
+            await sendWhatsApp(telefono, question);
+            await guardarMensajeChat({ telefono, texto: question, estado: "bot" }).catch(() => {});
+            return { ok: true, role: "cliente", stage: "seleccion_productos", pedidoId: pedido.id };
+          }
+          const nextSnapshot = { ...snapshot, items: finalItems };
+          await pedidoRepositoryV2.updatePedidoSnapshot({
+            pedidoId: pedido.id,
+            estado: "confirmacion_cliente",
+            snapshot: nextSnapshot,
+            addressText: snapshot.addressText ?? null,
+            latitud: snapshot.latitud ?? null,
+            longitud: snapshot.longitud ?? null,
+            tiendaId: full.tienda?.tiendaId ?? null,
+          });
+          await pedidoRepositoryV2.replacePedidoItems({ pedidoId: pedido.id, items: finalItems });
+          const msg = confirmationCustomerMessage({
+            pedidoId: pedido.id,
+            snapshot: nextSnapshot,
+            items: finalItems,
+            readyForConfirmation: finalItems.length > 0,
+            feeNote,
+            pricedLines,
+            scheduleNote: avisoCerrada.trim() || null,
+          });
+          await rememberCursor(telefono, "resumen", null);
+          await sendWhatsApp(telefono, msg);
+          await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+          return { ok: true, role: "cliente", stage: "confirmacion_cliente", pedidoId: pedido.id };
+        } catch (e: unknown) {
+          console.error("[mandalo] el agente no pudo corregir el resumen", { pedidoId: pedido.id, message: getErrorMessage(e) });
+          // El estado ya pudo quedar en seleccion_productos. Lo devolvemos al
+          // resumen para que el pedido no se quede a medias si el agente truena.
+          await pedidoRepositoryV2.updatePedidoSnapshot({
+            pedidoId: pedido.id,
+            estado: "confirmacion_cliente",
+            snapshot,
+            addressText: snapshot.addressText ?? null,
+            latitud: snapshot.latitud ?? null,
+            longitud: snapshot.longitud ?? null,
+            tiendaId: full.tienda?.tiendaId ?? null,
+          }).catch(() => {});
+          await pedidoRepositoryV2.replacePedidoItems({ pedidoId: pedido.id, items: snapshot.items ?? [] }).catch(() => {});
+          await rememberCursor(telefono, "resumen", null).catch(() => {});
+        }
+      } else if (correction === "edit") {
+        const edited = applySummaryNegation(snapshot.items ?? [], mensaje);
+        const nextSnapshot = { ...snapshot, items: edited.items };
+        await pedidoRepositoryV2.updatePedidoSnapshot({
+          pedidoId: pedido.id,
+          estado: "confirmacion_cliente",
+          snapshot: nextSnapshot,
+          addressText: snapshot.addressText ?? null,
+          latitud: snapshot.latitud ?? null,
+          longitud: snapshot.longitud ?? null,
+          tiendaId: full.tienda?.tiendaId ?? null,
+        });
+        await pedidoRepositoryV2.replacePedidoItems({ pedidoId: pedido.id, items: edited.items });
+        const msg = confirmationCustomerMessage({
+          pedidoId: pedido.id,
+          snapshot: nextSnapshot,
+          items: edited.items,
+          readyForConfirmation: edited.items.length > 0,
+          feeNote,
+          pricedLines,
+          scheduleNote: avisoCerrada.trim() || null,
+        });
+        await rememberCursor(telefono, "resumen", null);
+        await sendWhatsApp(telefono, msg);
+        await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+        return { ok: true, role: "cliente", stage: "confirmacion_cliente", pedidoId: pedido.id };
+      }
       try {
         const knownZoneNames = await fetchZonasCobertura();
         const zones = knownZoneNames.length ? knownZoneNames : snapshot.addressZone ? [snapshot.addressZone] : [];
@@ -1794,6 +1970,8 @@ async function tryDeterministicCustomerUx(params: {
   if (rendered.kind === "menu") await sendCatalogMenu(params.telefono, rendered.store, rendered.text);
   else await sendWhatsApp(params.telefono, rendered.text);
   await guardarMensajeChat({ telefono: params.telefono, texto: rendered.text, estado: "bot" }).catch(() => {});
+  const cursor = phaseForUxTurn(turn);
+  await rememberCursor(params.telefono, cursor.phase, cursor.nicheId);
   return { ok: true, role: "cliente", accion: `ux_${turn.type}` };
 }
 
@@ -2109,6 +2287,7 @@ async function handleOrderAgentQuoteTurn(
   mensaje: string,
   pedido: PedidoV2Record,
   ubicacionCoords: Coordinates | null,
+  options?: { suppressSend?: boolean; fromSummary?: boolean },
 ): Promise<JsonObject | null> {
   if (!orderAgentEnabled()) return null;
   if (pedido.estado !== "seleccion_productos") return null;
@@ -2167,8 +2346,10 @@ async function handleOrderAgentQuoteTurn(
     awaitingList: pedido.snapshot_json.flags?.awaitingProductConfirm === true,
   });
 
-  const items = itemsFromAgentLines(agent.cart);
-  const showedList = agent.reply.includes("¿Están bien estos productos?");
+  const drafted = itemsFromAgentLines(agent.cart);
+  const corrected = options?.fromSummary ? applySummaryNegation(drafted, text) : { items: drafted, changed: false };
+  const items = corrected.items;
+  const showedList = !options?.fromSummary && agent.reply.includes("¿Están bien estos productos?");
   const nextSnapshot = {
     ...pedido.snapshot_json,
     items,
@@ -2205,6 +2386,18 @@ async function handleOrderAgentQuoteTurn(
     tiendaId: full.tienda.tiendaId,
   });
   await pedidoRepositoryV2.replacePedidoItems({ pedidoId: pedido.id, items });
+  await rememberCursor(telefono, agent.pending ? "pedido" : "pedido", null);
+  if (options?.suppressSend) {
+    return {
+      ok: true,
+      role: "cliente",
+      accion: "order_agent",
+      pedidoId: pedido.id,
+      agentReply: agent.reply,
+      agentPending: Boolean(agent.pending),
+      items,
+    };
+  }
   if (agent.confirmedList) {
     return handleAwaitingProductList(telefono, mensaje, { ...pedido, snapshot_json: nextSnapshot }, ubicacionCoords);
   }
@@ -2272,7 +2465,8 @@ async function handleFixedCatalogTurn(
   const replyKind = classifyProductListReply(mensaje);
   if (!pending && flags?.awaitingProductConfirm && replyKind === "cancel") {
     await cancelOpenPedido(pedido, telefono, "cliente_rechazo_productos");
-    const msg = `✅ *Pedido #${pedido.id} cancelado.*\n\nNo se te cobra nada.\n\nCuando quieras hacer uno nuevo, aquí estoy.`;
+    const msg = customerCancelText(`✅ *Pedido #${pedido.id} cancelado.*\n\nNo se te cobra nada.\n\nCuando quieras hacer uno nuevo, aquí estoy.`);
+    await rememberCursor(telefono, "categoria", null);
     await sendWhatsApp(telefono, msg);
     await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
     return { ok: true, role: "cliente", accion: "rechazo_productos", pedidoId: pedido.id };
@@ -2528,7 +2722,8 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
     setSessionFlag(telefono, { pedido_en_proceso: true });
     const msg = wantsNewOrder
       ? `✅ *Pedido anterior cancelado.*\n\n${buildGreeting()}`
-      : "✅ *Listo, cancelé tu pedido.*\n\nCuando quieras hacer uno nuevo, aquí estoy.";
+      : customerCancelText("✅ *Listo, cancelé tu pedido.*\n\nCuando quieras hacer uno nuevo, aquí estoy.");
+    await rememberCursor(telefono, "categoria", null);
     await sendWhatsApp(telefono, msg);
     await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
     return { ok: true, role: "cliente", accion: wantsNewOrder ? "hard_reset" : "cancelado_por_cliente" };
@@ -2629,6 +2824,11 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
     if (early) return early;
   }
 
+  if (inCapture && !ubicacionCoords && String(mensaje ?? "").trim()) {
+    const held = await holdGeneralBot(telefono, mensaje, openPedido, false);
+    if (held) return held;
+  }
+
   // Modo conversación: si el usuario está charlando o expresando emociones,
   // contestamos con IA y NO aplicamos la lógica de captura en este turno.
   if (isConversationModeMessage(mensaje)) {
@@ -2665,6 +2865,11 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
       return null;
     });
     if (agentTurn) return agentTurn;
+  }
+
+  if (inCapture && orderAgentEnabled() && !ubicacionCoords && String(mensaje ?? "").trim()) {
+    const held = await holdGeneralBot(telefono, mensaje, openPedido, true);
+    if (held) return held;
   }
 
   // Flujo de captura (IA + captureEngine): pedido nuevo o seguimos en seleccion_productos.
@@ -2724,11 +2929,17 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
     // se le mandará a las X" se lo decimos en el resumen de confirmación
     // (handleEsperandoConfirmacionInicial), no aquí — ahí es donde Víctor
     // pidió que el cliente se entere, antes de decir SÍ.
-    if (resolved.status === "found" || resolved.status === "closed") {
+    const attachedId = Number((currentOrderState as { businessId?: unknown }).businessId);
+    const attachedName = String((currentOrderState as { businessName?: unknown }).businessName ?? "").trim();
+    const sameAttached =
+      (resolved.status === "found" || resolved.status === "closed") &&
+      Number.isFinite(attachedId) &&
+      attachedId > 0 &&
+      resolved.id === attachedId;
+    // El business_name del bot general no elige tienda a media charla.
+    // Solo se conserva si ya se había pegado con un match determinista.
+    if (sameAttached) {
       usaCatalogoFijo = resolved.usaCatalogoFijo;
-      // Se limpia también la variante camelCase (businessId) además de
-      // business_id — captureEngine.mergeSnapshot revisa ambas claves, y
-      // dejar viva la que no se sobreescribió reabriría el mismo hueco.
       llmOrderState = {
         ...llmOrderState,
         business_id: resolved.id,
@@ -2738,11 +2949,24 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
         business_phone: resolved.telefono,
         businessPhone: resolved.telefono,
       };
+    } else if (Number.isFinite(attachedId) && attachedId > 0) {
+      llmOrderState = {
+        ...llmOrderState,
+        business_id: attachedId,
+        businessId: attachedId,
+        business_name: attachedName || null,
+        businessName: attachedName || null,
+      };
     } else {
-      // No matchea ningún negocio real — nunca dejar pasar un business_id
-      // inventado por la IA (aunque el nombre tampoco haya resuelto, un
-      // número suelto sin nombre real detrás es igual de peligroso).
-      llmOrderState = { ...llmOrderState, business_id: null, businessId: null, business_phone: null, businessPhone: null };
+      llmOrderState = {
+        ...llmOrderState,
+        business_id: null,
+        businessId: null,
+        business_name: null,
+        businessName: null,
+        business_phone: null,
+        businessPhone: null,
+      };
     }
   }
 

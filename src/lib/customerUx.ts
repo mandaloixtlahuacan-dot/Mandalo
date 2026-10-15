@@ -104,7 +104,7 @@ export type UxStore = {
 
 export type CustomerTurn =
   | { type: "greeting" }
-  | { type: "show_niche"; nicheId: StoreNicheId }
+  | { type: "show_niche"; nicheId: StoreNicheId; releaseHeldStore?: boolean }
   | { type: "switch_niche"; nicheId: StoreNicheId }
   | { type: "pick_store"; store: UxStore }
   | { type: "ask_menu"; store: UxStore | null }
@@ -641,8 +641,58 @@ function escapeStoreToken(token: string): string {
   return token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/** Quita apóstrofos para que "Peke's" y "pekes" se comparen igual. */
+function foldStoreText(text: string): string {
+  return normalizeUxText(text).replace(/['’`´]/g, "");
+}
+
+function editDistance(left: string, right: string): number {
+  if (left === right) return 0;
+  if (!left.length) return right.length;
+  if (!right.length) return left.length;
+  const prev = new Array<number>(right.length + 1);
+  const cur = new Array<number>(right.length + 1);
+  for (let col = 0; col <= right.length; col += 1) prev[col] = col;
+  for (let row = 1; row <= left.length; row += 1) {
+    cur[0] = row;
+    for (let col = 1; col <= right.length; col += 1) {
+      const cost = left[row - 1] === right[col - 1] ? 0 : 1;
+      cur[col] = Math.min(cur[col - 1] + 1, prev[col] + 1, prev[col - 1] + cost);
+    }
+    for (let col = 0; col <= right.length; col += 1) prev[col] = cur[col];
+  }
+  return prev[right.length];
+}
+
+function tokensClose(left: string, right: string): boolean {
+  if (left === right) return true;
+  if (left.length < 4 || right.length < 4) return false;
+  const short = left.length <= right.length ? left : right;
+  const long = left.length <= right.length ? right : left;
+  if (long.startsWith(short) && long.length - short.length <= 2) return true;
+  const distance = editDistance(left, right);
+  if (distance <= 1) return true;
+  return distance <= 2 && left[0] === right[0] && Math.abs(left.length - right.length) <= 1 && short.length >= 5;
+}
+
+const CATEGORY_ONLY_WORDS = new Set([
+  "abarrotes",
+  "abarrote",
+  "tienda",
+  "tiendas",
+  "tiendita",
+  "restaurante",
+  "restaurantes",
+  "hamburguesa",
+  "hamburguesas",
+  "carniceria",
+  "carnicerias",
+  "carne",
+  "carnes",
+]);
+
 function storeNameWords(nombre: string): string[] {
-  return normalizeUxText(nombre).split(" ").filter(Boolean);
+  return foldStoreText(nombre).split(" ").filter(Boolean);
 }
 
 function distinctiveStoreTokens(nombre: string): string[] {
@@ -691,13 +741,14 @@ export function nicheListedInLastBot(lastBot: string): StoreNiche | null {
 }
 
 function textMentionsStore(text: string, nombre: string): boolean {
-  const haystack = normalizeUxText(text);
-  const needle = normalizeUxText(nombre);
+  const haystack = foldStoreText(text);
+  const needle = foldStoreText(nombre);
   if (!haystack || !needle) return false;
   if (haystack.includes(needle)) return true;
   // "Agua Santa" es el nombre. "agua mineral" no: hace falta la frase, no la palabra suelta.
-  if (storeNamePhrases(nombre).some((phrase) => haystack.includes(phrase))) return true;
-  return distinctiveStoreTokens(nombre).some((word) => new RegExp(`(?:^|\\s)${escapeStoreToken(word)}(?:\\s|$)`).test(haystack));
+  if (storeNamePhrases(nombre).some((phrase) => haystack.includes(foldStoreText(phrase)))) return true;
+  const words = haystack.split(" ").filter((word) => word.length >= 4 && !CATEGORY_ONLY_WORDS.has(word));
+  return distinctiveStoreTokens(nombre).some((token) => words.some((word) => tokensClose(word, token)));
 }
 
 function customerAsksToChangeStore(message: string, store: UxStore): boolean {
@@ -737,17 +788,38 @@ export function singleStoreMentioned(text: string, stores: UxStore[]): UxStore |
 }
 
 function messageIsStorePickOnly(message: string, store: UxStore): boolean {
-  let rest = normalizeUxText(message);
-  const nombre = normalizeUxText(store.nombre);
-  if (nombre) rest = rest.replace(nombre, " ");
-  for (const token of nombre.split(" ").filter((word) => word.length >= 4)) {
-    rest = rest.replace(new RegExp(`(?:^|\\s)${token}(?:\\s|$)`, "g"), " ");
-  }
-  rest = rest
-    .replace(/\b(de|del|la|el|en|quiero|pedir|manda|mandado|porfa|por favor|va)\b/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  return rest.length < 3;
+  const words = foldStoreText(message).split(" ").filter(Boolean);
+  const nombre = foldStoreText(store.nombre);
+  const tokens = distinctiveStoreTokens(store.nombre);
+  const leftovers = words.filter((word) => {
+    if (/^(de|del|la|el|en|quiero|pedir|pida|manda|mandado|porfa|por|favor|va|los|las|un|una|al|hacer|pedido|para|con|mini|super)$/.test(word)) return false;
+    if (nombre && (word === nombre || nombre.includes(word) && word.length >= 4)) return false;
+    if (tokens.some((token) => tokensClose(word, token))) return false;
+    return word.length >= 3;
+  });
+  return leftovers.length === 0;
+}
+
+/**
+ * Frase larga que nombra una categoría, aunque pase de 40 caracteres.
+ * "una hamburguesa" corta sigue siendo un antojo, no este filtro.
+ */
+export function nicheFromCategorySentence(message: string): StoreNiche | null {
+  const text = foldStoreText(message);
+  if (!text || text.length <= 40) return null;
+  const ordering = /\b(pedir|pedido|mandado|quiero|voy)\b/.test(text);
+  let winner: string | null = null;
+  const consider = (id: string) => {
+    winner = id;
+  };
+  if (/\babarrotes?\b/.test(text)) consider("abarrotes");
+  if (/\btiendas?\b/.test(text) && ordering) consider("abarrotes");
+  if (/\brestaurantes?\b/.test(text)) consider("restaurantes");
+  if (/\bhamburguesas?\b/.test(text)) consider("restaurantes");
+  if (/\bgeorge\b/.test(text)) consider("restaurantes");
+  if (/\bcarnicerias?\b/.test(text)) consider("carnicerias");
+  if (/\bcarne\b/.test(text) && ordering) consider("carnicerias");
+  return winner ? nicheById(winner) : null;
 }
 
 function categoryHintIn(message: string): string | null {
@@ -880,6 +952,20 @@ export function classifyCustomerTurn(params: {
     return { type: "pick_store", store: storeFromMessage };
   }
 
+  // "voy a pedir de la tienda de abarrotes" es largo: suelta la tienda cerrada y lista la categoría.
+  // Una frase corta ("quiero un restaurante", "Carnicerías") sigue el camino de abajo.
+  const categorySentence = nicheFromCategorySentence(message);
+  if (categorySentence) {
+    const currentNiche = storeFromId ? nicheIdForCategoria(storeFromId.categoria) : null;
+    if (!(hasBusiness && currentNiche === categorySentence.id)) {
+      return {
+        type: "show_niche",
+        nicheId: categorySentence.id,
+        releaseHeldStore: hasBusiness && currentNiche !== categorySentence.id,
+      };
+    }
+  }
+
   // Nombrar un restaurante, aunque el mensaje traiga el antojo, suelta la tienda anterior.
   if (storeFromMessage && messageNamesRestaurant(message, storeFromMessage) && storeFromMessage.id !== businessId) {
     return { type: "pick_store", store: storeFromMessage };
@@ -996,11 +1082,16 @@ export function renderCustomerTurn(turn: CustomerTurn, stores: UxStore[], lastBo
   }
   if (turn.type === "show_niche") {
     const niche = nicheById(turn.nicheId);
+    const text = !niche
+      ? buildGreeting()
+      : turn.releaseHeldStore
+        ? formatNicheSwitchList(niche, stores)
+        : formatNicheStoreList(niche, stores);
     return {
       kind: "text",
-      text: niche ? formatNicheStoreList(niche, stores) : buildGreeting(),
+      text,
       rememberStore: null,
-      clearActiveStore: false,
+      clearActiveStore: turn.releaseHeldStore === true,
     };
   }
   if (turn.type === "switch_niche") {

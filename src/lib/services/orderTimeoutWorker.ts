@@ -3,6 +3,8 @@ import { ensureMxWhatsappIntl } from "@/lib/roles";
 import { cancelPedidoInactivo, getPedidoById, setPedidoEstado, type PedidoFullRecord } from "@/lib/repositories/pedidoRepositoryV2";
 import * as outboxRepository from "@/lib/repositories/outboxRepository";
 import { formatCourierCancelNotice } from "@/lib/customerUx";
+import { resetCustomerToCategoryMenu } from "@/lib/messages";
+import { withCategoryMenu } from "@/lib/orderSession";
 import { readOfferedCouriers } from "@/lib/services/courierAvailability";
 import { formatNameQtyLine, joinBlocks } from "@/lib/messageStyle";
 import { dispatchItemAlreadyShowsQty } from "@/lib/services/captureEngine";
@@ -350,7 +352,17 @@ export function createOrderTimeoutWorker() {
         if (config.kind === "final_confirmation" && !priceConfirmTimeoutApplies(pedido.metadata)) continue;
 
         for (const notice of config.buildCancelNotices(pedido)) {
-          await sendNotice(pedidoId, config.kind, noticeTag("cancel", notice), notice);
+          const outbound =
+            notice.destinatarioTipo === "cliente" ? { ...notice, body: withCategoryMenu(notice.body) } : notice;
+          await sendNotice(pedidoId, config.kind, noticeTag("cancel", notice), outbound);
+          if (outbound.destinatarioTipo === "cliente") {
+            await resetCustomerToCategoryMenu(pedido.clienteTelefono, outbound.body).catch((resetError: unknown) => {
+              console.error("[orderTimeoutWorker] no se pudo reiniciar la fase tras cancelar", {
+                pedidoId,
+                message: errorMessage(resetError),
+              });
+            });
+          }
         }
 
         await transitionService.handleOrderTimeoutExpired({
