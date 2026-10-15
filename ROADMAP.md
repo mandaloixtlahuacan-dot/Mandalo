@@ -2,7 +2,12 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 15 de octubre de 2026. Atajos del pedido en borrador
+> Última actualización: 15 de octubre de 2026. Auditoría de atajos del
+> flujo, en borrador, sin merge y sin deploy. Un cambio de tienda usa
+> el mismo aviso que el menú. El agente solo entra en pedido o en una
+> corrección. Preguntas, saludos, medios y la dirección escrita no
+> cambian la fase. Prueba offline: `scripts/check-flow-router.ts`.
+> Actualización anterior: 15 de octubre de 2026. Atajos del pedido en borrador
 > (sin merge y sin deploy). La fase queda categoría → tienda → ejemplo →
 > pedido → ubicación → resumen. Antes de elegir tienda con un match
 > determinista, el bot general no contesta el pedido ni pega

@@ -84,6 +84,18 @@ function extractWaapiLocation(payload: unknown): { latitude: number; longitude: 
   return null;
 }
 
+function extractWaapiMediaKind(payload: unknown): "sticker" | "image" | "audio" | "video" | null {
+  const body = (payload ?? {}) as Record<string, unknown>;
+  const data = (body.data ?? {}) as Record<string, unknown>;
+  const message = extractWaapiMessageObject(payload);
+  const type = String(message.type ?? body.type ?? data.type ?? "").toLowerCase();
+  if (type === "sticker" || message.sticker) return "sticker";
+  if (type === "audio" || type === "voice" || type === "ptt" || message.audio || message.voice) return "audio";
+  if (type === "video" || message.video) return "video";
+  if (type === "image" || type === "imagemessage" || message.image) return "image";
+  return null;
+}
+
 function extractWaapiMessageId(payload: unknown): string | null {
   const body = (payload ?? {}) as Record<string, unknown>;
   const data = (body.data ?? {}) as Record<string, unknown>;
@@ -193,15 +205,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "MISSING_FROM" }, { status: 200 });
     }
 
+    const mediaKind = extractWaapiMediaKind(body);
+
     // No procesar mensajes vacíos (un mensaje de ubicación no trae texto, así que
-    // solo lo descartamos si TAMPOCO trae coordenadas de ubicación válidas).
-    if ((!mensaje || String(mensaje).trim() === "") && !ubicacion) {
+    // solo lo descartamos si TAMPOCO trae coordenadas ni un adjunto).
+    if ((!mensaje || String(mensaje).trim() === "") && !ubicacion && !mediaKind) {
       return NextResponse.json({ ok: false, error: "EMPTY_MESSAGE" }, { status: 200 });
     }
 
     const numero = normalizePhone(String(numeroRaw));
     const textoMensaje =
-      mensaje && String(mensaje).trim() !== "" ? String(mensaje) : "📍 (Cliente compartió su ubicación GPS)";
+      mensaje && String(mensaje).trim() !== ""
+        ? String(mensaje)
+        : ubicacion
+          ? "📍 (Cliente compartió su ubicación GPS)"
+          : "📎";
 
     const messageId = extractWaapiMessageId(body);
     if (messageId) {
@@ -227,6 +245,7 @@ export async function POST(req: NextRequest) {
     };
 
     const incoming = parseIncomingWhatsAppMessage(normalized);
+    incoming.mediaKind = mediaKind;
 
     // Tolerante a errores: si IA truena, no colgar webhook.
     let result: unknown;

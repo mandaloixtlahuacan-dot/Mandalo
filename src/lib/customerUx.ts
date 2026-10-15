@@ -781,10 +781,42 @@ export function storeSwitchFromCapture(params: {
   return null;
 }
 
+export function storesMentionedInText(text: string, stores: UxStore[]): UxStore[] {
+  return stores.filter((store) => textMentionsStore(text, store.nombre));
+}
+
 export function singleStoreMentioned(text: string, stores: UxStore[]): UxStore | null {
-  const hits = stores.filter((store) => textMentionsStore(text, store.nombre));
+  const hits = storesMentionedInText(text, stores);
   if (hits.length !== 1) return null;
   return hits[0];
+}
+
+const LOOSE_NICHE_TARGETS: Array<{ id: StoreNicheId; phrase: string }> = [
+  { id: "abarrotes", phrase: "abarrotes" },
+  { id: "abarrotes", phrase: "abarrote" },
+  { id: "restaurantes", phrase: "restaurantes" },
+  { id: "restaurantes", phrase: "restaurante" },
+  { id: "restaurantes", phrase: "hamburguesas" },
+  { id: "restaurantes", phrase: "hamburguesa" },
+  { id: "carnicerias", phrase: "carnicerias" },
+  { id: "carnicerias", phrase: "carniceria" },
+];
+
+/** "abarotes", "restorante", "carniseria", "hamburgesas": el filtro, no un producto. */
+export function matchNicheTypo(message: string): StoreNiche | null {
+  const text = normalizeUxText(message);
+  if (!text || text.length > 24 || text.split(" ").length > 3) return null;
+  const exact = matchNicheChoice(message);
+  if (exact && messageIsBareNicheChoice(message)) return exact;
+  let best: { id: StoreNicheId; distance: number } | null = null;
+  for (const target of LOOSE_NICHE_TARGETS) {
+    const phrase = normalizeUxText(target.phrase);
+    if (Math.abs(phrase.length - text.length) > 2) continue;
+    const distance = editDistance(text, phrase);
+    if (distance > 2) continue;
+    if (!best || distance < best.distance) best = { id: target.id, distance };
+  }
+  return best ? nicheById(best.id) : null;
 }
 
 function messageIsStorePickOnly(message: string, store: UxStore): boolean {
