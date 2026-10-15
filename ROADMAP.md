@@ -10,11 +10,11 @@
 > recibe el formato, y un precio suelto se acepta si solo hay un pedido
 > abierto. El outbox reintenta dentro del cron de timeouts, hasta 5 veces.
 > En George y La Central el primer SÍ, ya con precios y $25, es el último;
-> la tienda recibe "Prepáralo" después de ese SÍ. Las tiendas con
-> "(PRUEBA)" en el nombre no se listan. El SQL para los pedidos #18, #48,
-> #49, #113 y #122, el outbox 20, 21, 71 y 113, y la tienda de prueba está
-> en `supabase/data-fixes/20261015_reliability_audit_fixes.sql` y no se
-> aplicó. No se borra ninguna tabla.
+> la tienda recibe "Prepáralo" después de ese SÍ. "Abarrotes Agua Santa
+> (PRUEBA)" sigue activa y visible. El SQL apaga ZAGU (`activa = false`)
+> sin borrarla; Abarrotes Peques no se crea hasta que lleguen sus datos.
+> El archivo es `supabase/data-fixes/20261015_reliability_audit_fixes.sql`
+> y no se aplicó. No se borra ninguna tabla.
 > Actualización anterior: 10 de octubre de 2026. El motor de catálogo
 > usa `gpt-4o-mini` (temperatura 0) por defecto. `gpt-5.5` (esfuerzo
 > none, sin temperature) entra solo en ese turno si mini falla: error

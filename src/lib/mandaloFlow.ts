@@ -51,7 +51,6 @@ import {
   formatCatalogReceiptFee,
   formatQuoteOrderRegistered,
   formatStoreOkAck,
-  isHiddenTestStoreName,
   formatPreConfirmFeeNote,
   formatRunningTotal,
   matchCategoriasEnTexto,
@@ -1708,7 +1707,7 @@ async function loadUxStores(): Promise<UxStore[]> {
   for (const row of data ?? []) {
     const nombre = String((row as { nombre?: unknown }).nombre ?? "").trim();
     const telefono = String((row as { telefono?: unknown }).telefono ?? "").trim();
-    if (!nombre || !telefono || isHiddenTestStoreName(nombre)) continue;
+    if (!nombre || !telefono) continue;
     const schedule = checkTiendaSchedule({
       horaApertura: (row as { hora_apertura?: unknown }).hora_apertura == null ? null : String((row as { hora_apertura?: unknown }).hora_apertura),
       horaCierre: (row as { hora_cierre?: unknown }).hora_cierre == null ? null : String((row as { hora_cierre?: unknown }).hora_cierre),

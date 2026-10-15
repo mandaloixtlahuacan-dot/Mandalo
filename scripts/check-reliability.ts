@@ -16,7 +16,6 @@ import {
   formatScheduledSentNotice,
   formatStoreCommandHelp,
   formatStoreOkAck,
-  isHiddenTestStoreName,
   storesInNiche,
   type UxStore,
 } from "../src/lib/customerUx";
@@ -183,7 +182,10 @@ const stores: UxStore[] = [
   { id: 2, nombre: "Abarrotes Agua Santa (PRUEBA)", categoria: "Abarrotes", telefono: "2", abierta: true, abreTexto: "", usaCatalogoFijo: false },
 ];
 const listed = storesInNiche(stores, "abarrotes").map((store) => store.nombre);
-check("oculta-prueba", isHiddenTestStoreName("Abarrotes Agua Santa (PRUEBA)") && listed.length === 1 && listed[0] === "Abarrotes Agua Santa");
+check(
+  "prueba-sigue-visible",
+  listed.includes("Abarrotes Agua Santa") && listed.includes("Abarrotes Agua Santa (PRUEBA)"),
+);
 
 const dispatchSource = readFileSync(new URL("../src/lib/services/storeDispatch.ts", import.meta.url), "utf8");
 const prepareAt = dispatchSource.indexOf("mayPrepareStore(alreadyConfirmed)");
@@ -210,6 +212,7 @@ check(
   "despacho-de-menu-ya-confirmado",
   flowSource.includes("catalogAlreadyConfirmed: true") && flowSource.includes("cancelBecauseNoCourier"),
 );
+check("sin-filtro-prueba", !flowSource.includes("isHiddenTestStoreName") && !dispatchSource.includes("(PRUEBA)"));
 
 if (failures.length) {
   console.error(`Confiabilidad: ${failures.length} fallo(s)`);

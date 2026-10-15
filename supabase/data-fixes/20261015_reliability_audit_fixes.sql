@@ -7,7 +7,8 @@
 --      (razón "inactivo"), solo si siguen armándose.
 --   2. Marca como cancelados los mensajes viejos del outbox 20, 21, 71 y 113
 --      para que el reintento no los mande.
---   3. Apaga "Abarrotes Agua Santa (PRUEBA)" sin borrarla.
+--   3. Apaga ZAGU (columna activa = false) sin borrarla.
+--      "Abarrotes Agua Santa (PRUEBA)" no se toca. Abarrotes Peques no se crea.
 
 -- =========================
 -- Verificación (no cambia nada)
@@ -24,7 +25,9 @@ order by id;
 
 select id, nombre, activa
 from public.tiendas
-where nombre ilike '%prueba%';
+where nombre ilike '%zagu%'
+   or nombre = 'Abarrotes Agua Santa (PRUEBA)'
+order by id;
 
 -- =========================
 -- 1) Pedidos atorados: cancelar, no borrar
@@ -96,11 +99,13 @@ where id in (20, 21, 71, 113)
   and estado_envio in ('pendiente', 'fallida', 'enviando');
 
 -- =========================
--- 3) Tienda de prueba: inactiva, no borrada
+-- 3) ZAGU: inactiva, no borrada
+-- La columna de tiendas es activa. Solo corre si el nombre ZAGU es único.
 -- =========================
 update public.tiendas
 set activa = false
-where nombre = 'Abarrotes Agua Santa (PRUEBA)';
+where nombre ilike 'zagu'
+  and (select count(*) from public.tiendas where nombre ilike 'zagu') = 1;
 
 -- =========================
 -- Resultado
@@ -117,4 +122,6 @@ order by id;
 
 select id, nombre, activa
 from public.tiendas
-where nombre = 'Abarrotes Agua Santa (PRUEBA)';
+where nombre ilike '%zagu%'
+   or nombre = 'Abarrotes Agua Santa (PRUEBA)'
+order by id;

@@ -316,14 +316,8 @@ export function nicheIdForCategoria(categoria: string | null | undefined): Store
   return null;
 }
 
-/** Tienda de prueba. No se lista ni se ofrece al cliente. */
-export function isHiddenTestStoreName(nombre: string): boolean {
-  return /\(\s*prueba\s*\)/i.test(String(nombre ?? ""));
-}
-
 export function storesInNiche(stores: UxStore[], nicheId: StoreNicheId): UxStore[] {
   return stores
-    .filter((store) => !isHiddenTestStoreName(store.nombre))
     .filter((store) => nicheIdForCategoria(store.categoria) === nicheId)
     .sort((a, b) => Number(b.abierta) - Number(a.abierta) || a.nombre.localeCompare(b.nombre, "es"));
 }
