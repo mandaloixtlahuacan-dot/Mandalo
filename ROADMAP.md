@@ -2,7 +2,18 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 15 de octubre de 2026. Hay un agente de pedido
+> Última actualización: 15 de octubre de 2026. Atajos del pedido en borrador
+> (sin merge y sin deploy). La fase queda categoría → tienda → ejemplo →
+> pedido → ubicación → resumen. Antes de elegir tienda con un match
+> determinista, el bot general no contesta el pedido ni pega
+> `business_name`. Una frase larga con la categoría suelta la tienda
+> cerrada y muestra la lista fija. Nombres parecidos (Pekes, Penes,
+> Peques, peke) eligen Mini Super Peke's. Cancelar, también por timeout,
+> manda el aviso y el menú de categorías. En el resumen, «no pedí X» /
+> «es Y» no agregan el producto negado. Con `ORDER_AGENT=on` el agente
+> es el único camino de pedido. Prueba offline:
+> `scripts/check-order-shortcuts.ts`. Falta WhatsApp real.
+> Actualización anterior: 15 de octubre de 2026. Hay un agente de pedido
 > con herramientas en `src/lib/orderAgent/`. Está apagado:
 > `ORDER_AGENT=off` es el default y producción sigue el flujo de
 > siempre. Se prende con `ORDER_AGENT=on`. El modelo es
