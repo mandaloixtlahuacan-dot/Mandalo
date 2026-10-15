@@ -53,7 +53,17 @@ npx tsx scripts/import-store-products.ts 1 ./lista.csv --apply
 
 `--apply` inserta o actualiza filas y pone `usa_lista_productos = true` en esa tienda. Hace falta la migración y las llaves de Supabase en el entorno.
 
-## 4. Qué hace el bot con la lista
+## 4. Listas de más de 1000 productos
+
+PostgREST corta un `select` sin paginar en 1000 filas. Mini Super Peke's (tienda 7) tiene unos 12,865, así que un select de toda la lista escondía casi todo y el matcher podía elegir otra marca o otro tamaño.
+
+Antes de desplegar el código que busca, corre `supabase/migrations/20261015_productos_lista_trgm.sql` en el SQL Editor. No borra filas. Crea `pg_trgm` si no está, un índice GIN de trigramas en `productos_tienda(nombre_producto)`, otro en el nombre ya sin acentos, y la función `buscar_lista_productos_tienda`.
+
+Con 1000 productos o menos (Agua Santa) se sigue trayendo la lista completa. Con más, se buscan a lo más 80 candidatos con las palabras del mensaje —sin acentos, sin “quiero”, sin “2 litros”— en el nombre, la marca, el alias y la presentación. Después corre el mismo `matchLista` de siempre. En un turno se consulta una vez y se reusa.
+
+Si esa función todavía no existe, una tienda grande se queda sin lista en ese turno (no se usan las primeras 1000 al azar). Hay que correr el SQL antes de desplegar.
+
+## 5. Qué hace el bot con la lista
 
 - Si el cliente dice algo que pega con una sola fila, se anota esa y solo se pregunta la cantidad si falta.
 - Si hay varias (entera y deslactosada, por ejemplo), se ofrecen esas opciones numeradas, máximo 5. No se ofrecen tamaños que la tienda no tiene.

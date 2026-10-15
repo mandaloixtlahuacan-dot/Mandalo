@@ -6,6 +6,7 @@ import { resetChatHistory } from "@/lib/messages";
 import { parseDiasCerrado } from "@/lib/services/businessHours";
 import type { OrderState } from "@/lib/orderStateMachine";
 import { formatSpecificItemLine, type PedidoItemInput, type PedidoSnapshot, type PedidoV2Record } from "@/lib/services/captureEngine";
+import { listaFetchMode, listaSearchTokens, LISTA_SEARCH_LIMIT } from "@/lib/storeProductSearch";
 
 type UnknownRow = Record<string, unknown>;
 
@@ -428,56 +429,174 @@ export type ListaProductoRow = {
   precio: number | null;
 };
 
-// Lista de abarrotes sin precio. No filtra por precio: la tienda sigue cotizando.
-// Si la migración todavía no está aplicada, el select falla y el llamador sigue sin lista.
-export async function getListaProductosTienda(tiendaId: number): Promise<ListaProductoRow[]> {
-  const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
-    .from("productos_tienda")
-    .select("id, nombre_producto, precio, categoria, marca, presentacion, alias")
-    .eq("tienda_id", tiendaId)
-    .eq("disponible", true);
-  if (error) throw error;
-  return (data ?? [])
-    .map((row) => {
-      const record = row as {
-        id: unknown;
-        nombre_producto: unknown;
-        precio: unknown;
-        categoria: unknown;
-        marca: unknown;
-        presentacion: unknown;
-        alias: unknown;
-      };
-      const alias = Array.isArray(record.alias) ? record.alias.map((item) => String(item)) : [];
-      const precio = Number(record.precio ?? NaN);
-      return {
-        id: Number(record.id),
-        nombreProducto: String(record.nombre_producto ?? "").trim(),
-        marca: cleanText(record.marca),
-        presentacion: cleanText(record.presentacion),
-        categoria: cleanText(record.categoria),
-        alias,
-        precio: Number.isFinite(precio) ? precio : null,
-      };
-    })
-    .filter((row) => row.nombreProducto.length > 0);
+const LISTA_COLUMNS = "id, nombre_producto, precio, categoria, marca, presentacion, alias";
+const LISTA_CACHE_MS = 20_000;
+
+export type ListaQueryResult = {
+  data: unknown;
+  error: { message: string } | null;
+  count?: number | null;
+};
+
+export interface ListaFilterBuilder extends PromiseLike<ListaQueryResult> {
+  eq(column: string, value: unknown): ListaFilterBuilder;
+  maybeSingle(): Promise<ListaQueryResult>;
 }
 
-export async function getListaProductosSiActiva(tiendaId: number) {
+export interface ListaSupabase {
+  from(table: string): { select(columns: string, options?: { count?: "exact"; head?: boolean }): ListaFilterBuilder };
+  rpc(
+    fn: string,
+    args: { p_tienda_id: number; p_tokens: string[]; p_limit: number },
+  ): Promise<ListaQueryResult>;
+}
+
+type ListaCacheEntry = { at: number; rows: ListaProductoRow[] };
+
+const listaCache = new Map<string, ListaCacheEntry>();
+const listaCountCache = new Map<number, { at: number; count: number }>();
+const listaFlagCache = new Map<number, { at: number; on: boolean }>();
+
+export function clearListaProductosCache(): void {
+  listaCache.clear();
+  listaCountCache.clear();
+  listaFlagCache.clear();
+}
+
+function readListaCache(key: string): ListaProductoRow[] | null {
+  const hit = listaCache.get(key);
+  if (!hit || Date.now() - hit.at > LISTA_CACHE_MS) return null;
+  return hit.rows.slice();
+}
+
+function rememberLista(key: string, rows: ListaProductoRow[]): ListaProductoRow[] {
+  const now = Date.now();
+  if (listaCache.size > 40) {
+    for (const [cachedKey, entry] of listaCache) {
+      if (now - entry.at > LISTA_CACHE_MS) listaCache.delete(cachedKey);
+    }
+    if (listaCache.size > 40) listaCache.clear();
+  }
+  listaCache.set(key, { at: now, rows });
+  return rows.slice();
+}
+
+function mapListaRow(row: unknown): ListaProductoRow | null {
+  const record = row as {
+    id: unknown;
+    nombre_producto: unknown;
+    precio: unknown;
+    categoria: unknown;
+    marca: unknown;
+    presentacion: unknown;
+    alias: unknown;
+  };
+  const nombreProducto = String(record.nombre_producto ?? "").trim();
+  if (!nombreProducto) return null;
+  const alias = Array.isArray(record.alias) ? record.alias.map((item) => String(item)) : [];
+  const precio = Number(record.precio ?? NaN);
+  return {
+    id: Number(record.id),
+    nombreProducto,
+    marca: cleanText(record.marca),
+    presentacion: cleanText(record.presentacion),
+    categoria: cleanText(record.categoria),
+    alias,
+    precio: Number.isFinite(precio) ? precio : null,
+  };
+}
+
+function mapListaRows(data: unknown): ListaProductoRow[] {
+  return (Array.isArray(data) ? data : []).map(mapListaRow).filter((row): row is ListaProductoRow => row !== null);
+}
+
+async function countListaDisponible(supabase: ListaSupabase, tiendaId: number): Promise<number> {
+  const hit = listaCountCache.get(tiendaId);
+  if (hit && Date.now() - hit.at < LISTA_CACHE_MS) return hit.count;
+  const counted = await supabase
+    .from("productos_tienda")
+    .select("id", { count: "exact", head: true })
+    .eq("tienda_id", tiendaId)
+    .eq("disponible", true);
+  if (counted.error) throw new Error(counted.error.message);
+  if (typeof counted.count !== "number") throw new Error("No se pudo contar la lista de productos");
+  listaCountCache.set(tiendaId, { at: Date.now(), count: counted.count });
+  return counted.count;
+}
+
+// Lista de abarrotes sin precio. No filtra por precio: la tienda sigue cotizando.
+// Con 1000 productos o menos se trae la lista completa, igual que antes.
+// Con más, se buscan como máximo 80 candidatos en el servidor: PostgREST
+// corta un select sin filtro en 1000 y Mini Super Peke's se queda sin el resto.
+// Si la migración todavía no está aplicada, la consulta falla y el llamador sigue sin lista.
+export async function queryListaProductos(
+  supabase: ListaSupabase,
+  tiendaId: number,
+  queryText?: string | null,
+): Promise<ListaProductoRow[]> {
+  const tokens = listaSearchTokens(queryText ?? "");
+  const count = await countListaDisponible(supabase, tiendaId);
+  const mode = listaFetchMode(count, tokens);
+  const cacheKey =
+    mode === "full" ? `full:${tiendaId}` : mode === "empty" ? `empty:${tiendaId}` : `search:${tiendaId}:${[...tokens].sort().join("\u0001")}`;
+  const cached = readListaCache(cacheKey);
+  if (cached) return cached;
+
+  if (mode === "empty") return rememberLista(cacheKey, []);
+
+  if (mode === "full") {
+    const selected = await supabase
+      .from("productos_tienda")
+      .select(LISTA_COLUMNS)
+      .eq("tienda_id", tiendaId)
+      .eq("disponible", true);
+    if (selected.error) throw new Error(selected.error.message);
+    return rememberLista(cacheKey, mapListaRows(selected.data));
+  }
+
+  const searched = await supabase.rpc("buscar_lista_productos_tienda", {
+    p_tienda_id: tiendaId,
+    p_tokens: tokens,
+    p_limit: LISTA_SEARCH_LIMIT,
+  });
+  if (searched.error) throw new Error(searched.error.message);
+  return rememberLista(cacheKey, mapListaRows(searched.data));
+}
+
+export async function getListaProductosTienda(tiendaId: number, queryText?: string | null): Promise<ListaProductoRow[]> {
+  return queryListaProductos(getSupabaseAdmin() as unknown as ListaSupabase, tiendaId, queryText);
+}
+
+async function listaEstaActiva(supabase: ListaSupabase, tiendaId: number): Promise<boolean> {
+  const hit = listaFlagCache.get(tiendaId);
+  if (hit && Date.now() - hit.at < LISTA_CACHE_MS) return hit.on;
+  const flag = await supabase.from("tiendas").select("usa_lista_productos").eq("id", tiendaId).maybeSingle();
+  if (flag.error) throw new Error(flag.error.message);
+  const on = (flag.data as { usa_lista_productos?: unknown } | null)?.usa_lista_productos === true;
+  listaFlagCache.set(tiendaId, { at: Date.now(), on });
+  return on;
+}
+
+export async function loadListaProductosSiActiva(
+  supabase: ListaSupabase,
+  tiendaId: number,
+  queryText?: string | null,
+) {
+  if (!(await listaEstaActiva(supabase, tiendaId))) return null;
+  const rows = await queryListaProductos(supabase, tiendaId, queryText);
+  return rows.map((row) => ({
+    nombre: row.nombreProducto,
+    marca: row.marca,
+    presentacion: row.presentacion,
+    categoria: row.categoria,
+    alias: row.alias,
+    precio: row.precio,
+  }));
+}
+
+export async function getListaProductosSiActiva(tiendaId: number, queryText?: string | null) {
   try {
-    const supabase = getSupabaseAdmin();
-    const flag = await supabase.from("tiendas").select("usa_lista_productos").eq("id", tiendaId).maybeSingle();
-    if (flag.error || (flag.data as { usa_lista_productos?: unknown } | null)?.usa_lista_productos !== true) return null;
-    const rows = await getListaProductosTienda(tiendaId);
-    return rows.map((row) => ({
-      nombre: row.nombreProducto,
-      marca: row.marca,
-      presentacion: row.presentacion,
-      categoria: row.categoria,
-      alias: row.alias,
-      precio: row.precio,
-    }));
+    return await loadListaProductosSiActiva(getSupabaseAdmin() as unknown as ListaSupabase, tiendaId, queryText);
   } catch {
     return null;
   }

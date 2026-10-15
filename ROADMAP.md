@@ -2,7 +2,17 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 15 de octubre de 2026. Fotos nuevas de menú, sin
+> Última actualización: 15 de octubre de 2026. La lista de abarrotes ya no
+> se corta en 1000 filas. Mini Super Peke's (tienda 7, unos 12,865
+> productos) se busca en el servidor: a lo más 80 candidatos por el
+> mensaje, y `matchLista` corre sobre esos. Agua Santa, con 1000 o
+> menos, sigue trayendo la lista completa. El SQL no está aplicado y
+> no se despliega todavía: `supabase/migrations/20261015_productos_lista_trgm.sql`
+> (extensión `pg_trgm`, índice GIN en `nombre_producto` y la función
+> `buscar_lista_productos_tienda`). No borra filas. Sin esa función,
+> una tienda grande se queda sin lista en el turno en vez de matchear
+> contra las primeras 1000. El motor de George y La Central no se tocó.
+> Actualización anterior: 15 de octubre de 2026. Fotos nuevas de menú, sin
 > cambiar precios. `public/menus/carniceria-la-central.png` es la de
 > Carnicería La Central. George se manda desde `public/menus/george.png`
 > (el bot la prefiere) y, si esa no entra al despliegue, desde

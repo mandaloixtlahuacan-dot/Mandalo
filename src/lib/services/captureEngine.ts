@@ -9,6 +9,7 @@ import { restoreNamedFromHistory } from "@/lib/quoteProductClarity";
 import type { OrderState } from "@/lib/orderStateMachine";
 import { normalizePhone } from "@/lib/roles";
 import { resolveMapsLink } from "@/lib/services/geo";
+import { listaQueryText } from "@/lib/storeProductSearch";
 
 type JsonObject = Record<string, unknown>;
 
@@ -184,7 +185,10 @@ export type PedidoRepositoryV2Deps = {
     pedidoId: number;
     items: PedidoItemInput[];
   }): Promise<void>;
-  getListaProductosSiActiva?(tiendaId: number): Promise<import("@/lib/storeProductList").ListaProducto[] | null>;
+  getListaProductosSiActiva?(
+    tiendaId: number,
+    queryText?: string | null,
+  ): Promise<import("@/lib/storeProductList").ListaProducto[] | null>;
   appendPedidoEvento(params: {
     pedidoId: number;
     tipoEvento: string;
@@ -707,7 +711,12 @@ export function createCaptureEngine(deps: CaptureEngineDeps) {
         snapshotForValidation.businessId &&
         pedidoRepository.getListaProductosSiActiva
       ) {
-        storeList = await pedidoRepository.getListaProductosSiActiva(snapshotForValidation.businessId).catch(() => null);
+        storeList = await pedidoRepository
+          .getListaProductosSiActiva(
+            snapshotForValidation.businessId,
+            listaQueryText(input.userMessage, itemsForValidation),
+          )
+          .catch(() => null);
       }
       const validation = validationEngine.validateCaptureForConfirmation({
         snapshot: snapshotForValidation,
