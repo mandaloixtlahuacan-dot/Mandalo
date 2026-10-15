@@ -395,7 +395,7 @@ export async function getLLMResponse(params: {
 
   let listaAbarrotes_text = "";
   if (menuCandidato && menuCandidato.usa_catalogo_fijo !== true && Number.isFinite(menuCandidatoId) && menuCandidatoId > 0) {
-    const lista = await pedidoRepositoryV2.getListaProductosSiActiva(menuCandidatoId).catch(() => null);
+    const lista = await pedidoRepositoryV2.getListaProductosSiActiva(menuCandidatoId, params.userMessage).catch(() => null);
     if (lista?.length) {
       const { listaNamesForPrompt } = await import("@/lib/storeProductList");
       const names = listaNamesForPrompt(lista, params.userMessage);
