@@ -1,5 +1,5 @@
 import { checkAiOutput, type AcceptedQuestion, type CheckResult } from "@/lib/catalogOrder/accept";
-import { cartFromModel, fallbackInterpret } from "@/lib/catalogOrder/fallback";
+import { cartFromModel, fallbackInterpret, messageClauses } from "@/lib/catalogOrder/fallback";
 import { createOpenAICatalogModel, escalationModelName, logEscalation, notePrimaryTurn, orderModel } from "@/lib/catalogOrder/parser";
 import { parseQuantity } from "@/lib/catalogOrder/quantities";
 import { buildAiReply, buildCatalogReply } from "@/lib/catalogOrder/reply";
@@ -218,9 +218,81 @@ function removalError(message: string, prior: CartLine[], next: CartLine[]): str
   return "el cliente quitó algo; quítalo";
 }
 
+const RETIRED_ORDER = /\b(?:tortas?|quesadillas?|sincronizadas?|aletas?|alitas?)\b|\bingrediente extra\b/;
+const SHARED_FLAVOR = new Set([
+  "clasico", "clasicos", "grande", "chica", "pollo", "res", "camaron", "arrachera",
+  "hawaiana", "hawaiano", "cubana", "cubano", "tocino", "chorizo", "pierna", "campechana",
+]);
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function clauseIsRetired(clause: string): boolean {
+  return RETIRED_ORDER.test(plain(clause));
+}
+
+/** Cabeza de la fila, un sabor de refresco, o un alias. Un sabor suelto (camarón, arrachera) no basta. */
+function clauseNamesRow(clause: string, row: CatalogRow): boolean {
+  const text = plain(clause);
+  const blob = fold(`${row.family} ${row.name}`);
+  const heads: Array<[string, RegExp]> = [
+    ["hamburguesa", /\b(?:hamburguesas?|amburguesas?|hamburgesas?)\b/],
+    ["dogo", /\b(?:dogos?|dogs?|hotdogs?|jotdogs?)\b/],
+    ["papas", /\bpapas\b/],
+    ["refresco", /\brefrescos?\b/],
+    ["boneless", /\bbon(?:e?les|eles)\b/],
+    ["salchiloco", /\bsalchi\s*locos?\b/],
+    ["dedos", /\bdedos?\b/],
+    ["botana", /\bbotanas?\b/],
+    ["pizzadogo", /\bpizza\s*dogos?\b|\bpizzadogos?\b/],
+    ["doridogo", /\bdori\s*dogos?\b|\bdoridogos?\b/],
+    ["dogoburguer", /\bdogoburg(?:er|uer)s?\b/],
+  ];
+  if (heads.some(([head, pattern]) => blob.includes(head) && pattern.test(text))) return true;
+  if (row.variants.some((variant) => new RegExp(`\\b${escapeRegExp(fold(variant))}s?\\b`).test(text))) return true;
+  return row.alias.some((alias) => {
+    const key = fold(alias);
+    if (key.length < 4 || SHARED_FLAVOR.has(key)) return false;
+    const pattern = key.split(/\s+/).map(escapeRegExp).join("\\s+");
+    return new RegExp(`\\b${pattern}\\b`).test(text);
+  });
+}
+
+/**
+ * Tortas, sincronizadas, quesadillas y alitas ya no están.
+ * Si el modelo las cambia por otra fila, esa fila no se queda.
+ * Lo que ya estaba en el carrito, o lo que este mensaje sí nombra, sí.
+ */
+function retireGeorgeLines(message: string, checked: CheckResult, prior: CartLine[], catalog: CatalogSnapshot): CheckResult {
+  if (catalog.profile !== "restaurante") return checked;
+  const clauses = messageClauses(message);
+  const retired = clauses.filter(clauseIsRetired);
+  if (!retired.length) return checked;
+  const priorIds = new Set(prior.map((line) => line.productId));
+  const cart = checked.cart.filter((line) => {
+    if (priorIds.has(line.productId)) return true;
+    const row = catalog.byId.get(line.productId);
+    if (!row) return false;
+    return clauses.some((clause) => !clauseIsRetired(clause) && clauseNamesRow(clause, row));
+  });
+  const notOnMenu = [...checked.notOnMenu];
+  for (const clause of retired) {
+    const folded = plain(clause);
+    const covered = notOnMenu.some((item) => {
+      const key = plain(item);
+      return Boolean(key) && (folded.includes(key) || key.includes(folded));
+    });
+    if (!covered) notOnMenu.push(clause.trim());
+  }
+  if (cart.length === checked.cart.length && notOnMenu.length === checked.notOnMenu.length) return checked;
+  return { ...checked, cart, notOnMenu };
+}
+
 function guardChecked(input: CatalogTurnInput, checked: CheckResult): CheckResult {
   const named = preferExactName(input.message, checked, input.cart, input.catalog);
-  return rescueBoneless(input.message, named, input.catalog);
+  const rescued = rescueBoneless(input.message, named, input.catalog);
+  return retireGeorgeLines(input.message, rescued, input.cart, input.catalog);
 }
 
 function acceptChecked(input: CatalogTurnInput, output: AiOutput): CheckResult {

@@ -256,10 +256,10 @@ async function offline(): Promise<void> {
   assert(prompt.includes("No preguntes con una sola opción"), "el prompt no prohíbe la pregunta de una sola opción");
   assert(prompt.includes("not_on_menu"), "el prompt no manda lo de fuera del menú a not_on_menu");
   assert(prompt.includes("dos grandes y una chica"), "el prompt no reparte dos tamaños");
-  assert(prompt.includes("una de ellas mejor de arrachera"), "el prompt no muestra el cambio de una parte");
+  assert(prompt.includes("una de ellas mejor de pollo"), "el prompt no muestra el cambio de una parte");
   assert(prompt.includes("unas papas"), "el prompt no pregunta el tipo de papas");
-  assert(prompt.includes("Quesadilla no es Sincronizada"), "el prompt no separa quesadilla de sincronizada");
-  assert(prompt.includes("la de chorizo no"), "el prompt no quita con «la de X no»");
+  assert(prompt.includes("sin cambiarlas por otra"), "el prompt no manda tortas y quesadillas a not_on_menu");
+  assert(prompt.includes("la de camarón no"), "el prompt no quita con «la de X no»");
   assert(prompt.includes("reemplaza el Clásico"), "el prompt no reemplaza el dogo clásico");
   assert(prompt.includes("nombre exacto de una fila"), "el prompt no prefiere el nombre exacto");
   assert(prompt.includes(`${burger.id} ${burger.name}`), "el prompt no trae el menú de esta tienda");
@@ -291,8 +291,8 @@ async function offline(): Promise<void> {
     return row;
   };
   const diezmillo = byName(central, "Diezmillo");
-  const wings30 = byName(george, "Alitas 30 piezas");
-  const tortaMex = byName(george, "Torta Mexicana");
+  const wings30 = byName(george, "Boneless 10 piezas");
+  const tortaMex = byName(george, "Dogo Clásico");
   const cubanaC = byName(george, "Hamburguesa Cubana Chica");
   const bistecPuerco = byName(central, "Bistec de puerco");
 
@@ -431,28 +431,30 @@ async function offline(): Promise<void> {
   });
   assert(leftAlone.cart[0]?.productId === resMarin.id, "una línea que ya estaba se cambió de marinada a res");
 
-  const quesadilla = byName(george, "Quesadilla de Tocino");
-  const sincronizada = byName(george, "Sincronizada de Tocino");
-  const looked = await runCatalogOrderTurn({
-    message: "dos quesadillas de tocino, una con ingrediente extra",
+  const substituted = await runCatalogOrderTurn({
+    message: "dos quesadillas de tocino",
     cart: [],
     pending: null,
     history: [],
     catalog: george,
-    model: scripted([emptyAi({ cart: [{ product_id: sincronizada.id, qty: 2, unit: "pz", variant: null }] })]),
+    model: scripted([emptyAi({ cart: [{ product_id: polloG.id, qty: 2, unit: "pz", variant: null }] })]),
   });
-  assert(looked.cart[0]?.productId === quesadilla.id && looked.cart[0]?.qty === 2, "quesadilla de tocino se quedó en sincronizada");
+  assert(substituted.cart.length === 0, "una quesadilla se cambió por hamburguesa");
+  assert(
+    /no lo manejamos/i.test(substituted.reply) && /quesadilla/i.test(substituted.reply) && /hamburguesa/i.test(substituted.reply),
+    "la quesadilla no avisó lo más cercano",
+  );
 
-  const chorizoSync = byName(george, "Sincronizada de Chorizo");
-  const arraSync = byName(george, "Sincronizada de Arrachera");
-  const bothSync: CartLine[] = [
-    { productId: chorizoSync.id, qty: 1, unit: "pz", variant: null, notes: null },
-    { productId: arraSync.id, qty: 1, unit: "pz", variant: null, notes: null },
+  const camaronG = byName(george, "Hamburguesa de Camarón Grande");
+  const resG = byName(george, "Hamburguesa de Res Grande");
+  const bothBurgers: CartLine[] = [
+    { productId: camaronG.id, qty: 1, unit: "pz", variant: null, notes: null },
+    { productId: resG.id, qty: 1, unit: "pz", variant: null, notes: null },
   ];
   let removalCalls = 0;
   const removed = await runCatalogOrderTurn({
-    message: "la de chorizo no",
-    cart: bothSync,
+    message: "la de camarón no",
+    cart: bothBurgers,
     pending: null,
     history: [],
     catalog: george,
@@ -463,17 +465,37 @@ async function offline(): Promise<void> {
         if (removalCalls === 1) {
           return emptyAi({
             cart: [
-              { product_id: chorizoSync.id, qty: 1, unit: "pz", variant: null },
-              { product_id: arraSync.id, qty: 1, unit: "pz", variant: null },
+              { product_id: camaronG.id, qty: 1, unit: "pz", variant: null },
+              { product_id: resG.id, qty: 1, unit: "pz", variant: null },
             ],
           });
         }
         assert(request.repairErrors?.some((error) => error.includes("quitó")) === true, "la corrección no dijo que había que quitar");
-        return emptyAi({ cart: [{ product_id: arraSync.id, qty: 1, unit: "pz", variant: null }] });
+        return emptyAi({ cart: [{ product_id: resG.id, qty: 1, unit: "pz", variant: null }] });
       },
     },
   });
-  assert(removalCalls === 2 && removed.cart.length === 1 && removed.cart[0]?.productId === arraSync.id, "«la de chorizo no» no pidió quitarla");
+  assert(removalCalls === 2 && removed.cart.length === 1 && removed.cart[0]?.productId === resG.id, "«la de camarón no» no pidió quitarla");
+
+  const dogoCam = byName(george, "Dogo de Camarón");
+  const keptDogo = await runCatalogOrderTurn({
+    message: "dos dogos de camarón y una torta",
+    cart: [],
+    pending: null,
+    history: [],
+    catalog: george,
+    model: scripted([emptyAi({
+      cart: [
+        { product_id: dogoCam.id, qty: 2, unit: "pz", variant: null },
+        { product_id: camaronG.id, qty: 1, unit: "pz", variant: null },
+      ],
+    })]),
+  });
+  assert(
+    keptDogo.cart.length === 1 && keptDogo.cart[0]?.productId === dogoCam.id && keptDogo.cart[0]?.qty === 2,
+    "la torta se llevó el dogo o dejó la hamburguesa",
+  );
+  assert(/no lo manejamos/i.test(keptDogo.reply) && /torta/i.test(keptDogo.reply), "la torta no se avisó");
 
   const bonelessOnly = await runCatalogOrderTurn({
     message: "unos boneles",
@@ -495,6 +517,45 @@ async function offline(): Promise<void> {
     model: null,
   });
   assert(kilos.fallback === true && kilos.pending?.qty === 2, "la pregunta del respaldo perdió los dos kilos");
+
+  const tortaOff = await runCatalogOrderTurn({
+    message: "una torta cubana",
+    cart: [],
+    pending: null,
+    history: [],
+    catalog: george,
+    model: null,
+  });
+  assert(
+    tortaOff.fallback === true && tortaOff.cart.length === 0 && /no lo manejamos/i.test(tortaOff.reply) && /hamburguesa cubana/i.test(tortaOff.reply),
+    "una torta cubana no ofreció la hamburguesa",
+  );
+  const alitasOff = await runCatalogOrderTurn({
+    message: "unas alitas",
+    cart: [],
+    pending: null,
+    history: [],
+    catalog: george,
+    model: null,
+  });
+  assert(
+    alitasOff.fallback === true && alitasOff.cart.length === 0 && /no lo manejamos/i.test(alitasOff.reply) && /boneless/i.test(alitasOff.reply),
+    "unas alitas no ofrecieron boneless",
+  );
+  const syncOff = await runCatalogOrderTurn({
+    message: "dos dogos clásicos y una sincronizada",
+    cart: [],
+    pending: null,
+    history: [],
+    catalog: george,
+    model: null,
+  });
+  const syncName = george.byId.get(syncOff.cart[0]?.productId ?? 0)?.name ?? "";
+  assert(
+    syncOff.fallback === true && syncOff.cart.length === 1 && /dogo cl[aá]sico/i.test(syncName) && syncOff.cart[0]?.qty === 2
+      && /no lo manejamos/i.test(syncOff.reply) && /sincronizada/i.test(syncOff.reply),
+    "la sincronizada se llevó el dogo",
+  );
 
   const fourGrandes: CartLine[] = [{ productId: polloG.id, qty: 4, unit: "pz", variant: null, notes: null }];
   let swapCalls = 0;
@@ -666,11 +727,11 @@ async function offline(): Promise<void> {
     let removalMiniCalls = 0;
     const removalStrong = counted("gpt-5.5", (request) => {
       assert(request.repairErrors?.some((error) => error.includes("quitó")) === true, "la corrección del salto no dijo que había que quitar");
-      return emptyAi({ cart: [{ product_id: arraSync.id, qty: 1, unit: "pz", variant: null }] });
+      return emptyAi({ cart: [{ product_id: resG.id, qty: 1, unit: "pz", variant: null }] });
     });
     const removalHit = await runCatalogOrderTurn({
-      message: "la de chorizo no",
-      cart: bothSync,
+      message: "la de camarón no",
+      cart: bothBurgers,
       pending: null,
       history: [],
       catalog: george,
@@ -680,8 +741,8 @@ async function offline(): Promise<void> {
           removalMiniCalls += 1;
           return emptyAi({
             cart: [
-              { product_id: chorizoSync.id, qty: 1, unit: "pz", variant: null },
-              { product_id: arraSync.id, qty: 1, unit: "pz", variant: null },
+              { product_id: camaronG.id, qty: 1, unit: "pz", variant: null },
+              { product_id: resG.id, qty: 1, unit: "pz", variant: null },
             ],
           });
         },
@@ -689,7 +750,7 @@ async function offline(): Promise<void> {
       escalationModel: removalStrong.model,
     });
     assert(removalMiniCalls === 1 && removalStrong.calls() === 1 && removalHit.model === "gpt-5.5", "quitar sin mover el carrito no saltó, o mini corrigió solo");
-    assert(removalHit.cart.length === 1 && removalHit.cart[0]?.productId === arraSync.id, "el salto no quitó la de chorizo");
+    assert(removalHit.cart.length === 1 && removalHit.cart[0]?.productId === resG.id, "el salto no quitó la de camarón");
     assert(logs.includes("[catalogOrder] escalate reason=removal"), "la quita no se anotó");
 
     const swapStrong = counted("gpt-5.5", (request) => {
@@ -750,13 +811,11 @@ async function offline(): Promise<void> {
     assert(exactHit.cart[0]?.productId === plainPork.id && exactHit.cart[0]?.qty === 1.25, "el salto dejó el bistec de puerco marinado");
     assert(logs.includes("[catalogOrder] escalate reason=exact-name"), "el nombre exacto no se anotó");
 
-    const lookStrong = counted("gpt-5.5", (request) => {
-      assert(request.repairErrors?.some((error) => /parecid/i.test(error)) === true, "el parecido no explicó el cambio de fila");
-      return emptyAi({ cart: [{ product_id: quesadilla.id, qty: 2, unit: "pz", variant: null }] });
-    });
+    const beforeLook = logs.length;
+    const lookStrong = counted("gpt-5.5", () => emptyAi({ cart: [{ product_id: polloG.id, qty: 2, unit: "pz", variant: null }] }));
     let lookMiniCalls = 0;
     const lookHit = await runCatalogOrderTurn({
-      message: "dos quesadillas de tocino, una con ingrediente extra",
+      message: "dos quesadillas de tocino",
       cart: [],
       pending: null,
       history: [],
@@ -765,14 +824,14 @@ async function offline(): Promise<void> {
         name: "gpt-4o-mini",
         async interpret() {
           lookMiniCalls += 1;
-          return emptyAi({ cart: [{ product_id: sincronizada.id, qty: 2, unit: "pz", variant: null }] });
+          return emptyAi({ cart: [{ product_id: polloG.id, qty: 2, unit: "pz", variant: null }] });
         },
       },
       escalationModel: lookStrong.model,
     });
-    assert(lookMiniCalls === 1 && lookStrong.calls() === 1 && lookHit.model === "gpt-5.5", "quesadilla contra sincronizada no saltó");
-    assert(lookHit.cart[0]?.productId === quesadilla.id, "el salto dejó la sincronizada");
-    assert(logs.includes("[catalogOrder] escalate reason=look-alike"), "el parecido no se anotó");
+    assert(lookMiniCalls === 1 && lookStrong.calls() === 0, "una quesadilla sustituida saltó de modelo");
+    assert(lookHit.cart.length === 0 && /no lo manejamos/i.test(lookHit.reply) && /quesadilla/i.test(lookHit.reply), "la quesadilla sustituida se quedó en el carrito");
+    assert(!logs.slice(beforeLook).some((line) => line.includes("look-alike")), "una quesadilla anotó un parecido");
 
     const beforeClean = logs.length;
     const cleanMini = counted("gpt-4o-mini", () => burgerLine);
@@ -838,8 +897,8 @@ async function offline(): Promise<void> {
     let disabledCalls = 0;
     const disabledStrong = counted("gpt-5.5", () => burgerLine);
     await runCatalogOrderTurn({
-      message: "la de chorizo no",
-      cart: bothSync,
+      message: "la de camarón no",
+      cart: bothBurgers,
       pending: null,
       history: [],
       catalog: george,
@@ -850,12 +909,12 @@ async function offline(): Promise<void> {
           if (disabledCalls === 1) {
             return emptyAi({
               cart: [
-                { product_id: chorizoSync.id, qty: 1, unit: "pz", variant: null },
-                { product_id: arraSync.id, qty: 1, unit: "pz", variant: null },
+                { product_id: camaronG.id, qty: 1, unit: "pz", variant: null },
+                { product_id: resG.id, qty: 1, unit: "pz", variant: null },
               ],
             });
           }
-          return emptyAi({ cart: [{ product_id: arraSync.id, qty: 1, unit: "pz", variant: null }] });
+          return emptyAi({ cart: [{ product_id: resG.id, qty: 1, unit: "pz", variant: null }] });
         },
       },
       escalationModel: null,

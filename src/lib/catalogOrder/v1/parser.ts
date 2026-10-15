@@ -127,7 +127,7 @@ function promptFor(request: InterpretRequest): string {
     "Un elemento de changes por producto. source_text va copiado del mensaje.",
     "cámbialo o cambia X por Y es op replace: from_product_id es la línea que sale y product_id la que entra. No dejes las dos.",
     "otra, otro, agrega otro y otra igual suman 1 a esa línea (op add o set_qty con la cantidad nueva).",
-    "En una quesadilla, 'con ingrediente extra' es la fila Ingrediente Extra en Quesadilla, además de la quesadilla.",
+    "Tortas, quesadillas, sincronizadas, alitas e ingrediente extra no están en el menú: not_on_menu, sin sustituirlos.",
     "",
     "Menú (id | nombre | precio | unidad | variantes):",
     catalogLines(request),

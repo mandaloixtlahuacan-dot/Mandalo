@@ -66,32 +66,6 @@ Doridogo | 45
 Dogo Arrachera | 45
 Pizzadogo | 45
 Refresco (Pepsi, Seven, Coca, Mirinda o Manzana) | 20
-Torta de Pierna | 80
-Torta Hawaiana | 100
-Torta Cubana | 100
-Torta Mexicana | 100
-Torta de Arrachera | 80
-Torta de Chorizo | 80
-Torta Campechana | 80
-Sincronizada de Pierna y Tocino | 70
-Sincronizada de Tocino | 60
-Sincronizada de Camarón | 80
-Sincronizada de Arrachera | 70
-Sincronizada de Chorizo | 70
-Sincronizada Campechana | 70
-Quesadilla de Tocino | 35
-Quesadilla de Camarón | 80
-Quesadilla Burrita | 35
-Quesadilla Quesaburra | 70
-Quesadilla de Arrachera | 45
-Quesadilla de Chorizo | 45
-Quesadilla Campechana | 55
-Ingrediente Extra en Quesadilla | 20
-Alitas 5 piezas | 70
-Alitas 10 piezas | 130
-Alitas 15 piezas | 185
-Alitas 20 piezas | 225
-Alitas 30 piezas | 325
 `
   .trim()
   .split("\n")
@@ -331,6 +305,31 @@ check(
   "george-sushi",
   /no lo manejamos/.test(questionOf(sushi)) && sushi.items.length === 0,
   questionOf(sushi),
+);
+const tortaArra = speech("una torta de arrachera");
+check(
+  "george-torta-fuera",
+  /no lo manejamos/i.test(questionOf(tortaArra)) &&
+    /hamburguesa de arrachera/i.test(questionOf(tortaArra)) &&
+    tortaArra.items.length === 0,
+  questionOf(tortaArra),
+);
+const alitasFuera = speech("unas alitas de 10");
+check(
+  "george-alitas-fuera",
+  /no lo manejamos/i.test(questionOf(alitasFuera)) &&
+    /boneless/i.test(questionOf(alitasFuera)) &&
+    alitasFuera.items.length === 0,
+  questionOf(alitasFuera),
+);
+const quesaDogo = speech("una quesadilla y un dogo clásico");
+check(
+  "george-quesadilla-y-dogo",
+  /no lo manejamos/i.test(questionOf(quesaDogo)) &&
+    /quesadilla/i.test(questionOf(quesaDogo)) &&
+    Boolean(findItem(quesaDogo.items, /Dogo Clásico/i)) &&
+    !quesaDogo.items.some((item) => /quesadilla|torta|sincronizada|alitas|hamburguesa/i.test(item.nombre_producto)),
+  `${questionOf(quesaDogo)} | ${quesaDogo.items.map((item) => item.nombre_producto).join(", ")}`,
 );
 
 function centralSpeech(message: string, incoming: PedidoItemInput[] = [], prior: PedidoItemInput[] = []) {

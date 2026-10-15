@@ -8,9 +8,12 @@
 > (el bot la prefiere) y, si esa no entra al despliegue, desde
 > `public/menus/george.b64.NN`, regenerados con la misma foto. La foto
 > nueva no imprime un monto de envío. La Central coincide en los 19
-> precios. George sigue teniendo en el catálogo tortas, sincronizadas,
-> quesadillas y alitas que la foto nueva no trae. No hay semilla SQL de
-> George en el repo. Sin merge y sin deploy.
+> precios. El catálogo de George ya no trae tortas, sincronizadas,
+> quesadillas (incluido el ingrediente extra) ni alitas. Si las piden,
+> el bot dice que no las manejamos y sugiere lo más cercano: el boneless,
+> esa hamburguesa, o una hamburguesa. Los precios de lo que sí está no
+> cambiaron. No hay semilla SQL de George en el repo. Sin merge y sin
+> deploy.
 > Actualización anterior: 15 de octubre de 2026. Horario de reparto 8am–9pm
 > (hora de México) y oferta del pedido a todos los repartidores en su
 > horario semanal. Mateo (tardes, sábado completo) y Roberto (todos los

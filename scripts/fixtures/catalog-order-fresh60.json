@@ -53,18 +53,15 @@
     "items": [
      {
       "name": "Dogo Arrachera",
-      "qty": 3,
-      "unit": "pz"
-     },
-     {
-      "name": "Torta Campechana",
-      "qty": 1,
+      "qty": 3.0,
       "unit": "pz"
      }
     ],
-    "ask": "none",
+    "ask": "not_available",
     "ask_contains": [],
-    "not_available": []
+    "not_available": [
+     "torta"
+    ]
    }
   },
   {
@@ -287,21 +284,13 @@
     "Me pasa, eh, dos, sincroni sadas, de chorizo, y, una, quesadilla, campe chana"
    ],
    "expect": {
-    "items": [
-     {
-      "name": "Sincronizada de Chorizo",
-      "qty": 2,
-      "unit": "pz"
-     },
-     {
-      "name": "Quesadilla Campechana",
-      "qty": 1,
-      "unit": "pz"
-     }
-    ],
-    "ask": "none",
+    "items": [],
+    "ask": "not_available",
     "ask_contains": [],
-    "not_available": []
+    "not_available": [
+     "quesadilla",
+     "sincronizada"
+    ]
    }
   },
   {
@@ -314,19 +303,16 @@
    "expect": {
     "items": [
      {
-      "name": "Alitas 10 piezas",
-      "qty": 1,
-      "unit": "pz"
-     },
-     {
       "name": "Papas Gajo 315g",
-      "qty": 1,
+      "qty": 1.0,
       "unit": "pz"
      }
     ],
-    "ask": "none",
+    "ask": "not_available",
     "ask_contains": [],
-    "not_available": []
+    "not_available": [
+     "alitas"
+    ]
    }
   },
   {
@@ -339,25 +325,17 @@
    "expect": {
     "items": [
      {
-      "name": "Quesadilla Quesaburra",
-      "qty": 2,
-      "unit": "pz"
-     },
-     {
-      "name": "Quesadilla de Arrachera",
-      "qty": 1,
-      "unit": "pz"
-     },
-     {
       "name": "Refresco (Pepsi, Seven, Coca, Mirinda o Manzana)",
-      "qty": 1,
+      "qty": 1.0,
       "unit": "pz",
       "variant": "Seven"
      }
     ],
-    "ask": "none",
+    "ask": "not_available",
     "ask_contains": [],
-    "not_available": []
+    "not_available": [
+     "quesadilla"
+    ]
    }
   },
   {
@@ -370,13 +348,8 @@
    "expect": {
     "items": [
      {
-      "name": "Torta Cubana",
-      "qty": 1,
-      "unit": "pz"
-     },
-     {
       "name": "Dogo de Camarón",
-      "qty": 2,
+      "qty": 2.0,
       "unit": "pz"
      }
     ],
@@ -489,20 +462,17 @@
    "expect": {
     "items": [
      {
-      "name": "Alitas 5 piezas",
-      "qty": 3,
-      "unit": "pz"
-     },
-     {
       "name": "Refresco (Pepsi, Seven, Coca, Mirinda o Manzana)",
-      "qty": 2,
+      "qty": 2.0,
       "unit": "pz",
       "variant": "Pepsi"
      }
     ],
-    "ask": "none",
+    "ask": "not_available",
     "ask_contains": [],
-    "not_available": []
+    "not_available": [
+     "alitas"
+    ]
    }
   },
   {
@@ -517,18 +487,8 @@
    "expect": {
     "items": [
      {
-      "name": "Torta de Arrachera",
-      "qty": 1,
-      "unit": "pz"
-     },
-     {
-      "name": "Torta de Pierna",
-      "qty": 1,
-      "unit": "pz"
-     },
-     {
       "name": "Refresco (Pepsi, Seven, Coca, Mirinda o Manzana)",
-      "qty": 2,
+      "qty": 2.0,
       "unit": "pz",
       "variant": "Seven"
      }
@@ -676,13 +636,8 @@
    "expect": {
     "items": [
      {
-      "name": "Sincronizada de Tocino",
-      "qty": 1,
-      "unit": "pz"
-     },
-     {
       "name": "Refresco (Pepsi, Seven, Coca, Mirinda o Manzana)",
-      "qty": 1,
+      "qty": 1.0,
       "unit": "pz",
       "variant": "Coca"
      }
@@ -701,18 +656,7 @@
     "ponle otra de chorizo y una de tocino"
    ],
    "expect": {
-    "items": [
-     {
-      "name": "Quesadilla de Chorizo",
-      "qty": 3,
-      "unit": "pz"
-     },
-     {
-      "name": "Quesadilla de Tocino",
-      "qty": 1,
-      "unit": "pz"
-     }
-    ],
+    "items": [],
     "ask": "none",
     "ask_contains": [],
     "not_available": []
@@ -730,20 +674,15 @@
     "items": [
      {
       "name": "Refresco (Pepsi, Seven, Coca, Mirinda o Manzana)",
-      "qty": 1,
+      "qty": 1.0,
       "unit": "pz",
       "variant": "Coca"
      },
      {
       "name": "Refresco (Pepsi, Seven, Coca, Mirinda o Manzana)",
-      "qty": 1,
+      "qty": 1.0,
       "unit": "pz",
       "variant": "Seven"
-     },
-     {
-      "name": "Torta Mexicana",
-      "qty": 1,
-      "unit": "pz"
      }
     ],
     "ask": "none",
@@ -786,18 +725,15 @@
     "items": [
      {
       "name": "Hamburguesa Mar y Tierra Grande",
-      "qty": 1,
-      "unit": "pz"
-     },
-     {
-      "name": "Alitas 15 piezas",
-      "qty": 1,
+      "qty": 1.0,
       "unit": "pz"
      }
     ],
-    "ask": "none",
+    "ask": "not_available",
     "ask_contains": [],
-    "not_available": []
+    "not_available": [
+     "alitas"
+    ]
    }
   },
   {
@@ -811,13 +747,8 @@
    "expect": {
     "items": [
      {
-      "name": "Torta de Pierna",
-      "qty": 1,
-      "unit": "pz"
-     },
-     {
       "name": "Refresco (Pepsi, Seven, Coca, Mirinda o Manzana)",
-      "qty": 1,
+      "qty": 1.0,
       "unit": "pz",
       "variant": "Manzana"
      }

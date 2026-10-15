@@ -44,32 +44,6 @@ Doridogo | 45
 Dogo Arrachera | 45
 Pizzadogo | 45
 Refresco (Pepsi, Seven, Coca, Mirinda o Manzana) | 20
-Torta de Pierna | 80
-Torta Hawaiana | 100
-Torta Cubana | 100
-Torta Mexicana | 100
-Torta de Arrachera | 80
-Torta de Chorizo | 80
-Torta Campechana | 80
-Sincronizada de Pierna y Tocino | 70
-Sincronizada de Tocino | 60
-Sincronizada de Camarón | 80
-Sincronizada de Arrachera | 70
-Sincronizada de Chorizo | 70
-Sincronizada Campechana | 70
-Quesadilla de Tocino | 35
-Quesadilla de Camarón | 80
-Quesadilla Burrita | 35
-Quesadilla Quesaburra | 70
-Quesadilla de Arrachera | 45
-Quesadilla de Chorizo | 45
-Quesadilla Campechana | 55
-Ingrediente Extra en Quesadilla | 20
-Alitas 5 piezas | 70
-Alitas 10 piezas | 130
-Alitas 15 piezas | 185
-Alitas 20 piezas | 225
-Alitas 30 piezas | 325
 `
   .trim()
   .split("\n")

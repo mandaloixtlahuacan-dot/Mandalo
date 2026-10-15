@@ -293,10 +293,11 @@ function lineOf(row: CatalogRow, qty: number, unit: SellUnit | null, variant: st
 function offMenu(clause: string, catalog: CatalogSnapshot): { term: string; clarify: boolean } | null {
   const text = fold(clause);
   if (catalog.profile === "restaurante") {
+    if (/\b(tortas?|quesadillas?|sincronizadas?|aletas?|alitas?)\b/.test(text) || /\bingrediente extra\b/.test(text)) {
+      return { term: clause.trim(), clarify: false };
+    }
     if (/\bsprite\b/.test(text)) return { term: "sprite", clarify: true };
-    if (/\btorta ahogada\b/.test(text)) return { term: "torta", clarify: true };
     if (/\bhamburguesa doble\b/.test(text)) return { term: "hamburguesa", clarify: true };
-    if (/\balitas?\b/.test(text) && /\b12\b/.test(text)) return { term: "alitas", clarify: true };
     if (/\btacos?( de pastor)?\b/.test(text)) return { term: "tacos de pastor", clarify: false };
     if (/\bcerveza\b/.test(text)) return { term: "cerveza", clarify: false };
     if (/\bpizza\b/.test(text) && !/\bpizzadogo\b/.test(text)) return { term: "pizza", clarify: false };
@@ -631,9 +632,10 @@ function applyEdit(message: string, cart: CartLine[], catalog: CatalogSnapshot):
   }
 
   if (/^con ingrediente extra\b/.test(text)) {
-    const extra = catalog.rows.find((row) => fold(row.name).includes("ingrediente extra"));
-    if (!extra) return { cart, unmatched: [] };
-    return { cart: addLine(cart, lineOf(extra, 1, "pz", null), true), unmatched: [] };
+    return {
+      cart,
+      unmatched: [{ source_text: "ingrediente extra", reason: "not_on_menu", candidate_ids: [] }],
+    };
   }
 
   if (/^que sea la marinada\b/.test(text)) {
