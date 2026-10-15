@@ -21,6 +21,7 @@ import {
 } from "../src/lib/customerUx";
 import { canTransition } from "../src/lib/orderStateMachine";
 import { extraerAcuseOk, extraerPrecioSuelto } from "../src/lib/ordenes";
+import { claimAdminNotificacionesBatchArgs } from "../src/lib/repositories/outboxRepository";
 import {
   catalogStepAfterList,
   GREETING_RESET_AFTER_MS,
@@ -111,6 +112,44 @@ check("reintento-1", !first.permanent && first.estado === "fallida" && Date.pars
 check("reintento-2", !second.permanent && Date.parse(second.nextAttemptAt) - base === 120_000);
 check("reintento-4", !fourth.permanent && Date.parse(fourth.nextAttemptAt) - base === 480_000);
 check("reintento-fin", fifth.permanent && fifth.estado === "cancelada");
+
+const claimOpen = claimAdminNotificacionesBatchArgs({
+  limit: 10,
+  maxAttempts: 5,
+  reclaimStaleAfterSeconds: 900,
+});
+const claimFiltered = claimAdminNotificacionesBatchArgs({
+  limit: 3,
+  maxAttempts: 5,
+  pedidoId: 42,
+  tipo: "alerta_admin",
+});
+const claimBlank = claimAdminNotificacionesBatchArgs({
+  limit: 3,
+  maxAttempts: 5,
+  pedidoId: undefined,
+  tipo: undefined,
+});
+check(
+  "claim-sin-filtro",
+  claimOpen.p_pedido_id === null &&
+    claimOpen.p_tipo === null &&
+    Object.prototype.hasOwnProperty.call(claimOpen, "p_pedido_id") &&
+    Object.prototype.hasOwnProperty.call(claimOpen, "p_tipo"),
+);
+check("claim-con-filtro", claimFiltered.p_pedido_id === 42 && claimFiltered.p_tipo === "alerta_admin");
+check("claim-undefined-es-null", claimBlank.p_pedido_id === null && claimBlank.p_tipo === null);
+
+function rpcUsesClaimArgs(source: string): boolean {
+  const matches = source.match(
+    /rpc\(\s*"claim_admin_notificaciones_batch"\s*,\s*claimAdminNotificacionesBatchArgs\(/g,
+  );
+  return matches?.length === 1;
+}
+const adminOutboxSource = readFileSync(new URL("../src/lib/adminOutboxWorker.ts", import.meta.url), "utf8");
+const outboxRepoSource = readFileSync(new URL("../src/lib/repositories/outboxRepository.ts", import.meta.url), "utf8");
+check("worker-claim-pasa-args", rpcUsesClaimArgs(adminOutboxSource));
+check("repo-claim-pasa-args", rpcUsesClaimArgs(outboxRepoSource));
 
 const catalog = buildCatalog(
   [
