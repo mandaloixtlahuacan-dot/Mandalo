@@ -2640,6 +2640,66 @@ function customerFlowPhase(params: {
   return effectiveOrderPhase(isOrderPhase(params.storedPhase) ? params.storedPhase : null, inferred, true);
 }
 
+async function persistWrittenAddress(params: {
+  openPedido: PedidoV2Record;
+  addressText: string;
+}): Promise<string | null> {
+  const pedido = params.openPedido;
+  if (isTerminalState(pedido.estado)) return null;
+  const knownZoneNames = await fetchZonasCobertura();
+  const addressZone = validationEngine.matchCoverageZone(params.addressText, knownZoneNames);
+  const snapshot = {
+    ...pedido.snapshot_json,
+    addressText: params.addressText,
+    addressZone: addressZone ?? pedido.snapshot_json.addressZone ?? null,
+  };
+  const full = await pedidoRepositoryV2.getPedidoById(pedido.id).catch(() => null);
+  const catalog = full?.tienda?.usaCatalogoFijo === true;
+  const validation = validationEngine.validateCaptureForConfirmation({
+    snapshot,
+    items: snapshot.items ?? [],
+    knownZoneNames,
+    acceptWrittenText: true,
+    quoteStore: false,
+    userMessage: "",
+  });
+  const canAdvance = pedido.estado === "seleccion_productos" || pedido.estado === "confirmacion_cliente";
+  const nextState = canAdvance && validation.readyForConfirmation ? "confirmacion_cliente" : pedido.estado;
+  await pedidoRepositoryV2.updatePedidoSnapshot({
+    pedidoId: pedido.id,
+    estado: nextState,
+    snapshot: {
+      ...snapshot,
+      flags: {
+        ...(snapshot.flags ?? {}),
+        addressValidated: Boolean(validation.validatedAddress?.isValid),
+        readyForConfirmation: canAdvance && validation.readyForConfirmation,
+      },
+    },
+    addressText: params.addressText,
+    latitud: snapshot.latitud ?? null,
+    longitud: snapshot.longitud ?? null,
+    tiendaId: validation.validatedBusiness.businessId,
+  });
+  if (!canAdvance || !validation.readyForConfirmation) return null;
+  let feeNote = formatPreConfirmFeeNote(catalog ? "catalogo" : "cotiza_tienda");
+  let pricedLines: string | null = null;
+  if (catalog && full?.tienda?.tiendaId) {
+    const priced = await catalogPriceLines(full.tienda.tiendaId, validation.validatedItems.items).catch(() => null);
+    if (priced) {
+      pricedLines = priced.lines.join("\n");
+      feeNote = formatCatalogReceiptFee(priced.subtotal);
+    }
+  }
+  return buildCustomerMessage({
+    validation,
+    snapshot,
+    items: validation.validatedItems.items,
+    feeNote,
+    pricedLines,
+  });
+}
+
 async function steerCustomerFlow(params: {
   telefono: string;
   mensaje: string;
@@ -2687,9 +2747,22 @@ async function steerCustomerFlow(params: {
     awaitingProductConfirm: snapshot?.flags?.awaitingProductConfirm === true,
     media,
     locationInsideCoverage: media === "location" && params.ubicacionCoords ? isWithinCoverageArea(params.ubicacionCoords) : null,
+    locationHasCoords: media === "location" ? Boolean(params.ubicacionCoords) : true,
     orderId: params.openPedido?.id ?? null,
   });
   if (decision.effect === "fallthrough") return { kind: "next", action: decision.action };
+
+  let outgoing = decision.text;
+  if (decision.action === "accept_address" && params.openPedido && decision.addressText) {
+    const saved = await persistWrittenAddress({
+      openPedido: params.openPedido,
+      addressText: decision.addressText,
+    }).catch((e: unknown) => {
+      console.error("[mandalo] no se pudo guardar la dirección escrita", { message: getErrorMessage(e) });
+      return null;
+    });
+    if (saved) outgoing = saved;
+  }
 
   if (decision.action === "escalate_cancel" && params.openPedido) {
     await outboxRepository
@@ -2736,8 +2809,8 @@ async function steerCustomerFlow(params: {
     await rememberCursor(params.telefono, orderPhase, decision.nicheId);
   }
   await guardarMensajeChat({ telefono: params.telefono, texto: String(params.mensaje ?? ""), estado: "cliente" }).catch(() => {});
-  await sendWhatsApp(params.telefono, decision.text);
-  await guardarMensajeChat({ telefono: params.telefono, texto: decision.text, estado: "bot" }).catch(() => {});
+  await sendWhatsApp(params.telefono, outgoing);
+  await guardarMensajeChat({ telefono: params.telefono, texto: outgoing, estado: "bot" }).catch(() => {});
   return {
     kind: "done",
     body: { ok: true, role: "cliente", accion: `flow_${decision.action}`, phase: decision.phase },
@@ -3622,12 +3695,11 @@ export async function processMandaloWebhook(incoming: IncomingWhatsAppMessage): 
     return handleRepartidorMessage(normalizePhone(String(incoming.from)), incoming.body);
   }
 
-  const body = String(incoming.body ?? "").trim();
-  const placeholder = body === "📎" || body === "📍 (Cliente compartió su ubicación GPS)";
-  const media: CustomerMedia =
-    incoming.location && (placeholder || !body)
+  const media: CustomerMedia = incoming.liveLocation
+    ? "live_location"
+    : incoming.location || incoming.locationAttempt
       ? "location"
-      : incoming.mediaKind && placeholder
+      : incoming.mediaKind
         ? incoming.mediaKind
         : "text";
   return handleClienteMessage(actor.telefono, incoming.body, incoming.location, media);

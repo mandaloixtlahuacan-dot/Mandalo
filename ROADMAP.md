@@ -2,7 +2,14 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 15 de octubre de 2026. Auditoría de atajos del
+> Última actualización: 15 de octubre de 2026. Revisión de Víctor sobre
+> el borrador de atajos (PR #43), sin merge y sin deploy. Si ya hay
+> productos y piden otra tienda, se pregunta antes de borrar. Un pedido
+> es de una tienda a la vez. La dirección escrita vuelve a valer, igual
+> que el pin; la ubicación en tiempo real no. Audio, video, imagen,
+> sticker, documento, contacto u otro adjunto piden texto y repiten el
+> paso. Prueba offline: `scripts/check-flow-router.ts`.
+> Actualización anterior: 15 de octubre de 2026. Auditoría de atajos del
 > flujo, en borrador, sin merge y sin deploy. Un cambio de tienda usa
 > el mismo aviso que el menú. El agente solo entra en pedido o en una
 > corrección. Preguntas, saludos, medios y la dirección escrita no

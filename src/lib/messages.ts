@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { UnsupportedMedia } from "@/lib/inboundMessage";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { normalizePhone } from "@/lib/roles";
 
@@ -17,8 +18,12 @@ export type IncomingWhatsAppMessage = {
   body: string;
   raw: unknown;
   location?: { latitude: number; longitude: number };
-  /** sticker, imagen, audio o video. La ubicación sigue en `location`. */
-  mediaKind?: "sticker" | "image" | "audio" | "video" | null;
+  /** Adjunto que no se lee como pedido. La ubicación sigue en `location`. */
+  mediaKind?: UnsupportedMedia | null;
+  /** Ubicación en tiempo real de Whapi. No se guarda como pin. */
+  liveLocation?: boolean;
+  /** El tipo era location pero no traía coordenadas. */
+  locationAttempt?: boolean;
 };
 
 // Nota: Whapi.cloud entrega la ubicación anidada en message.location.{latitude,longitude} —

@@ -13,6 +13,8 @@ import {
   type UxStore,
 } from "../src/lib/customerUx";
 import {
+  cartSwitchQuestion,
+  pendingSwitchTarget,
   routeCustomerFlow,
   storeWelcomeMatchesMenu,
   type CustomerFlowPhase,
@@ -22,7 +24,9 @@ import {
 } from "../src/lib/flowRouter";
 import { isCancelIntent, isConversationModeMessage, isNewOrderIntent } from "../src/lib/messages";
 import { gateGeneralBot, phaseForUxTurn } from "../src/lib/orderSession";
+import { classifyInbound, LIVE_LOCATION_REPLY, TEXT_ONLY_REPLY } from "../src/lib/inboundMessage";
 import { runOrderAgentTurn, type AgentModel, type AgentStore, type ToolCall } from "../src/lib/orderAgent";
+import { matchCoverageZone, validateAddress } from "../src/lib/services/validationEngine";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -99,6 +103,7 @@ type Scenario = {
   items?: Array<{ nombre_producto: string; cantidad: number }>;
   media?: CustomerMedia;
   coverage?: boolean | null;
+  coords?: boolean;
   awaiting?: boolean;
   lastBot?: string;
   orderId?: number | null;
@@ -135,6 +140,10 @@ function nicheFor(phase: CustomerFlowPhase): string | null {
   return "abarrotes";
 }
 
+function hasOpenCart(phase: CustomerFlowPhase): boolean {
+  return Boolean(storeFor(phase) && itemsFor(phase).length > 0);
+}
+
 function itemsFor(phase: CustomerFlowPhase) {
   if (phase === "pedido" || phase === "ubicacion" || phase === "resumen" || phase === "precio" || phase === "esperando_tienda" || phase === "esperando_repartidor") {
     return coke;
@@ -155,6 +164,7 @@ function add(id: string, phase: CustomerFlowPhase, message: string, expect: Expe
       items: extra?.items === undefined ? itemsFor(phase) : extra.items,
       media: extra?.media ?? "text",
       coverage: extra?.coverage ?? null,
+      coords: extra?.coords,
       awaiting: extra?.awaiting ?? false,
       lastBot: extra?.lastBot ?? (phase === "tienda" ? abarrotesList : ""),
       orderId: extra?.orderId ?? (phase === "categoria" || phase === "entregado" ? null : 90),
@@ -167,7 +177,9 @@ for (const phase of phases) {
   const locked = phase === "esperando_repartidor" || phase === "esperando_tienda" || phase === "precio";
   add("mejor de George", phase, "mejor de George", locked
     ? { action: "tracking", phase, includes: ["pedido nuevo"] }
-    : { action: "switch_store", phase: "ejemplo", exactWelcome: george, storeId: george.id, clearCart: itemsFor(phase).length > 0 && phase !== "tienda" && phase !== "categoria" && phase !== "entregado" });
+    : hasOpenCart(phase)
+      ? { action: "confirm_switch", phase, clearCart: false, storeId: null, includes: ["Ya tienes un pedido en", "Coca-Cola", "¿Quieres borrarlo para pedir de Hamburguesas Hotdogs George?"] }
+      : { action: "switch_store", phase: "ejemplo", exactWelcome: george, storeId: george.id, clearCart: false });
   add("Penes", phase, "Penes", locked
     ? { action: "tracking", phase, includes: ["pedido nuevo"] }
     : {
@@ -180,13 +192,17 @@ for (const phase of phases) {
   add("cambiar tienda", phase, "cambiar tienda", locked
     ? { action: "tracking", phase }
     : phase === "categoria" || phase === "entregado"
-      ? { action: "reprompt", phase: phase === "entregado" ? "categoria" : "categoria", includes: ["¿De dónde quieres?"] }
-      : { action: "show_niche", phase: "tienda", includes: ["¿De cuál te hago el mandado?"] });
+      ? { action: "reprompt", phase: "categoria", includes: ["¿De dónde quieres?"] }
+      : hasOpenCart(phase)
+        ? { action: "confirm_switch", phase, clearCart: false, storeId: null, includes: ["Ya tienes un pedido en", "otra tienda"] }
+        : { action: "show_niche", phase: "tienda", includes: ["¿De cuál te hago el mandado?"] });
   add("quiero de otra tienda", phase, "quiero de otra tienda", locked
     ? { action: "tracking", phase }
     : phase === "categoria" || phase === "entregado"
       ? { action: "reprompt", phase: "categoria", includes: ["¿De dónde quieres?"] }
-      : { action: "show_niche", phase: "tienda", includes: ["Abarrotes"] });
+      : hasOpenCart(phase)
+        ? { action: "confirm_switch", phase, clearCart: false, includes: ["¿Quieres borrarlo para pedir de otra tienda?"] }
+        : { action: "show_niche", phase: "tienda", includes: ["Abarrotes"] });
   add("hola", phase, "hola", phase === "categoria" || phase === "entregado"
     ? { action: "greeting", phase: "categoria", includes: ["¿De dónde quieres?"] }
     : { action: "greeting", phase });
@@ -222,7 +238,7 @@ for (const phase of phases) {
     ? { action: "tracking", phase }
     : phase === "entregado"
       ? { action: "greeting", phase: "categoria" }
-      : { action: phase === "categoria" || phase === "tienda" ? "back" : phase === "ejemplo" ? "show_niche" : "back", phase: phase === "categoria" || phase === "tienda" || phase === "entregado" ? "categoria" : phase === "ejemplo" ? "tienda" : itemsFor(phase).length ? "pedido" : "ejemplo" });
+      : { action: phase === "categoria" || phase === "tienda" ? "back" : phase === "ejemplo" ? "show_niche" : "back", phase: phase === "categoria" || phase === "tienda" ? "categoria" : phase === "ejemplo" ? "tienda" : itemsFor(phase).length ? "pedido" : "ejemplo" });
   add("cancela", phase, "cancela", phase === "esperando_repartidor"
     ? { action: "escalate_cancel", phase }
     : { action: "cancel", phase: "categoria", includes: ["cancelé", "¿De dónde quieres?"] });
@@ -260,12 +276,17 @@ for (const phase of phases) {
     : phase === "tienda"
       ? { action: "reprompt", phase: "tienda", includes: ["no está"] }
       : { action: "reprompt", phase, includes: ["número"] });
-  add("sticker", phase, "", { action: "media", phase: phase === "entregado" ? "categoria" : phase, includes: ["no lo puedo leer"] }, { media: "sticker" });
-  add("imagen", phase, "", { action: "media", phase: phase === "entregado" ? "categoria" : phase }, { media: "image" });
-  add("audio", phase, "", { action: "media", phase: phase === "entregado" ? "categoria" : phase }, { media: "audio" });
+  add("sticker", phase, "", { action: "media", phase, includes: [TEXT_ONLY_REPLY] }, { media: "sticker" });
+  add("imagen", phase, "", { action: "media", phase, includes: [TEXT_ONLY_REPLY] }, { media: "image" });
+  add("audio", phase, "", { action: "media", phase, includes: [TEXT_ONLY_REPLY] }, { media: "audio" });
+  add("video", phase, "", { action: "media", phase, includes: [TEXT_ONLY_REPLY] }, { media: "video" });
+  add("documento", phase, "", { action: "media", phase, includes: [TEXT_ONLY_REPLY] }, { media: "document" });
+  add("contacto", phase, "", { action: "media", phase, includes: [TEXT_ONLY_REPLY] }, { media: "contact" });
+  add("adjunto raro", phase, "", { action: "media", phase, includes: [TEXT_ONLY_REPLY] }, { media: "unsupported" });
+  add("live", phase, "", { action: "live_location", phase, includes: [LIVE_LOCATION_REPLY] }, { media: "live_location" });
   add("pin temprano", phase, "", phase === "ubicacion" || phase === "resumen" || phase === "precio"
     ? { action: "summary", phase }
-    : { action: "location_early", phase: phase === "entregado" ? "categoria" : phase, includes: ["pin"] }, { media: "location", coverage: true });
+    : { action: "location_early", phase: phase === "entregado" ? "categoria" : phase, includes: ["pin", "dirección escrita"] }, { media: "location", coverage: true });
 }
 
 add("número 1 categoría", "categoria", "1", { action: "show_niche", phase: "tienda", includes: ["Abarrotes", "¿De cuál te hago el mandado?"] }, { store: null, nicheId: null, items: [] });
@@ -273,18 +294,50 @@ add("número 2 abarrotes", "tienda", "2", { action: "switch_store", phase: "ejem
 add("número 1 restaurantes cerrado", "tienda", "1", { action: "switch_store", phase: "ejemplo", exactWelcome: george, storeId: george.id, includes: ["cerrada"] }, { store: null, nicheId: "restaurantes", items: [], lastBot: formatNicheStoreList(nicheById("restaurantes")!, stores) });
 add("typo abarotes", "categoria", "abarotes", { action: "show_niche", phase: "tienda", includes: ["Abarrotes"] }, { store: null, items: [] });
 add("typo restorantes", "categoria", "restorantes", { action: "show_niche", phase: "tienda", includes: ["George"] }, { store: null, items: [] });
-add("typo carniseria", "pedido", "carniseria", { action: "show_niche", phase: "tienda", includes: ["Central"], clearCart: true });
+add("typo carniseria", "pedido", "carniseria", { action: "disambiguate", phase: "pedido", clearCart: false, storeId: null, includes: ["Primero terminamos tu pedido de Mini Super Peke's", "Carnicerías"] });
 add("typo hamburgesas", "categoria", "hamburgesas", { action: "show_niche", phase: "tienda", includes: ["George"] }, { store: null, items: [] });
 add("pedido antes de tienda", "categoria", "quiero 2 cocas", { action: "reprompt", phase: "categoria", includes: ["¿De dónde quieres?"], agent: false }, { store: null, items: [] });
 add("pedido en ejemplo", "ejemplo", "quiero 2 cocas", { action: "agent", phase: "pedido", agent: true }, { store: pekes, items: [] });
 add("segundo mensaje", "pedido", "y un pinol de 1 litro", { action: "agent", phase: "pedido", agent: true });
 add("hamburguesa en abarrotes", "pedido", "una hamburguesa", { action: "agent", phase: "pedido", agent: true, storeId: null });
-add("producto de otra tienda", "pedido", "mejor de la central un kilo de bistec", { action: "switch_store", phase: "ejemplo", exactWelcome: central, storeId: central.id, clearCart: true, includes: ["Soltamos"] });
-add("dos tiendas", "pedido", "de pekes y de george", { action: "disambiguate", phase: "pedido", includes: ["una sola tienda", "Peke", "George"] });
+add("producto de otra tienda", "pedido", "mejor de la central un kilo de bistec", {
+  action: "confirm_switch",
+  phase: "pedido",
+  clearCart: false,
+  storeId: null,
+  includes: ["Ya tienes un pedido en Mini Super Peke's", "¿Quieres borrarlo para pedir de Carnicería La Central?"],
+});
+add("dos tiendas", "pedido", "de pekes y de george", {
+  action: "disambiguate",
+  phase: "pedido",
+  clearCart: false,
+  includes: ["Primero terminamos tu pedido de Mini Super Peke's", "Hamburguesas Hotdogs George"],
+});
+add("dos tiendas sin elegir", "categoria", "de pekes y de george", {
+  action: "disambiguate",
+  phase: "categoria",
+  storeId: null,
+  includes: ["¿Con cuál empezamos?", "Peke", "George"],
+}, { store: null, items: [] });
+add("dos categorías sin tienda", "categoria", "abarrotes y carnicería", {
+  action: "disambiguate",
+  phase: "categoria",
+  storeId: null,
+  includes: ["¿Con cuál empezamos?", "Abarrotes", "Carnicerías"],
+}, { store: null, items: [] });
+add("otra categoría a medias", "pedido", "quiero de carnicería", {
+  action: "disambiguate",
+  phase: "pedido",
+  clearCart: false,
+  storeId: null,
+  includes: ["Primero terminamos tu pedido de Mini Super Peke's", "Carnicerías"],
+});
 add("mensaje largo sin tienda", "categoria", `${"quiero muchas cocas ".repeat(40)}por favor`, { action: "reprompt", phase: "categoria", includes: ["largo"], agent: false }, { store: null, items: [] });
 add("mensaje largo con tienda", "pedido", `${"coca cola 600 ".repeat(40)}`, { action: "agent", phase: "pedido", agent: true });
-add("dirección escrita en pin", "ubicacion", "calle hidalgo 12 frente a la tortillería", { action: "need_pin", phase: "ubicacion", includes: ["pin de WhatsApp"] });
-add("dirección escrita en pedido", "pedido", "mi dirección es calle morelos 8", { action: "need_pin", phase: "pedido", includes: ["pin"] });
+add("dirección escrita en pin", "ubicacion", "calle hidalgo 12 frente a la tortillería", { action: "accept_address", phase: "resumen", includes: ["hidalgo", "Anoté tu dirección"] });
+add("dirección escrita en resumen", "resumen", "calle morelos 8", { action: "accept_address", phase: "resumen", includes: ["morelos"] });
+add("dirección escrita en pedido", "pedido", "mi dirección es calle morelos 8", { action: "reprompt", phase: "pedido", includes: ["escribirla", "pin de WhatsApp"] });
+add("pin sin coordenadas", "ubicacion", "", { action: "location_early", phase: "ubicacion", includes: ["escribe tu dirección"] }, { media: "location", coverage: null, coords: false });
 add("pin fuera de zona", "categoria", "", { action: "location_reject", phase: "categoria", includes: ["fuera de esa zona"] }, { media: "location", coverage: false, store: null, items: [] });
 add("sí resumen", "resumen", "sí", { action: "summary", phase: "resumen" });
 add("si así está bien", "resumen", "si así está bien", { action: "summary", phase: "resumen" });
@@ -304,6 +357,11 @@ add("timeout luego texto", "categoria", "quiero unas papas", { action: "reprompt
 add("después de entregado", "entregado", "gracias", { action: "greeting", phase: "categoria", includes: ["entregó", "¿De dónde quieres?"] }, { store: null, items: [] });
 add("Gorge suelto", "categoria", "Gorge", { action: "switch_store", phase: "ejemplo", exactWelcome: george, storeId: george.id, includes: ["cerrada"] }, { store: null, items: [] });
 add("misma tienda por nombre", "ejemplo", "Pekes", { action: "switch_store", phase: "ejemplo", exactWelcome: pekes, storeId: pekes.id, clearCart: false }, { store: pekes, items: [] });
+const switchAsk = cartSwitchQuestion(pekes.nombre, coke, george.nombre);
+add("sí borra y cambia", "pedido", "sí", { action: "switch_store", phase: "ejemplo", exactWelcome: george, storeId: george.id, clearCart: true }, { lastBot: switchAsk });
+add("no conserva el pedido", "pedido", "no", { action: "reprompt", phase: "pedido", clearCart: false, storeId: null, includes: ["Peke"] }, { lastBot: switchAsk });
+add("sí otra tienda", "pedido", "sí", { action: "show_niche", phase: "tienda", clearCart: true, includes: ["¿De cuál te hago el mandado?"] }, { lastBot: cartSwitchQuestion(pekes.nombre, coke, "otra tienda") });
+add("imagen con texto", "pedido", "2 cocas", { action: "media", phase: "pedido", includes: [TEXT_ONLY_REPLY] }, { media: "image" });
 
 function decide(scenario: Scenario): FlowDecision {
   const input: FlowRouteInput = {
@@ -317,6 +375,7 @@ function decide(scenario: Scenario): FlowDecision {
     awaitingProductConfirm: scenario.awaiting ?? false,
     media: scenario.media ?? "text",
     locationInsideCoverage: scenario.coverage ?? null,
+    locationHasCoords: scenario.coords !== false,
     orderId: scenario.orderId ?? null,
   };
   return routeCustomerFlow(input);
@@ -334,7 +393,7 @@ function legacyAction(scenario: Scenario): string {
   if (scenario.phase === "esperando_tienda" || scenario.phase === "esperando_repartidor") return "tracking";
   if (scenario.phase === "resumen" || scenario.phase === "precio") return "summary";
   if (scenario.media === "location" && scenario.coverage === false) return "location_reject";
-  if (scenario.media === "location") return scenario.phase === "ubicacion" || scenario.phase === "resumen" ? "summary" : "llm";
+  if (scenario.media === "location") return scenario.phase === "ubicacion" ? "summary" : "llm";
   const turn = classifyCustomerTurn({
     message,
     lastBotText: scenario.lastBot ?? "",
@@ -348,7 +407,7 @@ function legacyAction(scenario: Scenario): string {
   if (turn.type !== "continue") return turn.type;
   const blocked = gateGeneralBot({
     phase:
-      scenario.phase === "pedido" || scenario.phase === "ejemplo" || scenario.phase === "ubicacion" || scenario.phase === "resumen"
+      scenario.phase === "pedido" || scenario.phase === "ejemplo" || scenario.phase === "ubicacion"
         ? scenario.phase
         : "categoria",
     message,
@@ -495,7 +554,37 @@ async function main(): Promise<void> {
   const webhook = readFileSync("src/app/api/webhook/route.ts", "utf8");
   assert(flow.includes("routeCustomerFlow") && flow.includes("steerCustomerFlow"), "el flujo usa el ruteo determinista");
   assert(flow.includes("flowAction !== \"agent\""), "el agente no se adelanta con el bot general");
-  assert(webhook.includes("extractWaapiMediaKind"), "un sticker o audio no se tira en silencio");
+  assert(flow.includes("acceptWrittenText") && flow.includes("persistWrittenAddress"), "la dirección escrita se guarda y el flujo sigue");
+  assert(flow.includes("liveLocation"), "la ubicación en tiempo real no se guarda como pin");
+  assert(webhook.includes("classifyInbound"), "el webhook clasifica pin, live y adjuntos");
+  assert(!webhook.includes("EMPTY_MESSAGE"), "un pin o un adjunto no se descarta en silencio");
+  assert(pendingSwitchTarget(switchAsk) === george.nombre, "el sí siguiente reconoce la tienda nueva");
+  const written = validateAddress("calle hidalgo 12 frente a la tortillería", null, {
+    acceptWrittenText: true,
+    knownZoneNames: ["Calle Morelos"],
+  });
+  assert(written?.isValid === true, "la dirección escrita con referencia es válida");
+  const gated = validateAddress("calle hidalgo 12 frente a la tortillería", null, { knownZoneNames: ["Calle Morelos"] });
+  assert(gated?.isValid === false, "sin ese camino la calle fuera de la lista no pasa sola");
+  assert(matchCoverageZone("vivo en calle morelos 8", ["Calle Morelos", "Calle Pino"]) === "Calle Morelos", "morelos sigue en la zona");
+  const pin = classifyInbound({
+    messages: [{ id: "m1", from: "5213312345678", type: "location", location: { latitude: 20.86, longitude: -103.24, preview: "AAAA" } }],
+  });
+  assert(pin.kind === "location" && pin.latitude === 20.86, "el pin de WhatsApp entra con coordenadas");
+  const live = classifyInbound({
+    messages: [{ id: "m2", from: "5213312345678", type: "live_location", live_location: { latitude: 20.86, longitude: -103.24 } }],
+  });
+  assert(live.kind === "live_location", "la ubicación en tiempo real no se lee como pin");
+  const doc = classifyInbound({ messages: [{ id: "m3", from: "5213312345678", type: "document", document: { file_name: "a.pdf" } }] });
+  assert(doc.kind === "media" && doc.media === "document", "un documento no se tira");
+  const contact = classifyInbound({ messages: [{ id: "m4", from: "5213312345678", type: "contact", contact: { name: "Ana" } }] });
+  assert(contact.kind === "media" && contact.media === "contact", "un contacto no se tira");
+  const blank = classifyInbound({ messages: [{ id: "m5", from: "5213312345678", type: "text" }] });
+  assert(blank.kind === "text", "un texto vacío se repreguntó, no se ignora");
+  const status = classifyInbound({ event: "statuses", statuses: [{ id: "s1", status: "delivered" }] });
+  assert(status.kind === "ignore", "un acuse de entrega no es un mensaje del cliente");
+  const reaction = classifyInbound({ messages: [{ id: "m6", from: "5213312345678", type: "reaction", reaction: { emoji: "👍" } }] });
+  assert(reaction.kind === "media" && reaction.media === "unsupported", "una reacción no se queda sin respuesta");
   assert(greeting.includes("¿De dónde quieres?"), "el menú de categorías sigue igual");
   assert(pekesWelcome.includes("Ejemplo") && georgeWelcome.includes("Te paso el menú"), "los avisos de tienda siguen igual");
 

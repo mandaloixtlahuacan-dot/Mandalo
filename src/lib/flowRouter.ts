@@ -34,11 +34,22 @@ import {
   normalizeMessageIntentText,
 } from "@/lib/messages";
 import { isOrderingSmallTalk, reaskForPhase, type OrderPhase } from "@/lib/orderSession";
+import { LIVE_LOCATION_REPLY, TEXT_ONLY_REPLY } from "@/lib/inboundMessage";
 import { ADDRESS_ASK_MESSAGE } from "@/lib/services/captureEngine";
 import { formatHour12, MANDALO_HORA_APERTURA, MANDALO_HORA_CIERRE } from "@/lib/services/businessHours";
 import { formatMoney } from "@/lib/ordenes";
 
-export type CustomerMedia = "text" | "sticker" | "image" | "audio" | "video" | "location";
+export type CustomerMedia =
+  | "text"
+  | "sticker"
+  | "image"
+  | "audio"
+  | "video"
+  | "document"
+  | "contact"
+  | "unsupported"
+  | "location"
+  | "live_location";
 
 export type CustomerFlowPhase =
   | OrderPhase
@@ -59,7 +70,9 @@ export type FlowAction =
   | "media"
   | "location_early"
   | "location_reject"
-  | "need_pin"
+  | "live_location"
+  | "confirm_switch"
+  | "accept_address"
   | "disambiguate"
   | "agent"
   | "summary"
@@ -76,6 +89,7 @@ export type FlowDecision = {
   rememberStoreId: number | null;
   clearStore: boolean;
   clearCart: boolean;
+  addressText: string | null;
 };
 
 export type FlowCartLine = { nombre_producto: string; cantidad: number };
@@ -91,6 +105,8 @@ export type FlowRouteInput = {
   awaitingProductConfirm: boolean;
   media: CustomerMedia;
   locationInsideCoverage: boolean | null;
+  /** Falso solo cuando el tipo era location y no traía coordenadas. */
+  locationHasCoords?: boolean;
   orderId: number | null;
 };
 
@@ -100,12 +116,13 @@ function asOrderPhase(phase: CustomerFlowPhase): OrderPhase {
   return ORDER_PHASES.has(phase as OrderPhase) ? (phase as OrderPhase) : "categoria";
 }
 
-function decision(partial: Omit<FlowDecision, "text" | "rememberStoreId" | "clearStore" | "clearCart"> & Partial<FlowDecision>): FlowDecision {
+function decision(partial: Omit<FlowDecision, "text" | "rememberStoreId" | "clearStore" | "clearCart" | "addressText"> & Partial<FlowDecision>): FlowDecision {
   return {
     text: "",
     rememberStoreId: null,
     clearStore: false,
     clearCart: false,
+    addressText: null,
     ...partial,
   };
 }
@@ -197,20 +214,59 @@ function storeWelcome(store: UxStore): string {
   return store.usaCatalogoFijo ? formatCatalogMenuCaption(store) : formatAbarrotesStoreAck(store);
 }
 
-function cartNotice(previous: UxStore | null, next: UxStore, items: FlowCartLine[]): string {
-  if (!previous || previous.id === next.id || items.length === 0) return "";
-  const lines = items
-    .slice(0, 6)
+const SWITCH_MARK = "). ¿Quieres borrarlo para pedir de ";
+
+export function formatCartItems(items: FlowCartLine[]): string {
+  return items
+    .slice(0, 8)
     .map((item) => `${item.cantidad} ${item.nombre_producto}`.trim())
+    .filter(Boolean)
     .join(", ");
-  const listed = lines ? ` Llevaba: ${lines}.` : "";
-  return `🛵 Soltamos *${previous.nombre}* y lo que ya llevabas anotado.${listed}`;
 }
 
-function switchText(previous: UxStore | null, next: UxStore, items: FlowCartLine[]): string {
-  const welcome = storeWelcome(next);
-  const notice = cartNotice(previous, next, items);
-  return notice ? `${notice}\n\n${welcome}` : welcome;
+export function cartSwitchQuestion(storeName: string, items: FlowCartLine[], nextName: string): string {
+  return `Ya tienes un pedido en ${storeName} (${formatCartItems(items)}). ¿Quieres borrarlo para pedir de ${nextName}?`;
+}
+
+export function pendingSwitchTarget(lastBotText: string): string | null {
+  const text = String(lastBotText ?? "").trim();
+  const at = text.lastIndexOf(SWITCH_MARK);
+  if (!text.startsWith("Ya tienes un pedido en ") || at < 0 || !text.endsWith("?")) return null;
+  const target = text.slice(at + SWITCH_MARK.length, -1).trim();
+  return target || null;
+}
+
+const CATEGORY_HITS: Array<{ id: string; label: string; pattern: RegExp }> = [
+  { id: "abarrotes", label: "Abarrotes", pattern: /\b(abarrotes|abarrote|abarotes|abarote)\b/ },
+  {
+    id: "restaurantes",
+    label: "Restaurantes",
+    pattern: /\b(restaurantes|restaurante|restorantes|restorante|hamburguesas|hamburguesa|hamburgesas|hamburgesa)\b/,
+  },
+  { id: "carnicerias", label: "Carnicerías", pattern: /\b(carnicerias|carniceria|carniserias|carniseria)\b/ },
+];
+
+function categoryHits(message: string): Array<{ id: string; label: string }> {
+  if (isProductLine(message)) return [];
+  const text = whole(message);
+  const found: Array<{ id: string; label: string }> = [];
+  for (const row of CATEGORY_HITS) {
+    if (row.pattern.test(text) && !found.some((item) => item.id === row.id)) found.push({ id: row.id, label: row.label });
+  }
+  return found;
+}
+
+function isProductLine(message: string): boolean {
+  const text = whole(message);
+  return (
+    text === "hamburguesa" ||
+    text === "una hamburguesa" ||
+    /^(un|una|dos|tres|cuatro|cinco|\d+)\s+(hamburguesas?|hotdog|hot dog|cocas?|bistec|kilos?|litros?|piezas?)\b/.test(text)
+  );
+}
+
+function isLockedPhase(phase: CustomerFlowPhase): boolean {
+  return phase === "esperando_tienda" || phase === "esperando_repartidor" || phase === "precio";
 }
 
 function nicheOf(store: UxStore | null, nicheId: string | null, lastBotText = ""): string | null {
@@ -317,21 +373,88 @@ function haveAnswer(input: FlowRouteInput): string {
   return `En *${input.store.nombre}* la tienda confirma si lo tiene. Pídemelo con marca y tamaño.`;
 }
 
-function handledSwitch(input: FlowRouteInput, store: UxStore): FlowDecision {
-  const locked = input.phase === "esperando_tienda" || input.phase === "esperando_repartidor" || input.phase === "precio";
-  if (locked) {
-    return withReprompt(input, "Ese pedido ya salió de la tienda que elegiste. Para otro, escribe *pedido nuevo*.", "tracking");
-  }
-  const nicheId = nicheIdForCategoria(store.categoria);
+function directSwitch(store: UxStore, clearCart: boolean): FlowDecision {
   return decision({
     effect: "handled",
     action: "switch_store",
     phase: "ejemplo",
-    nicheId,
-    text: switchText(input.store, store, input.items),
+    nicheId: nicheIdForCategoria(store.categoria),
+    text: storeWelcome(store),
     rememberStoreId: store.id,
     clearStore: false,
-    clearCart: input.store != null && input.store.id !== store.id && input.items.length > 0,
+    clearCart,
+  });
+}
+
+function askToReplaceCart(input: FlowRouteInput, nextName: string): FlowDecision {
+  return decision({
+    effect: "handled",
+    action: "confirm_switch",
+    phase: input.phase,
+    nicheId: input.nicheId,
+    text: cartSwitchQuestion(input.store?.nombre ?? "esta tienda", input.items, nextName),
+    rememberStoreId: null,
+    clearCart: false,
+  });
+}
+
+function handledSwitch(input: FlowRouteInput, store: UxStore): FlowDecision {
+  if (isLockedPhase(input.phase)) {
+    return withReprompt(input, "Ese pedido ya salió de la tienda que elegiste. Para otro, escribe *pedido nuevo*.", "tracking");
+  }
+  if (input.store && input.store.id !== store.id && input.items.length > 0) return askToReplaceCart(input, store.nombre);
+  return directSwitch(store, false);
+}
+
+function oneOrderAtATime(input: FlowRouteInput, otra: string): FlowDecision {
+  const tienda = input.store?.nombre ?? "esta tienda";
+  return withReprompt(
+    input,
+    `Primero terminamos tu pedido de ${tienda} y después puedes hacer otro pedido de ${otra}.`,
+    "disambiguate",
+  );
+}
+
+function askWhichToStart(input: FlowRouteInput, labels: string[]): FlowDecision {
+  const lines = labels.map((label, index) => `${index + 1}. *${label}*`).join("\n\n");
+  return withReprompt(input, `¿Con cuál empezamos?\n\n${lines}\n\nDime solo una.`, "disambiguate");
+}
+
+function refuseMedia(input: FlowRouteInput): FlowDecision {
+  const again = repromptText(input);
+  return decision({
+    effect: "handled",
+    action: "media",
+    phase: input.phase,
+    nicheId: input.nicheId,
+    text: `${TEXT_ONLY_REPLY}\n\n${again.text}`,
+  });
+}
+
+function refuseLiveLocation(input: FlowRouteInput): FlowDecision {
+  const again = repromptText(input);
+  return decision({
+    effect: "handled",
+    action: "live_location",
+    phase: input.phase,
+    nicheId: input.nicheId,
+    text: `${LIVE_LOCATION_REPLY}\n\n${again.text}`,
+  });
+}
+
+function acceptWrittenAddress(input: FlowRouteInput): FlowDecision {
+  const addressText = String(input.message ?? "").trim();
+  const atDelivery = input.phase === "ubicacion" || input.phase === "resumen" || input.phase === "precio";
+  if (!atDelivery) {
+    return withReprompt(input, "La dirección la anoto después: vale el pin de WhatsApp o escribirla.", "reprompt");
+  }
+  return decision({
+    effect: "handled",
+    action: "accept_address",
+    phase: input.phase === "ubicacion" ? "resumen" : input.phase,
+    nicheId: input.nicheId,
+    addressText,
+    text: `Anoté tu dirección: ${addressText}.\n\nSigo con el resumen. Si está bien, responde *sí*.`,
   });
 }
 
@@ -370,7 +493,7 @@ export function routeCustomerFlow(input: FlowRouteInput): FlowDecision {
   const message = String(input.message ?? "");
   const text = whole(message);
 
-  if (input.media === "location" && input.locationInsideCoverage === false) {
+  if (input.media === "location" && input.locationHasCoords !== false && input.locationInsideCoverage === false) {
     return decision({
       effect: "handled",
       action: "location_reject",
@@ -382,20 +505,53 @@ export function routeCustomerFlow(input: FlowRouteInput): FlowDecision {
     });
   }
 
-  if (input.media === "sticker" || input.media === "image" || input.media === "audio" || input.media === "video") {
-    return withReprompt(input, "Eso no lo puedo leer por aquí. Escríbeme con palabras.", "media");
+  if (input.media === "live_location") return refuseLiveLocation(input);
+
+  if (
+    input.media === "sticker" ||
+    input.media === "image" ||
+    input.media === "audio" ||
+    input.media === "video" ||
+    input.media === "document" ||
+    input.media === "contact" ||
+    input.media === "unsupported"
+  ) {
+    return refuseMedia(input);
   }
 
   if (input.media === "location") {
+    if (input.locationHasCoords === false) {
+      return withReprompt(input, "No me llegó el pin. Mándame tu ubicación actual o escribe tu dirección.", "location_early");
+    }
     const ready = input.phase === "ubicacion" || input.phase === "resumen" || input.phase === "precio";
     if (!ready) {
-      return withReprompt(input, "El pin lo uso para la entrega, cuando ya esté armado el pedido.", "location_early");
+      return withReprompt(
+        input,
+        "La ubicación la anoto para la entrega, cuando ya esté armado el pedido. Ahí vale el pin o la dirección escrita.",
+        "location_early",
+      );
     }
     return fallthrough(input, "summary");
   }
 
   if (!text && !isEmojiOnly(message)) {
     return withReprompt(input, "", "reprompt");
+  }
+
+  const pendingTarget = pendingSwitchTarget(input.lastBotText);
+  if (pendingTarget && (isYesConfirmation(message) || isSwitchNo(message))) {
+    if (isSwitchNo(message)) return withReprompt(input, "", "reprompt");
+    if (pendingTarget === "otra tienda") {
+      const nicheId = nicheOf(input.store, input.nicheId, input.lastBotText);
+      if (!nicheId || isLockedPhase(input.phase)) return withReprompt(input, "", "reprompt");
+      return showNiche(input, nicheId, true);
+    }
+    const target =
+      input.stores.find((store) => store.nombre === pendingTarget) ??
+      input.stores.find((store) => norm(store.nombre) === norm(pendingTarget)) ??
+      null;
+    if (!target || isLockedPhase(input.phase)) return withReprompt(input, "", "reprompt");
+    return directSwitch(target, true);
   }
 
   const pastFree = input.phase === "esperando_repartidor";
@@ -458,12 +614,35 @@ export function routeCustomerFlow(input: FlowRouteInput): FlowDecision {
 
   const named = storesMentionedInText(message, input.stores);
   if (named.length >= 2) {
-    const lines = named.map((store, index) => `${index + 1}. *${store.nombre}*`).join("\n\n");
-    return withReprompt(
-      input,
-      `Un pedido es de una sola tienda.\n\n${lines}\n\nDime solo el nombre de una.`,
-      "disambiguate",
-    );
+    if (isLockedPhase(input.phase)) {
+      return withReprompt(input, "Ese pedido ya va. Para otro, escribe *pedido nuevo*.", "tracking");
+    }
+    if (!input.store) return askWhichToStart(input, named.map((store) => store.nombre));
+    const others = named.filter((store) => store.id !== input.store?.id);
+    const otra = (others.length ? others : named).map((store) => store.nombre).join(" y ");
+    return oneOrderAtATime(input, otra);
+  }
+
+  if (named.length === 0) {
+    const hits = categoryHits(message);
+    if (hits.length >= 2) {
+      if (isLockedPhase(input.phase)) {
+        return withReprompt(input, "Ese pedido ya va. Para otro, escribe *pedido nuevo*.", "tracking");
+      }
+      if (!input.store) return askWhichToStart(input, hits.map((hit) => hit.label));
+      const current = nicheIdForCategoria(input.store.categoria);
+      const others = hits.filter((hit) => hit.id !== current);
+      return oneOrderAtATime(input, (others.length ? others : hits).map((hit) => hit.label).join(" y "));
+    }
+    if (hits.length === 1 && input.store) {
+      const current = nicheIdForCategoria(input.store.categoria);
+      if (current && current !== hits[0].id) {
+        if (isLockedPhase(input.phase)) {
+          return withReprompt(input, "Ese pedido ya va. Para otro, escribe *pedido nuevo*.", "tracking");
+        }
+        return oneOrderAtATime(input, hits[0].label);
+      }
+    }
   }
 
   if (isBackPhrase(message)) {
@@ -476,9 +655,10 @@ export function routeCustomerFlow(input: FlowRouteInput): FlowDecision {
 
   if (isOtherStorePhrase(message) && named.length === 0) {
     const nicheId = nicheOf(input.store, input.nicheId, input.lastBotText);
-    if (input.phase === "esperando_repartidor" || input.phase === "esperando_tienda" || input.phase === "precio") {
+    if (isLockedPhase(input.phase)) {
       return withReprompt(input, "Ese pedido ya va con la tienda elegida.", "tracking");
     }
+    if (input.store && input.items.length > 0) return askToReplaceCart(input, "otra tienda");
     if (!nicheId) return withReprompt(input, "Va, elige de nuevo.", "reprompt");
     const had = input.store != null;
     return showNiche(input, nicheId, had);
@@ -508,25 +688,15 @@ export function routeCustomerFlow(input: FlowRouteInput): FlowDecision {
     const current = input.store ? nicheIdForCategoria(input.store.categoria) : null;
     if (!(input.store && current === typo.id && input.phase !== "categoria" && input.phase !== "entregado")) {
       const release = Boolean(input.store && current && current !== typo.id);
-      if (input.phase === "esperando_repartidor" || input.phase === "esperando_tienda" || input.phase === "precio") {
+      if (isLockedPhase(input.phase)) {
         return withReprompt(input, "Ese pedido ya va. Para otro, escribe *pedido nuevo*.", "tracking");
       }
-      return showNiche(input, typo.id, release);
+      if (release && input.store) return oneOrderAtATime(input, categoryLabel(typo.id));
+      return showNiche(input, typo.id, false);
     }
   }
 
-  if (looksLikeStreetAddress(message)) {
-    if (input.phase === "ubicacion" || input.phase === "resumen" || input.phase === "precio") {
-      return decision({
-        effect: "handled",
-        action: "need_pin",
-        phase: input.phase === "precio" ? "precio" : input.phase === "resumen" ? "resumen" : "ubicacion",
-        nicheId: input.nicheId,
-        text: `Para cubrir el pueblo necesito el pin de WhatsApp, no la dirección escrita.\n\n${ADDRESS_ASK_MESSAGE}`,
-      });
-    }
-    return withReprompt(input, "La dirección va con el pin de WhatsApp, más adelante.", "need_pin");
-  }
+  if (looksLikeStreetAddress(message)) return acceptWrittenAddress(input);
 
   const switched = storeSwitchFromCapture({
     message,
@@ -676,6 +846,15 @@ function stepBack(input: FlowRouteInput): FlowDecision {
     }
   }
   return withReprompt(input, "", "back");
+}
+
+function isSwitchNo(message: string): boolean {
+  const text = whole(message);
+  return text === "no" || text === "nel" || text === "nop" || text === "nope" || text === "no gracias" || text === "mejor no";
+}
+
+function categoryLabel(id: string): string {
+  return CATEGORY_HITS.find((row) => row.id === id)?.label ?? id;
 }
 
 export function storeWelcomeMatchesMenu(store: UxStore, text: string): boolean {

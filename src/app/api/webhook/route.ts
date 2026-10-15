@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { classifyInbound } from "@/lib/inboundMessage";
 import { parseIncomingWhatsAppMessage, processMandaloWebhook } from "@/lib/mandaloFlow";
 import { normalizePhone } from "@/lib/roles";
 import { getEnv } from "@/lib/env";
@@ -13,100 +14,6 @@ export const runtime = "nodejs";
 // en producción agosto 2026, además de la deduplicación de abajo). 60s es el
 // máximo permitido en el plan Hobby.
 export const maxDuration = 60;
-
-function extractWaapiMessageObject(payload: unknown): Record<string, unknown> {
-  const body = (payload ?? {}) as Record<string, unknown>;
-  const data = (body.data ?? {}) as Record<string, unknown>;
-
-  const direct = (body.message ?? data.message) as unknown;
-  if (direct && typeof direct === "object") return direct as Record<string, unknown>;
-
-  const arr = (body.messages ?? data.messages) as unknown;
-  if (Array.isArray(arr) && arr[0] && typeof arr[0] === "object") return arr[0] as Record<string, unknown>;
-
-  return {};
-}
-
-function isFromMe(payload: unknown): boolean {
-  const body = (payload ?? {}) as Record<string, unknown>;
-  const message = extractWaapiMessageObject(payload);
-  const candidates = [
-    body.fromMe,
-    body.from_me,
-    message.fromMe,
-    message.from_me,
-    (message as Record<string, unknown>).isFromMe,
-  ];
-  return candidates.some((v) => v === true);
-}
-
-function extractWaapiText(payload: unknown): string | null {
-  const body = (payload ?? {}) as Record<string, unknown>;
-  const data = (body.data ?? {}) as Record<string, unknown>;
-  const message = extractWaapiMessageObject(payload);
-  const textObj = (body.text ?? data.text ?? message.text ?? {}) as Record<string, unknown>;
-
-  const candidates = [
-    body.text,
-    body.body,
-    data.body,
-    data.text,
-    message.body,
-    message.text,
-    textObj.body,
-    textObj.text,
-  ];
-
-  for (const candidate of candidates) {
-    if (typeof candidate === "string" && candidate.trim() !== "") return candidate;
-  }
-  return null;
-}
-
-function extractWaapiLocation(payload: unknown): { latitude: number; longitude: number } | null {
-  const body = (payload ?? {}) as Record<string, unknown>;
-  const data = (body.data ?? {}) as Record<string, unknown>;
-  const message = extractWaapiMessageObject(payload);
-
-  // Whapi.cloud entrega la ubicación anidada en message.location = { latitude, longitude, preview }.
-  // "preview" es una imagen en base64 (no una URL de mapa) — nunca debe tratarse como texto/dirección.
-  const candidates = [message.location, body.location, data.location];
-  for (const candidate of candidates) {
-    if (candidate && typeof candidate === "object") {
-      const loc = candidate as Record<string, unknown>;
-      const latitude = Number(loc.latitude);
-      const longitude = Number(loc.longitude);
-      if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
-        return { latitude, longitude };
-      }
-    }
-  }
-  return null;
-}
-
-function extractWaapiMediaKind(payload: unknown): "sticker" | "image" | "audio" | "video" | null {
-  const body = (payload ?? {}) as Record<string, unknown>;
-  const data = (body.data ?? {}) as Record<string, unknown>;
-  const message = extractWaapiMessageObject(payload);
-  const type = String(message.type ?? body.type ?? data.type ?? "").toLowerCase();
-  if (type === "sticker" || message.sticker) return "sticker";
-  if (type === "audio" || type === "voice" || type === "ptt" || message.audio || message.voice) return "audio";
-  if (type === "video" || message.video) return "video";
-  if (type === "image" || type === "imagemessage" || message.image) return "image";
-  return null;
-}
-
-function extractWaapiMessageId(payload: unknown): string | null {
-  const body = (payload ?? {}) as Record<string, unknown>;
-  const data = (body.data ?? {}) as Record<string, unknown>;
-  const message = extractWaapiMessageObject(payload);
-
-  const candidates = [message.id, body.id, data.id];
-  for (const candidate of candidates) {
-    if (typeof candidate === "string" && candidate.trim() !== "") return candidate;
-  }
-  return null;
-}
 
 // Whapi reintenta la entrega del webhook si no le llega una respuesta rápido
 // (confirmado en producción agosto 2026: un mensaje real se procesó 16 veces
@@ -144,32 +51,6 @@ async function claimInboundMessage(messageId: string, telefono: string): Promise
   return true;
 }
 
-function extractWaapiChatId(payload: unknown): string | null {
-  const body = (payload ?? {}) as Record<string, unknown>;
-  const data = (body.data ?? {}) as Record<string, unknown>;
-  const message = extractWaapiMessageObject(payload);
-
-  const candidates = [
-    body.chatId,
-    body.chat_id,
-    body.from,
-    body.sender,
-    data.chatId,
-    data.chat_id,
-    data.from,
-    message.chatId,
-    message.chat_id,
-    message.from,
-    message.sender,
-    message.author,
-  ];
-
-  for (const candidate of candidates) {
-    if (typeof candidate === "string" && candidate.trim() !== "") return candidate;
-  }
-  return null;
-}
-
 export async function POST(req: NextRequest) {
   try {
     const env = getEnv();
@@ -188,40 +69,20 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     console.log("[Webhook] Payload entrante:", JSON.stringify(body, null, 2));
 
-    // Evita bucles: si el mensaje viene marcado como enviado por "mi" (bot/proveedor), no responder.
-    if (isFromMe(body)) {
-      console.log("[Webhook] Ignorando mensaje fromMe=true (probable eco del proveedor).");
-      return NextResponse.json({ ok: true, ignored: "FROM_ME" }, { status: 200 });
+    const inbound = classifyInbound(body);
+    if (inbound.kind === "ignore") {
+      console.log(`[Webhook] Ignorando evento ${inbound.reason}.`);
+      return NextResponse.json({ ok: true, ignored: inbound.reason === "from_me" ? "FROM_ME" : "NOT_A_MESSAGE" }, { status: 200 });
     }
-
-    // Compatibilidad:
-    // - legado: body.data.from/body.data.body o body.from/body.body
-    // - Waapi: chatId + text/message
-    const mensaje = extractWaapiText(body);
-    const numeroRaw = extractWaapiChatId(body);
-    const ubicacion = extractWaapiLocation(body);
-
-    if (!numeroRaw) {
+    if (inbound.kind === "missing_from") {
       return NextResponse.json({ ok: false, error: "MISSING_FROM" }, { status: 200 });
     }
 
-    const mediaKind = extractWaapiMediaKind(body);
-
-    // No procesar mensajes vacíos (un mensaje de ubicación no trae texto, así que
-    // solo lo descartamos si TAMPOCO trae coordenadas ni un adjunto).
-    if ((!mensaje || String(mensaje).trim() === "") && !ubicacion && !mediaKind) {
-      return NextResponse.json({ ok: false, error: "EMPTY_MESSAGE" }, { status: 200 });
-    }
-
+    const numeroRaw = inbound.from;
     const numero = normalizePhone(String(numeroRaw));
-    const textoMensaje =
-      mensaje && String(mensaje).trim() !== ""
-        ? String(mensaje)
-        : ubicacion
-          ? "📍 (Cliente compartió su ubicación GPS)"
-          : "📎";
-
-    const messageId = extractWaapiMessageId(body);
+    const textoMensaje = inbound.body;
+    const ubicacion = inbound.kind === "location" ? { latitude: inbound.latitude, longitude: inbound.longitude } : null;
+    const messageId = inbound.messageId;
     if (messageId) {
       const claimed = await claimInboundMessage(messageId, numero);
       if (!claimed) {
@@ -245,7 +106,9 @@ export async function POST(req: NextRequest) {
     };
 
     const incoming = parseIncomingWhatsAppMessage(normalized);
-    incoming.mediaKind = mediaKind;
+    incoming.mediaKind = inbound.kind === "media" ? inbound.media : null;
+    incoming.liveLocation = inbound.kind === "live_location";
+    incoming.locationAttempt = inbound.kind === "location_unparsed";
 
     // Tolerante a errores: si IA truena, no colgar webhook.
     let result: unknown;
