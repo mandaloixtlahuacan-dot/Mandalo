@@ -80,10 +80,22 @@ function normalizeZoneName(value: string): string {
     .trim();
 }
 
+export function matchCoverageZone(addressText: string, knownZoneNames: string[]): string | null {
+  const normalizedAddress = normalizeZoneName(addressText);
+  if (!normalizedAddress) return null;
+  let best: { name: string; length: number } | null = null;
+  for (const known of knownZoneNames) {
+    const normalizedKnown = normalizeZoneName(known);
+    if (normalizedKnown.length < 4 || !normalizedAddress.includes(normalizedKnown)) continue;
+    if (!best || normalizedKnown.length > best.length) best = { name: known, length: normalizedKnown.length };
+  }
+  return best?.name ?? null;
+}
+
 export function validateAddress(
   addressText?: string | null,
   coords?: { latitud?: number | null; longitud?: number | null } | null,
-  zone?: { addressZone?: string | null; knownZoneNames?: string[] } | null,
+  zone?: { addressZone?: string | null; knownZoneNames?: string[]; acceptWrittenText?: boolean } | null,
 ): ValidationResult["validatedAddress"] {
   const raw = cleanText(addressText) ?? "";
   const normalized = raw.toLowerCase();
@@ -133,7 +145,7 @@ export function validateAddress(
     hasStreet,
     hasNumber,
     hasReference,
-    isValid: hasCoords || (zoneMatch && hasMinimalDetail),
+    isValid: hasCoords || (zoneMatch && hasMinimalDetail) || (zone?.acceptWrittenText === true && hasMinimalDetail),
   };
 }
 
@@ -247,6 +259,8 @@ export function validateCaptureForConfirmation(params: {
   snapshot: PedidoSnapshot;
   items: PedidoItemInput[];
   knownZoneNames?: string[];
+  /** Dirección escrita con calle y número o referencia. La zona, si aparece, se guarda; no se vuelve a exigir el pin. */
+  acceptWrittenText?: boolean;
   quoteStore?: boolean;
   userMessage?: string | null;
   /** Lista de antes de este turno. Si no viene, se compara contra `items`. */
@@ -258,7 +272,11 @@ export function validateCaptureForConfirmation(params: {
   const validatedAddress = validateAddress(
     params.snapshot.addressText,
     { latitud: params.snapshot.latitud, longitud: params.snapshot.longitud },
-    { addressZone: params.snapshot.addressZone, knownZoneNames: params.knownZoneNames },
+    {
+      addressZone: params.snapshot.addressZone,
+      knownZoneNames: params.knownZoneNames,
+      acceptWrittenText: params.acceptWrittenText === true,
+    },
   );
   const validatedItems = validateItems(params.items, {
     quoteStore: params.quoteStore === true,

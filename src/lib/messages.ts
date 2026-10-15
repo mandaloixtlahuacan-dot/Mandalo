@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { UnsupportedMedia } from "@/lib/inboundMessage";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { normalizePhone } from "@/lib/roles";
 
@@ -17,6 +18,12 @@ export type IncomingWhatsAppMessage = {
   body: string;
   raw: unknown;
   location?: { latitude: number; longitude: number };
+  /** Adjunto que no se lee como pedido. La ubicación sigue en `location`. */
+  mediaKind?: UnsupportedMedia | null;
+  /** Ubicación en tiempo real de Whapi. No se guarda como pin. */
+  liveLocation?: boolean;
+  /** El tipo era location pero no traía coordenadas. */
+  locationAttempt?: boolean;
 };
 
 // Nota: Whapi.cloud entrega la ubicación anidada en message.location.{latitude,longitude} —
@@ -497,7 +504,12 @@ export function isNewOrderIntent(text: string): boolean {
     t.includes("reset") ||
     t.includes("empezar de cero") ||
     t.includes("empecemos de cero") ||
-    t.includes("empezar desde cero")
+    t.includes("empezar desde cero") ||
+    t === "empezar de nuevo" ||
+    t === "empieza de nuevo" ||
+    t === "volver a empezar" ||
+    t === "inicio" ||
+    t === "al inicio"
   );
 }
 
@@ -524,7 +536,9 @@ export function isCancelIntent(text: string): boolean {
     t.includes("detener el pedido") ||
     t.includes("detener mi pedido") ||
     t.includes("ya no va") ||
-    t.includes("ya no quiero nada")
+    t.includes("ya no quiero nada") ||
+    t === "ya no" ||
+    t === "no quiero nada"
   );
 }
 

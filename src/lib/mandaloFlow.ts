@@ -124,6 +124,7 @@ import {
   summaryCorrectionKind,
   withCategoryMenu,
 } from "@/lib/orderSession";
+import { routeCustomerFlow, type CustomerFlowPhase, type CustomerMedia, type FlowAction } from "@/lib/flowRouter";
 import type { PedidoFullRecord } from "@/lib/repositories/pedidoRepositoryV2";
 import type { PedidoV2Record } from "@/lib/services/captureEngine";
 
@@ -2412,6 +2413,7 @@ async function handleFixedCatalogTurn(
   mensaje: string,
   pedido: PedidoV2Record,
   ubicacionCoords: Coordinates | null,
+  options?: { skipDeterministicUx?: boolean },
 ): Promise<JsonObject | null> {
   if (catalogEngineIsLegacy()) return null;
   if (pedido.estado !== "seleccion_productos") return null;
@@ -2453,7 +2455,7 @@ async function handleFixedCatalogTurn(
   }
   if (!text) return null;
 
-  if (!ubicacionCoords) {
+  if (!ubicacionCoords && !options?.skipDeterministicUx) {
     const early = await tryDeterministicCustomerUx({ telefono, mensaje, openPedido: pedido }).catch((e: unknown) => {
       console.error("[mandalo] UX determinista falló en menú cerrado", { message: getErrorMessage(e) });
       return null;
@@ -2593,7 +2595,234 @@ async function handleFixedCatalogTurn(
   return { ok: true, role: "cliente", accion: "catalogo_fijo", pedidoId: pedido.id };
 }
 
-async function handleClienteMessage(telefono: string, mensaje: string, ubicacion?: unknown): Promise<JsonObject> {
+function customerFlowPhase(params: {
+  openPedido: PedidoV2Record | null;
+  storedPhase: string | null;
+  storedNiche: string | null;
+  lastBotText: string;
+  waitingAddress: boolean;
+  hasBusiness: boolean;
+  hasItems: boolean;
+}): CustomerFlowPhase {
+  const pedido = params.openPedido;
+  if (!pedido || isTerminalState(pedido.estado)) {
+    const inferred = inferOrderPhase({
+      hasOpenOrder: false,
+      estado: null,
+      hasBusiness: params.hasBusiness,
+      hasItems: params.hasItems,
+      lastBotText: params.lastBotText,
+      awaitingAddress: false,
+    });
+    const phase = effectiveOrderPhase(isOrderPhase(params.storedPhase) ? params.storedPhase : null, inferred, false);
+    return phase;
+  }
+  if (pedido.estado === "confirmacion_cliente") return "resumen";
+  if (pedido.estado === "confirmado_tiendas") return "precio";
+  if (pedido.estado === "ajuste_producto") return "ajuste";
+  if (pedido.estado === "pendiente_tiendas" || pedido.estado === "esperando_apertura_tienda") return "esperando_tienda";
+  if (
+    pedido.estado === "dispatch_repartidor_pendiente" ||
+    pedido.estado === "repartidor_asignado" ||
+    pedido.estado === "recogiendo" ||
+    pedido.estado === "en_camino_cliente"
+  ) {
+    return "esperando_repartidor";
+  }
+  const inferred = inferOrderPhase({
+    hasOpenOrder: true,
+    estado: pedido.estado,
+    hasBusiness: params.hasBusiness,
+    hasItems: params.hasItems,
+    lastBotText: params.lastBotText,
+    awaitingAddress: params.waitingAddress,
+  });
+  return effectiveOrderPhase(isOrderPhase(params.storedPhase) ? params.storedPhase : null, inferred, true);
+}
+
+async function persistWrittenAddress(params: {
+  openPedido: PedidoV2Record;
+  addressText: string;
+}): Promise<string | null> {
+  const pedido = params.openPedido;
+  if (isTerminalState(pedido.estado)) return null;
+  const knownZoneNames = await fetchZonasCobertura();
+  const addressZone = validationEngine.matchCoverageZone(params.addressText, knownZoneNames);
+  const snapshot = {
+    ...pedido.snapshot_json,
+    addressText: params.addressText,
+    addressZone: addressZone ?? pedido.snapshot_json.addressZone ?? null,
+  };
+  const full = await pedidoRepositoryV2.getPedidoById(pedido.id).catch(() => null);
+  const catalog = full?.tienda?.usaCatalogoFijo === true;
+  const validation = validationEngine.validateCaptureForConfirmation({
+    snapshot,
+    items: snapshot.items ?? [],
+    knownZoneNames,
+    acceptWrittenText: true,
+    quoteStore: false,
+    userMessage: "",
+  });
+  const canAdvance = pedido.estado === "seleccion_productos" || pedido.estado === "confirmacion_cliente";
+  const nextState = canAdvance && validation.readyForConfirmation ? "confirmacion_cliente" : pedido.estado;
+  await pedidoRepositoryV2.updatePedidoSnapshot({
+    pedidoId: pedido.id,
+    estado: nextState,
+    snapshot: {
+      ...snapshot,
+      flags: {
+        ...(snapshot.flags ?? {}),
+        addressValidated: Boolean(validation.validatedAddress?.isValid),
+        readyForConfirmation: canAdvance && validation.readyForConfirmation,
+      },
+    },
+    addressText: params.addressText,
+    latitud: snapshot.latitud ?? null,
+    longitud: snapshot.longitud ?? null,
+    tiendaId: validation.validatedBusiness.businessId,
+  });
+  if (!canAdvance || !validation.readyForConfirmation) return null;
+  let feeNote = formatPreConfirmFeeNote(catalog ? "catalogo" : "cotiza_tienda");
+  let pricedLines: string | null = null;
+  if (catalog && full?.tienda?.tiendaId) {
+    const priced = await catalogPriceLines(full.tienda.tiendaId, validation.validatedItems.items).catch(() => null);
+    if (priced) {
+      pricedLines = priced.lines.join("\n");
+      feeNote = formatCatalogReceiptFee(priced.subtotal);
+    }
+  }
+  return buildCustomerMessage({
+    validation,
+    snapshot,
+    items: validation.validatedItems.items,
+    feeNote,
+    pricedLines,
+  });
+}
+
+async function steerCustomerFlow(params: {
+  telefono: string;
+  mensaje: string;
+  openPedido: PedidoV2Record | null;
+  ubicacionCoords: Coordinates | null;
+  media: CustomerMedia;
+}): Promise<{ kind: "done"; body: JsonObject } | { kind: "next"; action: FlowAction } | null> {
+  const snapshot = params.openPedido?.snapshot_json;
+  const businessId = typeof snapshot?.businessId === "number" ? snapshot.businessId : null;
+  const hasBusiness = businessId != null && businessId > 0;
+  const items = Array.isArray(snapshot?.items) ? snapshot.items : [];
+  const hasItems = items.some((item) => String(item?.nombre_producto ?? "").trim());
+  const waitingAddress =
+    snapshot?.flags?.productosConfirmados === true &&
+    snapshot.latitud == null &&
+    !String(snapshot.addressText ?? "").trim();
+  const cursor = await readOrderCursor(params.telefono).catch(() => ({ phase: null, nicheId: null }));
+  const historial = await fetchHistorialReciente(params.telefono, 4).catch(() => []);
+  const lastBotText = historial.find((item) => item.estado === "bot")?.texto ?? "";
+  const stores = await loadUxStores().catch(() => []);
+  const store = hasBusiness ? (stores.find((item) => item.id === businessId) ?? null) : null;
+  const phase = customerFlowPhase({
+    openPedido: params.openPedido,
+    storedPhase: cursor.phase,
+    storedNiche: cursor.nicheId,
+    lastBotText,
+    waitingAddress,
+    hasBusiness,
+    hasItems,
+  });
+  const media = params.media === "text" && params.ubicacionCoords ? "location" : params.media;
+  const decision = routeCustomerFlow({
+    message: params.mensaje,
+    phase,
+    nicheId: cursor.nicheId,
+    store,
+    stores,
+    items: items
+      .map((item) => ({
+        nombre_producto: String(item?.nombre_producto ?? "").trim(),
+        cantidad: Number(item?.cantidad ?? 1) || 1,
+      }))
+      .filter((item) => item.nombre_producto),
+    lastBotText,
+    awaitingProductConfirm: snapshot?.flags?.awaitingProductConfirm === true,
+    media,
+    locationInsideCoverage: media === "location" && params.ubicacionCoords ? isWithinCoverageArea(params.ubicacionCoords) : null,
+    locationHasCoords: media === "location" ? Boolean(params.ubicacionCoords) : true,
+    orderId: params.openPedido?.id ?? null,
+  });
+  if (decision.effect === "fallthrough") return { kind: "next", action: decision.action };
+
+  let outgoing = decision.text;
+  if (decision.action === "accept_address" && params.openPedido && decision.addressText) {
+    const saved = await persistWrittenAddress({
+      openPedido: params.openPedido,
+      addressText: decision.addressText,
+    }).catch((e: unknown) => {
+      console.error("[mandalo] no se pudo guardar la dirección escrita", { message: getErrorMessage(e) });
+      return null;
+    });
+    if (saved) outgoing = saved;
+  }
+
+  if (decision.action === "escalate_cancel" && params.openPedido) {
+    await outboxRepository
+      .enqueueAdminNotification({
+        pedidoId: params.openPedido.id,
+        tipo: "cancelacion_tardia",
+        contenido:
+          `Cliente pide cancelar un pedido ya avanzado\n\n` +
+          `Tel: ${params.telefono}\n` +
+          `Pedido: #${params.openPedido.id}\n` +
+          `Estado actual: ${params.openPedido.estado}\n` +
+          `Mensaje: ${params.mensaje}`,
+      })
+      .catch((e: unknown) => {
+        console.error("[mandalo] no se pudo escalar cancelación tardía al admin", { message: getErrorMessage(e) });
+      });
+  }
+
+  if ((decision.action === "cancel" || decision.action === "restart") && params.openPedido && !isTerminalState(params.openPedido.estado)) {
+    await cancelOpenPedido(params.openPedido, params.telefono, decision.action === "restart" ? "hard_reset" : "cliente_cancelo").catch(
+      (e: unknown) => {
+        console.error("[mandalo] cancelOpenPedido falló", { pedidoId: params.openPedido?.id, message: getErrorMessage(e) });
+      },
+    );
+  }
+
+  if (decision.clearStore && !decision.rememberStoreId && decision.action !== "cancel" && decision.action !== "restart") {
+    await clearActiveStoreChoice(params.telefono, params.mensaje).catch((e: unknown) => {
+      console.error("[mandalo] no se pudo soltar la tienda anterior", { message: getErrorMessage(e) });
+    });
+  }
+  if (decision.rememberStoreId) {
+    const next = stores.find((item) => item.id === decision.rememberStoreId) ?? null;
+    if (next) {
+      const switching = !store || store.id !== next.id;
+      await rememberStoreChoice(params.telefono, params.mensaje, next, switching || decision.clearCart).catch((e: unknown) => {
+        console.error("[mandalo] no se pudo recordar la tienda elegida", { message: getErrorMessage(e) });
+      });
+    }
+  }
+
+  const orderPhase = isOrderPhase(decision.phase) ? decision.phase : "categoria";
+  if (decision.action === "cancel" || decision.action === "restart" || isOrderPhase(decision.phase)) {
+    await rememberCursor(params.telefono, orderPhase, decision.nicheId);
+  }
+  await guardarMensajeChat({ telefono: params.telefono, texto: String(params.mensaje ?? ""), estado: "cliente" }).catch(() => {});
+  await sendWhatsApp(params.telefono, outgoing);
+  await guardarMensajeChat({ telefono: params.telefono, texto: outgoing, estado: "bot" }).catch(() => {});
+  return {
+    kind: "done",
+    body: { ok: true, role: "cliente", accion: `flow_${decision.action}`, phase: decision.phase },
+  };
+}
+
+async function handleClienteMessage(
+  telefono: string,
+  mensaje: string,
+  ubicacion?: unknown,
+  media: CustomerMedia = "text",
+): Promise<JsonObject> {
   const ubicacionCoords = extractCoordsFromUbicacion(ubicacion);
 
   // Regla de oro #1: si la ubicación cae fuera del radio de cobertura, cancelamos aquí
@@ -2677,6 +2906,19 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
   // así que en vez de cancelar y borrar solo, escalamos al admin (mismo
   // mecanismo que isComplaintMessage) porque puede haber un repartidor ya en
   // camino físico.
+  const steered = await steerCustomerFlow({
+    telefono,
+    mensaje,
+    openPedido,
+    ubicacionCoords,
+    media,
+  }).catch((e: unknown) => {
+    console.error("[mandalo] ruteo determinista falló, sigo con el flujo de siempre", { message: getErrorMessage(e) });
+    return null;
+  });
+  if (steered?.kind === "done") return steered.body;
+  const flowAction = steered?.kind === "next" ? steered.action : null;
+
   const wantsNewOrder = isNewOrderIntent(mensaje);
   const wantsCancel = isCancelIntent(mensaje);
   if (wantsNewOrder || wantsCancel) {
@@ -2794,7 +3036,9 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
   }
 
   if (openPedido && openPedido.estado === "seleccion_productos" && !catalogEngineIsLegacy()) {
-    const catalogTurn = await handleFixedCatalogTurn(telefono, mensaje, openPedido, ubicacionCoords).catch((e: unknown) => {
+    const catalogTurn = await handleFixedCatalogTurn(telefono, mensaje, openPedido, ubicacionCoords, {
+      skipDeterministicUx: flowAction === "agent",
+    }).catch((e: unknown) => {
       console.error("[mandalo] menú cerrado falló, sigo con el flujo de siempre", { message: getErrorMessage(e) });
       return null;
     });
@@ -2816,7 +3060,7 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
   }
 
   const inCapture = !openPedido || openPedido.estado === "seleccion_productos";
-  if (inCapture && !ubicacionCoords && String(mensaje ?? "").trim()) {
+  if (inCapture && !ubicacionCoords && String(mensaje ?? "").trim() && flowAction !== "agent") {
     const early = await tryDeterministicCustomerUx({ telefono, mensaje, openPedido }).catch((e: unknown) => {
       console.error("[mandalo] UX determinista falló, sigo con la IA", { message: getErrorMessage(e) });
       return null;
@@ -2831,7 +3075,7 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
 
   // Modo conversación: si el usuario está charlando o expresando emociones,
   // contestamos con IA y NO aplicamos la lógica de captura en este turno.
-  if (isConversationModeMessage(mensaje)) {
+  if (flowAction !== "agent" && isConversationModeMessage(mensaje)) {
     await guardarMensajeChat({ telefono, texto: String(mensaje ?? ""), estado: "cliente" }).catch(() => {});
 
     const historial = await fetchHistorialReciente(telefono, 12).catch(() => []);
@@ -3451,5 +3695,12 @@ export async function processMandaloWebhook(incoming: IncomingWhatsAppMessage): 
     return handleRepartidorMessage(normalizePhone(String(incoming.from)), incoming.body);
   }
 
-  return handleClienteMessage(actor.telefono, incoming.body, incoming.location);
+  const media: CustomerMedia = incoming.liveLocation
+    ? "live_location"
+    : incoming.location || incoming.locationAttempt
+      ? "location"
+      : incoming.mediaKind
+        ? incoming.mediaKind
+        : "text";
+  return handleClienteMessage(actor.telefono, incoming.body, incoming.location, media);
 }
