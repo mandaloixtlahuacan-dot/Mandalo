@@ -139,7 +139,7 @@ section(
     tiendaNombre: "ZAGU",
     pedidoId: 102,
     subtotal: 97,
-    total: 122,
+    total: 132,
     itemLines: [
       "2 Coca-Cola de 2 litros — $36",
       "1 sopa Maruchan de habanero — $15",
@@ -378,7 +378,7 @@ section(
 
 section(
   "REPARTIDOR — pedido nuevo",
-  `🛵 *Hola Luis, tienes un nuevo pedido*\n\n🧾 *Pedido #102*\n\n🏪 *ZAGU*\n\n📍 *Recoger en:*\nCalle Hidalgo 20\n\n📍 *Entregar en:*\nCalle Hidalgo 12, frente a la tortillería\nhttps://maps.google.com/?q=20.86,-103.24\n\n🛒 *Productos:*\n\n${storeLines}\n\n💵 *Cobrar: $122*\n\n*Tel. cliente:* 5213312345678\n\n*Responde con:*\n#CONFIRMO 102\n\n*Luego:*\n#RECOGI 102\n\n#ENTREGADO 102`,
+  `🛵 *Hola Luis, tienes un nuevo pedido*\n\n🧾 *Pedido #102*\n\n🏪 *ZAGU*\n\n📍 *Recoger en:*\nCalle Hidalgo 20\n\n📍 *Entregar en:*\nCalle Hidalgo 12, frente a la tortillería\nhttps://maps.google.com/?q=20.86,-103.24\n\n🛒 *Productos:*\n\n${storeLines}\n\n💵 *Cobrar: $132*\n\n*Tel. cliente:* 5213312345678\n\n*Responde con:*\n#CONFIRMO 102\n\n*Luego:*\n#RECOGI 102\n\n#ENTREGADO 102`,
 );
 section(
   "REPARTIDOR — aceptado, recogido, entregado",

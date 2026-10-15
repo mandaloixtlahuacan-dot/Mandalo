@@ -2294,8 +2294,8 @@ const counts = {
   central: scenarios.filter((scenario) => scenario.store === "central").length,
 };
 
-if (MANDALO_SERVICE_FEE !== 0 || MANDALO_DELIVERY_FEE !== 25) {
-  throw new Error("el cargo dejó de ser 0 + 25");
+if (MANDALO_SERVICE_FEE !== 0 || MANDALO_DELIVERY_FEE !== 35) {
+  throw new Error("el cargo dejó de ser 0 + 35");
 }
 
 if (!ABARROTES_PRODUCT_REQUEST.includes("2 Coca-Cola de 600 ml")) throw new Error("falta el ejemplo de Coca");

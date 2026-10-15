@@ -1,18 +1,11 @@
-// Validación de horario. El bot en sí sigue platicando y armando pedidos
-// 24/7 (eso no cambió) — lo que se restringe es el DESPACHO: Mándalo solo
-// reparte de 3pm a 9pm (horario real del repartidor, reintroducido agosto
-// 2026 tras la fase 24/7, ajustado de 3pm-8pm a 3pm-9pm — ver CLAUDE.md
-// Sección 5 regla 6), y cada tienda
-// tiene además su propio horario en base de datos (tiendas.hora_apertura /
-// hora_cierre, columnas `text` libres — ver Fase 1; tiendas.dias_cerrado,
-// días fijos de descanso — ver migración 20260909; y tiendas.horario_por_dia,
-// jsonb nullable con la excepción de un día 0–6). Sin esa excepción se usa
-// el mismo abre/cierra de siempre. Un pedido fuera de
-// cualquiera de las dos ventanas se programa (mismo mecanismo,
-// esperando_apertura_tienda) en vez de rechazarse. Los repartidores no
-// tienen columnas de horario en el esquema (CLAUDE.md Sección 4): su
-// disponibilidad ya se gobierna por `disponible`/`activo`, que es lo que
-// findActiveCourier() ya filtra — no hace falta nada nuevo para ellos aquí.
+// Validación de horario. El bot sigue platicando y armando pedidos 24/7.
+// El despacho de Mándalo es todos los días de 8am a 9pm, hora de México
+// (15 de octubre de 2026; antes era 3pm–9pm — ver CLAUDE.md Sección 5
+// regla 6). Cada tienda conserva su propio horario (hora_apertura /
+// hora_cierre, dias_cerrado, horario_por_dia). Un pedido fuera de la
+// ventana de Mándalo o de la tienda se programa (esperando_apertura_tienda).
+// El horario semanal de cada repartidor vive en repartidores.horario_json
+// y se aplica al ofrecer el pedido (courierAvailability.ts), no aquí.
 
 const MANDALO_TIMEZONE = "America/Mexico_City";
 
@@ -269,7 +262,7 @@ export function checkTiendaSchedule(params: {
 // estos valores en vez de duplicar la lógica de horario cruzando medianoche/
 // fail-open. Constantes exportadas (no solo usadas aquí) para que el prompt
 // y los mensajes al cliente muestren siempre el mismo valor.
-export const MANDALO_HORA_APERTURA = "15:00";
+export const MANDALO_HORA_APERTURA = "08:00";
 export const MANDALO_HORA_CIERRE = "21:00";
 
 export function checkMandaloSchedule(now?: Date): TiendaScheduleCheck {

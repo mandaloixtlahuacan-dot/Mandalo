@@ -26,7 +26,7 @@ import * as metricsRepository from "@/lib/repositories/metricsRepository";
 import * as validationEngine from "@/lib/services/validationEngine";
 import * as outboxRepository from "@/lib/repositories/outboxRepository";
 import { createCourierCommandParser } from "@/lib/services/courierCommandParser";
-import { buildOrderTimeoutMetadata, buildEsperandoAperturaMetadata } from "@/lib/services/orderTimeouts";
+import { buildEsperandoAperturaMetadata } from "@/lib/services/orderTimeouts";
 import {
   checkMandaloSchedule,
   checkTiendaSchedule,
@@ -38,7 +38,7 @@ import {
   type TiendaScheduleCheck,
 } from "@/lib/services/businessHours";
 import { dispatchCotizacionToStore, finalizeStoreQuote, flagItemUnavailable } from "@/lib/services/storeDispatch";
-import { assignCourier, cancelBecauseNoCourier, findActiveCourier } from "@/lib/services/courierHandoff";
+import { cancelBecauseNoCourier, findAvailableCouriers, offerOrderToCouriers } from "@/lib/services/courierHandoff";
 import {
   buildGreeting,
   catalogMenuImageKind,
@@ -77,7 +77,6 @@ import {
   isWithinCoverageArea,
   buildAddressTextFromCoords,
   buildMapsLinkFromCoords,
-  resolveMapsLink,
   type Coordinates,
 } from "@/lib/services/geo";
 import { MandaloAgentResponse, mandaloAgentResponseSchema } from "@/lib/llmResponseSchema";
@@ -133,20 +132,6 @@ async function isAdminSender(phone: string): Promise<boolean> {
   const sender = normalizePhone(String(phone ?? ""));
   if (!sender) return false;
   return sender === admin || sender.slice(-10) === admin.slice(-10);
-}
-
-// Bug real de zona horaria (mismo tipo que el del cron de reporte semanal):
-// sin `timeZone` explícito, toLocaleTimeString usa la zona del servidor
-// (Vercel corre en UTC), no la de Ixtlahuacán del Río — un pedido confirmado
-// a las 8:05am mostraba "llegará a las 2:25pm" (desfase de 6h, UTC-6).
-function formatEstimatedArrival(minutesToAdd = 20): string {
-  const eta = new Date(Date.now() + minutesToAdd * 60 * 1000);
-  return eta.toLocaleTimeString("es-MX", {
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-    timeZone: "America/Mexico_City",
-  });
 }
 
 function buildSaludoInicial(): string {
@@ -639,17 +624,6 @@ function logBusinessDispatch(params: { orderId: number; tiendaId?: unknown; tien
     tienda_nombre: String(params.tiendaNombre ?? "").trim() || null,
     tienda_telefono: String(params.tiendaTelefono ?? "").trim() || null,
     to: params.to,
-    bodyPreview: String(params.body ?? "").slice(0, 300),
-  });
-}
-
-function logCourierDispatch(params: { orderId: number; courierName?: unknown; courierPhone?: unknown; customerPhone?: unknown; mapsLink?: unknown; body: string }) {
-  console.log("[dispatch][courier]", {
-    orderId: params.orderId,
-    courier_name: String(params.courierName ?? "").trim() || null,
-    courier_phone: String(params.courierPhone ?? "").trim() || null,
-    customer_phone: String(params.customerPhone ?? "").trim() || null,
-    mapsLink: String(params.mapsLink ?? "").trim() || null,
     bodyPreview: String(params.body ?? "").slice(0, 300),
   });
 }
@@ -1267,7 +1241,7 @@ async function handleEsperandoConfirmacionInicial(
     return { ok: true, role: "cliente", stage: "confirmacion_cliente", pedidoId: pedido.id };
   }
 
-  // Tienda cerrada y/o fuera del horario de despacho de Mándalo (3pm-8pm,
+  // Tienda cerrada y/o fuera del horario de despacho de Mándalo (8am-9pm,
   // CLAUDE.md Sección 5 regla 6): no se despacha todavía — se programa.
   // Mismo mecanismo sin importar cuál de las dos condiciones falle; la
   // tienda no se entera hasta que se pueda despachar de verdad (decisión de
@@ -1363,8 +1337,8 @@ async function handleConfirmadoTiendas(telefono: string, mensaje: string, pedido
     return { ok: false, role: "cliente", error: "PEDIDO_VACIO", pedidoId: pedido.id };
   }
 
-  const repartidor = await findActiveCourier();
-  if (!repartidor) {
+  const repartidores = await findAvailableCouriers();
+  if (!repartidores.length) {
     await cancelBecauseNoCourier({
       pedido,
       customerPhone: telefono,
@@ -1374,59 +1348,20 @@ async function handleConfirmadoTiendas(telefono: string, mensaje: string, pedido
     return { ok: true, role: "cliente", accion: "sin_repartidor", pedidoId: pedido.id };
   }
 
-  const repartidorNombre = String(repartidor?.nombre ?? "").trim() || "Repartidor";
-  const repartidorTelefono = ensureMxWhatsappIntl(String(repartidor?.telefono ?? ""));
-  const mapsLink = resolveMapsLink({ latitud: pedido.latitud, longitud: pedido.longitud });
-
-  const msgRepartidor =
-    `🛵 *Hola ${repartidorNombre}, tienes un nuevo pedido*\n\n` +
-    `🧾 *Pedido #${pedido.id}*\n\n` +
-    `🏪 *${pedido.tienda?.nombre ?? "la tienda"}*\n\n` +
-    `📍 *Recoger en:*\n${pedido.tienda?.direccion || "(sin dirección de tienda registrada, confirma con la tienda)"}\n\n` +
-    `📍 *Entregar en:*\n${pedido.direccionEntrega || "(sin dirección)"}\n` +
-    `${mapsLink ? `${mapsLink}\n` : ""}\n` +
-    `🛒 *Productos:*\n\n${formatItemsForMessage(pedido.items)}\n\n` +
-    `${pedido.totalCliente != null ? `💵 *Cobrar: ${formatMoney(pedido.totalCliente)}*\n\n` : ""}` +
-    `*Tel. cliente:* ${telefono}\n\n` +
-    `*Responde con:*\n#CONFIRMO ${pedido.id}\n\n` +
-    `*Luego:*\n#RECOGI ${pedido.id}\n\n#ENTREGADO ${pedido.id}`;
-
-  logCourierDispatch({ orderId: pedido.id, courierName: repartidorNombre, courierPhone: repartidorTelefono, customerPhone: telefono, mapsLink, body: msgRepartidor });
-
   try {
     // El deadline se fija aquí, al encolar, no en handleDispatchAck (que
     // depende de una ruta de dispatch-worker sin ningún cron/webhook real
     // que la dispare — ver ROADMAP.md). Mismo patrón que storeDispatch.ts
     // usa para "store_quote": el timeout empieza a correr desde que el
     // pedido entra al estado de espera, no desde un ack de envío que puede
-    // no llegar nunca.
-    await pedidoRepositoryV2.setPedidoEstado({
-      pedidoId: pedido.id,
-      estado: "dispatch_repartidor_pendiente",
-      metadataPatch: {
-        ...buildOrderTimeoutMetadata("courier_confirmation"),
-        current_courier_id: typeof repartidor?.id === "number" ? repartidor.id : null,
-        current_courier_name: repartidorNombre,
-        current_courier_phone: repartidorTelefono,
-        courier_assignment_attempt: 1,
-      },
-    });
-    await pedidoRepositoryV2.appendPedidoEvento({
-      pedidoId: pedido.id,
-      tipoEvento: "dispatch_repartidor",
-      estadoOrigen: "confirmado_tiendas",
-      estadoDestino: "dispatch_repartidor_pendiente",
+    // no llegar nunca. Si hay dos repartidores en horario, los dos reciben
+    // el mismo #CONFIRMO; el primero que llega se lo queda.
+    await offerOrderToCouriers({
+      pedido,
+      customerPhone: telefono,
+      couriers: repartidores,
       actorTipo: "cliente",
-    });
-
-    await outboxRepository.enqueueOutboundMessage({
-      pedidoId: pedido.id,
-      tipoMensaje: "dispatch_repartidor",
-      destinatarioTipo: "repartidor",
-      destinatarioId: typeof repartidor?.id === "number" ? repartidor.id : null,
-      telefonoDestino: repartidorTelefono,
-      payload: { body: msgRepartidor, courierId: repartidor?.id ?? null, courierName: repartidorNombre, courierPhone: repartidorTelefono, attemptNumber: 1 },
-      idempotencyKey: `pedido:${pedido.id}:dispatch_repartidor:attempt:1`,
+      deliverCustomer: (body) => deliverToCustomer(telefono, body),
     });
   } catch (e: unknown) {
     console.error("[mandalo] no se pudo encolar o transicionar dispatch a repartidor", { pedidoId: pedido.id, message: getErrorMessage(e) });
@@ -1436,14 +1371,6 @@ async function handleConfirmadoTiendas(telefono: string, mensaje: string, pedido
     return { ok: true, role: "cliente", stage: "confirmado_tiendas", pedidoId: pedido.id };
   }
 
-  const etaText = formatEstimatedArrival(20);
-  const msgCliente =
-    `✅ *Pedido #${pedido.id} confirmado*\n\n` +
-    `Llegará aproximadamente a las ${etaText}.\n\n` +
-    `🛵 Estamos coordinando tu entrega con *${repartidorNombre}*.\n\n` +
-    `Te aviso en cuanto confirme.`;
-  await sendWhatsApp(telefono, msgCliente);
-  await guardarMensajeChat({ telefono, texto: msgCliente, estado: "bot" }).catch(() => {});
   return { ok: true, role: "cliente", stage: "dispatch_repartidor_pendiente", pedidoId: pedido.id };
 }
 
@@ -1949,7 +1876,7 @@ async function deliverToCustomer(telefono: string, body: string): Promise<void> 
 }
 
 /**
- * Menú fijo: el SÍ de la lista (con precios y $25) ya es el último.
+ * Menú fijo: el SÍ de la lista (con precios y envío y servicio) ya es el último.
  * Con ubicación se manda. Sin repartidor se cancela con el aviso correcto,
  * y la tienda no recibe "Prepáralo" si todavía no se le había enviado.
  */
@@ -1995,8 +1922,8 @@ async function commitCatalogDispatch(telefono: string, pedido: PedidoFullRecord)
     return { ok: true, role: "cliente", stage: "esperando_apertura_tienda", pedidoId: pedido.id };
   }
 
-  const courier = await findActiveCourier();
-  if (!courier) {
+  const couriers = await findAvailableCouriers();
+  if (!couriers.length) {
     await cancelBecauseNoCourier({
       pedido,
       customerPhone: telefono,
@@ -2024,10 +1951,11 @@ async function commitCatalogDispatch(telefono: string, pedido: PedidoFullRecord)
   const fresh = await pedidoRepositoryV2.getPedidoById(pedido.id);
   if (!fresh) return { ok: false, role: "cliente", error: "PEDIDO_NO_ENCONTRADO", pedidoId: pedido.id };
   try {
-    await assignCourier({
+    await offerOrderToCouriers({
       pedido: fresh,
       customerPhone: telefono,
-      courier,
+      couriers,
+      actorTipo: "cliente",
       deliverCustomer: (body) => deliverToCustomer(telefono, body),
     });
   } catch (e: unknown) {
