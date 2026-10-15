@@ -1,5 +1,5 @@
 import { checkAiOutput, type AcceptedQuestion, type CheckResult } from "@/lib/catalogOrder/accept";
-import { cartFromModel, fallbackInterpret, messageClauses } from "@/lib/catalogOrder/fallback";
+import { applyPendingAnswer, cartFromModel, fallbackInterpret, messageClauses } from "@/lib/catalogOrder/fallback";
 import { createOpenAICatalogModel, escalationModelName, logEscalation, notePrimaryTurn, orderModel } from "@/lib/catalogOrder/parser";
 import { parseQuantity } from "@/lib/catalogOrder/quantities";
 import { buildAiReply, buildCatalogReply } from "@/lib/catalogOrder/reply";
@@ -378,8 +378,53 @@ function keepPrevious(input: CatalogTurnInput, started: number, modelName: strin
   });
 }
 
+function answerPending(input: CatalogTurnInput, started: number, modelName: string): CatalogTurnResult | null {
+  if (!input.pending) return null;
+  const cart = applyPendingAnswer({
+    pending: input.pending,
+    message: input.message,
+    catalog: input.catalog,
+    cart: input.cart,
+  });
+  if (!cart) return null;
+  const queue = input.pending.queue ?? [];
+  const next = queue[0];
+  const spoken = buildAiReply({
+    catalog: input.catalog,
+    cart,
+    notOnMenu: [],
+    question: next
+      ? { text: next.question, candidateIds: next.candidateIds, qty: next.qty, unit: next.unit, sourceText: next.sourceText }
+      : null,
+    pending: null,
+    pendingQueue: queue.slice(1).map((item) => ({
+      text: item.question,
+      candidateIds: item.candidateIds,
+      qty: item.qty,
+      unit: item.unit,
+      sourceText: item.sourceText,
+    })),
+    message: input.message,
+    confirmedList: false,
+  });
+  return finish(started, {
+    cart,
+    pending: spoken.pending,
+    reply: spoken.reply,
+    intent: "answer",
+    fallback: false,
+    model: modelName,
+    ms: 0,
+    unmatched: [],
+    freeText: [],
+    confirmedList: false,
+  });
+}
+
 /** El modelo no dejó nada usable. Si ya había líneas, se quedan y se vuelve a preguntar. */
 function holdCart(input: CatalogTurnInput, started: number, modelName: string): CatalogTurnResult {
+  const answered = answerPending(input, started, modelName);
+  if (answered) return answered;
   if (input.pending) return reaskPending(input, started, modelName);
   if (input.cart.length > 0) {
     const spoken = buildAiReply({
@@ -567,6 +612,8 @@ async function runAiTurn(input: CatalogTurnInput): Promise<CatalogTurnResult> {
   const { primary, escalation } = resolveModels(input);
   const modelName = primary?.name ?? "fallback";
 
+  const answered = answerPending(input, started, modelName);
+  if (answered) return answered;
   if (input.pending && closesOrder(input.message)) return reaskPending(input, started, modelName);
   if (input.awaitingList && classifyProductListReply(input.message) === "confirm") return confirmPrevious(input, started, modelName);
   if (!primary) return fromFallback(input, started, "fallback");

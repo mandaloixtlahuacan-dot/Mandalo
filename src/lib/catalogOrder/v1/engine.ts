@@ -41,7 +41,8 @@ export async function runV1CatalogOrderTurn(input: CatalogTurnInput): Promise<Ca
       input.pending.candidateIds.flatMap((id) => tokens(input.catalog.byId.get(id)?.searchName ?? "")),
     );
     const namesSomethingElse = tokens(input.message).some((token) => {
-      if (/^(chica|chicas|grande|grandes|marinada|marinado)$/.test(token)) return false;
+      if (/^\d+$/.test(token)) return false;
+      if (/^(chica|chicas|grande|grandes|marinada|marinado|normal|natural)$/.test(token)) return false;
       if (candidateTokens.has(token)) return false;
       return input.catalog.rows.some((row) => tokens(row.searchName).includes(token));
     });
@@ -117,6 +118,9 @@ export async function runV1CatalogOrderTurn(input: CatalogTurnInput): Promise<Ca
         message: input.message,
         catalog: input.catalog,
         pendingText: input.pending?.sourceText ?? "",
+        pendingCandidateIds: input.pending?.candidateIds,
+        pendingQty: input.pending?.qty,
+        pendingUnit: input.pending?.unit,
       });
 
   if (!usedFallback && validated.unmatched.some((item) => item.reason === "unclear" && item.candidate_ids.length === 0)) {

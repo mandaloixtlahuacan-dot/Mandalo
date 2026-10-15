@@ -4,7 +4,7 @@
  * y no cambia un paquete que el modelo ya eligió.
  */
 import { fold } from "@/lib/catalogOrder/text";
-import type { AiOutput, AiPendingLine, CartLine, CatalogSnapshot, SellUnit } from "@/lib/catalogOrder/types";
+import type { AiOutput, AiPendingLine, CartLine, CatalogRow, CatalogSnapshot, SellUnit } from "@/lib/catalogOrder/types";
 
 export type AcceptedQuestion = {
   text: string;
@@ -34,6 +34,37 @@ function allowedUnit(rowUnit: "pz" | "kg", unit: string): unit is SellUnit {
 
 function asUnit(value: unknown): SellUnit | null {
   return value === "pz" || value === "kg" || value === "pesos" ? value : null;
+}
+
+type QuestionAxis = "marinade" | "size" | "flavor";
+
+function questionAxis(text: string): QuestionAxis | null {
+  const folded = fold(text);
+  if (/\bmarinad|\badobad|\bnormal\b|\bsin marinar\b|\bnatural\b/.test(folded)) return "marinade";
+  if (/\b(chica|grande|tamano)\b/.test(folded)) return "size";
+  if (/\b(sabor|pepsi|coca|seven|mirinda|manzana)\b/.test(folded)) return "flavor";
+  return null;
+}
+
+function rowsOf(catalog: CatalogSnapshot, ids: number[]): CatalogRow[] {
+  return ids.map((id) => catalog.byId.get(id)).filter((row): row is CatalogRow => Boolean(row));
+}
+
+/** La pregunta solo vale si las opciones de verdad se separan en ese eje. */
+export function pendingAxisIsReal(catalog: CatalogSnapshot, text: string, candidateIds: number[]): boolean {
+  const axis = questionAxis(text);
+  if (!axis) return true;
+  const rows = rowsOf(catalog, candidateIds);
+  if (rows.length < 1) return false;
+  if (axis === "marinade") {
+    const seasoned = rows.map((row) => /marinad|adobad/.test(fold(row.name)));
+    return seasoned.some(Boolean) && seasoned.some((flag) => !flag);
+  }
+  if (axis === "size") {
+    return new Set(rows.map((row) => row.size).filter(Boolean)).size > 1;
+  }
+  const flavors = rows.flatMap((row) => row.variants.map((variant) => fold(variant)));
+  return new Set(flavors).size > 1;
 }
 
 function pendingFrom(item: AiPendingLine): AcceptedQuestion | null {
@@ -107,6 +138,22 @@ export function checkAiOutput(output: AiOutput, catalog: CatalogSnapshot): Check
     const row = pendingFrom(item);
     if (!row) continue;
     row.candidateIds = row.candidateIds.filter((id) => catalog.byId.has(id));
+    if (!pendingAxisIsReal(catalog, row.text, row.candidateIds)) {
+      if (row.candidateIds.length === 1) {
+        const product = catalog.byId.get(row.candidateIds[0]);
+        const unit = row.unit ?? (product?.unit === "kg" ? "kg" : "pz");
+        if (product && unit && !cart.some((line) => line.productId === product.id)) {
+          cart.push({
+            productId: product.id,
+            qty: row.qty != null && row.qty > 0 ? row.qty : 1,
+            unit,
+            variant: null,
+            notes: null,
+          });
+        }
+      }
+      continue;
+    }
     pending.push(row);
   }
 

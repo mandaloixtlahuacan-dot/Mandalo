@@ -3,7 +3,7 @@
  * Se usa con CATALOG_ENGINE=v1, y el lector de respaldo sigue aparte.
  */
 import { familyRows } from "@/lib/catalogOrder/catalog";
-import { cartFromModel, fallbackInterpret, messageClauses } from "@/lib/catalogOrder/fallback";
+import { applyPendingAnswer, cartFromModel, fallbackInterpret, messageClauses } from "@/lib/catalogOrder/fallback";
 import { parseQuantity } from "@/lib/catalogOrder/quantities";
 import { compact, editDistance, fuzzyIncludes, fold, tokens } from "@/lib/catalogOrder/text";
 import type { CartLine, CatalogRow, CatalogSnapshot, ModelOutput, SellUnit, Unmatched } from "@/lib/catalogOrder/types";
@@ -268,9 +268,30 @@ export function validateModelOutput(params: {
   message: string;
   catalog: CatalogSnapshot;
   pendingText?: string;
+  pendingCandidateIds?: number[];
+  pendingQty?: number;
+  pendingUnit?: SellUnit;
 }): ValidationOutcome {
   const { output, prior, message, catalog } = params;
   const pendingText = params.pendingText ?? "";
+  if (params.pendingCandidateIds?.length) {
+    const answered = applyPendingAnswer({
+      pending: {
+        sourceText: pendingText || message,
+        candidateIds: params.pendingCandidateIds,
+        qty: params.pendingQty && params.pendingQty > 0 ? params.pendingQty : 1,
+        unit: params.pendingUnit ?? "pz",
+        variant: null,
+        family: null,
+        question: "",
+        count: 1,
+      },
+      message,
+      catalog,
+      cart: prior,
+    });
+    if (answered) return { cart: answered, unmatched: [], intent: "answer" };
+  }
   const unmatched: Unmatched[] = [];
   const forced: CartLine[] = [];
 
@@ -448,6 +469,11 @@ export function validateModelOutput(params: {
   }
 
   function heardFor(clause: string): string {
+    const short = fold(message).trim();
+    const shortAnswer =
+      /^(?:(?:la|el|opcion|numero)\s+)?\d+$/.test(short) ||
+      /^(grande|chica|chico|normal|natural|marinada|marinado|pepsi|coca|seven|mirinda|manzana)s?$/.test(short);
+    if (shortAnswer && params.pendingCandidateIds?.length) return message;
     let text = `${message} ${pendingText} ${inherited}`;
     if (!/\bmarinad/.test(fold(clause))) text = fold(text).replace(/\bmarinad[oa]s?\b/g, " ");
     return text;
