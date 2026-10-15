@@ -33,6 +33,18 @@ function defaultUnit(profile: StoreProfile, categoria: string | null): "pz" | "k
   return "pz";
 }
 
+/** «un dogo», «un hot dog» o «un jocho» sin tipo.
+ *  "clasico": alias del Dogo Clásico (así está hoy).
+ *  "ask": dejan de ser alias y el prompt pregunta cuál dogo.
+ *  Víctor todavía no elige. Se cambia solo esta constante.
+ */
+export const GENERIC_DOGO = "clasico" as "clasico" | "ask";
+
+const DOGO_CLASICO_ALIASES =
+  GENERIC_DOGO === "ask"
+    ? ["clasico", "clasicos", "dogo clasico"]
+    : ["jocho", "jochos", "hot dog", "hotdog", "clasico", "clasicos", "dogo clasico"];
+
 /** Frases que el pueblo usa y que no siempre vienen en la columna alias. */
 const SEEDED: Record<string, string[]> = {
   peinesillo: ["peinecillo", "peine cillo", "peinesillo", "peine"],
@@ -45,13 +57,14 @@ const SEEDED: Record<string, string[]> = {
   "salsa bbq": ["barbecue", "salsa barbecue", "bbq", "salsa bbq"],
   "salsa hot wings": ["salsa de alitas", "hot wings", "salsa hot wings"],
   "carne de puerco al pastor": ["pastor", "carne al pastor", "al pastor"],
-  "dogo clasico": ["jocho", "jochos", "hot dog", "hotdog", "clasico", "clasicos", "dogo clasico"],
+  "dogo clasico": DOGO_CLASICO_ALIASES,
   dogoburguer: ["dogoburger", "dogo burger", "dogo burguer", "dogoburguer"],
   pizzadogo: ["pizza dogo", "pizzadogo"],
+  refresco: ["manzanita", "manzanitas"],
   doridogo: ["dori dogo", "doridogo"],
   salchilocos: ["salchi locos", "salchilocas", "salchilocas"],
   "dedos de queso 6 piezas": ["dedos de keso", "dedos de queso", "media docena de dedos"],
-  "boneless 10 piezas": ["boneles", "boneless"],
+  "boneless 10 piezas": ["boneles", "bonles", "boneless"],
   "quesadilla quesaburra": ["quesaburra"],
   "quesadilla burrita": ["burrita"],
   "papas gajo 315g": ["papas gajos", "papas gajo"],

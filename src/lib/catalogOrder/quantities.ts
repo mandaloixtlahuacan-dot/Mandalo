@@ -162,6 +162,18 @@ export function parseQuantity(raw: string, profile: StoreProfile): QtyHit {
     return { qty, unit: "kg", pieceSize: null, rest: strip(text, /\b\d+\s*\/\s*\d+\b/) };
   }
 
+  const kilosAnd = text.match(new RegExp(`\\b(${WORD_RE}|\\d+(?:\\.\\d+)?)\\s+kilos?\\s+y\\s+(medio|cuarto|tres\\s+cuartos)\\b`));
+  if (kilosAnd) {
+    const base = WORDS[kilosAnd[1]] ?? Number(kilosAnd[1]);
+    const extra = kilosAnd[2] === "medio" ? 0.5 : kilosAnd[2].startsWith("tres") ? 0.75 : 0.25;
+    return {
+      qty: base + extra,
+      unit: "kg",
+      pieceSize: null,
+      rest: strip(text, new RegExp(`\\b(${WORD_RE}|\\d+(?:\\.\\d+)?)\\s+kilos?\\s+y\\s+(medio|cuarto|tres\\s+cuartos)\\b`)),
+    };
+  }
+
   const cuartos = cuartosAmount(text);
   if (cuartos) {
     return { qty: cuartos.qty, unit: "kg", pieceSize: null, rest: strip(text, new RegExp(cuartos.span.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))) };

@@ -1,0 +1,1558 @@
+{
+ "cases": [
+  {
+   "id": "F01",
+   "store": "george",
+   "category": "new_style",
+   "turns": [
+    "Pedido:\n- 2 hamb. res grande\n- 1 hamb. pollo chica\n- 1 papas francesa\n- 3 refrescos: 2 pepsi 1 seven"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Hamburguesa de Res Grande",
+      "qty": 2,
+      "unit": "pz"
+     },
+     {
+      "name": "Hamburguesa de Pollo Chica",
+      "qty": 1,
+      "unit": "pz"
+     },
+     {
+      "name": "Papas a la Francesa 300g",
+      "qty": 1,
+      "unit": "pz"
+     },
+     {
+      "name": "Refresco (Pepsi, Seven, Coca, Mirinda o Manzana)",
+      "qty": 2,
+      "unit": "pz",
+      "variant": "Pepsi"
+     },
+     {
+      "name": "Refresco (Pepsi, Seven, Coca, Mirinda o Manzana)",
+      "qty": 1,
+      "unit": "pz",
+      "variant": "Seven"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "F02",
+   "store": "george",
+   "category": "new_style",
+   "turns": [
+    "BUENAS, ME ENVÍA 3 DOGOS ARRACHERA Y UNA TORTA CAMPECHANA PORFA"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Dogo Arrachera",
+      "qty": 3,
+      "unit": "pz"
+     },
+     {
+      "name": "Torta Campechana",
+      "qty": 1,
+      "unit": "pz"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "F03",
+   "store": "george",
+   "category": "new_style",
+   "turns": [
+    "dogo cubano x3, doridogo x2, coca x2"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Dogo Cubano",
+      "qty": 3,
+      "unit": "pz"
+     },
+     {
+      "name": "Doridogo",
+      "qty": 2,
+      "unit": "pz"
+     },
+     {
+      "name": "Refresco (Pepsi, Seven, Coca, Mirinda o Manzana)",
+      "qty": 2,
+      "unit": "pz",
+      "variant": "Coca"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "F04",
+   "store": "george",
+   "category": "answer_confirm",
+   "turns": [
+    "dos hamburguesas hawaianas",
+    "grandes las dos",
+    "sí, así está bien"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Hamburguesa Hawaiana Grande",
+      "qty": 2,
+      "unit": "pz"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "F05",
+   "store": "george",
+   "category": "flavor_split",
+   "turns": [
+    "tres refrescos y unos boneless",
+    "una de cada: coca, pepsi y mirinda"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Boneless 10 piezas",
+      "qty": 1,
+      "unit": "pz"
+     },
+     {
+      "name": "Refresco (Pepsi, Seven, Coca, Mirinda o Manzana)",
+      "qty": 1,
+      "unit": "pz",
+      "variant": "Coca"
+     },
+     {
+      "name": "Refresco (Pepsi, Seven, Coca, Mirinda o Manzana)",
+      "qty": 1,
+      "unit": "pz",
+      "variant": "Pepsi"
+     },
+     {
+      "name": "Refresco (Pepsi, Seven, Coca, Mirinda o Manzana)",
+      "qty": 1,
+      "unit": "pz",
+      "variant": "Mirinda"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "F06",
+   "store": "george",
+   "category": "partial_swap",
+   "turns": [
+    "cuatro cocas y dos dogos clásicos",
+    "de las cocas cambia dos por manzana"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Refresco (Pepsi, Seven, Coca, Mirinda o Manzana)",
+      "qty": 2,
+      "unit": "pz",
+      "variant": "Coca"
+     },
+     {
+      "name": "Refresco (Pepsi, Seven, Coca, Mirinda o Manzana)",
+      "qty": 2,
+      "unit": "pz",
+      "variant": "Manzana"
+     },
+     {
+      "name": "Dogo Clásico",
+      "qty": 2,
+      "unit": "pz"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "F07",
+   "store": "george",
+   "category": "partial_swap",
+   "turns": [
+    "cinco hamburguesas de arrachera chicas",
+    "cambia dos de esas a grandes"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Hamburguesa de Arrachera Chica",
+      "qty": 3,
+      "unit": "pz"
+     },
+     {
+      "name": "Hamburguesa de Arrachera Grande",
+      "qty": 2,
+      "unit": "pz"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "F08",
+   "store": "george",
+   "category": "not_available",
+   "turns": [
+    "una pizza mediana y dos dogos de pollo"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Dogo de Pollo",
+      "qty": 2,
+      "unit": "pz"
+     }
+    ],
+    "ask": "not_available",
+    "ask_contains": [],
+    "not_available": [
+     "pizza"
+    ]
+   }
+  },
+  {
+   "id": "F09",
+   "store": "george",
+   "category": "not_available",
+   "turns": [
+    "dos hamburguesas de res chicas y una cerveza"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Hamburguesa de Res Chica",
+      "qty": 2,
+      "unit": "pz"
+     }
+    ],
+    "ask": "not_available",
+    "ask_contains": [],
+    "not_available": [
+     "cerveza"
+    ]
+   }
+  },
+  {
+   "id": "F10",
+   "store": "george",
+   "category": "not_available",
+   "turns": [
+    "un agua de jamaica y unos tacos de asada"
+   ],
+   "expect": {
+    "items": [],
+    "ask": "not_available",
+    "ask_contains": [],
+    "not_available": [
+     "jamaica",
+     "tacos"
+    ]
+   }
+  },
+  {
+   "id": "F11",
+   "store": "george",
+   "category": "voice",
+   "turns": [
+    "Me pasa, eh, dos, sincroni sadas, de chorizo, y, una, quesadilla, campe chana"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Sincronizada de Chorizo",
+      "qty": 2,
+      "unit": "pz"
+     },
+     {
+      "name": "Quesadilla Campechana",
+      "qty": 1,
+      "unit": "pz"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "F12",
+   "store": "george",
+   "category": "voice",
+   "turns": [
+    "quiero unas aleta de 10 piezas y una orden de papa gajo"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Alitas 10 piezas",
+      "qty": 1,
+      "unit": "pz"
+     },
+     {
+      "name": "Papas Gajo 315g",
+      "qty": 1,
+      "unit": "pz"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "F13",
+   "store": "george",
+   "category": "misspelling",
+   "turns": [
+    "mandm 2 quesaburras 1 qsadiya d arrachra y 1 sevn"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Quesadilla Quesaburra",
+      "qty": 2,
+      "unit": "pz"
+     },
+     {
+      "name": "Quesadilla de Arrachera",
+      "qty": 1,
+      "unit": "pz"
+     },
+     {
+      "name": "Refresco (Pepsi, Seven, Coca, Mirinda o Manzana)",
+      "qty": 1,
+      "unit": "pz",
+      "variant": "Seven"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "F14",
+   "store": "george",
+   "category": "misspelling",
+   "turns": [
+    "unaa tortaa cuvana y dos dogs d kamaron"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Torta Cubana",
+      "qty": 1,
+      "unit": "pz"
+     },
+     {
+      "name": "Dogo de Camarón",
+      "qty": 2,
+      "unit": "pz"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "F15",
+   "store": "george",
+   "category": "one_by_one",
+   "turns": [
+    "un dogo hawaiano",
+    "otro de pollo",
+    "y una mirinda",
+    "eso es todo"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Dogo Hawaiano",
+      "qty": 1,
+      "unit": "pz"
+     },
+     {
+      "name": "Dogo de Pollo",
+      "qty": 1,
+      "unit": "pz"
+     },
+     {
+      "name": "Refresco (Pepsi, Seven, Coca, Mirinda o Manzana)",
+      "qty": 1,
+      "unit": "pz",
+      "variant": "Mirinda"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "F16",
+   "store": "george",
+   "category": "one_by_one",
+   "turns": [
+    "primero una hamburguesa de camarón grande",
+    "luego unos dedos de queso",
+    "ahora 2 pepsis",
+    "ya"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Hamburguesa de Camarón Grande",
+      "qty": 1,
+      "unit": "pz"
+     },
+     {
+      "name": "Dedos de Queso 6 piezas",
+      "qty": 1,
+      "unit": "pz"
+     },
+     {
+      "name": "Refresco (Pepsi, Seven, Coca, Mirinda o Manzana)",
+      "qty": 2,
+      "unit": "pz",
+      "variant": "Pepsi"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "F17",
+   "store": "george",
+   "category": "qty_words",
+   "turns": [
+    "una docena de dogos clásicos y media docena de cocas"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Dogo Clásico",
+      "qty": 12,
+      "unit": "pz"
+     },
+     {
+      "name": "Refresco (Pepsi, Seven, Coca, Mirinda o Manzana)",
+      "qty": 6,
+      "unit": "pz",
+      "variant": "Coca"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "F18",
+   "store": "george",
+   "category": "qty_words",
+   "turns": [
+    "tres órdenes de alitas de cinco y un par de pepsis"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Alitas 5 piezas",
+      "qty": 3,
+      "unit": "pz"
+     },
+     {
+      "name": "Refresco (Pepsi, Seven, Coca, Mirinda o Manzana)",
+      "qty": 2,
+      "unit": "pz",
+      "variant": "Pepsi"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "F19",
+   "store": "george",
+   "category": "edit",
+   "turns": [
+    "dos tortas de arrachera, una de pierna y tres sevens",
+    "quita una de arrachera",
+    "y de los sevens que sean dos"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Torta de Arrachera",
+      "qty": 1,
+      "unit": "pz"
+     },
+     {
+      "name": "Torta de Pierna",
+      "qty": 1,
+      "unit": "pz"
+     },
+     {
+      "name": "Refresco (Pepsi, Seven, Coca, Mirinda o Manzana)",
+      "qty": 2,
+      "unit": "pz",
+      "variant": "Seven"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "F20",
+   "store": "george",
+   "category": "correction",
+   "turns": [
+    "una hamburguesa cubana grande",
+    "perdón, no es cubana, es hawaiana"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Hamburguesa Hawaiana Grande",
+      "qty": 1,
+      "unit": "pz"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "F21",
+   "store": "george",
+   "category": "edit_confirm",
+   "turns": [
+    "unos salchilocos y una botana completa",
+    "no, la botana no, mejor unos boneless",
+    "sí está bien"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Salchilocos 310g",
+      "qty": 1,
+      "unit": "pz"
+     },
+     {
+      "name": "Boneless 10 piezas",
+      "qty": 1,
+      "unit": "pz"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "F22",
+   "store": "george",
+   "category": "flavor_split",
+   "turns": [
+    "cinco refrescos, tres de manzana y dos mirindas, y dos dogos de camarón"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Refresco (Pepsi, Seven, Coca, Mirinda o Manzana)",
+      "qty": 3,
+      "unit": "pz",
+      "variant": "Manzana"
+     },
+     {
+      "name": "Refresco (Pepsi, Seven, Coca, Mirinda o Manzana)",
+      "qty": 2,
+      "unit": "pz",
+      "variant": "Mirinda"
+     },
+     {
+      "name": "Dogo de Camarón",
+      "qty": 2,
+      "unit": "pz"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "F23",
+   "store": "george",
+   "category": "answer",
+   "turns": [
+    "cuatro hamburguesas de pollo",
+    "tres grandes y una chica"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Hamburguesa de Pollo Grande",
+      "qty": 3,
+      "unit": "pz"
+     },
+     {
+      "name": "Hamburguesa de Pollo Chica",
+      "qty": 1,
+      "unit": "pz"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "F24",
+   "store": "george",
+   "category": "answer",
+   "turns": [
+    "mándame un dogo porfa",
+    "el cubano"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Dogo Cubano",
+      "qty": 1,
+      "unit": "pz"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "F25",
+   "store": "george",
+   "category": "confirm",
+   "turns": [
+    "una sincronizada de tocino y una coca",
+    "simón, así jálale"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Sincronizada de Tocino",
+      "qty": 1,
+      "unit": "pz"
+     },
+     {
+      "name": "Refresco (Pepsi, Seven, Coca, Mirinda o Manzana)",
+      "qty": 1,
+      "unit": "pz",
+      "variant": "Coca"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "F26",
+   "store": "george",
+   "category": "edit",
+   "turns": [
+    "dos quesadillas de chorizo",
+    "ponle otra de chorizo y una de tocino"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Quesadilla de Chorizo",
+      "qty": 3,
+      "unit": "pz"
+     },
+     {
+      "name": "Quesadilla de Tocino",
+      "qty": 1,
+      "unit": "pz"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "F27",
+   "store": "george",
+   "category": "partial_swap",
+   "turns": [
+    "dos refrescos de coca y una torta mexicana",
+    "una de las cocas cámbiala a seven"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Refresco (Pepsi, Seven, Coca, Mirinda o Manzana)",
+      "qty": 1,
+      "unit": "pz",
+      "variant": "Coca"
+     },
+     {
+      "name": "Refresco (Pepsi, Seven, Coca, Mirinda o Manzana)",
+      "qty": 1,
+      "unit": "pz",
+      "variant": "Seven"
+     },
+     {
+      "name": "Torta Mexicana",
+      "qty": 1,
+      "unit": "pz"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "F28",
+   "store": "george",
+   "category": "not_available",
+   "turns": [
+    "unas enchiladas y unas papas a la francesa"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Papas a la Francesa 300g",
+      "qty": 1,
+      "unit": "pz"
+     }
+    ],
+    "ask": "not_available",
+    "ask_contains": [],
+    "not_available": [
+     "enchiladas"
+    ]
+   }
+  },
+  {
+   "id": "F29",
+   "store": "george",
+   "category": "voice_edit",
+   "turns": [
+    "Quiero, dos, hamburguesas, mar y tierra, grandes",
+    "y, este, quítale una",
+    "y agrégale, unas alitas, de quince"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Hamburguesa Mar y Tierra Grande",
+      "qty": 1,
+      "unit": "pz"
+     },
+     {
+      "name": "Alitas 15 piezas",
+      "qty": 1,
+      "unit": "pz"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "F30",
+   "store": "george",
+   "category": "answer",
+   "turns": [
+    "una torta y un refresco de manzana",
+    "la de pierna"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Torta de Pierna",
+      "qty": 1,
+      "unit": "pz"
+     },
+     {
+      "name": "Refresco (Pepsi, Seven, Coca, Mirinda o Manzana)",
+      "qty": 1,
+      "unit": "pz",
+      "variant": "Manzana"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "K01",
+   "store": "central",
+   "category": "pesos",
+   "turns": [
+    "trescientos setenta y cinco pesos de peinesillo"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Peinesillo",
+      "qty": 375,
+      "unit": "$"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "K02",
+   "store": "central",
+   "category": "pesos",
+   "turns": [
+    "$180 de bistec de res y 2 kg de costilla de puerco"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Bistec de res",
+      "qty": 180,
+      "unit": "$"
+     },
+     {
+      "name": "Costilla de puerco",
+      "qty": 2,
+      "unit": "kg"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "K03",
+   "store": "central",
+   "category": "fraction",
+   "turns": [
+    "un cuarto de chorizo argentino y kilo y cuarto de pulpa"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Chorizo Argentino",
+      "qty": 0.25,
+      "unit": "kg"
+     },
+     {
+      "name": "Pulpa de puerco",
+      "qty": 1.25,
+      "unit": "kg"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "K04",
+   "store": "central",
+   "category": "fraction",
+   "turns": [
+    "seis kilos y tres cuartos de diezmillo para la carne asada"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Diezmillo",
+      "qty": 6.75,
+      "unit": "kg"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "K05",
+   "store": "central",
+   "category": "fraction",
+   "turns": [
+    "750 gramos de peinesillo y 250 g de chorizo"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Peinesillo",
+      "qty": 0.75,
+      "unit": "kg"
+     },
+     {
+      "name": "Chorizo",
+      "qty": 0.25,
+      "unit": "kg"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "K06",
+   "store": "central",
+   "category": "fraction",
+   "turns": [
+    "kilo y medio de cocido y medio de chamberete"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Cocido de res",
+      "qty": 1.5,
+      "unit": "kg"
+     },
+     {
+      "name": "Chamberete",
+      "qty": 0.5,
+      "unit": "kg"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "K07",
+   "store": "central",
+   "category": "new_style",
+   "turns": [
+    "LISTA:\n• Diezmillo 2kg\n• Chorizo 1/2 kg\n• Carbón x3"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Diezmillo",
+      "qty": 2,
+      "unit": "kg"
+     },
+     {
+      "name": "Chorizo",
+      "qty": 0.5,
+      "unit": "kg"
+     },
+     {
+      "name": "Carbón fino",
+      "qty": 3,
+      "unit": "pz"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "K08",
+   "store": "central",
+   "category": "new_style",
+   "turns": [
+    "OCUPO 2 KILOS DE ARRACHERA Y 1 SALSA BBQ URGE"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Arrachera Marinada",
+      "qty": 2,
+      "unit": "kg"
+     },
+     {
+      "name": "Salsa BBQ",
+      "qty": 1,
+      "unit": "pz"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "K09",
+   "store": "central",
+   "category": "new_style",
+   "turns": [
+    "pastor 1kg / ribeye 1.5kg / carbon 2"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Carne de puerco al pastor",
+      "qty": 1,
+      "unit": "kg"
+     },
+     {
+      "name": "Ribeye de res con hueso",
+      "qty": 1.5,
+      "unit": "kg"
+     },
+     {
+      "name": "Carbón fino",
+      "qty": 2,
+      "unit": "pz"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "K10",
+   "store": "central",
+   "category": "not_available",
+   "turns": [
+    "un pollo entero y un kilo de bistec de puerco"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Bistec de puerco",
+      "qty": 1,
+      "unit": "kg"
+     }
+    ],
+    "ask": "not_available",
+    "ask_contains": [],
+    "not_available": [
+     "pollo"
+    ]
+   }
+  },
+  {
+   "id": "K11",
+   "store": "central",
+   "category": "not_available",
+   "turns": [
+    "medio kilo de molida de res"
+   ],
+   "expect": {
+    "items": [],
+    "ask": "not_available",
+    "ask_contains": [],
+    "not_available": [
+     "molida"
+    ]
+   }
+  },
+  {
+   "id": "K12",
+   "store": "central",
+   "category": "not_available",
+   "turns": [
+    "dos kilos de lomo de puerco y un carbón"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Carbón fino",
+      "qty": 1,
+      "unit": "pz"
+     }
+    ],
+    "ask": "not_available",
+    "ask_contains": [],
+    "not_available": [
+     "lomo"
+    ]
+   }
+  },
+  {
+   "id": "K13",
+   "store": "central",
+   "category": "voice",
+   "turns": [
+    "Me da, este, kilo y medio, de bistec de, res, mari nado, y un, carbón"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Bistec de res Marinada",
+      "qty": 1.5,
+      "unit": "kg"
+     },
+     {
+      "name": "Carbón fino",
+      "qty": 1,
+      "unit": "pz"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "K14",
+   "store": "central",
+   "category": "voice_pesos",
+   "turns": [
+    "Quiero, cien pesos, de, chorizo argentino, y, doscientos de, pastor"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Chorizo Argentino",
+      "qty": 100,
+      "unit": "$"
+     },
+     {
+      "name": "Carne de puerco al pastor",
+      "qty": 200,
+      "unit": "$"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "K15",
+   "store": "central",
+   "category": "misspelling",
+   "turns": [
+    "2 kg d chamvrete y 1 d diesmiyo"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Chamberete",
+      "qty": 2,
+      "unit": "kg"
+     },
+     {
+      "name": "Diezmillo",
+      "qty": 1,
+      "unit": "kg"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "K16",
+   "store": "central",
+   "category": "misspelling",
+   "turns": [
+    "kiero 1 kilo d cosstiya marinada i 1 salza jot wings"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Costilla de puerco marinada",
+      "qty": 1,
+      "unit": "kg"
+     },
+     {
+      "name": "Salsa Hot Wings",
+      "qty": 1,
+      "unit": "pz"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "K17",
+   "store": "central",
+   "category": "one_by_one",
+   "turns": [
+    "un kilo de arrachera",
+    "otro de diezmillo",
+    "y medio de chorizo",
+    "ya sería todo"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Arrachera Marinada",
+      "qty": 1,
+      "unit": "kg"
+     },
+     {
+      "name": "Diezmillo",
+      "qty": 1,
+      "unit": "kg"
+     },
+     {
+      "name": "Chorizo",
+      "qty": 0.5,
+      "unit": "kg"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "K18",
+   "store": "central",
+   "category": "one_by_one",
+   "turns": [
+    "150 pesos de pastor",
+    "ahora 2 carbones",
+    "y una salsa bbq",
+    "listo"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Carne de puerco al pastor",
+      "qty": 150,
+      "unit": "$"
+     },
+     {
+      "name": "Carbón fino",
+      "qty": 2,
+      "unit": "pz"
+     },
+     {
+      "name": "Salsa BBQ",
+      "qty": 1,
+      "unit": "pz"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "K19",
+   "store": "central",
+   "category": "edit",
+   "turns": [
+    "dos kilos de bistec de res marinado",
+    "mejor que sea kilo y medio"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Bistec de res Marinada",
+      "qty": 1.5,
+      "unit": "kg"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "K20",
+   "store": "central",
+   "category": "edit",
+   "turns": [
+    "un kilo de pastor",
+    "mejor dame 200 pesos"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Carne de puerco al pastor",
+      "qty": 200,
+      "unit": "$"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "K21",
+   "store": "central",
+   "category": "correction",
+   "turns": [
+    "cuatro kilos de costilla de puerco y un carbón",
+    "me equivoqué, la costilla la quiero marinada"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Costilla de puerco marinada",
+      "qty": 4,
+      "unit": "kg"
+     },
+     {
+      "name": "Carbón fino",
+      "qty": 1,
+      "unit": "pz"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "K22",
+   "store": "central",
+   "category": "answer",
+   "turns": [
+    "tres kilos de costilla para asar",
+    "toda de la que no es marinada"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Costilla de puerco",
+      "qty": 3,
+      "unit": "kg"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "K23",
+   "store": "central",
+   "category": "answer",
+   "turns": [
+    "dos kilos y cuarto de bistec",
+    "res marinado"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Bistec de res Marinada",
+      "qty": 2.25,
+      "unit": "kg"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "K24",
+   "store": "central",
+   "category": "partial_swap",
+   "turns": [
+    "tres kilos de bistec de res",
+    "uno de esos kilos mejor de puerco"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Bistec de res",
+      "qty": 2,
+      "unit": "kg"
+     },
+     {
+      "name": "Bistec de puerco",
+      "qty": 1,
+      "unit": "kg"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "K25",
+   "store": "central",
+   "category": "edit_confirm",
+   "turns": [
+    "un kilo de ribeye, un kilo de chorizo y dos carbones",
+    "quítale el chorizo",
+    "sí, así está bien"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Ribeye de res con hueso",
+      "qty": 1,
+      "unit": "kg"
+     },
+     {
+      "name": "Carbón fino",
+      "qty": 2,
+      "unit": "pz"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "K26",
+   "store": "central",
+   "category": "edit",
+   "turns": [
+    "medio kilo de pulpa",
+    "súmale otro medio"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Pulpa de puerco",
+      "qty": 1,
+      "unit": "kg"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "K27",
+   "store": "central",
+   "category": "qty_words",
+   "turns": [
+    "un par de salsas bbq y tres kilos de cocido"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Salsa BBQ",
+      "qty": 2,
+      "unit": "pz"
+     },
+     {
+      "name": "Cocido de res",
+      "qty": 3,
+      "unit": "kg"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "K28",
+   "store": "central",
+   "category": "pesos",
+   "turns": [
+    "dame 300 varos de arrachera"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Arrachera Marinada",
+      "qty": 300,
+      "unit": "$"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "K29",
+   "store": "central",
+   "category": "not_available_edit",
+   "turns": [
+    "un kilo de chuleta ahumada y un kilo de pulpa",
+    "entonces ponme otro kilo de pulpa"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Pulpa de puerco",
+      "qty": 2,
+      "unit": "kg"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  },
+  {
+   "id": "K30",
+   "store": "central",
+   "category": "confirm",
+   "turns": [
+    "un kilo de peinesillo y 100 pesos de chorizo",
+    "órale va, está bien así"
+   ],
+   "expect": {
+    "items": [
+     {
+      "name": "Peinesillo",
+      "qty": 1,
+      "unit": "kg"
+     },
+     {
+      "name": "Chorizo",
+      "qty": 100,
+      "unit": "$"
+     }
+    ],
+    "ask": "none",
+    "ask_contains": [],
+    "not_available": []
+   }
+  }
+ ]
+}

@@ -1,6 +1,7 @@
+export { pesosToKg, checkAiOutput } from "@/lib/catalogOrder/accept";
 export { buildCatalog } from "@/lib/catalogOrder/catalog";
-export { catalogEngineIsLegacy, runCatalogOrderTurn } from "@/lib/catalogOrder/engine";
-export { createOpenAICatalogModel, DEFAULT_ORDER_MODEL, parseModelJson } from "@/lib/catalogOrder/parser";
+export { catalogEngineIsLegacy, catalogEngineMode, runCatalogOrderTurn } from "@/lib/catalogOrder/engine";
+export { buildOrderPrompt, createOpenAICatalogModel, DEFAULT_ESCALATION_MODEL, DEFAULT_ORDER_MODEL, escalationModelName, orderJsonSchema, orderSampling, parseModelJson } from "@/lib/catalogOrder/parser";
 export { validateModelOutput } from "@/lib/catalogOrder/validate";
 export type {
   CartLine,
@@ -8,6 +9,8 @@ export type {
   CatalogModel,
   CatalogSnapshot,
   CatalogTurnInput,
+  AiOutput,
+  CatalogEngineMode,
   CatalogTurnResult,
   ModelOutput,
   PendingCatalogAsk,
