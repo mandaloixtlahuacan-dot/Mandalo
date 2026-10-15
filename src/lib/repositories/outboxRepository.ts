@@ -87,6 +87,36 @@ export async function enqueueOutboundMessage(input: EnqueueOutboundMessageInput)
   return Number(data.id);
 }
 
+/**
+ * Argumentos de `claim_admin_notificaciones_batch`.
+ * `p_pedido_id` y `p_tipo` van siempre, aunque sean null. En la función de
+ * 5 argumentos (migración 20260805) null significa sin filtro:
+ * `p_pedido_id is null or an.pedido_id = p_pedido_id` (igual para tipo).
+ * Si se omiten, PostgREST no puede elegir entre esa función y la de 3
+ * argumentos (PGRST203).
+ */
+export function claimAdminNotificacionesBatchArgs(params: {
+  limit: number;
+  maxAttempts: number;
+  reclaimStaleAfterSeconds?: number;
+  pedidoId?: number | null;
+  tipo?: string | null;
+}): {
+  p_limit: number;
+  p_max_attempts: number;
+  p_reclaim_stale_after_seconds: number;
+  p_pedido_id: number | null;
+  p_tipo: string | null;
+} {
+  return {
+    p_limit: params.limit,
+    p_max_attempts: params.maxAttempts,
+    p_reclaim_stale_after_seconds: params.reclaimStaleAfterSeconds ?? 900,
+    p_pedido_id: params.pedidoId ?? null,
+    p_tipo: params.tipo ?? null,
+  };
+}
+
 export async function reservePendingMessages(params: {
   limit: number;
   workerId: string;
@@ -96,13 +126,16 @@ export async function reservePendingMessages(params: {
 }): Promise<ReservedOutboxMessage[]> {
   const supabase = getSupabaseAdmin();
   const env = getEnv();
-  const { data, error } = await supabase.rpc("claim_admin_notificaciones_batch", {
-    p_limit: params.limit,
-    p_max_attempts: env.ADMIN_OUTBOX_MAX_ATTEMPTS,
-    p_reclaim_stale_after_seconds: 900,
-    p_pedido_id: params.pedidoId ?? null,
-    p_tipo: params.tipoMensaje ?? null,
-  });
+  const { data, error } = await supabase.rpc(
+    "claim_admin_notificaciones_batch",
+    claimAdminNotificacionesBatchArgs({
+      limit: params.limit,
+      maxAttempts: env.ADMIN_OUTBOX_MAX_ATTEMPTS,
+      reclaimStaleAfterSeconds: 900,
+      pedidoId: params.pedidoId,
+      tipo: params.tipoMensaje,
+    }),
+  );
   if (error) throw error;
   return ((data ?? []) as UnknownRow[]).map(mapRow);
 }

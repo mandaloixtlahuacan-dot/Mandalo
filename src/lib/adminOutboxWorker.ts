@@ -1,4 +1,5 @@
 import { getEnv } from "@/lib/env";
+import { claimAdminNotificacionesBatchArgs } from "@/lib/repositories/outboxRepository";
 import { planOutboxRetry } from "@/lib/reliability";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { waapiSendTextRequest } from "@/lib/waapi";
@@ -110,11 +111,14 @@ function mapAdminNotificationRow(row: Record<string, unknown>): AdminNotificatio
 async function claimAdminOutboxBatch(): Promise<AdminNotificationRow[]> {
   const env = getEnv();
   const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase.rpc("claim_admin_notificaciones_batch", {
-    p_limit: env.ADMIN_OUTBOX_BATCH_SIZE,
-    p_max_attempts: env.ADMIN_OUTBOX_MAX_ATTEMPTS,
-    p_reclaim_stale_after_seconds: 900,
-  });
+  const { data, error } = await supabase.rpc(
+    "claim_admin_notificaciones_batch",
+    claimAdminNotificacionesBatchArgs({
+      limit: env.ADMIN_OUTBOX_BATCH_SIZE,
+      maxAttempts: env.ADMIN_OUTBOX_MAX_ATTEMPTS,
+      reclaimStaleAfterSeconds: 900,
+    }),
+  );
   if (error) throw error;
   return ((data ?? []) as Array<Record<string, unknown>>).map(mapAdminNotificationRow);
 }

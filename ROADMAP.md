@@ -2,7 +2,14 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 15 de octubre de 2026. Arreglos de confiabilidad
+> Última actualización: 15 de octubre de 2026. El cron de timeouts fallaba
+> al reclamar el outbox (`PGRST203`): en la base hay dos funciones
+> `claim_admin_notificaciones_batch` y el worker no mandaba `p_pedido_id`
+> ni `p_tipo`. Ahora los dos llamados los mandan siempre. Sin pedido ni
+> tipo van `null`. En la función de 5 argumentos (migración `20260805`)
+> null no filtra: `p_pedido_id is null or an.pedido_id = p_pedido_id`,
+> igual para el tipo. Sin migración, sin merge y sin deploy.
+> Actualización anterior: 15 de octubre de 2026. Arreglos de confiabilidad
 > en un PR en borrador, sin merge y sin deploy. Un pedido que se queda
 > armando más de 3 horas se cancela en silencio (`inactivo`). Un saludo
 > después de 2 horas empieza de cero. Si no hay repartidor, se avisa al
