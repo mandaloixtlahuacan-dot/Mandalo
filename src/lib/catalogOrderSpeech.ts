@@ -8,6 +8,7 @@
  */
 
 import type { CatalogPriceRow } from "@/lib/catalogQuantities";
+import { droppedMenuNotice } from "@/lib/catalogOrder/reply";
 import { formatCheckedLine, joinBlocks, stripBotDecorations } from "@/lib/messageStyle";
 
 export type CatalogSpeechItem = {
@@ -418,6 +419,21 @@ function isHeadFamily(family: Family): boolean {
   return family.nameTokens.some((token) => HEADS.has(token));
 }
 
+function isGeorgeMenu(families: Family[]): boolean {
+  return families.some((family) => family.nameTokens.includes("hamburguesa"));
+}
+
+function retiredLead(text: string): boolean {
+  return /\b(?:tortas?|quesadillas?|sincronizadas?|aletas?|alitas?)\b/.test(text) || /\bingrediente extra\b/.test(text);
+}
+
+/** «una torta hawaiana» no debe anclar la hamburguesa hawaiana. «una hamburguesa hawaiana» sí. */
+function retiredBeforeAnchor(text: string, index: number): boolean {
+  const before = text.slice(Math.max(0, index - 48), index);
+  if (!retiredLead(before)) return false;
+  return !/\b(?:hamburguesas?|amburguesas?|hamburgesas?|dogos?|dogs?|hotdogs?|jotdogs?|refrescos?)\b/.test(before);
+}
+
 function productAnchorHits(text: string, families: Family[]): Array<{ index: number; end: number }> {
   const hits: Array<{ index: number; end: number }> = [];
   for (const family of families) {
@@ -450,6 +466,7 @@ function spansOf(text: string, families: Family[] = []): Array<{ kind: AnchorKin
     }
   }
   for (const hit of productAnchorHits(text, families)) {
+    if (isGeorgeMenu(families) && retiredBeforeAnchor(text, hit.index)) continue;
     hits.push({ kind: "product", index: hit.index, end: hit.end });
   }
   hits.sort((a, b) => a.index - b.index || a.end - b.end);
@@ -882,6 +899,15 @@ function lineFromFamily(family: Family, span: Span): SpokenLine | null {
 }
 
 function lineFromSpan(span: Span, catalog: Family[], fullText = ""): SpokenLine | null {
+  if (
+    isGeorgeMenu(catalog) &&
+    span.kind !== "hamburguesa" &&
+    span.kind !== "dogo" &&
+    span.kind !== "refresco" &&
+    droppedMenuNotice(span.text)
+  ) {
+    return null;
+  }
   const pool = fullText && rejectsMarinada(fullText) ? catalog.filter((family) => !/marinad/.test(family.key)) : catalog;
   const ranked = pool
     .map((family) => {
@@ -928,6 +954,7 @@ function resplitWeak(text: string): string[] | null {
 }
 
 function unresolvedLine(span: Span, families: Family[], fullText = ""): SpokenLine | null {
+  if (isGeorgeMenu(families) && droppedMenuNotice(span.text)) return null;
   if (rejectsMarinada(span.text) || rejectsMarinada(fullText)) return null;
   const tokens = words(span.text).filter((token) => !isSizeWord(token) && token !== "hot" && token !== "jot" && !/marinad/.test(token));
   if (!tokens.length) return null;
@@ -1682,6 +1709,7 @@ function offMenuWords(text: string, lines: SpokenLine[], families: Family[]): st
       .map(canon)
       .filter((token) => token.length >= 4 && !OFF_MENU_NOISE.has(token));
     if (!tokens.length) continue;
+    if (isGeorgeMenu(families) && droppedMenuNotice(clause)) continue;
     const onLine = tokens.some((token) =>
       [...covered].some((known) => known === token || known.includes(token) || token.includes(known) || closeEnough(known, token)),
     );
@@ -1712,6 +1740,12 @@ function refusedCuts(text: string, families: Family[], lines: SpokenLine[]): str
 
 function noticeFor(text: string, lines: SpokenLine[], families: Family[]): string | null {
   const parts: string[] = [];
+  if (isGeorgeMenu(families)) {
+    for (const clause of norm(text).split(/\s+y\s+|,\s*/)) {
+      const notice = droppedMenuNotice(clause);
+      if (notice) parts.push(`🛍️ ${notice}`);
+    }
+  }
   const off = offMenuWords(text, lines, families);
   const refused = refusedCuts(text, families, lines);
   if (off.length) parts.push(`🛍️ ${off.map((name) => `*${name}*`).join(" y ")} no lo manejamos.`);

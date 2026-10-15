@@ -2,7 +2,19 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 15 de octubre de 2026. Horario de reparto 8am–9pm
+> Última actualización: 15 de octubre de 2026. Fotos nuevas de menú, sin
+> cambiar precios. `public/menus/carniceria-la-central.png` es la de
+> Carnicería La Central. George se manda desde `public/menus/george.png`
+> (el bot la prefiere) y, si esa no entra al despliegue, desde
+> `public/menus/george.b64.NN`, regenerados con la misma foto. La foto
+> nueva no imprime un monto de envío. La Central coincide en los 19
+> precios. El catálogo de George ya no trae tortas, sincronizadas,
+> quesadillas (incluido el ingrediente extra) ni alitas. Si las piden,
+> el bot dice que no las manejamos y sugiere lo más cercano: el boneless,
+> esa hamburguesa, o una hamburguesa. Los precios de lo que sí está no
+> cambiaron. No hay semilla SQL de George en el repo. Sin merge y sin
+> deploy.
+> Actualización anterior: 15 de octubre de 2026. Horario de reparto 8am–9pm
 > (hora de México) y oferta del pedido a todos los repartidores en su
 > horario semanal. Mateo (tardes, sábado completo) y Roberto (todos los
 > días menos sábado) son los activos; Paul no se toca. El SQL de la
@@ -18,8 +30,8 @@
 > sí lleva su propia llave. El cargo al cliente es **$35 de envío y
 > servicio** (`servicio_mandalo` 0 + `servicio_repartidor` 35), una sola
 > línea. Reemplaza el $25 del 5 de octubre de 2026. No se parte en $10 + $25.
-> La foto `public/menus/carniceria-la-central.png` sigue imprimiendo $25
-> en el pie; el ticket no lee ese número.
+> La foto anterior de La Central imprimía $25 en el pie; el ticket no
+> lee ese número.
 > Actualización anterior: 15 de octubre de 2026. El cron de timeouts fallaba
 > al reclamar el outbox (`PGRST203`): en la base hay dos funciones
 > `claim_admin_notificaciones_batch` y el worker no mandaba `p_pedido_id`

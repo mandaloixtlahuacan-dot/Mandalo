@@ -123,16 +123,12 @@
     "Quiero alitas de 20 piezas"
    ],
    "expect": {
-    "items": [
-     {
-      "name": "Alitas 20 piezas",
-      "qty": 1.0,
-      "unit": "pz"
-     }
-    ],
-    "ask": "none",
+    "items": [],
+    "ask": "not_available",
     "ask_contains": [],
-    "not_available": []
+    "not_available": [
+     "alitas"
+    ]
    }
   },
   {
@@ -143,16 +139,12 @@
     "una torta cubana por favor"
    ],
    "expect": {
-    "items": [
-     {
-      "name": "Torta Cubana",
-      "qty": 1.0,
-      "unit": "pz"
-     }
-    ],
-    "ask": "none",
+    "items": [],
+    "ask": "not_available",
     "ask_contains": [],
-    "not_available": []
+    "not_available": [
+     "torta"
+    ]
    }
   },
   {
@@ -163,16 +155,12 @@
     "2 quesadillas de chorizo"
    ],
    "expect": {
-    "items": [
-     {
-      "name": "Quesadilla de Chorizo",
-      "qty": 2.0,
-      "unit": "pz"
-     }
-    ],
-    "ask": "none",
+    "items": [],
+    "ask": "not_available",
     "ask_contains": [],
-    "not_available": []
+    "not_available": [
+     "quesadilla"
+    ]
    }
   },
   {
@@ -183,16 +171,12 @@
     "una sincronizada de pierna y tocino"
    ],
    "expect": {
-    "items": [
-     {
-      "name": "Sincronizada de Pierna y Tocino",
-      "qty": 1.0,
-      "unit": "pz"
-     }
-    ],
-    "ask": "none",
+    "items": [],
+    "ask": "not_available",
     "ask_contains": [],
-    "not_available": []
+    "not_available": [
+     "sincronizada"
+    ]
    }
   },
   {
@@ -429,16 +413,12 @@
     "una quesadiya de camaron"
    ],
    "expect": {
-    "items": [
-     {
-      "name": "Quesadilla de Camarón",
-      "qty": 1.0,
-      "unit": "pz"
-     }
-    ],
-    "ask": "none",
+    "items": [],
+    "ask": "not_available",
     "ask_contains": [],
-    "not_available": []
+    "not_available": [
+     "quesadilla"
+    ]
    }
   },
   {
@@ -449,16 +429,12 @@
     "una sincronisada de arrachera"
    ],
    "expect": {
-    "items": [
-     {
-      "name": "Sincronizada de Arrachera",
-      "qty": 1.0,
-      "unit": "pz"
-     }
-    ],
-    "ask": "none",
+    "items": [],
+    "ask": "not_available",
     "ask_contains": [],
-    "not_available": []
+    "not_available": [
+     "sincronizada"
+    ]
    }
   },
   {
@@ -469,16 +445,12 @@
     "10 alitas"
    ],
    "expect": {
-    "items": [
-     {
-      "name": "Alitas 10 piezas",
-      "qty": 1.0,
-      "unit": "pz"
-     }
-    ],
-    "ask": "none",
+    "items": [],
+    "ask": "not_available",
     "ask_contains": [],
-    "not_available": []
+    "not_available": [
+     "alitas"
+    ]
    }
   },
   {
@@ -598,21 +570,12 @@
     "una torta de pierna y una campechana"
    ],
    "expect": {
-    "items": [
-     {
-      "name": "Torta de Pierna",
-      "qty": 1.0,
-      "unit": "pz"
-     },
-     {
-      "name": "Torta Campechana",
-      "qty": 1.0,
-      "unit": "pz"
-     }
-    ],
-    "ask": "none",
+    "items": [],
+    "ask": "not_available",
     "ask_contains": [],
-    "not_available": []
+    "not_available": [
+     "torta"
+    ]
    }
   },
   {
@@ -663,16 +626,12 @@
     "una quesaburra"
    ],
    "expect": {
-    "items": [
-     {
-      "name": "Quesadilla Quesaburra",
-      "qty": 1.0,
-      "unit": "pz"
-     }
-    ],
-    "ask": "none",
+    "items": [],
+    "ask": "not_available",
     "ask_contains": [],
-    "not_available": []
+    "not_available": [
+     "quesadilla"
+    ]
    }
   },
   {
@@ -861,20 +820,17 @@
    "expect": {
     "items": [
      {
-      "name": "Alitas 10 piezas",
-      "qty": 1.0,
-      "unit": "pz"
-     },
-     {
       "name": "Refresco (Pepsi, Seven, Coca, Mirinda o Manzana)",
       "qty": 1.0,
       "unit": "pz",
       "variant": "Coca"
      }
     ],
-    "ask": "none",
+    "ask": "not_available",
     "ask_contains": [],
-    "not_available": []
+    "not_available": [
+     "alitas"
+    ]
    }
   },
   {
@@ -976,30 +932,18 @@
    "expect": {
     "items": [
      {
-      "name": "Torta Mexicana",
-      "qty": 1.0,
-      "unit": "pz"
-     },
-     {
-      "name": "Torta de Chorizo",
-      "qty": 1.0,
-      "unit": "pz"
-     },
-     {
-      "name": "Quesadilla de Tocino",
-      "qty": 2.0,
-      "unit": "pz"
-     },
-     {
       "name": "Refresco (Pepsi, Seven, Coca, Mirinda o Manzana)",
       "qty": 2.0,
       "unit": "pz",
       "variant": "Coca"
      }
     ],
-    "ask": "none",
+    "ask": "not_available",
     "ask_contains": [],
-    "not_available": []
+    "not_available": [
+     "torta",
+     "quesadilla"
+    ]
    }
   },
   {
@@ -1072,11 +1016,6 @@
    "expect": {
     "items": [
      {
-      "name": "Alitas 15 piezas",
-      "qty": 1.0,
-      "unit": "pz"
-     },
-     {
       "name": "Boneless 10 piezas",
       "qty": 1.0,
       "unit": "pz"
@@ -1093,9 +1032,11 @@
       "variant": "Mirinda"
      }
     ],
-    "ask": "none",
+    "ask": "not_available",
     "ask_contains": [],
-    "not_available": []
+    "not_available": [
+     "alitas"
+    ]
    }
   },
   {
@@ -1143,26 +1084,13 @@
     "una sincronizada campechana, una quesadilla campechana y una burrita"
    ],
    "expect": {
-    "items": [
-     {
-      "name": "Sincronizada Campechana",
-      "qty": 1.0,
-      "unit": "pz"
-     },
-     {
-      "name": "Quesadilla Campechana",
-      "qty": 1.0,
-      "unit": "pz"
-     },
-     {
-      "name": "Quesadilla Burrita",
-      "qty": 1.0,
-      "unit": "pz"
-     }
-    ],
-    "ask": "none",
+    "items": [],
+    "ask": "not_available",
     "ask_contains": [],
-    "not_available": []
+    "not_available": [
+     "quesadilla",
+     "sincronizada"
+    ]
    }
   },
   {
@@ -1366,15 +1294,11 @@
    ],
    "expect": {
     "items": [],
-    "ask": "clarify",
-    "ask_contains": [
-     "5",
-     "10",
-     "15",
-     "20",
-     "30"
-    ],
-    "not_available": []
+    "ask": "not_available",
+    "ask_contains": [],
+    "not_available": [
+     "alitas"
+    ]
    }
   },
   {
@@ -1386,13 +1310,7 @@
     "de 10"
    ],
    "expect": {
-    "items": [
-     {
-      "name": "Alitas 10 piezas",
-      "qty": 1.0,
-      "unit": "pz"
-     }
-    ],
+    "items": [],
     "ask": "none",
     "ask_contains": [],
     "not_available": []
@@ -1406,16 +1324,12 @@
     "30 alitas"
    ],
    "expect": {
-    "items": [
-     {
-      "name": "Alitas 30 piezas",
-      "qty": 1.0,
-      "unit": "pz"
-     }
-    ],
-    "ask": "none",
+    "items": [],
+    "ask": "not_available",
     "ask_contains": [],
-    "not_available": []
+    "not_available": [
+     "alitas"
+    ]
    }
   },
   {
@@ -1466,16 +1380,12 @@
     "un par de tortas de arrachera"
    ],
    "expect": {
-    "items": [
-     {
-      "name": "Torta de Arrachera",
-      "qty": 2.0,
-      "unit": "pz"
-     }
-    ],
-    "ask": "none",
+    "items": [],
+    "ask": "not_available",
     "ask_contains": [],
-    "not_available": []
+    "not_available": [
+     "torta"
+    ]
    }
   },
   {
@@ -1695,11 +1605,11 @@
    ],
    "expect": {
     "items": [],
-    "ask": "clarify",
-    "ask_contains": [
+    "ask": "not_available",
+    "ask_contains": [],
+    "not_available": [
      "torta"
-    ],
-    "not_available": []
+    ]
    },
    "note": "no ahogada; show the torta options"
   },
@@ -1712,12 +1622,11 @@
    ],
    "expect": {
     "items": [],
-    "ask": "clarify",
-    "ask_contains": [
-     "10",
-     "15"
-    ],
-    "not_available": []
+    "ask": "not_available",
+    "ask_contains": [],
+    "not_available": [
+     "alitas"
+    ]
    },
    "note": "no 12; offer nearest"
   },
@@ -1762,11 +1671,11 @@
    ],
    "expect": {
     "items": [],
-    "ask": "clarify",
-    "ask_contains": [
+    "ask": "not_available",
+    "ask_contains": [],
+    "not_available": [
      "torta"
-    ],
-    "not_available": []
+    ]
    }
   },
   {
@@ -1778,11 +1687,11 @@
    ],
    "expect": {
     "items": [],
-    "ask": "clarify",
-    "ask_contains": [
+    "ask": "not_available",
+    "ask_contains": [],
+    "not_available": [
      "quesadilla"
-    ],
-    "not_available": []
+    ]
    }
   },
   {
@@ -1877,16 +1786,12 @@
     "otra orden de alitas de 10"
    ],
    "expect": {
-    "items": [
-     {
-      "name": "Alitas 10 piezas",
-      "qty": 2.0,
-      "unit": "pz"
-     }
-    ],
-    "ask": "none",
+    "items": [],
+    "ask": "not_available",
     "ask_contains": [],
-    "not_available": []
+    "not_available": [
+     "alitas"
+    ]
    }
   },
   {
@@ -1898,13 +1803,7 @@
     "otra igual"
    ],
    "expect": {
-    "items": [
-     {
-      "name": "Torta Cubana",
-      "qty": 2.0,
-      "unit": "pz"
-     }
-    ],
+    "items": [],
     "ask": "none",
     "ask_contains": [],
     "not_available": []
@@ -2083,16 +1982,13 @@
       "name": "Boneless 10 piezas",
       "qty": 1.0,
       "unit": "pz"
-     },
-     {
-      "name": "Alitas 15 piezas",
-      "qty": 1.0,
-      "unit": "pz"
      }
     ],
-    "ask": "none",
+    "ask": "not_available",
     "ask_contains": [],
-    "not_available": []
+    "not_available": [
+     "alitas"
+    ]
    }
   },
   {
@@ -2105,11 +2001,6 @@
    ],
    "expect": {
     "items": [
-     {
-      "name": "Torta de Pierna",
-      "qty": 2.0,
-      "unit": "pz"
-     },
      {
       "name": "Refresco (Pepsi, Seven, Coca, Mirinda o Manzana)",
       "qty": 1.0,
@@ -2185,21 +2076,12 @@
     "con ingrediente extra"
    ],
    "expect": {
-    "items": [
-     {
-      "name": "Quesadilla de Chorizo",
-      "qty": 1.0,
-      "unit": "pz"
-     },
-     {
-      "name": "Ingrediente Extra en Quesadilla",
-      "qty": 1.0,
-      "unit": "pz"
-     }
-    ],
-    "ask": "none",
+    "items": [],
+    "ask": "not_available",
     "ask_contains": [],
-    "not_available": []
+    "not_available": [
+     "ingrediente extra"
+    ]
    }
   },
   {

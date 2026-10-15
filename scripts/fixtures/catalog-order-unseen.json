@@ -66,35 +66,19 @@
    "expect": {
     "items": [
      {
-      "name": "Torta Cubana",
-      "qty": 1,
-      "unit": "pz"
-     },
-     {
-      "name": "Torta Campechana",
-      "qty": 1,
-      "unit": "pz"
-     },
-     {
-      "name": "Sincronizada de Camarón",
-      "qty": 1,
-      "unit": "pz"
-     },
-     {
-      "name": "Quesadilla de Chorizo",
-      "qty": 2,
-      "unit": "pz"
-     },
-     {
       "name": "Refresco (Pepsi, Seven, Coca, Mirinda o Manzana)",
-      "qty": 3,
+      "qty": 3.0,
       "unit": "pz",
       "variant": "Seven"
      }
     ],
-    "ask": "none",
+    "ask": "not_available",
     "ask_contains": [],
-    "not_available": []
+    "not_available": [
+     "torta",
+     "quesadilla",
+     "sincronizada"
+    ]
    }
   },
   {
@@ -132,19 +116,16 @@
    "expect": {
     "items": [
      {
-      "name": "Alitas 15 piezas",
-      "qty": 1,
-      "unit": "pz"
-     },
-     {
       "name": "Botana Completa",
-      "qty": 1,
+      "qty": 1.0,
       "unit": "pz"
      }
     ],
-    "ask": "none",
+    "ask": "not_available",
     "ask_contains": [],
-    "not_available": []
+    "not_available": [
+     "alitas"
+    ]
    }
   },
   {
@@ -242,13 +223,7 @@
     "y otra igual"
    ],
    "expect": {
-    "items": [
-     {
-      "name": "Torta de Pierna",
-      "qty": 2,
-      "unit": "pz"
-     }
-    ],
+    "items": [],
     "ask": "none",
     "ask_contains": [],
     "not_available": []
@@ -397,13 +372,7 @@
     "Sí, así está bien mi pedido, gracias"
    ],
    "expect": {
-    "items": [
-     {
-      "name": "Quesadilla Campechana",
-      "qty": 2,
-      "unit": "pz"
-     }
-    ],
+    "items": [],
     "ask": "none",
     "ask_contains": [],
     "not_available": []
@@ -438,11 +407,11 @@
    ],
    "expect": {
     "items": [],
-    "ask": "clarify",
-    "ask_contains": [
+    "ask": "not_available",
+    "ask_contains": [],
+    "not_available": [
      "sincronizada"
-    ],
-    "not_available": []
+    ]
    }
   },
   {
@@ -453,21 +422,12 @@
     "una quesaburra y una quesadiya burrita"
    ],
    "expect": {
-    "items": [
-     {
-      "name": "Quesadilla Quesaburra",
-      "qty": 1,
-      "unit": "pz"
-     },
-     {
-      "name": "Quesadilla Burrita",
-      "qty": 1,
-      "unit": "pz"
-     }
-    ],
-    "ask": "none",
+    "items": [],
+    "ask": "not_available",
     "ask_contains": [],
-    "not_available": []
+    "not_available": [
+     "quesadilla"
+    ]
    }
   },
   {
@@ -526,19 +486,16 @@
    "expect": {
     "items": [
      {
-      "name": "Alitas 30 piezas",
-      "qty": 1,
-      "unit": "pz"
-     },
-     {
       "name": "Salchilocos 310g",
-      "qty": 1,
+      "qty": 1.0,
       "unit": "pz"
      }
     ],
-    "ask": "none",
+    "ask": "not_available",
     "ask_contains": [],
-    "not_available": []
+    "not_available": [
+     "alitas"
+    ]
    }
   },
   {

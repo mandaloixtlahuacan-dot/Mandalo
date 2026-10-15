@@ -65,8 +65,6 @@ const SEEDED: Record<string, string[]> = {
   salchilocos: ["salchi locos", "salchilocas", "salchilocas"],
   "dedos de queso 6 piezas": ["dedos de keso", "dedos de queso", "media docena de dedos"],
   "boneless 10 piezas": ["boneles", "bonles", "boneless"],
-  "quesadilla quesaburra": ["quesaburra"],
-  "quesadilla burrita": ["burrita"],
   "papas gajo 315g": ["papas gajos", "papas gajo"],
   "papas a la francesa 300g": ["papas a la francesa", "papas francesa", "francesa"],
 };

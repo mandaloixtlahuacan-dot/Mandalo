@@ -46,12 +46,57 @@ function titleCase(value: string): string {
 
 const FAMILY_HEADS = ["alitas", "torta", "hamburguesa", "quesadilla", "dogo", "papas", "refresco", "bistec", "costilla", "salsa"];
 
+const RETIRED_HEAD = /\b(tortas?|quesadillas?|sincronizadas?|aletas?|alitas?)\b/;
+
+/** Tortas, sincronizadas, quesadillas y alitas ya no están. El aviso es el de siempre, más lo más cercano que sí hay. */
+export function droppedMenuNotice(source: string): string | null {
+  const folded = fold(source);
+  const head = folded.match(RETIRED_HEAD)?.[1] ?? (/\bingrediente extra\b/.test(folded) ? "ingrediente extra" : "");
+  if (!head) return null;
+  if (head === "ingrediente extra") {
+    return "*Ingrediente extra* no lo manejamos. En George tenemos hamburguesas, dogos, papas y refrescos.";
+  }
+  const singular = head.replace(/^tortas$/, "torta").replace(/^quesadillas$/, "quesadilla").replace(/^sincronizadas$/, "sincronizada").replace(/^aletas?$/, "alitas");
+  let label = singular === "alitas" ? "Alitas" : titleCase(singular);
+  const flavor = folded.match(/\b(hawaiana|hawaiano|cubana|cubano|arrachera|camaron|pollo|res)\b/)?.[1];
+  if (flavor && singular !== "alitas") {
+    const shown = flavor === "camaron" ? "Camarón" : flavor === "hawaiano" ? "Hawaiana" : flavor === "cubano" ? "Cubana" : titleCase(flavor);
+    const joiner = /^(arrachera|camaron|pollo|res)$/.test(flavor) ? " de " : " ";
+    label = `${titleCase(singular)}${joiner}${shown}`;
+  }
+  return `*${label}* no lo manejamos. ${closestGeorgeSuggestion(folded)}`;
+}
+
+function closestGeorgeSuggestion(folded: string): string {
+  if (/\balitas?\b|\baletas?\b/.test(folded)) return "¿Te late el *Boneless*?";
+  if (/\bhawaian[oa]\b/.test(folded)) return "¿Te late la *Hamburguesa Hawaiana*, chica o grande?";
+  if (/\bcuban[oa]\b/.test(folded)) return "¿Te late la *Hamburguesa Cubana*, chica o grande?";
+  if (/\barrachera\b/.test(folded)) return "¿Te late la *Hamburguesa de Arrachera*, chica o grande?";
+  if (/\bcamaron\b/.test(folded)) return "¿Te late la *Hamburguesa de Camarón*, chica o grande?";
+  if (/\bpollo\b/.test(folded)) return "¿Te late la *Hamburguesa de Pollo*, chica o grande?";
+  if (/\bres\b/.test(folded)) return "¿Te late la *Hamburguesa de Res*, chica o grande?";
+  if (RETIRED_HEAD.test(folded)) return "¿Te late una *hamburguesa*?";
+  return "En George tenemos hamburguesas, dogos, papas y refrescos.";
+}
+
+export function droppedCandidateIds(catalog: CatalogSnapshot, source: string): number[] {
+  const folded = fold(source);
+  if (/\balitas?\b|\baletas?\b/.test(folded)) {
+    return catalog.rows.filter((row) => /\bboneless\b/.test(fold(row.name))).map((row) => row.id);
+  }
+  const burgers = catalog.rows.filter((row) => fold(row.name).startsWith("hamburguesa") || fold(row.family).startsWith("hamburguesa"));
+  const flavor = folded.match(/\b(hawaian|cuban|arrachera|camaron|pollo|res)\b/);
+  if (!flavor) return burgers.map((row) => row.id);
+  const matched = burgers.filter((row) => fold(`${row.name} ${row.family}`).includes(flavor[1]));
+  return (matched.length ? matched : burgers).map((row) => row.id);
+}
+
 function notAvailable(catalog: CatalogSnapshot, term: string): string {
   const label = titleCase(term);
   if (catalog.profile === "carniceria") {
     return `*${label}* no lo manejamos. En La Central tenemos res, puerco, pastor, chorizo, carbón y salsas.`;
   }
-  return `*${label}* no lo manejamos. En George tenemos hamburguesas, dogos, tortas, quesadillas, alitas y refrescos.`;
+  return `*${label}* no lo manejamos. En George tenemos hamburguesas, dogos, papas y refrescos.`;
 }
 
 function familyHead(text: string): string | null {
@@ -174,6 +219,15 @@ export function buildCatalogReply(params: {
   const notes: string[] = [];
   const offered: Array<{ source: string; question: string; ids: number[] }> = [];
   for (const item of params.unmatched.filter((entry) => entry.reason === "not_on_menu")) {
+    const retired = catalog.profile === "restaurante" ? droppedMenuNotice(item.source_text) : null;
+    if (retired) {
+      notes.push(retired);
+      const question = retired.split("no lo manejamos. ")[1] ?? "";
+      if (/[¿?]/.test(question)) {
+        offered.push({ source: item.source_text, question, ids: droppedCandidateIds(catalog, item.source_text) });
+      }
+      continue;
+    }
     const offer = offerFor(catalog, item.source_text);
     if (offer) {
       notes.push(`*${titleCase(item.source_text)}* no lo manejamos. ${offer.question}`);
@@ -287,7 +341,22 @@ export function buildAiReply(params: {
   const { catalog, cart } = params;
   if (params.confirmedList) return { reply: "", pending: null };
 
-  const notes = params.notOnMenu.map((term) => notAvailable(catalog, term));
+  const notes = params.notOnMenu.map((term) => {
+    if (catalog.profile === "restaurante") {
+      const retired = droppedMenuNotice(term);
+      if (retired) return retired;
+    }
+    return notAvailable(catalog, term);
+  });
+  const retiredOffer = params.notOnMenu
+    .map((term) => {
+      if (catalog.profile !== "restaurante") return null;
+      const retired = droppedMenuNotice(term);
+      const question = retired?.split("no lo manejamos. ")[1] ?? "";
+      if (!retired || !/[¿?]/.test(question)) return null;
+      return { source: term, question, ids: droppedCandidateIds(catalog, term) };
+    })
+    .find((offer): offer is { source: string; question: string; ids: number[] } => Boolean(offer)) ?? null;
   const question = params.question;
   if (question) {
     const same = params.pending && fold(params.pending.question) === fold(question.text);
@@ -342,15 +411,30 @@ export function buildAiReply(params: {
     return { reply: [...notes, prose].filter(Boolean).join("\n\n"), pending };
   }
 
+  let offeredPending: PendingCatalogAsk | null = null;
+  if (retiredOffer) {
+    const parsed = parseQuantity(retiredOffer.source || params.message || "", catalog.profile);
+    offeredPending = {
+      sourceText: retiredOffer.source,
+      candidateIds: retiredOffer.ids,
+      qty: parsed.qty > 0 ? parsed.qty : 1,
+      unit: parsed.unit === "pesos" || parsed.unit === "kg" ? parsed.unit : catalog.profile === "carniceria" ? "kg" : "pz",
+      variant: null,
+      family: sharedFamily(catalog, retiredOffer.ids),
+      question: retiredOffer.question,
+      count: 1,
+    };
+  }
+
   if (!cart.length) {
     const invite = catalog.profile === "carniceria"
       ? "Dime el corte y los kilos, o cuántos pesos."
       : "Dime qué se te antoja del menú y cuántos.";
     const reply = notes.length ? notes.join("\n\n") : invite;
-    return { reply, pending: null };
+    return { reply, pending: offeredPending };
   }
 
   const list = listReply(catalog, cart);
   const reply = notes.length ? `${notes.join("\n\n")}\n\n${list}` : list;
-  return { reply, pending: null };
+  return { reply, pending: offeredPending };
 }
