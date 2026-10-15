@@ -3,6 +3,7 @@ import { normalizePhone } from "@/lib/roles";
 import { createStateTransitionService } from "@/lib/services/stateTransitionService";
 import { getPedidoById, type PedidoFullRecord } from "@/lib/repositories/pedidoRepositoryV2";
 import type { OrderState } from "@/lib/orderStateMachine";
+import { COURIER_ORDER_TAKEN_MESSAGE, courierMayConfirmOffer, readOfferedCouriers } from "@/lib/services/courierAvailability";
 
 type CourierRow = {
   id?: unknown;
@@ -53,7 +54,7 @@ function buildStaleOrderMessage(pedidoId: number, currentEstado: OrderState | nu
     return `⚠️ El pedido ${pedidoId} ya está marcado como entregado.`;
   }
   if (requestedAction === "CONFIRMO" && currentEstado && currentEstado !== "dispatch_repartidor_pendiente") {
-    return `⚠️ El pedido ${pedidoId} ya fue tomado por otro repartidor.`;
+    return COURIER_ORDER_TAKEN_MESSAGE;
   }
   if (requestedAction === "RECOGI" && currentEstado === "en_camino_cliente") {
     return `⚠️ El pedido ${pedidoId} ya está marcado como recogido.`;
@@ -122,22 +123,16 @@ function validateCourierAssignment(params: {
   pedido: PedidoFullRecord;
   courier: { id: number | null; telefono: string };
 }): boolean {
-  const assignedCourierId =
-    params.pedido.repartidorId ?? toNullableNumber(params.pedido.metadata.current_courier_id);
-  const assignedCourierPhone = normalizePhone(String(params.pedido.metadata.current_courier_phone ?? ""));
-  const senderPhone = normalizePhone(params.courier.telefono);
-
-  if (assignedCourierId != null && params.courier.id != null) {
-    return assignedCourierId === params.courier.id;
-  }
-
-  if (assignedCourierPhone) {
-    const sender10 = senderPhone.length <= 10 ? senderPhone : senderPhone.slice(-10);
-    const assigned10 = assignedCourierPhone.length <= 10 ? assignedCourierPhone : assignedCourierPhone.slice(-10);
-    return senderPhone === assignedCourierPhone || sender10 === assigned10;
-  }
-
-  return true;
+  const offered = readOfferedCouriers(params.pedido.metadata).map((row) => ({ id: row.id, telefono: row.telefono }));
+  const hasOfferList = Array.isArray(params.pedido.metadata.offered_couriers) && params.pedido.metadata.offered_couriers.length > 0;
+  return courierMayConfirmOffer({
+    offered: hasOfferList ? offered : [],
+    repartidorId: params.pedido.repartidorId,
+    currentCourierId: toNullableNumber(params.pedido.metadata.current_courier_id),
+    currentCourierPhone: String(params.pedido.metadata.current_courier_phone ?? ""),
+    courierId: params.courier.id,
+    courierPhone: params.courier.telefono,
+  });
 }
 
 export function createCourierCommandParser() {
@@ -213,7 +208,7 @@ export function createCourierCommandParser() {
               ok: false,
               action: "already_taken",
               pedidoId: pedido.id,
-              courierMessage: `⚠️ El pedido ${pedido.id} ya fue tomado por otro repartidor.`,
+              courierMessage: COURIER_ORDER_TAKEN_MESSAGE,
             };
           }
           return { ok: true, action: "confirmed", ...resultBase };

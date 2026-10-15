@@ -372,13 +372,12 @@ export function createStateTransitionService() {
       });
     },
 
-    // Claim atómico (CLAUDE.md Sección 8, nota técnica): el UPDATE solo aplica
-    // si el pedido SIGUE en dispatch_repartidor_pendiente en el instante exacto
-    // de la escritura (`.eq("estado", ...)` como guarda condicional a nivel de
-    // base de datos, no un read-then-write en JS). Si dos repartidores mandan
-    // #CONFIRMO casi al mismo tiempo, solo el primero cuyo UPDATE llega a
-    // Postgres se queda con el pedido — el segundo recibe claimed:false y el
-    // llamador (courierCommandParser.ts) le avisa "ya fue tomado".
+    // Claim atómico (CLAUDE.md Sección 8): el UPDATE solo aplica si el pedido
+    // SIGUE en dispatch_repartidor_pendiente y repartidor_id sigue nulo
+    // (courierOfferStillOpen en courierAvailability.ts). Si dos repartidores
+    // mandan #CONFIRMO casi al mismo tiempo, solo el primero se queda el
+    // pedido. El segundo recibe claimed:false y el aviso "ya lo tomó otro
+    // repartidor".
     async handleCourierConfirm(params: {
       pedidoId: number;
       courierId: number | null;
@@ -417,6 +416,7 @@ export function createStateTransitionService() {
         })
         .eq("id", params.pedidoId)
         .eq("estado", "dispatch_repartidor_pendiente")
+        .is("repartidor_id", null)
         .select("id")
         .maybeSingle();
 

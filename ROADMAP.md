@@ -2,7 +2,17 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 15 de octubre de 2026. El cron de timeouts fallaba
+> Última actualización: 15 de octubre de 2026. Horario de reparto 8am–9pm
+> (hora de México) y oferta del pedido a todos los repartidores en su
+> horario semanal. Mateo (tardes, sábado completo) y Roberto (todos los
+> días menos sábado) son los activos; Paul no se toca. El SQL de la
+> columna es `supabase/migrations/20261015_repartidores_horario_json.sql`
+> y el de los datos es
+> `supabase/data-fixes/20261015_repartidores_mateo_roberto.sql`.
+> Ninguno se aplicó. Hay que correrlos antes de desplegar: sin
+> `horario_json` el despacho no encuentra repartidor y cancela con el
+> aviso al admin. No se borra ninguna fila.
+> Actualización anterior: 15 de octubre de 2026. El cron de timeouts fallaba
 > al reclamar el outbox (`PGRST203`): en la base hay dos funciones
 > `claim_admin_notificaciones_batch` y el worker no mandaba `p_pedido_id`
 > ni `p_tipo`. Ahora los dos llamados los mandan siempre. Sin pedido ni

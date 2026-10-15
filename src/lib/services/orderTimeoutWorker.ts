@@ -3,6 +3,7 @@ import { ensureMxWhatsappIntl } from "@/lib/roles";
 import { cancelPedidoInactivo, getPedidoById, setPedidoEstado, type PedidoFullRecord } from "@/lib/repositories/pedidoRepositoryV2";
 import * as outboxRepository from "@/lib/repositories/outboxRepository";
 import { formatCourierCancelNotice } from "@/lib/customerUx";
+import { readOfferedCouriers } from "@/lib/services/courierAvailability";
 import { formatNameQtyLine, joinBlocks } from "@/lib/messageStyle";
 import { dispatchItemAlreadyShowsQty } from "@/lib/services/captureEngine";
 import { createStateTransitionService } from "@/lib/services/stateTransitionService";
@@ -34,15 +35,6 @@ function cleanText(value: unknown): string | null {
   return text.length ? text : null;
 }
 
-function toNullableNumber(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string" && value.trim()) {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
-}
-
 function formatPedidoItems(items: Array<{ nombreProducto: string; cantidad: number | null }>): string {
   if (!items.length) return "🛍️ *Sin productos*";
   return joinBlocks(
@@ -65,7 +57,7 @@ type TimeoutKindConfig = {
   kind: OrderTimeoutKind;
   estado: OrderState;
   reasonCode: "store_quote_timeout" | "final_confirmation_timeout" | "courier_confirmation_timeout" | "product_adjustment_timeout";
-  buildReminder(pedido: PedidoFullRecord): OutboundNotice | null;
+  buildReminder(pedido: PedidoFullRecord): OutboundNotice | OutboundNotice[] | null;
   buildCancelNotices(pedido: PedidoFullRecord): OutboundNotice[];
   adminMessage(pedido: PedidoFullRecord): string;
 };
@@ -160,15 +152,15 @@ const TIMEOUT_CONFIGS: TimeoutKindConfig[] = [
     estado: "dispatch_repartidor_pendiente",
     reasonCode: "courier_confirmation_timeout",
     buildReminder(pedido) {
-      const courierPhone = cleanText(pedido.metadata.current_courier_phone);
-      if (!courierPhone) return null;
-      return {
-        telefono: ensureMxWhatsappIntl(courierPhone),
+      const couriers = readOfferedCouriers(pedido.metadata);
+      if (!couriers.length) return null;
+      return couriers.map((courier) => ({
+        telefono: ensureMxWhatsappIntl(courier.telefono),
         body: `⏰ *Pedido #${pedido.id}*\n\nTienes *5 minutos* más para aceptarlo, o se cancelará.\n\n*Responde:*\n#CONFIRMO ${pedido.id}`,
-        tipoMensaje: "dispatch_repartidor",
-        destinatarioTipo: "repartidor",
-        destinatarioId: toNullableNumber(pedido.metadata.current_courier_id),
-      };
+        tipoMensaje: "dispatch_repartidor" as const,
+        destinatarioTipo: "repartidor" as const,
+        destinatarioId: courier.id,
+      }));
     },
     buildCancelNotices(pedido) {
       const notices: OutboundNotice[] = [
@@ -192,14 +184,13 @@ const TIMEOUT_CONFIGS: TimeoutKindConfig[] = [
           destinatarioId: pedido.tienda.tiendaId,
         });
       }
-      const courierPhone = cleanText(pedido.metadata.current_courier_phone);
-      if (courierPhone) {
+      for (const courier of readOfferedCouriers(pedido.metadata)) {
         notices.push({
-          telefono: ensureMxWhatsappIntl(courierPhone),
+          telefono: ensureMxWhatsappIntl(courier.telefono),
           body: formatCourierCancelNotice(pedido.id),
           tipoMensaje: "dispatch_repartidor",
           destinatarioTipo: "repartidor",
-          destinatarioId: toNullableNumber(pedido.metadata.current_courier_id),
+          destinatarioId: courier.id,
         });
       }
       return notices;
@@ -282,6 +273,12 @@ async function findDueReminderPedidoIds(config: TimeoutKindConfig, nowIso: strin
   return (data ?? []).map((row) => Number((row as { id: unknown }).id));
 }
 
+function noticeTag(base: string, notice: OutboundNotice): string {
+  if (notice.destinatarioTipo !== "repartidor") return base;
+  const phone = notice.telefono.replace(/\D/g, "").slice(-10) || "sin-telefono";
+  return `${base}:repartidor:${phone}`;
+}
+
 async function sendNotice(pedidoId: number, kind: OrderTimeoutKind, tag: string, notice: OutboundNotice): Promise<void> {
   await outboxRepository.enqueueOutboundMessage({
     pedidoId,
@@ -320,8 +317,9 @@ export function createOrderTimeoutWorker() {
         if (!pedido || pedido.estado !== config.estado) continue;
 
         const reminder = config.buildReminder(pedido);
-        if (reminder) {
-          await sendNotice(pedidoId, config.kind, "reminder", reminder);
+        const reminders = reminder == null ? [] : Array.isArray(reminder) ? reminder : [reminder];
+        for (const notice of reminders) {
+          await sendNotice(pedidoId, config.kind, noticeTag("reminder", notice), notice);
         }
 
         await setPedidoEstado({ pedidoId, estado: pedido.estado, metadataPatch: { [remindedAt]: nowIso } });
@@ -352,7 +350,7 @@ export function createOrderTimeoutWorker() {
         if (config.kind === "final_confirmation" && !priceConfirmTimeoutApplies(pedido.metadata)) continue;
 
         for (const notice of config.buildCancelNotices(pedido)) {
-          await sendNotice(pedidoId, config.kind, "cancel", notice);
+          await sendNotice(pedidoId, config.kind, noticeTag("cancel", notice), notice);
         }
 
         await transitionService.handleOrderTimeoutExpired({

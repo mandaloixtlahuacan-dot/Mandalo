@@ -1865,7 +1865,7 @@ const prompt = buildMandaloSystemPrompt({
   zonasCobertura: "Calle Hidalgo",
   historial: "",
   saludoInicial: "Hola",
-  horarioMandaloText: "de 3pm a 9pm",
+  horarioMandaloText: "de 8am a 9pm",
   categoriasTienda: "(no aplica)",
 });
 assert(prompt.includes("del que sea") && prompt.includes("la más barata") && prompt.includes("cualquiera"), "el prompt acepta que el cliente deje la elección");

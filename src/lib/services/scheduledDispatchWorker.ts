@@ -5,14 +5,14 @@ import * as outboxRepository from "@/lib/repositories/outboxRepository";
 import { createStateTransitionService } from "@/lib/services/stateTransitionService";
 import { checkMandaloSchedule, checkTiendaSchedule } from "@/lib/services/businessHours";
 import { dispatchCotizacionToStore } from "@/lib/services/storeDispatch";
-import { assignCourier, cancelBecauseNoCourier, findActiveCourier } from "@/lib/services/courierHandoff";
+import { cancelBecauseNoCourier, findAvailableCouriers, offerOrderToCouriers } from "@/lib/services/courierHandoff";
 import { formatScheduledSentNotice } from "@/lib/customerUx";
 import { ESPERANDO_APERTURA_DEADLINE_FIELD } from "@/lib/services/orderTimeouts";
 
 // Dispara los pedidos programados (esperando_apertura_tienda, CLAUDE.md
 // Sección 5 regla 6 / Sección 8) en cuanto se puede despachar de verdad —
 // la tienda elegida abierta Y Mándalo dentro de su ventana de reparto
-// (3pm-8pm, agosto 2026) — y cancela los que llevan más de 48h sin que se
+// (8am-9pm, hora de México) — y cancela los que llevan más de 48h sin que se
 // cumplan ambas condiciones. Pensado para correr cada minuto vía pg_cron +
 // pg_net, mismo patrón que orderTimeoutWorker.ts — pero es un worker aparte
 // porque el chequeo es distinto en naturaleza: "¿está abierto ahora mismo?"
@@ -53,8 +53,8 @@ async function enqueueCustomer(pedidoId: number, telefono: string, body: string,
 }
 
 async function releaseScheduledCatalog(pedido: PedidoFullRecord, summary: ScheduledDispatchWorkerRunSummary): Promise<void> {
-  const courier = await findActiveCourier();
-  if (!courier) {
+  const couriers = await findAvailableCouriers();
+  if (!couriers.length) {
     await cancelBecauseNoCourier({
       pedido,
       customerPhone: pedido.clienteTelefono,
@@ -78,10 +78,11 @@ async function releaseScheduledCatalog(pedido: PedidoFullRecord, summary: Schedu
 
   const fresh = await getPedidoById(pedido.id);
   if (!fresh) return;
-  await assignCourier({
+  await offerOrderToCouriers({
     pedido: fresh,
     customerPhone: fresh.clienteTelefono,
-    courier,
+    couriers,
+    actorTipo: "sistema",
     deliverCustomer: (body) => enqueueCustomer(fresh.id, fresh.clienteTelefono, body, `pedido:${fresh.id}:catalogo:repartidor:v1`),
   });
   summary.dispatched += 1;
