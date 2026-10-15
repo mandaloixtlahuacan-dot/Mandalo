@@ -1,4 +1,5 @@
 import { getEnv } from "@/lib/env";
+import { planOutboxRetry } from "@/lib/reliability";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { waapiSendTextRequest } from "@/lib/waapi";
 
@@ -43,14 +44,6 @@ function truncateErrorMessage(value: string, max = 500): string {
   return text.length > max ? `${text.slice(0, max - 3)}...` : text;
 }
 
-function computeNextAttemptAt(attempt: number, baseSeconds: number, maxAttempts: number): string {
-  const now = Date.now();
-  if (attempt >= maxAttempts) {
-    return new Date(now + 24 * 60 * 60 * 1000).toISOString();
-  }
-  const delaySeconds = Math.min(baseSeconds * Math.pow(2, Math.max(attempt - 1, 0)), 3600);
-  return new Date(now + delaySeconds * 1000).toISOString();
-}
 
 async function markNotificationSent(
   row: AdminNotificationRow,
@@ -80,12 +73,18 @@ async function markNotificationFailed(
   maxAttempts: number,
 ): Promise<void> {
   const supabase = getSupabaseAdmin();
+  const plan = planOutboxRetry({
+    attempt: row.intentos,
+    maxAttempts,
+    baseSeconds: baseBackoffSeconds,
+    nowMs: Date.now(),
+  });
   const { error } = await supabase
     .from("admin_notificaciones")
     .update({
-      estado_envio: "fallida",
-      last_error: truncateErrorMessage(errorMessage),
-      next_attempt_at: computeNextAttemptAt(row.intentos, baseBackoffSeconds, maxAttempts),
+      estado_envio: plan.estado,
+      last_error: truncateErrorMessage(plan.permanent ? `permanent: ${errorMessage}` : errorMessage),
+      next_attempt_at: plan.nextAttemptAt,
     })
     .eq("id", row.id);
   if (error) throw error;

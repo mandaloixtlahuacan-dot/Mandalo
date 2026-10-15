@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { MANDALO_SERVICE_FEE } from "@/lib/ordenes";
+import { BUILDING_ORDER_STATES } from "@/lib/reliability";
 import { normalizePhone } from "@/lib/roles";
 import { resetChatHistory } from "@/lib/messages";
 import { parseDiasCerrado } from "@/lib/services/businessHours";
@@ -40,6 +41,7 @@ function mapPedidoRow(row: UnknownRow): PedidoV2Record {
     id: Number(row.id),
     estado: String(row.estado ?? "seleccion_productos") as OrderState,
     snapshot_json: (metadata.capture_snapshot as PedidoSnapshot | undefined) ?? {},
+    updatedAt: row.updated_at == null ? null : String(row.updated_at),
   };
 }
 
@@ -104,7 +106,7 @@ export async function getOpenPedidoByCustomerPhone(phone: string): Promise<Pedid
   // real ya confirmado en producción (ver ROADMAP.md).
   const { data, error } = await supabase
     .from("pedidos")
-    .select("id, estado, metadata_json")
+    .select("id, estado, metadata_json, updated_at")
     .in("cliente_telefono", phoneVariants)
     .not("estado", "in", "(entregado,cancelado)")
     .order("created_at", { ascending: false })
@@ -133,7 +135,7 @@ export async function getOrCreateDraftPedido(params: {
       estado: "seleccion_productos" satisfies OrderState,
       servicio_mandalo: MANDALO_SERVICE_FEE,
     })
-    .select("id, estado, metadata_json")
+    .select("id, estado, metadata_json, updated_at")
     .maybeSingle();
 
   if (error) throw error;
@@ -583,6 +585,73 @@ export async function deletePedido(pedidoId: number): Promise<void> {
 // exista) — nunca antes. Cierra el ciclo de vida completo de un pedido
 // terminal: borra el registro y reinicia la conversación del cliente
 // (messages.resetChatHistory), tal como pide la Sección 4 del CLAUDE.md.
+/**
+ * Cancela un pedido que se quedó armando, sin avisar y sin borrarlo.
+ * La razón queda en metadata y en pedido_eventos. El chat se limpia para
+ * que el siguiente mensaje empiece de cero.
+ */
+export async function cancelPedidoInactivo(params: {
+  pedidoId: number;
+  fromState: OrderState;
+  customerPhone: string;
+}): Promise<boolean> {
+  const supabase = getSupabaseAdmin();
+  const cancelledAt = new Date().toISOString();
+  const { data: current, error: readError } = await supabase
+    .from("pedidos")
+    .select("estado, metadata_json")
+    .eq("id", params.pedidoId)
+    .maybeSingle();
+  if (readError) throw readError;
+  if (!current) return false;
+  const estado = String((current as { estado?: unknown }).estado ?? "");
+  if (!(BUILDING_ORDER_STATES as readonly string[]).includes(estado)) return false;
+
+  const metadata = {
+    ...toPlainObject((current as { metadata_json?: Record<string, unknown> | null }).metadata_json),
+    cancelled_reason: "inactivo",
+    cancelled_at: cancelledAt,
+  };
+  const { data, error } = await supabase
+    .from("pedidos")
+    .update({
+      estado: "cancelado",
+      metadata_json: metadata,
+      updated_at: cancelledAt,
+    })
+    .eq("id", params.pedidoId)
+    .in("estado", [...BUILDING_ORDER_STATES])
+    .select("id")
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return false;
+
+  await appendPedidoEvento({
+    pedidoId: params.pedidoId,
+    tipoEvento: "cancelado",
+    estadoOrigen: estado as OrderState,
+    estadoDestino: "cancelado",
+    actorTipo: "sistema",
+    payload: { reason: "inactivo", seen_state: params.fromState },
+  });
+  await resetChatHistory(params.customerPhone).catch(() => {});
+  return true;
+}
+
+/** Pedidos que esta tienda todavía tiene que cotizar. */
+export async function listPedidoIdsAwaitingStoreQuote(tiendaId: number): Promise<number[]> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("pedido_tiendas")
+    .select("pedido_id, pedidos!inner(estado)")
+    .eq("tienda_id", tiendaId)
+    .eq("pedidos.estado", "pendiente_tiendas")
+    .limit(20);
+  if (error) throw error;
+  const ids = (data ?? []).map((row) => Number((row as { pedido_id?: unknown }).pedido_id));
+  return [...new Set(ids.filter((id) => Number.isInteger(id) && id > 0))];
+}
+
 export async function finalizePedidoRetention(params: { pedidoId: number; customerPhone: string }): Promise<void> {
   await resetChatHistory(params.customerPhone);
   await deletePedido(params.pedidoId);

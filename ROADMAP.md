@@ -2,7 +2,20 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 10 de octubre de 2026. El motor de catálogo
+> Última actualización: 15 de octubre de 2026. Arreglos de confiabilidad
+> en un PR en borrador, sin merge y sin deploy. Un pedido que se queda
+> armando más de 3 horas se cancela en silencio (`inactivo`). Un saludo
+> después de 2 horas empieza de cero. Si no hay repartidor, se avisa al
+> momento y se cancela con ese motivo. La tienda que escribe texto libre
+> recibe el formato, y un precio suelto se acepta si solo hay un pedido
+> abierto. El outbox reintenta dentro del cron de timeouts, hasta 5 veces.
+> En George y La Central el primer SÍ, ya con precios y $25, es el último;
+> la tienda recibe "Prepáralo" después de ese SÍ. Las tiendas con
+> "(PRUEBA)" en el nombre no se listan. El SQL para los pedidos #18, #48,
+> #49, #113 y #122, el outbox 20, 21, 71 y 113, y la tienda de prueba está
+> en `supabase/data-fixes/20261015_reliability_audit_fixes.sql` y no se
+> aplicó. No se borra ninguna tabla.
+> Actualización anterior: 10 de octubre de 2026. El motor de catálogo
 > usa `gpt-4o-mini` (temperatura 0) por defecto. `gpt-5.5` (esfuerzo
 > none, sin temperature) entra solo en ese turno si mini falla: error
 > o corte de la API, JSON ilegible o fuera de esquema, nada usable

@@ -1215,7 +1215,8 @@ assert(/x2/.test(storeLine), "la tienda y el repartidor ven las dos piezas");
 assert(dispatchItemAlreadyShowsQty(storeLine, 2), "no se duplica el 2 en el mensaje de la tienda");
 
 const registrado = formatCatalogOrderRegistered(9, "Hamburguesas Hotdogs George");
-assert(registrado.includes("SÍ"), "en catálogo el primer SÍ avisa que sigue el total");
+assert(!/te mando el total|confirma con un s[ií]/i.test(registrado), "el aviso de menú fijo no pide un segundo SÍ");
+assert(/vaya en camino/i.test(registrado), "el aviso de menú fijo dice que va en camino");
 assert(!registrado.toLowerCase().includes("confirme el precio"), "en catálogo no se dice que la tienda va a cotizar");
 const cotiza = formatQuoteOrderRegistered(9, "ZAGU");
 assert(cotiza.toLowerCase().includes("confirme el precio"), "en abarrotes sí se espera la cotización de la tienda");

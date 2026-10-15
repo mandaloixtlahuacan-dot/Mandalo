@@ -38,6 +38,7 @@ import {
   type TiendaScheduleCheck,
 } from "@/lib/services/businessHours";
 import { dispatchCotizacionToStore, finalizeStoreQuote, flagItemUnavailable } from "@/lib/services/storeDispatch";
+import { assignCourier, cancelBecauseNoCourier, findActiveCourier } from "@/lib/services/courierHandoff";
 import {
   buildGreeting,
   catalogMenuImageKind,
@@ -46,9 +47,11 @@ import {
   formatCatalogMenu,
   formatCatalogMenuCaption,
   UX_MENU_MARKER,
-  formatCatalogOrderRegistered,
+  formatCatalogFinalTicket,
   formatCatalogReceiptFee,
   formatQuoteOrderRegistered,
+  formatStoreOkAck,
+  isHiddenTestStoreName,
   formatPreConfirmFeeNote,
   formatRunningTotal,
   matchCategoriasEnTexto,
@@ -60,6 +63,7 @@ import {
   type UxStore,
 } from "@/lib/customerUx";
 import {
+  extraerAcuseOk,
   extraerComandoNoDisponible,
   extraerOrdenId,
   extraerPrecio,
@@ -67,6 +71,7 @@ import {
   mensajeTiendaProductoNoEncontrado,
 } from "@/lib/ordenes";
 import { canTransition, isTerminalState, type OrderState } from "@/lib/orderStateMachine";
+import { planStoreFreeText, shouldRestartOnGreeting, buildingIdleMs } from "@/lib/reliability";
 import { confirmationCustomerMessage, planConfirmationAmendment, renderPedidoSummary } from "@/lib/confirmationAmendment";
 import {
   extractCoordsFromUbicacion,
@@ -605,28 +610,6 @@ async function isTiendaSenderPhone(rawPhone: string): Promise<boolean> {
   return hit;
 }
 
-async function findActiveCourier(): Promise<CourierRow | null> {
-  const supabase = getSupabaseAdmin();
-  try {
-    const { data, error } = await supabase
-      .from("repartidores")
-      .select("id, nombre, telefono, activo, disponible, vehiculo")
-      .eq("activo", true)
-      .eq("disponible", true)
-      .order("id", { ascending: true })
-      .limit(1);
-    if (error) {
-      console.error("[mandalo] error consultando repartidores:", { message: error.message });
-      return null;
-    }
-    const row = (data ?? [])[0] as CourierRow | undefined;
-    if (row?.telefono) return row;
-  } catch (e: unknown) {
-    console.error("[mandalo] excepción consultando repartidores:", { message: getErrorMessage(e) });
-  }
-  return null;
-}
-
 async function findCourierByPhone(phone: string): Promise<CourierRow | null> {
   const supabase = getSupabaseAdmin();
   const phoneNorm = normalizePhone(String(phone ?? ""));
@@ -863,10 +846,15 @@ async function reviseFixedCatalogProductList(
   await guardarMensajeChat({ telefono, texto: String(mensaje ?? ""), estado: "cliente" }).catch(() => {});
   const missing = spoken?.applied === true && spoken.missing;
   const note = spoken?.aside?.trim();
-  const msg =
-    missing && spoken?.reply
-      ? spoken.reply
-      : [note, formatProductListConfirm(items, pedido.snapshot_json.storeKind ?? "abarrotes")].filter(Boolean).join("\n\n");
+  const kind = pedido.snapshot_json.storeKind ?? "abarrotes";
+  const priced =
+    full.tienda?.tiendaId != null
+      ? await catalogPriceLines(full.tienda.tiendaId, items).catch(() => null)
+      : null;
+  const listText = priced
+    ? formatCatalogFinalTicket({ itemLines: priced.lines, subtotal: priced.subtotal, kind })
+    : formatProductListConfirm(items, kind);
+  const msg = missing && spoken?.reply ? spoken.reply : [note, listText].filter(Boolean).join("\n\n");
   const snapshot = {
     ...pedido.snapshot_json,
     items,
@@ -1078,6 +1066,11 @@ async function handleAwaitingProductList(
     actorTipo: "cliente",
     payload: { userMessage: mensaje },
   });
+
+  if (catalog && validation.readyForConfirmation) {
+    const fresh = await pedidoRepositoryV2.getPedidoById(pedido.id);
+    if (fresh?.tienda) return commitCatalogDispatch(telefono, fresh);
+  }
 
   let feeNote = formatPreConfirmFeeNote(catalog ? "catalogo" : "cotiza_tienda");
   let pricedLines: string | null = null;
@@ -1308,6 +1301,10 @@ async function handleEsperandoConfirmacionInicial(
     return { ok: true, role: "cliente", stage: "esperando_apertura_tienda", pedidoId: full.id };
   }
 
+  if (full.tienda.usaCatalogoFijo) {
+    return commitCatalogDispatch(telefono, full);
+  }
+
   const dispatchResult = await dispatchCotizacionToStore(full, { fromEstado: "confirmacion_cliente", actorTipo: "cliente" }).catch(
     (e: unknown) => {
       console.error("[mandalo] no se pudo encolar o transicionar dispatch a tienda", { pedidoId: full.id, message: getErrorMessage(e) });
@@ -1322,9 +1319,7 @@ async function handleEsperandoConfirmacionInicial(
     return { ok: true, role: "cliente", stage: "confirmacion_cliente", pedidoId: pedido.id };
   }
 
-  const msgCliente = full.tienda.usaCatalogoFijo
-    ? formatCatalogOrderRegistered(full.id, full.tienda.nombre ?? "la tienda")
-    : formatQuoteOrderRegistered(full.id, full.tienda.nombre ?? "la tienda");
+  const msgCliente = formatQuoteOrderRegistered(full.id, full.tienda.nombre ?? "la tienda");
   await sendWhatsApp(telefono, msgCliente);
   await guardarMensajeChat({ telefono, texto: msgCliente, estado: "bot" }).catch(() => {});
   return { ok: true, role: "cliente", stage: "pendiente_tiendas", pedidoId: full.id };
@@ -1371,24 +1366,13 @@ async function handleConfirmadoTiendas(telefono: string, mensaje: string, pedido
 
   const repartidor = await findActiveCourier();
   if (!repartidor) {
-    if (pedido.tienda?.telefono) {
-      const aviso = `🏪 *Pedido #${pedido.id}*\n\nEl cliente ya confirmó, pero no hay repartidores activos disponibles.`;
-      const tiendaTelefono = ensureMxWhatsappIntl(pedido.tienda.telefono);
-      logBusinessDispatch({ orderId: pedido.id, tiendaId: pedido.tienda.tiendaId, tiendaNombre: pedido.tienda.nombre, tiendaTelefono, to: tiendaTelefono, body: aviso });
-      await outboxRepository.enqueueOutboundMessage({
-        pedidoId: pedido.id,
-        tipoMensaje: "cotizacion_tienda",
-        destinatarioTipo: "negocio",
-        destinatarioId: pedido.tienda.tiendaId,
-        telefonoDestino: tiendaTelefono,
-        payload: { body: aviso },
-        idempotencyKey: `pedido:${pedido.id}:store_notice_no_courier:v1`,
-      });
-    }
-    const msg = `🛵 *Pedido #${pedido.id}*\n\nPor ahora no tengo repartidores activos disponibles.\n\nEn cuanto haya uno libre, te aviso.`;
-    await sendWhatsApp(telefono, msg);
-    await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
-    return { ok: true, role: "cliente", stage: "confirmado_tiendas", pedidoId: pedido.id };
+    await cancelBecauseNoCourier({
+      pedido,
+      customerPhone: telefono,
+      notifyStore: Boolean(pedido.tienda?.telefono),
+      deliverCustomer: (body) => deliverToCustomer(telefono, body),
+    });
+    return { ok: true, role: "cliente", accion: "sin_repartidor", pedidoId: pedido.id };
   }
 
   const repartidorNombre = String(repartidor?.nombre ?? "").trim() || "Repartidor";
@@ -1591,15 +1575,22 @@ async function handleAjusteProducto(telefono: string, mensaje: string, pedido: P
       return { ok: true, role: "cliente", stage: "ajuste_producto", pedidoId: pedido.id };
     }
 
-    const dispatchResult = await dispatchCotizacionToStore(fresh, { fromEstado: "ajuste_producto", actorTipo: "cliente" }).catch(
+    const dispatchResult = await dispatchCotizacionToStore(fresh, {
+      fromEstado: "ajuste_producto",
+      actorTipo: "cliente",
+      catalogAlreadyConfirmed: fresh.tienda?.usaCatalogoFijo === true,
+    }).catch(
       (e: unknown) => {
         console.error("[mandalo] no se pudo re-despachar tras ajuste_producto", { pedidoId: pedido.id, message: getErrorMessage(e) });
         return { ok: false as const, reason: "dispatch_failed" as const };
       },
     );
 
+    const avisoTienda = fresh.tienda?.usaCatalogoFijo
+      ? `Ya le avisé a *${pedido.tienda?.nombre ?? "la tienda"}* para que lo prepare.`
+      : `Le avisé a *${pedido.tienda?.nombre ?? "la tienda"}* para que confirme el nuevo precio.`;
     const msg = dispatchResult.ok
-      ? `${resumenCambio}\n\n🛒 *Tu pedido*\n\n${formatItemsForMessage(fresh.items)}\n\nLe avisé a *${pedido.tienda?.nombre ?? "la tienda"}* para que confirme el nuevo precio.`
+      ? `${resumenCambio}\n\n🛒 *Tu pedido*\n\n${formatItemsForMessage(fresh.items)}\n\n${avisoTienda}`
       : `${resumenCambio}\n\nHubo un problema al avisarle a la tienda. Dame un momento y lo reintento.`;
     await sendWhatsApp(telefono, msg);
     await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
@@ -1717,7 +1708,7 @@ async function loadUxStores(): Promise<UxStore[]> {
   for (const row of data ?? []) {
     const nombre = String((row as { nombre?: unknown }).nombre ?? "").trim();
     const telefono = String((row as { telefono?: unknown }).telefono ?? "").trim();
-    if (!nombre || !telefono) continue;
+    if (!nombre || !telefono || isHiddenTestStoreName(nombre)) continue;
     const schedule = checkTiendaSchedule({
       horaApertura: (row as { hora_apertura?: unknown }).hora_apertura == null ? null : String((row as { hora_apertura?: unknown }).hora_apertura),
       horaCierre: (row as { hora_cierre?: unknown }).hora_cierre == null ? null : String((row as { hora_cierre?: unknown }).hora_cierre),
@@ -1954,6 +1945,102 @@ async function catalogProfileFor(
   return resolved;
 }
 
+async function deliverToCustomer(telefono: string, body: string): Promise<void> {
+  await sendWhatsApp(telefono, body);
+}
+
+/**
+ * Menú fijo: el SÍ de la lista (con precios y $25) ya es el último.
+ * Con ubicación se manda. Sin repartidor se cancela con el aviso correcto,
+ * y la tienda no recibe "Prepáralo" si todavía no se le había enviado.
+ */
+async function commitCatalogDispatch(telefono: string, pedido: PedidoFullRecord): Promise<JsonObject> {
+  if (!pedido.tienda) {
+    const msg = "🏪 No pude identificar la tienda para tu pedido.\n\nDime el *nombre exacto* del negocio y seguimos.";
+    await sendWhatsApp(telefono, msg);
+    await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+    return { ok: true, role: "cliente", stage: "seleccion_productos", pedidoId: pedido.id };
+  }
+
+  const schedule = checkTiendaSchedule({
+    horaApertura: pedido.tienda.horaApertura,
+    horaCierre: pedido.tienda.horaCierre,
+    diasCerrado: pedido.tienda.diasCerrado,
+    horarioPorDia: pedido.tienda.horarioPorDia,
+  });
+  const mandaloSchedule = checkMandaloSchedule();
+  if (!schedule.withinSchedule || !mandaloSchedule.withinSchedule) {
+    try {
+      await pedidoRepositoryV2.setPedidoEstado({
+        pedidoId: pedido.id,
+        estado: "esperando_apertura_tienda",
+        metadataPatch: buildEsperandoAperturaMetadata(),
+      });
+      await pedidoRepositoryV2.appendPedidoEvento({
+        pedidoId: pedido.id,
+        tipoEvento: "pedido_programado",
+        estadoOrigen: pedido.estado,
+        estadoDestino: "esperando_apertura_tienda",
+        actorTipo: "cliente",
+      });
+    } catch (e: unknown) {
+      console.error("[mandalo] no se pudo programar el pedido de menú fijo", { pedidoId: pedido.id, message: getErrorMessage(e) });
+      const msg = "⏰ Hubo un problema al programar tu pedido.\n\nInténtalo de nuevo respondiendo *SÍ*. Si vuelve a fallar, avísame.";
+      await sendWhatsApp(telefono, msg);
+      await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+      return { ok: true, role: "cliente", stage: pedido.estado, pedidoId: pedido.id };
+    }
+    const msgCliente = `⏰ *Pedido #${pedido.id} programado.*\n\n${describeWhyWaiting({ tiendaNombre: pedido.tienda.nombre ?? "la tienda", tiendaSchedule: schedule, mandaloSchedule })}.\n\nTe aviso apenas se mande.`;
+    await sendWhatsApp(telefono, msgCliente);
+    await guardarMensajeChat({ telefono, texto: msgCliente, estado: "bot" }).catch(() => {});
+    return { ok: true, role: "cliente", stage: "esperando_apertura_tienda", pedidoId: pedido.id };
+  }
+
+  const courier = await findActiveCourier();
+  if (!courier) {
+    await cancelBecauseNoCourier({
+      pedido,
+      customerPhone: telefono,
+      notifyStore: false,
+      deliverCustomer: (body) => deliverToCustomer(telefono, body),
+    });
+    return { ok: true, role: "cliente", accion: "sin_repartidor", pedidoId: pedido.id };
+  }
+
+  const dispatchResult = await dispatchCotizacionToStore(pedido, {
+    fromEstado: pedido.estado,
+    actorTipo: "cliente",
+    catalogAlreadyConfirmed: true,
+  }).catch((e: unknown) => {
+    console.error("[mandalo] no se pudo enviar el menú fijo a la tienda", { pedidoId: pedido.id, message: getErrorMessage(e) });
+    return { ok: false as const, reason: "dispatch_failed" as const };
+  });
+  if (!dispatchResult.ok) {
+    const msg = "🏪 Hubo un problema al registrar tu pedido para enviarlo a la tienda.\n\nInténtalo de nuevo respondiendo *SÍ*. Si vuelve a fallar, avísame.";
+    await sendWhatsApp(telefono, msg);
+    await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+    return { ok: true, role: "cliente", stage: pedido.estado, pedidoId: pedido.id };
+  }
+
+  const fresh = await pedidoRepositoryV2.getPedidoById(pedido.id);
+  if (!fresh) return { ok: false, role: "cliente", error: "PEDIDO_NO_ENCONTRADO", pedidoId: pedido.id };
+  try {
+    await assignCourier({
+      pedido: fresh,
+      customerPhone: telefono,
+      courier,
+      deliverCustomer: (body) => deliverToCustomer(telefono, body),
+    });
+  } catch (e: unknown) {
+    console.error("[mandalo] no se pudo asignar repartidor al menú fijo", { pedidoId: pedido.id, message: getErrorMessage(e) });
+    const msg = "🛵 No pude registrar tu pedido para enviarlo al repartidor.\n\nInténtalo de nuevo en un momento.";
+    await sendWhatsApp(telefono, msg);
+    await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+    return { ok: true, role: "cliente", stage: "confirmado_tiendas", pedidoId: pedido.id };
+  }
+  return { ok: true, role: "cliente", stage: "dispatch_repartidor_pendiente", pedidoId: pedido.id };
+}
+
 async function completeFixedCatalogConfirmation(
   telefono: string,
   mensaje: string,
@@ -2017,25 +2104,13 @@ async function completeFixedCatalogConfirmation(
     payload: { userMessage: mensaje, catalogoFijo: true },
   });
 
-  let feeNote = formatPreConfirmFeeNote("catalogo");
-  let pricedLines: string | null = null;
-  if (validation.readyForConfirmation && full?.tienda?.tiendaId) {
-    const priced = await catalogPriceLines(full.tienda.tiendaId, validation.validatedItems.items).catch(() => null);
-    if (priced) {
-      pricedLines = priced.lines.join("\n");
-      feeNote = formatCatalogReceiptFee(priced.subtotal);
-    }
+  if (validation.readyForConfirmation) {
+    const fresh = await pedidoRepositoryV2.getPedidoById(pedido.id);
+    if (fresh?.tienda) return commitCatalogDispatch(telefono, fresh);
   }
   const pendingQuestion = validation.issues.find((issue) => issue.customerQuestion)?.customerQuestion ?? "";
-  const msg = validation.readyForConfirmation
-    ? buildCustomerMessage({
-        validation,
-        snapshot: nextSnapshot,
-        items: validation.validatedItems.items,
-        feeNote,
-        pricedLines,
-      })
-    : pendingQuestion && !isProductListConfirmMessage(pendingQuestion) && !pendingQuestion.includes("ubicación por GPS")
+  const msg =
+    pendingQuestion && !isProductListConfirmMessage(pendingQuestion) && !pendingQuestion.includes("ubicación por GPS")
       ? pendingQuestion
       : ADDRESS_ASK_MESSAGE;
   await sendWhatsApp(telefono, msg);
@@ -2108,7 +2183,10 @@ async function handleFixedCatalogTurn(
     return { ok: true, role: "cliente", accion: "rechazo_productos", pedidoId: pedido.id };
   }
   if (!pending && flags?.awaitingProductConfirm && replyKind === "relist") {
-    const msg = formatProductListConfirm(pedido.snapshot_json.items ?? [], profile);
+    const priced = await catalogPriceLines(full.tienda.tiendaId, pedido.snapshot_json.items ?? []).catch(() => null);
+    const msg = priced
+      ? formatCatalogFinalTicket({ itemLines: priced.lines, subtotal: priced.subtotal, kind: profile })
+      : formatProductListConfirm(pedido.snapshot_json.items ?? [], profile);
     await sendWhatsApp(telefono, msg);
     await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
     return { ok: true, role: "cliente", accion: "lista_reenviada", pedidoId: pedido.id };
@@ -2225,11 +2303,11 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
     return { ok: true, role: "cliente", accion: "rechazado_fuera_de_zona" };
   }
 
-  const openPedido = await pedidoRepositoryV2.getOpenPedidoByCustomerPhone(telefono).catch((e: unknown) => {
+  let openPedido = await pedidoRepositoryV2.getOpenPedidoByCustomerPhone(telefono).catch((e: unknown) => {
     console.error("[mandalo] getOpenPedidoByCustomerPhone falló", { message: getErrorMessage(e) });
     return null;
   });
-  const hasActivePedido = Boolean(openPedido && !isTerminalState(openPedido.estado));
+  let hasActivePedido = Boolean(openPedido && !isTerminalState(openPedido.estado));
 
   // Escalamiento de quejas (brief sección 4 paso 9): prioridad más alta que
   // el hard reset — si alguien está molesto o algo salió mal, no lo recibimos
@@ -2259,6 +2337,29 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
     await sendWhatsApp(telefono, msg);
     await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
     return { ok: true, role: "cliente", accion: "queja_escalada" };
+  }
+
+  // Un saludo sobre un pedido que lleva más de 2 horas sin moverse no reabre
+  // la lista vieja: se cancela en silencio y la conversación empieza de cero.
+  if (
+    openPedido &&
+    shouldRestartOnGreeting(openPedido.estado, mensaje, buildingIdleMs(openPedido.updatedAt, Date.now()))
+  ) {
+    const pedidoId = openPedido.id;
+    const released = await pedidoRepositoryV2
+      .cancelPedidoInactivo({
+        pedidoId,
+        fromState: openPedido.estado,
+        customerPhone: telefono,
+      })
+      .catch((e: unknown) => {
+        console.error("[mandalo] no se pudo soltar el pedido inactivo", { pedidoId, message: getErrorMessage(e) });
+        return false;
+      });
+    if (released) {
+      openPedido = null;
+      hasActivePedido = false;
+    }
   }
 
   // Cancelación / hard reset (prioridad absoluta): dispara igual sin importar
@@ -2358,7 +2459,7 @@ async function handleClienteMessage(telefono: string, mensaje: string, ubicacion
         if (openPedido.estado === "pendiente_tiendas") {
           const full = await pedidoRepositoryV2.getPedidoById(openPedido.id);
           if (full?.tienda?.usaCatalogoFijo) {
-            trackingBody = "⏰ *Tu pedido ya está anotado.*\n\nEl menú trae el precio. En un momento te mando el total.";
+            trackingBody = "⏰ *Tu pedido ya está anotado.*\n\nYa tiene el precio del menú. Te aviso en cuanto vaya en camino.";
           }
         }
         if (openPedido.estado === "esperando_apertura_tienda") {
@@ -2755,18 +2856,55 @@ async function handleTiendaProductoNoDisponible(
   return { ok: true, role: "tienda", ordenId, accion: "producto_no_disponible", itemId: item.id };
 }
 
+async function handleTiendaAcuse(telefono: string, tiendaId: number, ordenId: number): Promise<JsonObject> {
+  const pedido = await pedidoRepositoryV2.getPedidoById(ordenId);
+  if (!pedido) {
+    const msg = `🏪 No encontré el pedido *#${ordenId}*.\n\nVerifica el número e intenta de nuevo.`;
+    await sendWhatsApp(telefono, msg);
+    return { ok: true, role: "tienda", ordenId, error: "PEDIDO_NO_ENCONTRADO" };
+  }
+  if (!pedido.tienda || pedido.tienda.tiendaId !== tiendaId) {
+    const msg = "🏪 Ese pedido no corresponde a tu negocio.\n\nVerifica el número de orden.";
+    await sendWhatsApp(telefono, msg);
+    return { ok: true, role: "tienda", ordenId, error: "TIENDA_NO_CORRESPONDE" };
+  }
+  await pedidoRepositoryV2.appendPedidoEvento({
+    pedidoId: pedido.id,
+    tipoEvento: "acuse_tienda",
+    estadoOrigen: pedido.estado,
+    estadoDestino: pedido.estado,
+    actorTipo: "tienda",
+    payload: { command: "OK", ordenId },
+  });
+  const msg = formatStoreOkAck(ordenId);
+  await sendWhatsApp(telefono, msg);
+  return { ok: true, role: "tienda", ordenId, accion: "acuse_ok" };
+}
+
 async function handleTiendaMessage(telefono: string, mensaje: string, tiendaId: number): Promise<JsonObject> {
+  const acuse = extraerAcuseOk(String(mensaje));
+  if (acuse) return handleTiendaAcuse(telefono, tiendaId, acuse);
+
   const noDisponible = extraerComandoNoDisponible(String(mensaje));
 
   if (noDisponible) {
     return handleTiendaProductoNoDisponible(telefono, tiendaId, noDisponible.ordenId, noDisponible.productoTexto);
   }
 
-  const ordenId = extraerOrdenId(String(mensaje));
-
-  const precio = extraerPrecio(String(mensaje));
+  let ordenId = extraerOrdenId(String(mensaje));
+  let precio = extraerPrecio(String(mensaje));
   if (!ordenId || precio == null || Number.isNaN(precio)) {
-    return { ok: true, role: "tienda" };
+    const openIds = await pedidoRepositoryV2.listPedidoIdsAwaitingStoreQuote(tiendaId).catch((e: unknown) => {
+      console.error("[mandalo] no se pudieron leer los pedidos abiertos de la tienda", { message: getErrorMessage(e) });
+      return [] as number[];
+    });
+    const plan = planStoreFreeText({ text: String(mensaje), openOrderIds: openIds });
+    if (plan.action === "guide") {
+      await sendWhatsApp(telefono, plan.body);
+      return { ok: true, role: "tienda", accion: "guia_formato" };
+    }
+    ordenId = plan.pedidoId;
+    precio = plan.amount;
   }
 
   const pedido = await pedidoRepositoryV2.getPedidoById(ordenId);

@@ -53,6 +53,24 @@ export function extraerPrecio(texto: string): number | null {
   return m ? Number(m[1]) : null;
 }
 
+/** El mensaje entero es un precio: "150", "$150" o "150.50". Nada más. */
+export function extraerPrecioSuelto(texto: string): number | null {
+  const raw = String(texto ?? "").trim().replace(/,/g, ".");
+  const match = raw.match(/^\$?\s*([0-9]+(?:\.[0-9]{1,2})?)\s*$/);
+  if (!match) return null;
+  const value = Number(match[1]);
+  if (!Number.isFinite(value) || value <= 0 || value > 100000) return null;
+  return value;
+}
+
+/** Acuse opcional de la tienda. No cambia el estado del pedido. */
+export function extraerAcuseOk(texto: string): number | null {
+  const match = String(texto ?? "").trim().match(/^ok\s*#?\s*(\d+)\s*$/i);
+  if (!match) return null;
+  const id = Number(match[1]);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
 // La tienda marca un producto mientras cotiza. Acepta el token de siempre y
 // frases naturales, en cualquier combinación de mayúsculas, con o sin guion
 // bajo: "no disponible", "no_disponible", "no hay", "no está" / "no esta"

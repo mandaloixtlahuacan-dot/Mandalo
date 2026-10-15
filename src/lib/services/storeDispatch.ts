@@ -13,7 +13,8 @@ import {
 } from "@/lib/repositories/pedidoRepositoryV2";
 import { buildOrderTimeoutMetadata } from "@/lib/services/orderTimeouts";
 import { matchCatalogProduct, priceCatalogOrder } from "@/lib/catalogQuantities";
-import { formatCustomerQuoteMessage } from "@/lib/customerUx";
+import { formatCatalogReceiptNotice, formatCustomerQuoteMessage, formatScheduledSentNotice } from "@/lib/customerUx";
+import { mayPrepareStore } from "@/lib/reliability";
 import { formatCheckedLines, formatNameQtyLine, joinBlocks } from "@/lib/messageStyle";
 import { dispatchItemAlreadyShowsQty } from "@/lib/services/captureEngine";
 import { calculateFinalPrice, MANDALO_DELIVERY_FEE, MANDALO_SERVICE_FEE, mensajeClienteProductoNoDisponible } from "@/lib/ordenes";
@@ -69,8 +70,15 @@ export async function finalizeStoreQuote(params: {
   subtotal: number;
   actorTipo: "tienda" | "sistema";
   itemLines?: string[] | null;
+  /**
+   * confirm: el cliente todavía tiene que decir SÍ al total (tienda que cotiza).
+   * receipt: ya confirmó; se manda el total sin pedir otro SÍ.
+   * none: no se le escribe en este paso.
+   */
+  customerUpdate?: "confirm" | "receipt" | "none";
 }): Promise<{ total: number }> {
   const { pedido, subtotal, actorTipo } = params;
+  const customerUpdate = params.customerUpdate ?? "confirm";
   if (!pedido.tienda) throw new Error(`finalizeStoreQuote: pedido ${pedido.id} sin tienda vinculada`);
 
   const total = calculateFinalPrice(subtotal);
@@ -90,7 +98,10 @@ export async function finalizeStoreQuote(params: {
   await setPedidoEstado({
     pedidoId: pedido.id,
     estado: "confirmado_tiendas",
-    metadataPatch: buildOrderTimeoutMetadata("final_confirmation"),
+    metadataPatch:
+      customerUpdate === "confirm"
+        ? buildOrderTimeoutMetadata("final_confirmation")
+        : { catalogo_confirmado: true, sin_repartidor: false },
   });
   await appendPedidoEvento({
     pedidoId: pedido.id,
@@ -101,22 +112,36 @@ export async function finalizeStoreQuote(params: {
     payload: { subtotal, total },
   });
 
-  const msg = formatCustomerQuoteMessage({
-    tiendaNombre: pedido.tienda.nombre ?? "la tienda",
-    pedidoId: pedido.id,
-    subtotal,
-    total,
-    itemLines,
-  });
-  await outboxRepository.enqueueOutboundMessage({
-    pedidoId: pedido.id,
-    tipoMensaje: "notificacion_cliente",
-    destinatarioTipo: "cliente",
-    telefonoDestino: pedido.clienteTelefono,
-    payload: { body: msg },
-    idempotencyKey: `pedido:${pedido.id}:cliente:cotizacion_recibida:v1`,
-  });
-  await guardarMensajeChat({ telefono: pedido.clienteTelefono, texto: msg, estado: "bot" }).catch(() => {});
+  if (customerUpdate !== "none") {
+    const msg =
+      customerUpdate === "receipt"
+        ? formatCatalogReceiptNotice({
+            tiendaNombre: pedido.tienda.nombre ?? "la tienda",
+            pedidoId: pedido.id,
+            subtotal,
+            total,
+            itemLines,
+          })
+        : formatCustomerQuoteMessage({
+            tiendaNombre: pedido.tienda.nombre ?? "la tienda",
+            pedidoId: pedido.id,
+            subtotal,
+            total,
+            itemLines,
+          });
+    await outboxRepository.enqueueOutboundMessage({
+      pedidoId: pedido.id,
+      tipoMensaje: "notificacion_cliente",
+      destinatarioTipo: "cliente",
+      telefonoDestino: pedido.clienteTelefono,
+      payload: { body: msg },
+      idempotencyKey:
+        customerUpdate === "receipt"
+          ? `pedido:${pedido.id}:catalogo:recibo:v1`
+          : `pedido:${pedido.id}:cliente:cotizacion_recibida:v1`,
+    });
+    await guardarMensajeChat({ telefono: pedido.clienteTelefono, texto: msg, estado: "bot" }).catch(() => {});
+  }
 
   return { total };
 }
@@ -172,7 +197,12 @@ export async function flagItemUnavailable(params: {
 // (flagItemUnavailable) — la tienda nunca tiene que escribir nada.
 async function dispatchCatalogoFijo(
   pedido: PedidoFullRecord,
-  params: { fromEstado: OrderState; actorTipo: "cliente" | "sistema" },
+  params: {
+    fromEstado: OrderState;
+    actorTipo: "cliente" | "sistema";
+    catalogAlreadyConfirmed?: boolean;
+    sendCustomerReceipt?: boolean;
+  },
 ): Promise<DispatchCotizacionResult> {
   if (!pedido.tienda?.telefono) return { ok: false, reason: "no_store_phone" };
 
@@ -201,12 +231,30 @@ async function dispatchCatalogoFijo(
     matches.map((entry) => ({ nombre_producto: entry.item.nombreProducto, cantidad: entry.item.cantidad })),
     catalogo,
   );
+  const alreadyConfirmed = params.catalogAlreadyConfirmed === true;
+  // El aviso de "ya se envió" sale antes del total. El cliente ya confirmó.
+  if (params.sendCustomerReceipt) {
+    await outboxRepository.enqueueOutboundMessage({
+      pedidoId: pedido.id,
+      tipoMensaje: "notificacion_cliente",
+      destinatarioTipo: "cliente",
+      destinatarioId: null,
+      telefonoDestino: ensureMxWhatsappIntl(pedido.clienteTelefono),
+      payload: {
+        body: formatScheduledSentNotice(pedido.id, pedido.tienda.nombre ?? "la tienda", true),
+      },
+      idempotencyKey: `pedido:${pedido.id}:esperando_apertura:dispatched:v1`,
+    });
+  }
   await finalizeStoreQuote({
     pedido,
     subtotal,
     actorTipo: "sistema",
     itemLines: priced.lines,
+    customerUpdate: params.sendCustomerReceipt ? "receipt" : alreadyConfirmed ? "none" : "confirm",
   });
+
+  if (!mayPrepareStore(alreadyConfirmed)) return { ok: true };
 
   const tiendaTelefono = ensureMxWhatsappIntl(pedido.tienda.telefono);
   const aviso =
@@ -248,7 +296,12 @@ async function dispatchCatalogoFijo(
 // fila, alguien más ya movió este pedido — no se manda nada a la tienda.
 export async function dispatchCotizacionToStore(
   pedido: PedidoFullRecord,
-  params: { fromEstado: OrderState; actorTipo: "cliente" | "sistema" },
+  params: {
+    fromEstado: OrderState;
+    actorTipo: "cliente" | "sistema";
+    catalogAlreadyConfirmed?: boolean;
+    sendCustomerReceipt?: boolean;
+  },
 ): Promise<DispatchCotizacionResult> {
   if (!pedido.tienda?.telefono) {
     return { ok: false, reason: "no_store_phone" };

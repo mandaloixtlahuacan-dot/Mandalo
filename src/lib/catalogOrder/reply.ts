@@ -1,7 +1,8 @@
 import { formatClarificationOptions } from "@/lib/clarificationAnswers";
 import type { StoreKind } from "@/lib/categoryCopy";
 import { parseQuantity } from "@/lib/catalogOrder/quantities";
-import { formatProductListConfirm } from "@/lib/services/captureEngine";
+import { formatCatalogFinalTicket } from "@/lib/customerUx";
+import { formatMoney } from "@/lib/ordenes";
 import type { CartLine, CatalogRow, CatalogSnapshot, PendingCatalogAsk, SellUnit, Unmatched } from "@/lib/catalogOrder/types";
 import { fold, tokens } from "@/lib/catalogOrder/text";
 
@@ -240,19 +241,36 @@ export function buildCatalogReply(params: {
     return { reply: invite, pending: null };
   }
 
-  const items = cart.map((line) => {
-    const row = catalog.byId.get(line.productId);
-    return { nombre_producto: row ? lineLabel(line, row) : "producto" };
-  });
-  return { reply: formatProductListConfirm(items, kindOf(catalog)), pending: null };
+  return { reply: listReply(catalog, cart), pending: null };
 }
 
 function listReply(catalog: CatalogSnapshot, cart: CartLine[]): string {
-  const items = cart.map((line) => {
+  let subtotal = 0;
+  let complete = cart.length > 0;
+  const lines = cart.map((line) => {
     const row = catalog.byId.get(line.productId);
-    return { nombre_producto: row ? lineLabel(line, row) : "producto" };
+    if (!row) {
+      complete = false;
+      return "producto";
+    }
+    const label = lineLabel(line, row);
+    if (line.unit === "pesos") {
+      subtotal += line.qty;
+      return `${label} — ${formatMoney(line.qty)}`;
+    }
+    if (!Number.isFinite(row.precio)) {
+      complete = false;
+      return label;
+    }
+    const lineTotal = Math.round(row.precio * line.qty * 100) / 100;
+    subtotal += lineTotal;
+    return `${label} — ${formatMoney(lineTotal)}`;
   });
-  return formatProductListConfirm(items, kindOf(catalog));
+  return formatCatalogFinalTicket({
+    itemLines: lines,
+    subtotal: complete ? Math.round(subtotal * 100) / 100 : null,
+    kind: kindOf(catalog),
+  });
 }
 
 /** Respuesta del motor nuevo: la pregunta guarda las palabras, la cantidad y las opciones. */
