@@ -1,12 +1,20 @@
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { ensureMxWhatsappIntl } from "@/lib/roles";
-import { getPedidoById, setPedidoEstado, type PedidoFullRecord } from "@/lib/repositories/pedidoRepositoryV2";
+import { cancelPedidoInactivo, getPedidoById, setPedidoEstado, type PedidoFullRecord } from "@/lib/repositories/pedidoRepositoryV2";
 import * as outboxRepository from "@/lib/repositories/outboxRepository";
 import { formatCourierCancelNotice } from "@/lib/customerUx";
 import { formatNameQtyLine, joinBlocks } from "@/lib/messageStyle";
 import { dispatchItemAlreadyShowsQty } from "@/lib/services/captureEngine";
 import { createStateTransitionService } from "@/lib/services/stateTransitionService";
 import { orderTimeoutFieldNames, type OrderTimeoutKind } from "@/lib/services/orderTimeouts";
+import {
+  buildingIdleMs,
+  BUILDING_ORDER_STATES,
+  INACTIVE_AFTER_MS,
+  priceConfirmTimeoutApplies,
+  shouldCancelBuildingForInactivity,
+} from "@/lib/reliability";
+import { processAdminOutboxBatch } from "@/lib/adminOutboxWorker";
 import type { OrderState } from "@/lib/orderStateMachine";
 import type { OutboxMessageType } from "@/lib/services/dispatchWorker";
 
@@ -289,6 +297,8 @@ async function sendNotice(pedidoId: number, kind: OrderTimeoutKind, tag: string,
 export type OrderTimeoutWorkerRunSummary = {
   remindersSent: number;
   cancelled: number;
+  inactiveCancelled: number;
+  outboxClaimed: number;
   failed: number;
 };
 
@@ -339,6 +349,7 @@ export function createOrderTimeoutWorker() {
       try {
         const pedido = await getPedidoById(pedidoId);
         if (!pedido || pedido.estado !== config.estado) continue;
+        if (config.kind === "final_confirmation" && !priceConfirmTimeoutApplies(pedido.metadata)) continue;
 
         for (const notice of config.buildCancelNotices(pedido)) {
           await sendNotice(pedidoId, config.kind, "cancel", notice);
@@ -363,16 +374,77 @@ export function createOrderTimeoutWorker() {
     }
   }
 
+  async function processInactiveBuilding(nowMs: number, limit: number, summary: OrderTimeoutWorkerRunSummary): Promise<void> {
+    const supabase = getSupabaseAdmin();
+    const cutoff = new Date(nowMs - INACTIVE_AFTER_MS).toISOString();
+    const { data, error } = await supabase
+      .from("pedidos")
+      .select("id, estado, updated_at, created_at, cliente_telefono")
+      .in("estado", [...BUILDING_ORDER_STATES])
+      .or(`updated_at.lte.${cutoff},and(updated_at.is.null,created_at.lte.${cutoff})`)
+      .limit(limit);
+    if (error) throw error;
+
+    for (const row of data ?? []) {
+      const pedidoId = Number((row as { id?: unknown }).id);
+      try {
+        const { data: fresh, error: readError } = await supabase
+          .from("pedidos")
+          .select("id, estado, updated_at, created_at, cliente_telefono")
+          .eq("id", pedidoId)
+          .maybeSingle();
+        if (readError) throw readError;
+        if (!fresh) continue;
+        const estado = String((fresh as { estado?: unknown }).estado ?? "");
+        const updatedAt = (fresh as { updated_at?: unknown }).updated_at == null ? null : String((fresh as { updated_at?: unknown }).updated_at);
+        const createdAt = (fresh as { created_at?: unknown }).created_at == null ? null : String((fresh as { created_at?: unknown }).created_at);
+        const phone = String((fresh as { cliente_telefono?: unknown }).cliente_telefono ?? "");
+        if (!shouldCancelBuildingForInactivity(estado, buildingIdleMs(updatedAt ?? createdAt, Date.now()))) continue;
+        const cancelled = await cancelPedidoInactivo({
+          pedidoId,
+          fromState: estado as PedidoFullRecord["estado"],
+          customerPhone: phone,
+        });
+        if (cancelled) summary.inactiveCancelled += 1;
+      } catch (e: unknown) {
+        summary.failed += 1;
+        console.error("[orderTimeoutWorker] fallo al cancelar pedido inactivo", {
+          pedidoId,
+          message: errorMessage(e),
+        });
+      }
+    }
+  }
+
+  async function retryOutbox(summary: OrderTimeoutWorkerRunSummary): Promise<void> {
+    try {
+      const batch = await processAdminOutboxBatch();
+      summary.outboxClaimed = batch.totalClaimed;
+    } catch (e: unknown) {
+      summary.failed += 1;
+      console.error("[orderTimeoutWorker] fallo al reintentar el outbox", { message: errorMessage(e) });
+    }
+  }
+
   return {
     async run(params?: { limit?: number }): Promise<OrderTimeoutWorkerRunSummary> {
       const limit = params?.limit ?? 25;
       const nowIso = new Date().toISOString();
-      const summary: OrderTimeoutWorkerRunSummary = { remindersSent: 0, cancelled: 0, failed: 0 };
+      const summary: OrderTimeoutWorkerRunSummary = {
+        remindersSent: 0,
+        cancelled: 0,
+        inactiveCancelled: 0,
+        outboxClaimed: 0,
+        failed: 0,
+      };
 
       for (const config of TIMEOUT_CONFIGS) {
         await processReminders(config, nowIso, limit, summary);
         await processExpirations(config, nowIso, limit, summary);
       }
+
+      await processInactiveBuilding(Date.now(), limit, summary);
+      await retryOutbox(summary);
 
       return summary;
     },

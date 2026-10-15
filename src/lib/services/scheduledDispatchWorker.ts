@@ -5,6 +5,8 @@ import * as outboxRepository from "@/lib/repositories/outboxRepository";
 import { createStateTransitionService } from "@/lib/services/stateTransitionService";
 import { checkMandaloSchedule, checkTiendaSchedule } from "@/lib/services/businessHours";
 import { dispatchCotizacionToStore } from "@/lib/services/storeDispatch";
+import { assignCourier, cancelBecauseNoCourier, findActiveCourier } from "@/lib/services/courierHandoff";
+import { formatScheduledSentNotice } from "@/lib/customerUx";
 import { ESPERANDO_APERTURA_DEADLINE_FIELD } from "@/lib/services/orderTimeouts";
 
 // Dispara los pedidos programados (esperando_apertura_tienda, CLAUDE.md
@@ -38,32 +40,79 @@ export type ScheduledDispatchWorkerRunSummary = {
   failed: number;
 };
 
-async function handleDispatch(pedido: PedidoFullRecord, summary: ScheduledDispatchWorkerRunSummary): Promise<void> {
-  const result = await dispatchCotizacionToStore(pedido, { fromEstado: WAITING_ESTADO, actorTipo: "sistema" });
+async function enqueueCustomer(pedidoId: number, telefono: string, body: string, key: string): Promise<void> {
+  await outboxRepository.enqueueOutboundMessage({
+    pedidoId,
+    tipoMensaje: "notificacion_cliente",
+    destinatarioTipo: "cliente",
+    destinatarioId: null,
+    telefonoDestino: ensureMxWhatsappIntl(telefono),
+    payload: { body },
+    idempotencyKey: key,
+  });
+}
 
-  if (result.ok) {
-    await outboxRepository.enqueueOutboundMessage({
-      pedidoId: pedido.id,
-      tipoMensaje: "notificacion_cliente",
-      destinatarioTipo: "cliente",
-      destinatarioId: null,
-      telefonoDestino: ensureMxWhatsappIntl(pedido.clienteTelefono),
-      payload: {
-        body: pedido.tienda?.usaCatalogoFijo
-          ? `🧾 *Pedido #${pedido.id}*\n\nYa se envió a *${pedido.tienda?.nombre ?? "la tienda"}*.\n\nEl menú ya trae el precio. Te mando el total para que lo confirmes.`
-          : `🧾 *Pedido #${pedido.id}*\n\nYa se envió a *${pedido.tienda?.nombre ?? "la tienda"}*.\n\nTe aviso en cuanto confirme el precio.`,
-      },
-      idempotencyKey: `pedido:${pedido.id}:esperando_apertura:dispatched:v1`,
+async function releaseScheduledCatalog(pedido: PedidoFullRecord, summary: ScheduledDispatchWorkerRunSummary): Promise<void> {
+  const courier = await findActiveCourier();
+  if (!courier) {
+    await cancelBecauseNoCourier({
+      pedido,
+      customerPhone: pedido.clienteTelefono,
+      notifyStore: false,
+      deliverCustomer: (body) => enqueueCustomer(pedido.id, pedido.clienteTelefono, body, `pedido:${pedido.id}:sin_repartidor:cliente:v1`),
     });
+    summary.cancelled += 1;
+    return;
+  }
+
+  const result = await dispatchCotizacionToStore(pedido, {
+    fromEstado: WAITING_ESTADO,
+    actorTipo: "sistema",
+    catalogAlreadyConfirmed: true,
+    sendCustomerReceipt: true,
+  });
+  if (!result.ok) {
+    await handleDispatchFailure(pedido, result.reason, summary);
+    return;
+  }
+
+  const fresh = await getPedidoById(pedido.id);
+  if (!fresh) return;
+  await assignCourier({
+    pedido: fresh,
+    customerPhone: fresh.clienteTelefono,
+    courier,
+    deliverCustomer: (body) => enqueueCustomer(fresh.id, fresh.clienteTelefono, body, `pedido:${fresh.id}:catalogo:repartidor:v1`),
+  });
+  summary.dispatched += 1;
+}
+
+async function handleDispatch(pedido: PedidoFullRecord, summary: ScheduledDispatchWorkerRunSummary): Promise<void> {
+  if (pedido.tienda?.usaCatalogoFijo) {
+    await releaseScheduledCatalog(pedido, summary);
+    return;
+  }
+
+  const result = await dispatchCotizacionToStore(pedido, { fromEstado: WAITING_ESTADO, actorTipo: "sistema" });
+  if (result.ok) {
+    await enqueueCustomer(
+      pedido.id,
+      pedido.clienteTelefono,
+      formatScheduledSentNotice(pedido.id, pedido.tienda?.nombre ?? "la tienda", false),
+      `pedido:${pedido.id}:esperando_apertura:dispatched:v1`,
+    );
     summary.dispatched += 1;
     return;
   }
+  await handleDispatchFailure(pedido, result.reason, summary);
+}
 
-  if (result.reason === "not_claimed") {
-    // Alguien más ya movió este pedido (ej. una cancelación cruzada en el
-    // mismo instante) — nada que hacer, no es un fallo real.
-    return;
-  }
+async function handleDispatchFailure(
+  pedido: PedidoFullRecord,
+  reason: "no_store_phone" | "not_claimed",
+  summary: ScheduledDispatchWorkerRunSummary,
+): Promise<void> {
+  if (reason === "not_claimed") return;
 
   // no_store_phone: caso raro. A diferencia del flujo en vivo, aquí no hay
   // turno de conversación con el cliente para pedirle que reintente — se

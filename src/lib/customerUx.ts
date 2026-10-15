@@ -133,7 +133,96 @@ export function formatPreConfirmFeeNote(mode: "catalogo" | "cotiza_tienda"): str
 
 export function formatCatalogOrderRegistered(pedidoId: number, tiendaNombre: string): string {
   const tienda = tiendaNombre.trim() || "la tienda";
-  return `🧾 *Pedido #${pedidoId}*\n\nYa quedó con *${tienda}*.\n\nTe mando el total para que lo confirmes con un SÍ.`;
+  return `🧾 *Pedido #${pedidoId}*\n\nYa quedó con *${tienda}*.\n\nTe aviso en cuanto vaya en camino.`;
+}
+
+/** Aviso de pedido programado. En menú fijo va solo: el total sale en el mensaje siguiente. */
+export function formatScheduledSentNotice(pedidoId: number, tiendaNombre: string, catalog: boolean): string {
+  const tienda = tiendaNombre.trim() || "la tienda";
+  if (catalog) return `🧾 *Pedido #${pedidoId}*\n\nYa se envió a *${tienda}*.`;
+  return `🧾 *Pedido #${pedidoId}*\n\nYa se envió a *${tienda}*.\n\nTe aviso en cuanto confirme el precio.`;
+}
+
+/**
+ * Ticket del menú fijo ANTES del único SÍ: productos con precio, $25 y total.
+ * Ese SÍ ya es la confirmación final. No se vuelve a pedir otro.
+ */
+export function formatCatalogFinalTicket(params: {
+  itemLines: string[];
+  subtotal: number | null;
+  kind?: StoreKind;
+}): string {
+  const kind = params.kind ?? "restaurante";
+  const productos = formatCheckedLines(params.itemLines);
+  return (
+    `OK, pediste:\n\n` +
+    `🛒 *Tu pedido*\n\n` +
+    `${productos}\n\n` +
+    `${formatCatalogReceiptFee(params.subtotal)}\n\n` +
+    `*¿Están bien estos productos?*\n\n` +
+    `*Si tu pedido está bien, responde sí.*\n\n` +
+    `${formatHowToEditList(kind)}`
+  );
+}
+
+/** Recibo después de que el cliente ya confirmó. No pide otro SÍ. */
+export function formatCatalogReceiptNotice(params: {
+  tiendaNombre: string;
+  pedidoId: number;
+  subtotal: number;
+  total: number;
+  itemLines?: string[] | null;
+}): string {
+  const tienda = params.tiendaNombre.trim() || "la tienda";
+  const productos = formatCheckedLines(params.itemLines ?? []);
+  return (
+    `🧾 *Pedido #${params.pedidoId}*\n\n` +
+    `*${tienda}*\n\n` +
+    (productos ? `🛒 *Tu pedido*\n\n${productos}\n\n` : "") +
+    `*Subtotal: ${formatMoney(params.subtotal)}*\n\n` +
+    `${formatCustomerFeeLine()}\n\n` +
+    `💵 *Total a pagar: ${formatMoney(params.total)}*`
+  );
+}
+
+export function formatNoCourierCustomer(pedidoId: number): string {
+  return (
+    `🛵 *Pedido #${pedidoId}*\n\n` +
+    `Por ahora no hay repartidor disponible, así que lo cancelamos.\n\n` +
+    `Cuando quieras, puedes volver a pedir.`
+  );
+}
+
+export function formatNoCourierStore(pedidoId: number): string {
+  return `🏪 *Pedido #${pedidoId}*\n\nSe canceló: no hay repartidor disponible. Ya no es necesario prepararlo.`;
+}
+
+export function formatNoCourierAdmin(pedidoId: number): string {
+  return `Sin repartidor.\n\nPedido: ${pedidoId}\nEl cliente ya confirmó y no hay repartidor activo. Pedido cancelado.`;
+}
+
+export function formatStoreCommandHelp(orderIds: number[]): string {
+  const ids = orderIds.filter((id) => Number.isInteger(id) && id > 0);
+  if (!ids.length) {
+    return (
+      `🏪 *Así me contestas un pedido*\n\n` +
+      `Ahorita no tengo uno abierto esperando tu precio.\n\n` +
+      `*Cuando llegue, responde así:*\nORDEN #123 PRECIO 150\n\n` +
+      `*Si te falta algo:*\nORDEN #123 NO_DISPONIBLE nombre del producto`
+    );
+  }
+  const sample = ids[0];
+  const listed = ids.map((id) => `*#${id}*`).join(", ");
+  return (
+    `🏪 *Así me contestas el pedido*\n\n` +
+    `Pedidos abiertos: ${listed}\n\n` +
+    `*Precio:*\nORDEN #${sample} PRECIO 150\n\n` +
+    `*Si te falta algo:*\nORDEN #${sample} NO_DISPONIBLE nombre del producto`
+  );
+}
+
+export function formatStoreOkAck(pedidoId: number): string {
+  return `✅ *Recibido.*\n\nAnoté el OK del pedido *#${pedidoId}*.`;
 }
 
 export function formatQuoteOrderRegistered(pedidoId: number, tiendaNombre: string): string {
@@ -614,8 +703,12 @@ export function matchCategoriasEnTexto(categorias: string[], texto: string): str
   });
 }
 
-function isGreetingMessage(message: string): boolean {
+export function isGreetingOnly(message: string): boolean {
   return GREETING_ONLY.test(normalizeUxText(message));
+}
+
+function isGreetingMessage(message: string): boolean {
+  return isGreetingOnly(message);
 }
 
 function isMenuQuestion(message: string): boolean {

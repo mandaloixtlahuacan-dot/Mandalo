@@ -62,6 +62,8 @@ export type PedidoV2Record = {
   id: number;
   estado: OrderState;
   snapshot_json: PedidoSnapshot;
+  /** Último cambio del pedido. Sirve para soltar una conversación inactiva. */
+  updatedAt?: string | null;
 };
 
 export type MissingField =
