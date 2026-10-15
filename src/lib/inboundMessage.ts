@@ -1,7 +1,9 @@
 /**
  * Clasifica el webhook de Whapi antes de tocar el pedido.
- * Un pin, una ubicación en tiempo real, un adjunto o un texto vacío
- * siempre producen una respuesta. Los acuses de entrega no son mensajes.
+ * Un pin, una ubicación en tiempo real, un adjunto real o un texto vacío
+ * producen una respuesta. Un evento de sistema (source system, type unknown
+ * y similares) no es un mensaje: contestarlo genera otro evento igual y el
+ * bot se queda en bucle. Los acuses de entrega tampoco son mensajes.
  */
 
 export const TEXT_ONLY_REPLY =
@@ -15,7 +17,7 @@ export const GPS_PLACEHOLDER = "📍 (Cliente compartió su ubicación GPS)";
 export type UnsupportedMedia = "sticker" | "image" | "audio" | "video" | "document" | "contact" | "unsupported";
 
 export type ClassifiedInbound =
-  | { kind: "ignore"; reason: "from_me" | "not_a_message" }
+  | { kind: "ignore"; reason: "from_me" | "not_a_message" | "system" }
   | { kind: "missing_from" }
   | { kind: "text"; from: string; messageId: string | null; body: string }
   | { kind: "location"; from: string; messageId: string | null; body: string; latitude: number; longitude: number }
@@ -152,17 +154,48 @@ function mediaOf(payload: unknown, type: string): UnsupportedMedia | null {
   return null;
 }
 
-const TEXT_TYPES = new Set(["", "text", "chat", "link_preview", "reply", "buttons_response", "list_response", "interactive"]);
+const TEXT_TYPES = new Set(["text", "chat", "link_preview", "reply", "buttons_response", "list_response", "interactive"]);
+
+const NON_MESSAGE_TYPES = new Set([
+  "unknown",
+  "system",
+  "revoked",
+  "e2e_notification",
+  "call_log",
+  "reaction",
+  "action",
+  "notification",
+]);
+
+function messageSource(payload: unknown): string {
+  const body = asRecord(payload);
+  const data = asRecord(body.data);
+  const message = messageObject(payload);
+  return String(message.source ?? body.source ?? data.source ?? "").trim().toLowerCase();
+}
+
+function ignoreNoise(payload: unknown, why: string): ClassifiedInbound {
+  console.log("[inbound] ignorando evento que no es un mensaje", {
+    why,
+    type: messageType(payload) || null,
+    source: messageSource(payload) || null,
+    id: messageId(payload),
+  });
+  return { kind: "ignore", reason: why === "sin_texto_ni_medio" ? "not_a_message" : "system" };
+}
 
 export function classifyInbound(payload: unknown): ClassifiedInbound {
   if (isFromMe(payload)) return { kind: "ignore", reason: "from_me" };
   if (isStatusEvent(payload)) return { kind: "ignore", reason: "not_a_message" };
 
+  const type = messageType(payload);
+  if (messageSource(payload) === "system") return ignoreNoise(payload, "source_system");
+  if (NON_MESSAGE_TYPES.has(type)) return ignoreNoise(payload, `tipo_${type}`);
+
   const from = chatId(payload);
   if (!from) return { kind: "missing_from" };
 
   const id = messageId(payload);
-  const type = messageType(payload);
   const message = messageObject(payload);
   const live = type === "live_location" || type === "livelocation" || Boolean(message.live_location);
   if (live) {
@@ -188,5 +221,5 @@ export function classifyInbound(payload: unknown): ClassifiedInbound {
     return { kind: "text", from, messageId: id, body: text ?? " " };
   }
 
-  return { kind: "media", from, messageId: id, body: "📎", media: "unsupported" };
+  return ignoreNoise(payload, "sin_texto_ni_medio");
 }

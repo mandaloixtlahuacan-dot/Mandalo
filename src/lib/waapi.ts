@@ -1,4 +1,5 @@
 import { getEnv } from "@/lib/env";
+import { outboundDecision, recordOutbound, releaseOutbound, type OutboundVerdict } from "@/lib/outboundGuard";
 
 export type WaapiSendTextArgs = {
   to: string;
@@ -19,8 +20,38 @@ function toWaapiChatId(to: string): string {
   return `${raw}@c.us`;
 }
 
+function suppressedSend(to: string, body: string, reason: Exclude<OutboundVerdict, "send">): WaapiSendTextResponse {
+  console.warn("[outbound-guard] envío suprimido", {
+    reason: reason === "duplicate" ? "identico_60s" : "tope_por_minuto",
+    to: String(to ?? "").replace(/[^\d]/g, ""),
+    bodyPreview: String(body ?? "").slice(0, 160),
+  });
+  return {
+    ok: true,
+    status: 200,
+    statusText: "suppressed",
+    data: { suppressed: true, reason },
+  };
+}
+
+function reserveOutbound(to: string, body: string): WaapiSendTextResponse | null {
+  const verdict = outboundDecision(to, body);
+  if (verdict !== "send") return suppressedSend(to, body, verdict);
+  recordOutbound(to, body);
+  return null;
+}
+
 export async function waapiSendTextRequest({ to, body }: WaapiSendTextArgs): Promise<WaapiSendTextResponse> {
-  const env = getEnv();
+  const suppressed = reserveOutbound(to, body);
+  if (suppressed) return suppressed;
+
+  let env: ReturnType<typeof getEnv>;
+  try {
+    env = getEnv();
+  } catch (error) {
+    releaseOutbound(to, body);
+    throw error;
+  }
   const url = `${String(env.WAAPI_API_BASE).replace(/\/+$/, "")}/messages/text`;
   const waapiTo = toWaapiChatId(to);
 
@@ -32,17 +63,23 @@ export async function waapiSendTextRequest({ to, body }: WaapiSendTextArgs): Pro
     bodyPreview: String(body ?? "").slice(0, 500),
   });
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      Authorization: `Bearer ${env.WAAPI_TOKEN}`,
-    },
-    body: JSON.stringify({
-      to: waapiTo,
-      body,
-    }),
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        Authorization: `Bearer ${env.WAAPI_TOKEN}`,
+      },
+      body: JSON.stringify({
+        to: waapiTo,
+        body,
+      }),
+    });
+  } catch (error) {
+    releaseOutbound(to, body);
+    throw error;
+  }
 
   const text = await res.text().catch(() => "");
   let parsed: unknown = null;
@@ -61,6 +98,8 @@ export async function waapiSendTextRequest({ to, body }: WaapiSendTextArgs): Pro
     rawTextPreview: parsed ? undefined : text.slice(0, 2000),
   });
 
+  if (!res.ok) releaseOutbound(to, body);
+
   return {
     ok: res.ok,
     status: res.status,
@@ -78,7 +117,16 @@ export type WaapiSendImageArgs = {
 };
 
 export async function waapiSendImage({ to, caption, png, filename }: WaapiSendImageArgs): Promise<WaapiSendTextResponse> {
-  const env = getEnv();
+  const suppressed = reserveOutbound(to, caption);
+  if (suppressed) return suppressed;
+
+  let env: ReturnType<typeof getEnv>;
+  try {
+    env = getEnv();
+  } catch (error) {
+    releaseOutbound(to, caption);
+    throw error;
+  }
   const url = `${String(env.WAAPI_API_BASE).replace(/\/+$/, "")}/messages/image`;
   const waapiTo = toWaapiChatId(to);
   const form = new FormData();
@@ -88,13 +136,19 @@ export async function waapiSendImage({ to, caption, png, filename }: WaapiSendIm
 
   console.log("[mandalo] waapi -> sendImage to:", waapiTo, "bytes:", png.length);
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.WAAPI_TOKEN}`,
-    },
-    body: form,
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.WAAPI_TOKEN}`,
+      },
+      body: form,
+    });
+  } catch (error) {
+    releaseOutbound(to, caption);
+    throw error;
+  }
 
   const text = await res.text().catch(() => "");
   let parsed: unknown = null;
@@ -114,6 +168,7 @@ export async function waapiSendImage({ to, caption, png, filename }: WaapiSendIm
   });
 
   if (!res.ok) {
+    releaseOutbound(to, caption);
     throw new Error(`Waapi image error ${res.status}: ${text.slice(0, 500)}`);
   }
 

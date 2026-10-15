@@ -70,9 +70,11 @@ export async function POST(req: NextRequest) {
     console.log("[Webhook] Payload entrante:", JSON.stringify(body, null, 2));
 
     const inbound = classifyInbound(body);
-    if (inbound.kind === "ignore") {
-      console.log(`[Webhook] Ignorando evento ${inbound.reason}.`);
-      return NextResponse.json({ ok: true, ignored: inbound.reason === "from_me" ? "FROM_ME" : "NOT_A_MESSAGE" }, { status: 200 });
+    if (inbound.kind === "ignore" || (inbound.kind === "media" && inbound.media === "unsupported")) {
+      const reason = inbound.kind === "ignore" ? inbound.reason : "not_a_message";
+      console.log(`[Webhook] Ignorando evento ${reason}.`);
+      const ignored = reason === "from_me" ? "FROM_ME" : reason === "system" ? "SYSTEM" : "NOT_A_MESSAGE";
+      return NextResponse.json({ ok: true, ignored }, { status: 200 });
     }
     if (inbound.kind === "missing_from") {
       return NextResponse.json({ ok: false, error: "MISSING_FROM" }, { status: 200 });

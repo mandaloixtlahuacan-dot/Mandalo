@@ -2,7 +2,18 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 15 de octubre de 2026. Revisión de Víctor sobre
+> Última actualización: 15 de octubre de 2026. El PR #43, ya en `main`,
+> contestaba los eventos `system`/`unknown` de Whapi (sin texto y sin
+> adjunto) como si fueran un archivo. Cada respuesta generaba otro
+> evento igual y el bot se quedaba en bucle. Producción se regresó al
+> PR #42. Este arreglo está en borrador: no se mergea y no se despliega.
+> Esos eventos se ignoran. «Solo texto» solo sale ante audio, voz,
+> video, imagen, sticker, documento, contacto o gif. Además, el mismo
+> texto no se le manda dos veces al mismo número en 60 segundos, y hay
+> un tope de 6 mensajes distintos por número en ese minuto. El pin y la
+> ubicación en tiempo real se quedan como en el #43. Prueba offline:
+> `scripts/check-flow-router.ts`.
+> Actualización anterior: 15 de octubre de 2026. Revisión de Víctor sobre
 > el borrador de atajos (PR #43), sin merge y sin deploy. Si ya hay
 > productos y piden otra tienda, se pregunta antes de borrar. Un pedido
 > es de una tienda a la vez. La dirección escrita vuelve a valer, igual
