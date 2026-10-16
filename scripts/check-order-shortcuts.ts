@@ -259,7 +259,7 @@ async function main(): Promise<void> {
       return {
         toolCalls: [
           tool("set_cart_line", { free_text: "Papel higiénico Sam's paquete grande", qty: 1, unit: "pz" }, "papel"),
-          tool("set_cart_line", { free_text: "Aceite de aguacate 1 litro", qty: 1, unit: "pz" }, "aceite"),
+          tool("set_cart_line", { free_text: "Aceite de aguacate Nutrioli 1 litro", qty: 1, unit: "pz" }, "aceite"),
           tool("set_cart_line", { free_text: "Toallas Sanitas caja", qty: 1, unit: "pz" }, "sanitas"),
           tool("finish_cart", {}, "fin"),
         ],
@@ -326,7 +326,7 @@ async function main(): Promise<void> {
         tool("remove_line", { line_id: "l2" }, "quita-aceite-corto"),
         tool("remove_line", { line_id: "l3" }, "quita-aguacate"),
         tool("remove_line", { line_id: "l4" }, "quita-verdura"),
-        tool("set_cart_line", { free_text: "Aceite de aguacate", qty: 1, unit: "pz" }, "reemplazo"),
+        tool("set_cart_line", { free_text: "Aceite de aguacate Nutrioli 1 litro", qty: 1, unit: "pz" }, "reemplazo"),
         tool("finish_cart", {}, "fin2"),
       ],
     },

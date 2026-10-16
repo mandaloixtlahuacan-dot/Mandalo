@@ -713,6 +713,54 @@ async function main(): Promise<void> {
   assert(isSuppressed(suppressedText), "el segundo texto idéntico no llama a Whapi");
   assert(isSuppressed(suppressedImage), "la misma imagen dentro de 60 s no se repite");
 
+  const pendingNumber = routeCustomerFlow({
+    message: "2",
+    phase: "pedido",
+    nicheId: "abarrotes",
+    store: pekes,
+    stores,
+    items: coke,
+    lastBotText: "¿Cuántos?",
+    awaitingProductConfirm: false,
+    agentPending: true,
+    media: "text",
+    locationInsideCoverage: null,
+    orderId: null,
+  });
+  assert(pendingNumber.action === "agent" && !pendingNumber.text.includes("El número solo"), "un 2 contesta la pregunta del agente");
+  const pendingOk = routeCustomerFlow({
+    message: "está bien",
+    phase: "pedido",
+    nicheId: "abarrotes",
+    store: pekes,
+    stores,
+    items: coke,
+    lastBotText: "¿Así está bien?",
+    awaitingProductConfirm: false,
+    agentPending: true,
+    media: "text",
+    locationInsideCoverage: null,
+    orderId: null,
+  });
+  assert(pendingOk.action === "agent", "está bien contesta la pregunta del agente");
+  const bareStill = routeCustomerFlow({
+    message: "2",
+    phase: "pedido",
+    nicheId: "abarrotes",
+    store: pekes,
+    stores,
+    items: coke,
+    lastBotText: "",
+    awaitingProductConfirm: false,
+    media: "text",
+    locationInsideCoverage: null,
+    orderId: null,
+  });
+  assert(
+    bareStill.action === "reprompt" && bareStill.text.includes("El número solo no me dice el producto"),
+    "sin pregunta pendiente el número solo sigue sin ser un producto",
+  );
+
   assert(scenarios.length === 345, "siguen los 345 escenarios");
   assert(greeting.includes("¿De dónde quieres?"), "el menú de categorías sigue igual");
   assert(pekesWelcome.includes("Solo es un ejemplo") && georgeWelcome.includes("Te paso el menú"), "los avisos de tienda siguen igual");

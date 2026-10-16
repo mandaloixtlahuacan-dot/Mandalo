@@ -1,14 +1,34 @@
 import { closestAgentProducts, foldAgent, genericDogoProduct, isGenericDogoText, isOrderVerbOnly, stripOrderVerbs } from "@/lib/orderAgent/catalog";
+import {
+  groceryClarityError,
+  groceryFamily,
+  normalizeGroceryWords,
+  parseGroceryFreeText,
+  sameGroceryLine,
+} from "@/lib/orderAgent/grocery";
 import type { AgentLine, AgentPending, AgentProduct, AgentStore, AgentUnit, PendingAxis, ToolCall } from "@/lib/orderAgent/types";
 
 export type ToolVerdict =
   | { ok: true; line?: AgentLine; removedId?: string; question?: AgentPending; search?: AgentProduct[]; finished?: boolean }
   | { ok: false; error: string; customerNote?: string };
 
-const UNITS = new Set<AgentUnit>(["pz", "kg", "pesos", "g"]);
+export type AgentSearchHit = { query: string; products: AgentProduct[] };
 
-function asUnit(value: unknown): AgentUnit | null {
-  return value === "pz" || value === "kg" || value === "pesos" || value === "g" ? value : null;
+const UNITS = new Set<AgentUnit>(["pz", "kg", "pesos", "g", "l"]);
+
+function clean(value: unknown): string | null {
+  const text = String(value ?? "").replace(/\s+/g, " ").trim();
+  return text.length ? text : null;
+}
+
+export function asAgentUnit(value: unknown): AgentUnit | null {
+  const text = foldAgent(String(value ?? ""));
+  if (text === "pz" || text === "pieza" || text === "piezas" || text === "pza" || text === "pzas" || text === "pzs") return "pz";
+  if (text === "kg" || text === "kilo" || text === "kilos") return "kg";
+  if (text === "pesos") return "pesos";
+  if (text === "g" || text === "gr" || text === "gramo" || text === "gramos") return "g";
+  if (text === "l" || text === "lt" || text === "lts" || text === "litro" || text === "litros") return "l";
+  return UNITS.has(text as AgentUnit) ? (text as AgentUnit) : null;
 }
 
 function saneQty(unit: AgentUnit, qty: number): boolean {
@@ -16,11 +36,12 @@ function saneQty(unit: AgentUnit, qty: number): boolean {
   if (unit === "pz") return Number.isInteger(qty) && qty <= 40;
   if (unit === "kg") return qty <= 20;
   if (unit === "g") return qty <= 5000;
+  if (unit === "l") return qty <= 40;
   return qty >= 10 && qty <= 3000;
 }
 
 function unitAllowed(store: AgentStore, product: AgentProduct, unit: AgentUnit): boolean {
-  // En abarrotes la tienda cotiza después: el cliente puede pedir piezas, kilos o pesos.
+  // En abarrotes la tienda cotiza después: el cliente puede pedir piezas, kilos, litros o pesos.
   if (store.catalogMode === "list") return true;
   if (product.unit === "kg") return unit === "kg" || unit === "pesos" || unit === "g";
   return unit === "pz";
@@ -71,6 +92,97 @@ function sameQuestion(left: string, right: string): boolean {
   return foldAgent(left) === foldAgent(right);
 }
 
+function optionLabel(product: AgentProduct): string {
+  return [product.brand, product.name, product.presentation].filter((part) => part && String(part).trim()).join(" ");
+}
+
+function sizeKey(value: string): string {
+  const text = foldAgent(value);
+  const ml = text.match(/(\d+)\s*ml\b/);
+  if (ml) return `${ml[1]}ml`;
+  const liters = text.match(/(\d+)\s*(l|lt|lts|litro|litros)\b/);
+  if (liters) return `${liters[1]}l`;
+  const kilos = text.match(/(\d+)\s*(kg|kilo|kilos)\b/);
+  if (kilos) return `${kilos[1]}kg`;
+  return "";
+}
+
+function textHasSize(text: string, size: string): boolean {
+  const spoken = text
+    .replace(/\b(un|una|uno)\b/g, "1")
+    .replace(/\bdos\b/g, "2")
+    .replace(/\btres\b/g, "3")
+    .replace(/\bcuatro\b/g, "4")
+    .replace(/\bcinco\b/g, "5");
+  if (size.endsWith("ml")) {
+    const n = size.slice(0, -2);
+    return new RegExp(`\\b${n}\\s*ml\\b`).test(spoken);
+  }
+  if (size.endsWith("kg")) {
+    const n = size.slice(0, -2);
+    return new RegExp(`\\b${n}\\s*(kg|kilo|kilos)\\b`).test(spoken);
+  }
+  if (size.endsWith("l")) {
+    const n = size.slice(0, -1);
+    return new RegExp(`\\b${n}\\s*(l|lt|lts|litro|litros)\\b`).test(spoken);
+  }
+  return false;
+}
+
+function messageSelects(product: AgentProduct, siblings: AgentProduct[], message: string): boolean {
+  const text = foldAgent(message);
+  const hits = siblings.filter((row) => {
+    const brand = foldAgent(row.brand ?? "");
+    if (brand && !text.includes(brand)) return false;
+    const size = sizeKey(row.presentation ?? "");
+    if (size && !textHasSize(text, size)) return false;
+    return true;
+  });
+  return hits.length === 1 && hits[0].id === product.id;
+}
+
+function optionsDiffer(products: AgentProduct[]): boolean {
+  if (products.length <= 1) return false;
+  const brands = new Set(products.map((product) => foldAgent(product.brand ?? "")).filter(Boolean));
+  const sizes = new Set(products.map((product) => sizeKey(product.presentation ?? "") || foldAgent(product.presentation ?? "")).filter(Boolean));
+  return brands.size > 1 || sizes.size > 1;
+}
+
+function searchContaining(searches: AgentSearchHit[], productId: number): AgentSearchHit | null {
+  for (let index = searches.length - 1; index >= 0; index -= 1) {
+    if (searches[index].products.some((product) => product.id === productId)) return searches[index];
+  }
+  return null;
+}
+
+function searchForText(searches: AgentSearchHit[], text: string): AgentSearchHit | null {
+  const tokens = foldAgent(normalizeGroceryWords(text))
+    .split(" ")
+    .filter((token) => token.length >= 4);
+  if (!tokens.length) return null;
+  for (let index = searches.length - 1; index >= 0; index -= 1) {
+    const query = foldAgent(searches[index].query);
+    if (tokens.some((token) => query.includes(token))) return searches[index];
+  }
+  return null;
+}
+
+function listedChoiceError(products: AgentProduct[]): string {
+  const labels = products.slice(0, 4).map(optionLabel).filter(Boolean);
+  const brands = new Set(products.map((product) => foldAgent(product.brand ?? "")).filter(Boolean));
+  const axis = brands.size > 1 ? "brand" : "size";
+  return `Hay varias opciones de verdad. Pregunta con ask_customer (axis ${axis}) y estas opciones: ${labels.join("; ")}. No elijas una tú.`;
+}
+
+function clarifyShortType(name: string, cart: AgentLine[]): { name: string; variant: string | null } | null {
+  const folded = foldAgent(name);
+  if (!/^(de\s+)?(harina|maiz)$/.test(folded)) return null;
+  const tortillas = cart.filter((line) => groceryFamily(`${line.name} ${line.freeText ?? ""}`) === "tortilla");
+  if (tortillas.length !== 1) return null;
+  if (/\bharina\b/.test(folded)) return { name: "Tortillas de harina", variant: "de harina" };
+  return { name: "Tortillas de maíz", variant: "de maíz" };
+}
+
 export function validateToolCall(params: {
   call: ToolCall;
   store: AgentStore;
@@ -78,8 +190,12 @@ export function validateToolCall(params: {
   cart: AgentLine[];
   pending: AgentPending | null;
   nextLineId: string;
+  searches?: AgentSearchHit[];
+  customerMessage?: string;
+  askedThisTurn?: boolean;
 }): ToolVerdict {
   const { call, store, products, cart, pending } = params;
+  const searches = params.searches ?? [];
   const args = call.arguments ?? {};
   if (args.store_id != null && Number(args.store_id) !== store.id) {
     return { ok: false, error: "No se cambia de tienda en este pedido. Sigue en la tienda actual." };
@@ -126,9 +242,17 @@ export function validateToolCall(params: {
         return { ok: false, error: "No hay versión marinada y normal de ese corte. No preguntes eso." };
       }
     }
+    const askedQty = Number(args.qty);
+    const askedUnit = asAgentUnit(args.unit);
     return {
       ok: true,
-      question: { question: text, candidateIds: ids, qty: null, unit: null, axis },
+      question: {
+        question: text,
+        candidateIds: ids,
+        qty: Number.isFinite(askedQty) && askedQty > 0 ? askedQty : null,
+        unit: askedUnit,
+        axis,
+      },
     };
   }
 
@@ -141,6 +265,13 @@ export function validateToolCall(params: {
     if (missingVariant) {
       return { ok: false, error: `A ${missingVariant.name} le falta el sabor o la variante. Pregúntalo o anótalo.` };
     }
+    if (store.catalogMode === "list" && store.category === "abarrotes" && !store.hasProductList) {
+      const vague = cart.find((line) => line.productId == null && groceryClarityError(line));
+      if (vague) {
+        const detail = groceryClarityError(vague);
+        return { ok: false, error: detail ?? `A ${vague.name} le falta marca, tipo o tamaño.` };
+      }
+    }
     return { ok: true, finished: true };
   }
 
@@ -148,19 +279,45 @@ export function validateToolCall(params: {
     return { ok: false, error: "Herramienta desconocida." };
   }
 
-  const qty = Number(args.qty);
-  const unit = asUnit(args.unit);
-  if (!unit) return { ok: false, error: "La unidad tiene que ser pz, kg, pesos o g." };
-  if (!saneQty(unit, qty)) return { ok: false, error: "La cantidad no es válida para esa unidad." };
-
-  const variantText = args.variant == null ? null : String(args.variant).trim() || null;
-  const note = args.note == null ? null : String(args.note).trim() || null;
+  let qty = Number(args.qty);
+  let unit = asAgentUnit(args.unit);
+  const variantText = clean(args.variant);
+  const noteText = clean(args.note);
+  const brandText = clean(args.brand);
+  const presentationText = clean(args.presentation);
+  const replaceId = clean(args.line_id);
   let productId = args.product_id == null ? null : Number(args.product_id);
   let freeText = args.free_text == null ? null : String(args.free_text).trim() || null;
   if (freeText && isOrderVerbOnly(freeText)) {
     return { ok: false, error: "«Pedí», «quiero» o «dame» no son un producto." };
   }
   if (freeText) freeText = stripOrderVerbs(freeText) || freeText;
+
+  let parsedName: string | null = null;
+  let parsedBrand: string | null = null;
+  let parsedPresentation: string | null = null;
+  let parsedVariant: string | null = variantText;
+  let parsedNote: string | null = noteText;
+  if (freeText && store.category === "abarrotes") {
+    const parsed = parseGroceryFreeText(freeText);
+    const clarified = clarifyShortType(parsed.name, cart);
+    parsedName = clarified?.name ?? parsed.name;
+    parsedVariant = clarified?.variant ?? parsed.variant ?? variantText;
+    parsedBrand = brandText ?? parsed.brand;
+    parsedPresentation = presentationText ?? parsed.presentation;
+    parsedNote = noteText ?? parsed.note;
+    const prior = cart.find(
+      (item) => item.productId == null && sameGroceryLine(item, { name: parsedName ?? "", freeText: parsedName }),
+    );
+    if (parsed.qty != null) qty = parsed.qty;
+    else if (prior) qty = prior.qty;
+    if (parsed.unit) unit = parsed.unit;
+    else if (prior && parsed.qty == null) unit = prior.unit;
+    freeText = parsedName || freeText;
+  }
+
+  if (!unit) return { ok: false, error: "La unidad tiene que ser pz, kg, pesos, g o l (litros)." };
+  if (!saneQty(unit, qty)) return { ok: false, error: "La cantidad no es válida para esa unidad." };
 
   if (store.category !== "abarrotes" && freeText && isGenericDogoText(freeText)) {
     const clasico = genericDogoProduct(products);
@@ -175,6 +332,17 @@ export function validateToolCall(params: {
     if (!product || !product.available) {
       return { ok: false, error: `El producto ${productId} no está en esta tienda.` };
     }
+    if (store.hasProductList) {
+      const already = cart.some((line) => line.productId === productId);
+      const hit = searchContaining(searches, productId);
+      if (!already && !hit) {
+        return { ok: false, error: "Busca con search_products antes de anotar ese producto." };
+      }
+      const siblings = hit?.products ?? [];
+      if (!already && optionsDiffer(siblings) && !messageSelects(product, siblings, params.customerMessage ?? "")) {
+        return { ok: false, error: listedChoiceError(siblings) };
+      }
+    }
     if (store.catalogMode === "fixed" && !(typeof product.price === "number" && product.price > 0)) {
       return { ok: false, error: `${product.name} no tiene precio. No lo anotes.` };
     }
@@ -182,18 +350,18 @@ export function validateToolCall(params: {
       return { ok: false, error: `${product.name} no se vende en ${unit}.` };
     }
     if (product.variants.length) {
-      const variant = matchVariant(product, variantText);
+      const variant = matchVariant(product, parsedVariant);
       if (!variant) {
         return { ok: false, error: `${product.name} necesita una de estas variantes: ${product.variants.join(", ")}.` };
       }
       return {
         ok: true,
-        line: lineFromProduct(params.nextLineId, product, qty, unit, variant, note),
+        line: lineFromProduct(params.nextLineId, product, qty, unit, variant, parsedNote, replaceId),
       };
     }
     return {
       ok: true,
-      line: lineFromProduct(params.nextLineId, product, qty, unit, null, note),
+      line: lineFromProduct(params.nextLineId, product, qty, unit, null, parsedNote, replaceId),
     };
   }
 
@@ -208,23 +376,46 @@ export function validateToolCall(params: {
       customerNote,
     };
   }
-  const name = freeText.replace(/\b\w/g, (letter) => letter.toUpperCase());
-  return {
-    ok: true,
-    line: {
-      lineId: params.nextLineId,
-      productId: null,
-      freeText,
-      name,
-      qty,
-      unit,
-      variant: variantText,
-      note,
-      unitPrice: null,
-      brand: null,
-      presentation: null,
-    },
+
+  const name = parsedName || freeText.replace(/\b\w/g, (letter) => letter.toUpperCase());
+  if (store.hasProductList) {
+    const hit = searchForText(searches, `${freeText} ${name}`);
+    if (!hit) {
+      return { ok: false, error: "Busca con search_products antes de anotar ese producto." };
+    }
+    if (hit.products.length === 1) {
+      return { ok: false, error: `Está en la lista. Anótalo con product_id ${hit.products[0].id} (${optionLabel(hit.products[0])}).` };
+    }
+    if (hit.products.length > 1) {
+      return { ok: false, error: listedChoiceError(hit.products) };
+    }
+    const alreadyAsked = params.askedThisTurn === true || Boolean(pending);
+    if (!alreadyAsked) {
+      return {
+        ok: false,
+        error: "No está en la lista. Pregunta con ask_customer u ofrece lo más cercano. Si el cliente lo quiere así, en el siguiente turno anótalo con free_text.",
+      };
+    }
+  }
+
+  const draft: AgentLine = {
+    lineId: replaceId || params.nextLineId,
+    productId: null,
+    freeText,
+    name,
+    qty,
+    unit,
+    variant: parsedVariant,
+    note: parsedNote,
+    unitPrice: null,
+    brand: parsedBrand,
+    presentation: parsedPresentation,
   };
+  if (!store.hasProductList) {
+    const clarity = groceryClarityError(draft);
+    if (clarity) return { ok: false, error: clarity };
+  }
+  return { ok: true, line: draft };
 }
 
 function lineFromProduct(
@@ -234,9 +425,10 @@ function lineFromProduct(
   unit: AgentUnit,
   variant: string | null,
   note: string | null,
+  replaceId: string | null,
 ): AgentLine {
   return {
-    lineId,
+    lineId: replaceId || lineId,
     productId: product.id,
     freeText: null,
     name: variant ? `${product.name} ${variant}` : product.name,
@@ -251,12 +443,16 @@ function lineFromProduct(
 }
 
 export function upsertLine(cart: AgentLine[], line: AgentLine): AgentLine[] {
-  const index = cart.findIndex((item) => {
-    if (line.productId != null && item.productId === line.productId && (item.variant ?? null) === (line.variant ?? null) && item.unit === line.unit) {
-      return true;
-    }
-    return line.freeText != null && item.freeText != null && foldAgent(item.freeText) === foldAgent(line.freeText);
-  });
+  const byId = cart.findIndex((item) => item.lineId === line.lineId);
+  const index = byId >= 0
+    ? byId
+    : cart.findIndex((item) => {
+        if (line.productId != null && item.productId === line.productId && (item.variant ?? null) === (line.variant ?? null) && item.unit === line.unit) {
+          return true;
+        }
+        if (line.freeText != null && item.freeText != null && foldAgent(item.freeText) === foldAgent(line.freeText)) return true;
+        return line.productId == null && item.productId == null && sameGroceryLine(item, line);
+      });
   if (index < 0) return [...cart, line];
   const next = cart.slice();
   next[index] = { ...line, lineId: cart[index].lineId };

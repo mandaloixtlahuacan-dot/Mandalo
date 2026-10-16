@@ -9,6 +9,7 @@ import type { AiOutput, CatalogModel } from "../src/lib/catalogOrder/types";
 import { storeSwitchFromCapture, type UxStore } from "../src/lib/customerUx";
 import {
   buildOrderAgentSystem,
+  itemsFromAgentLines,
   orderAgentEnabled,
   orderAgentEscalationModel,
   orderAgentModel,
@@ -21,6 +22,8 @@ import {
   type AgentStore,
   type ToolCall,
 } from "../src/lib/orderAgent";
+import { ADDRESS_ASK_MESSAGE } from "../src/lib/services/captureEngine";
+import { validateCaptureForConfirmation } from "../src/lib/services/validationEngine";
 import { listaSearchTokens } from "../src/lib/storeProductSearch";
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -601,6 +604,297 @@ async function main(): Promise<void> {
     if (store.category === "carniceria") assert(system.includes("marinada"), "carnicería solo pregunta marinada si existen las dos");
     if (store.category === "restaurante") assert(system.includes("Clásico"), "un dogo genérico es el Clásico");
   }
+
+  const aguaStore: AgentStore = {
+    id: 4,
+    name: "Abarrotes Agua Santa",
+    category: "abarrotes",
+    catalogMode: "list",
+    hasProductList: false,
+  };
+  const pedidoLargo =
+    "Me das 3 litros de leche 2 paquetes de tortillas de Arina 2 queso crema un kilo de de queso Chelita y un paquete de vaso de medida 16";
+  const aguaFirst = await runOrderAgentTurn({
+    message: pedidoLargo,
+    cart: [],
+    pending: null,
+    history: [],
+    store: aguaStore,
+    products: [],
+    model: scripted(
+      "agua",
+      [
+        {
+          toolCalls: [
+            tool("set_cart_line", { free_text: "3 litros de leche", qty: 3, unit: "litros" }, "leche"),
+            tool("set_cart_line", { free_text: "2 paquetes de tortillas de Arina", qty: 2, unit: "pz" }, "tortillas"),
+            tool("set_cart_line", { free_text: "2 queso crema", qty: 2, unit: "pz" }, "crema"),
+            tool("set_cart_line", { free_text: "un kilo de de queso Chelita", qty: 1, unit: "kg" }, "chelita"),
+            tool("set_cart_line", { free_text: "un paquete de vaso de medida 16", qty: 1, unit: "pz" }, "vaso"),
+            tool(
+              "ask_customer",
+              {
+                text: "La leche, ¿de qué marca y entera, deslactosada o light? El queso crema, ¿de qué marca y de qué presentación?",
+                axis: "brand",
+              },
+              "pregunta",
+            ),
+          ],
+        },
+      ],
+      [],
+    ),
+    logEvent: () => {},
+  });
+  assert(!aguaFirst.cart.some((item) => /leche/i.test(item.name)), "la leche sin marca no se anota");
+  assert(!aguaFirst.cart.some((item) => /crema/i.test(item.name) && !/chelita/i.test(item.name)), "el queso crema sin marca no se anota");
+  const tortillas = aguaFirst.cart.find((item) => /tortilla/i.test(item.name));
+  assert(tortillas?.name === "Tortillas de harina" && tortillas.qty === 2 && tortillas.variant === "de harina", "Arina queda en tortillas de harina, sin la cantidad en el nombre");
+  const chelita = aguaFirst.cart.find((item) => /chelita/i.test(item.name));
+  assert(chelita?.qty === 1 && chelita.unit === "kg" && !/de de|2 2/i.test(chelita.name), "el kilo de queso Chelita se anota limpio");
+  const vaso = aguaFirst.cart.find((item) => /vaso/i.test(item.name));
+  assert(vaso?.name === "Vaso de medida 16" && vaso.presentation === "paquete", "el vaso 16 se anota como lo dijo");
+  assert(aguaFirst.reply.includes("marca"), "en un turno se pregunta lo que falta");
+  assert(!aguaFirst.reply.includes("2 2"), "el resumen no duplica la cantidad");
+
+  const aguaSecond = await runOrderAgentTurn({
+    message: "Leche Lala entera y queso crema Philadelphia de 190 gramos",
+    cart: aguaFirst.cart,
+    pending: aguaFirst.pending,
+    history: [
+      { role: "user", text: pedidoLargo },
+      { role: "assistant", text: aguaFirst.reply },
+    ],
+    store: aguaStore,
+    products: [],
+    model: scripted(
+      "agua-2",
+      [
+        {
+          toolCalls: [
+            tool("set_cart_line", { free_text: "3 litros de leche Lala entera", qty: 1, unit: "pz" }, "leche-ok"),
+            tool("set_cart_line", { free_text: "2 queso crema Philadelphia de 190 gramos", qty: 1, unit: "pz" }, "crema-ok"),
+            tool("finish_cart", {}, "fin"),
+          ],
+        },
+      ],
+      [],
+    ),
+    logEvent: () => {},
+  });
+  const leche = aguaSecond.cart.find((item) => /leche/i.test(item.name));
+  assert(leche?.qty === 3 && leche.unit === "l" && leche.brand === "Lala" && leche.variant === "entera", "la leche se queda en 3 L, Lala entera");
+  const crema = aguaSecond.cart.find((item) => /crema/i.test(item.name));
+  assert(crema?.qty === 2 && crema.brand === "Philadelphia" && !/2 2/.test(crema.name), "el queso crema queda Philadelphia, sin 2 2");
+  assert(aguaSecond.reply.includes("¿Están bien estos productos?"), "el resumen usa la lista de abarrotes");
+  assert(aguaSecond.reply.includes("*") && aguaSecond.reply.includes("3 litros"), "el ticket lleva negritas y los 3 litros");
+  assert(!aguaSecond.reply.includes("2 2") && !aguaSecond.reply.includes("de de"), "el ticket no repite cantidades ni el tropiezo");
+
+  const aguaSi = await runOrderAgentTurn({
+    message: "sí",
+    cart: aguaSecond.cart,
+    pending: null,
+    history: [],
+    store: aguaStore,
+    products: [],
+    awaitingList: true,
+    model: {
+      name: "no",
+      async complete() {
+        throw new Error("el sí no debía llamar al modelo");
+      },
+    },
+    logEvent: () => {},
+  });
+  assert(aguaSi.confirmedList === true, "el sí confirma la lista de Agua Santa");
+  const aguaItems = itemsFromAgentLines(aguaSi.cart);
+  const aguaConfirm = validateCaptureForConfirmation({
+    snapshot: {
+      businessId: aguaStore.id,
+      businessName: aguaStore.name,
+      storeKind: "abarrotes",
+      items: aguaItems,
+      flags: { productosConfirmados: true, awaitingProductConfirm: false, agentCart: true },
+    },
+    items: aguaItems,
+    quoteStore: false,
+    userMessage: "sí",
+    storeKind: "abarrotes",
+  });
+  const aguaAsk = aguaConfirm.issues.find((issue) => issue.customerQuestion)?.customerQuestion ?? "";
+  assert(aguaAsk.includes("ubicación por GPS") && aguaAsk === ADDRESS_ASK_MESSAGE, "el sí pasa a la ubicación");
+  assert(!/maiz|harina/i.test(aguaAsk), "confirmar no vuelve a preguntar maíz o harina");
+
+  const harina = validateToolCall({
+    call: tool("set_cart_line", { free_text: "de harina", qty: 1, unit: "pz" }),
+    store: aguaStore,
+    products: [],
+    cart: [line({ lineId: "l1", name: "Tortillas", freeText: "Tortillas", qty: 2, unit: "pz", presentation: "paquete" })],
+    pending: null,
+    nextLineId: "l2",
+  });
+  assert(harina.ok && "line" in harina && harina.line?.name === "Tortillas de harina" && harina.line.qty === 2, "de harina renombra la línea y conserva los 2");
+  const cualquiera = validateToolCall({
+    call: tool("set_cart_line", { free_text: "3 litros de leche la que sea", qty: 1, unit: "pz" }),
+    store: aguaStore,
+    products: [],
+    cart: [],
+    pending: null,
+    nextLineId: "l1",
+  });
+  assert(cualquiera.ok && "line" in cualquiera && cualquiera.line?.unit === "l" && cualquiera.line.qty === 3, "la que sea anota la leche sin volver a preguntar");
+
+  const pekesListed: AgentStore = { ...pekesStore, hasProductList: true };
+  const listedProducts: AgentProduct[] = [
+    product({ id: 101, name: "Leche", brand: "Lala", presentation: "1 litro" }),
+    product({ id: 102, name: "Leche", brand: "Alpura", presentation: "1 litro" }),
+    product({ id: 103, name: "Leche", brand: "Santa Clara", presentation: "1.5 litros" }),
+    product({ id: 104, name: "Tortillas de harina", brand: "Tía Rosa", presentation: "paquete" }),
+    product({ id: 105, name: "Tortillas de harina", brand: "Don Julio", presentation: "paquete" }),
+    product({ id: 106, name: "Queso crema", brand: "Lala", presentation: "190 g" }),
+    product({ id: 107, name: "Queso crema", brand: "Philadelphia", presentation: "190 g" }),
+    product({ id: 108, name: "Queso Chelita", brand: "Chelita", presentation: "kilo" }),
+    product({ id: 109, name: "Vaso de medida 16", brand: null, presentation: "paquete" }),
+  ];
+  const fold = (value: string) =>
+    value
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/\p{Diacritic}/gu, "");
+  const searchListed = (query: string): AgentProduct[] => {
+    const tokens = fold(query).split(/\s+/).filter((token) => token.length >= 4);
+    return listedProducts.filter((item) => {
+      const hay = fold(`${item.name} ${item.brand ?? ""} ${item.presentation ?? ""}`);
+      return tokens.some((token) => hay.includes(token));
+    });
+  };
+  const withoutSearch = validateToolCall({
+    call: tool("set_cart_line", { product_id: 101, qty: 3, unit: "l" }),
+    store: pekesListed,
+    products: listedProducts,
+    cart: [],
+    pending: null,
+    nextLineId: "l1",
+    searches: [],
+    customerMessage: pedidoLargo,
+  });
+  assert(withoutSearch.ok === false, "Peke's no anota sin buscar");
+
+  const pekesFirst = await runOrderAgentTurn({
+    message: pedidoLargo,
+    cart: [],
+    pending: null,
+    history: [],
+    store: pekesListed,
+    products: [],
+    search: searchListed,
+    model: scripted(
+      "pekes-lista",
+      [
+        {
+          toolCalls: [
+            tool("search_products", { query: "leche" }, "b-leche"),
+            tool("search_products", { query: "tortillas de harina" }, "b-tortilla"),
+            tool("search_products", { query: "queso crema" }, "b-crema"),
+            tool("search_products", { query: "queso Chelita" }, "b-chelita"),
+            tool("search_products", { query: "vaso medida" }, "b-vaso"),
+            tool("set_cart_line", { product_id: 101, qty: 3, unit: "l" }, "set-leche"),
+            tool("set_cart_line", { product_id: 104, qty: 2, unit: "pz" }, "set-tortilla"),
+            tool("set_cart_line", { product_id: 107, qty: 2, unit: "pz" }, "set-crema"),
+            tool("set_cart_line", { product_id: 108, qty: 1, unit: "kg" }, "set-chelita"),
+            tool("set_cart_line", { product_id: 109, qty: 1, unit: "pz" }, "set-vaso"),
+            tool(
+              "ask_customer",
+              {
+                text: "La leche, ¿Lala de 1 litro, Alpura de 1 litro o Santa Clara de 1.5 litros, y entera o deslactosada? Las tortillas de harina, ¿Tía Rosa o Don Julio? El queso crema, ¿Lala o Philadelphia?",
+                candidate_ids: [101, 102, 103, 104, 105, 106, 107],
+                axis: "brand",
+              },
+              "opciones",
+            ),
+          ],
+        },
+      ],
+      [],
+    ),
+    logEvent: () => {},
+  });
+  assert(!pekesFirst.cart.some((item) => item.productId === 101 || item.productId === 104 || item.productId === 107), "con varias marcas no se elige una sola");
+  assert(pekesFirst.cart.some((item) => item.productId === 108 && item.unit === "kg"), "el queso Chelita de la lista sí se anota");
+  assert(pekesFirst.cart.some((item) => item.productId === 109), "el vaso 16 de la lista sí se anota");
+  assert(pekesFirst.reply.includes("Lala") && pekesFirst.reply.includes("Tía Rosa"), "la pregunta usa opciones reales de la lista");
+
+  async function pickListed(message: string, cart: AgentLine[], productId: number, qty: number, unit: string, query: string) {
+    return runOrderAgentTurn({
+      message,
+      cart,
+      pending: null,
+      history: [],
+      store: pekesListed,
+      products: [],
+      search: searchListed,
+      model: scripted(
+        "pekes-elige",
+        [
+          {
+            toolCalls: [
+              tool("search_products", { query }, "busca"),
+              tool("set_cart_line", { product_id: productId, qty, unit }, "anota"),
+              tool("finish_cart", {}, "fin"),
+            ],
+          },
+        ],
+        [],
+      ),
+      logEvent: () => {},
+    });
+  }
+  const pekesMilk = await pickListed("Lala de 1 litro entera", pekesFirst.cart, 101, 3, "l", "leche");
+  assert(pekesMilk.cart.some((item) => item.productId === 101 && item.qty === 3 && item.unit === "l"), "la Lala de 1 litro queda en 3 L");
+  const pekesTortilla = await pickListed("Tía Rosa", pekesMilk.cart, 104, 2, "pz", "tortillas de harina");
+  assert(pekesTortilla.cart.some((item) => item.productId === 104 && item.qty === 2), "las tortillas quedan en Tía Rosa");
+  const pekesCrema = await pickListed("Philadelphia", pekesTortilla.cart, 107, 2, "pz", "queso crema");
+  assert(pekesCrema.cart.some((item) => item.productId === 107 && item.qty === 2), "el queso crema queda en Philadelphia");
+  assert(pekesCrema.reply.includes("¿Están bien estos productos?") && pekesCrema.reply.includes("3 litros"), "Peke's lista el pedido con los 3 litros");
+  assert(!pekesCrema.reply.includes("2 2"), "Peke's tampoco arma un 2 2");
+  const pekesSi = await runOrderAgentTurn({
+    message: "sí",
+    cart: pekesCrema.cart,
+    pending: null,
+    history: [],
+    store: pekesListed,
+    products: listedProducts,
+    awaitingList: true,
+    model: {
+      name: "no",
+      async complete() {
+        throw new Error("el sí no debía llamar al modelo");
+      },
+    },
+    logEvent: () => {},
+  });
+  assert(pekesSi.confirmedList === true, "el sí confirma la lista de Peke's");
+  const pekesItems = itemsFromAgentLines(pekesSi.cart);
+  const pekesConfirm = validateCaptureForConfirmation({
+    snapshot: {
+      businessId: pekesListed.id,
+      businessName: pekesListed.name,
+      storeKind: "abarrotes",
+      items: pekesItems,
+      flags: { productosConfirmados: true, awaitingProductConfirm: false, agentCart: true },
+    },
+    items: pekesItems,
+    quoteStore: false,
+    userMessage: "sí",
+    storeKind: "abarrotes",
+  });
+  const pekesAsk = pekesConfirm.issues.find((issue) => issue.customerQuestion)?.customerQuestion ?? "";
+  assert(pekesAsk === ADDRESS_ASK_MESSAGE, "el sí de Peke's pasa a la ubicación");
+
+  const aguaPrompt = buildOrderAgentSystem(aguaStore, []);
+  const pekesPrompt = buildOrderAgentSystem(pekesListed, []);
+  assert(aguaPrompt.includes("no tiene lista") && aguaPrompt.includes("La que sea"), "Agua Santa pregunta lo genérico y acepta la que sea");
+  assert(pekesPrompt.includes("tiene lista") && pekesPrompt.includes("obligatorio"), "Peke's obliga a buscar antes de anotar");
 
   const priced = centralTurn.reply;
   assert(priced.includes("*"), "el ticket usa negritas de WhatsApp");

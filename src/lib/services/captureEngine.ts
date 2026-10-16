@@ -55,6 +55,8 @@ export type PedidoSnapshot = {
     awaitingProductConfirm?: boolean;
     // Correcciones seguidas que no cambiaron la lista. Al llegar a 2 se dice cómo reiniciar.
     correccionesSinCambio?: number;
+    // El carrito lo armó el agente. Al confirmar no se vuelve a pasar por la claridad vieja.
+    agentCart?: boolean;
   };
   raw?: JsonObject;
 };

@@ -7,7 +7,7 @@ export const ORDER_AGENT_TOOLS: Array<{ name: ToolName; description: string }> =
   },
   {
     name: "set_cart_line",
-    description: "Anota o corrige una línea. product_id si está en la tienda; free_text solo en abarrotes cuando no está.",
+    description: "Anota o corrige una línea. product_id si está en la lista; free_text solo en abarrotes sin lista, o después de preguntar si no está. La cantidad no va en el nombre. unit l es litros.",
   },
   {
     name: "remove_line",
@@ -47,10 +47,13 @@ export function orderAgentToolSchema(): unknown[] {
           type: "object",
           properties: {
             product_id: { type: "number" },
+            line_id: { type: "string" },
             free_text: { type: "string" },
             qty: { type: "number" },
-            unit: { type: "string", enum: ["pz", "kg", "pesos", "g"] },
+            unit: { type: "string", enum: ["pz", "kg", "pesos", "g", "l", "litros"] },
             variant: { type: "string" },
+            brand: { type: "string" },
+            presentation: { type: "string" },
             note: { type: "string" },
             store_id: { type: "number" },
           },
@@ -86,6 +89,8 @@ export function orderAgentToolSchema(): unknown[] {
             text: { type: "string" },
             candidate_ids: { type: "array", items: { type: "number" } },
             axis: { type: "string", enum: ["number", "size", "flavor", "marinade", "brand"] },
+            qty: { type: "number" },
+            unit: { type: "string", enum: ["pz", "kg", "pesos", "g", "l", "litros"] },
           },
           required: ["text"],
           additionalProperties: false,

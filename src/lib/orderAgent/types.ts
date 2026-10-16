@@ -2,7 +2,7 @@
 
 export type OrderCategory = "abarrotes" | "restaurante" | "carniceria";
 
-export type AgentUnit = "pz" | "kg" | "pesos" | "g";
+export type AgentUnit = "pz" | "kg" | "pesos" | "g" | "l";
 
 export type AgentLine = {
   lineId: string;
@@ -37,6 +37,8 @@ export type AgentStore = {
   category: OrderCategory;
   /** list = abarrotes que cotiza. fixed = menú con precio. */
   catalogMode: "list" | "fixed";
+  /** true cuando la tienda tiene usa_lista_productos (Mini Super Peke's). */
+  hasProductList?: boolean;
 };
 
 export type PendingAxis = "number" | "size" | "flavor" | "marinade" | "brand" | null;

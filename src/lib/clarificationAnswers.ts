@@ -33,6 +33,10 @@ export type PendingAsk = {
     question: string;
     count: number;
   } | null;
+  /** Litros y el eje de la pregunta del agente. El menú cerrado no los usa. */
+  agentUnit?: "pz" | "kg" | "pesos" | "g" | "l" | null;
+  agentQty?: number | null;
+  agentAxis?: "number" | "size" | "flavor" | "marinade" | "brand" | null;
 };
 
 export type QuoteTurn = {

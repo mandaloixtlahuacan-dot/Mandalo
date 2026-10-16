@@ -2,7 +2,19 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 15 de octubre de 2026. Auditoría previa al
+> Última actualización: 16 de octubre de 2026. La prueba en vivo de
+> Abarrotes Agua Santa (15 de octubre, 6:47–6:52 pm) no preguntó marca
+> ni tamaño, armó nombres como «2 2 Queso Crema», soltó la leche y, al
+> confirmar, volvió a preguntar maíz o harina hasta quedarse en silencio.
+> El borrador corrige eso: con lista (Peke's) hay que buscar antes de
+> anotar y preguntar las opciones reales; sin lista, lo genérico pregunta
+> marca, tipo o tamaño y lo específico se anota. Litros, marca y
+> presentación se guardan. El sí de un carrito del agente pide la
+> ubicación. Un número o un «está bien» contestan la pregunta pendiente.
+> Si el mismo aviso se bloquea en 60 s, sale un texto distinto una vez.
+> Prueba offline: `scripts/check-order-agent.ts`. No está mergeado ni
+> desplegado.
+> Actualización anterior: 15 de octubre de 2026. Auditoría previa al
 > deploy, en el mismo borrador del PR #44, sin merge y sin deploy.
 > Un eco del aviso a la tienda (trae `PRECIO 150` y `NO_DISPONIBLE
 > nombre del producto`) ya no se cotiza ni se marca como faltante.

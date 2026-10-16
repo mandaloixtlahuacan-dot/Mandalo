@@ -103,6 +103,8 @@ export type FlowRouteInput = {
   items: FlowCartLine[];
   lastBotText: string;
   awaitingProductConfirm: boolean;
+  /** El agente acaba de preguntar marca, tamaño o cantidad. La respuesta corta es para él. */
+  agentPending?: boolean;
   media: CustomerMedia;
   locationInsideCoverage: boolean | null;
   /** Falso solo cuando el tipo era location y no traía coordenadas. */
@@ -662,6 +664,17 @@ export function routeCustomerFlow(input: FlowRouteInput): FlowDecision {
     if (!nicheId) return withReprompt(input, "Va, elige de nuevo.", "reprompt");
     const had = input.store != null;
     return showNiche(input, nicheId, had);
+  }
+
+  if (
+    input.agentPending &&
+    !input.awaitingProductConfirm &&
+    (input.phase === "pedido" || input.phase === "ejemplo")
+  ) {
+    const words = text.split(" ").filter(Boolean);
+    if (words.length > 0 && words.length <= 8) {
+      return fallthrough({ ...input, phase: "pedido" }, "agent");
+    }
   }
 
   const number = bareNumber(message);
