@@ -4,7 +4,7 @@ import { createOpenAIOrderAgentModel } from "@/lib/orderAgent/model";
 import { resolveAgentPending } from "@/lib/orderAgent/pending";
 import { buildOrderAgentSystem } from "@/lib/orderAgent/prompt";
 import { renderAgentReply } from "@/lib/orderAgent/reply";
-import { upsertLine, validateToolCall } from "@/lib/orderAgent/validate";
+import { upsertLine, validateToolCall, type AgentSearchHit } from "@/lib/orderAgent/validate";
 import type {
   AgentLine,
   AgentModel,
@@ -125,14 +125,8 @@ export async function runOrderAgentTurn(input: OrderAgentTurnInput): Promise<Ord
         confirmedList: false,
       });
     }
-    if (broadYes(input.message)) {
-      return finish({
-        cart,
-        pending,
-        reply: pending.question,
-        confirmedList: false,
-      });
-    }
+    // «2», «está bien» o «de harina» contestan la pregunta. No se repite:
+    // el tope de 60 s tiraba el duplicado y el cliente se quedaba en silencio.
   }
 
   const resolved = resolveAgentModels(input);
@@ -154,7 +148,10 @@ export async function runOrderAgentTurn(input: OrderAgentTurnInput): Promise<Ord
   let question: string | null = null;
   let aside: string | null = null;
   let finished = false;
+  let changed = false;
+  let askedThisTurn = false;
   const repairErrors: string[] = [];
+  const searches: AgentSearchHit[] = [];
 
   const find = async (query: string): Promise<AgentProduct[]> => {
     const cleaned = stripOrderVerbs(query);
@@ -196,6 +193,9 @@ export async function runOrderAgentTurn(input: OrderAgentTurnInput): Promise<Ord
         cart,
         pending,
         nextLineId: `l${seq}`,
+        searches,
+        customerMessage: input.message,
+        askedThisTurn,
       });
       if (!verdict.ok) {
         failures += 1;
@@ -212,15 +212,23 @@ export async function runOrderAgentTurn(input: OrderAgentTurnInput): Promise<Ord
       }
       if (call.name === "search_products") {
         const found = await find(String(call.arguments.query ?? ""));
+        searches.push({ query: String(call.arguments.query ?? ""), products: found });
         trace.push({ call, ok: true, result: found.map(publicProduct) });
         continue;
       }
       trace.push({ call, ok: true, result: { ok: true } });
-      if (verdict.line) cart = upsertLine(cart, verdict.line);
-      if (verdict.removedId) cart = cart.filter((line) => line.lineId !== verdict.removedId);
+      if (verdict.line) {
+        cart = upsertLine(cart, verdict.line);
+        changed = true;
+      }
+      if (verdict.removedId) {
+        cart = cart.filter((line) => line.lineId !== verdict.removedId);
+        changed = true;
+      }
       if (verdict.question) {
         question = verdict.question.question;
         pending = verdict.question;
+        askedThisTurn = true;
       }
       if (verdict.finished) finished = true;
     }
@@ -228,6 +236,7 @@ export async function runOrderAgentTurn(input: OrderAgentTurnInput): Promise<Ord
   }
 
   if (question) finished = false;
+  if (changed && !question) pending = null;
   const reply = renderAgentReply({
     store: input.store,
     cart,

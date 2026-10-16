@@ -11,6 +11,7 @@ import {
 } from "../src/lib/inboundMessage";
 import { ADDRESS_ASK_MESSAGE } from "../src/lib/services/captureEngine";
 import {
+  customerFlowFallback,
   outboundDecision,
   recordOutbound,
   resetOutboundGuard,
@@ -274,6 +275,15 @@ resetOutboundGuard();
 assert(outboundDecision(customer, WEBHOOK_PROCESS_ERROR_REPLY, now) === "send", "el aviso de error sale la primera vez");
 recordOutbound(customer, WEBHOOK_PROCESS_ERROR_REPLY, now);
 assert(outboundDecision(customer, WEBHOOK_PROCESS_ERROR_REPLY, now + 1000) === "duplicate", "el aviso de error sale una vez");
+const listAgain = "OK, pediste:\n\n🛒 *Tu pedido*\n\n*¿Están bien estos productos?*";
+const listFallback = customerFlowFallback(listAgain);
+assert(listFallback != null && listFallback !== listAgain && listFallback.includes("sí"), "una lista repetida se vuelve a pedir con otro texto");
+assert(customerFlowFallback(listFallback ?? "") === null, "el aviso distinto sale una sola vez");
+const brandAsk = "Va. La leche, ¿de qué marca y entera, deslactosada o light?";
+const brandFallback = customerFlowFallback(brandAsk);
+assert(brandFallback != null && brandFallback !== brandAsk && /marca|tamaño|número/.test(brandFallback), "una pregunta repetida no se queda en silencio");
+const pinFallback = customerFlowFallback(ADDRESS_ASK_MESSAGE);
+assert(pinFallback != null && pinFallback !== ADDRESS_ASK_MESSAGE && pinFallback.includes("pin"), "la ubicación repetida pide el pin con otras palabras");
 
 const phases: CustomerFlowPhase[] = ["categoria", "tienda", "ejemplo", "pedido", "ubicacion", "resumen", "esperando_tienda", "esperando_repartidor", "precio"];
 for (const phase of phases) {

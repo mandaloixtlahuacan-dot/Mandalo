@@ -594,6 +594,14 @@ export async function loadListaProductosSiActiva(
   }));
 }
 
+export async function tiendaUsaListaProductos(tiendaId: number): Promise<boolean> {
+  try {
+    return await listaEstaActiva(getSupabaseAdmin() as unknown as ListaSupabase, tiendaId);
+  } catch {
+    return false;
+  }
+}
+
 export async function getListaProductosSiActiva(tiendaId: number, queryText?: string | null) {
   try {
     return await loadListaProductosSiActiva(getSupabaseAdmin() as unknown as ListaSupabase, tiendaId, queryText);

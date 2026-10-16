@@ -10,14 +10,21 @@ const SHARED = [
   "Una respuesta corta («grande», «2», «normal», «Pepsi») contesta la pregunta que acabas de hacer. No la repitas.",
 ].join("\n");
 
-const BY_CATEGORY: Record<OrderCategory, string> = {
-  abarrotes: [
+function abarrotesRules(hasProductList: boolean): string {
+  return [
     "Abarrotes. La tienda cotiza: no hay precio fijo.",
     "Busca con search_products antes de preguntar.",
+    hasProductList
+      ? "Esta tienda tiene lista. search_products es obligatorio antes de cada set_cart_line. Si hay varias marcas o tamaños, ask_customer con esas opciones reales (axis brand o size). Si no está, ofrece lo más cercano o, después de preguntar, anótalo con free_text."
+      : "Esta tienda no tiene lista. Leche, tortillas, queso, refresco, aceite, jabón y papel: pregunta la marca, el tipo o el tamaño si el cliente no lo dijo. No repitas lo que ya dijo. «La que sea» y «cualquiera» se anotan. Un abarrotes que no es genérico se anota como lo dijo.",
     "Si hay una sola opción clara, anótala con set_cart_line.",
     "Si hay varias, ofrece 2 a 4 de verdad, con marca y tamaño, en un solo ask_customer.",
-    "Si no está en la lista, anótalo con free_text tal como lo dijo el cliente.",
-  ].join("\n"),
+    "La cantidad no va en el nombre. Los litros van con unit l. Guarda brand y presentation.",
+    "Si el cliente aclara una línea (de harina, la marca, el tamaño), actualiza esa línea. No abras otra.",
+  ].join("\n");
+}
+
+const BY_CATEGORY: Record<Exclude<OrderCategory, "abarrotes">, string> = {
   restaurante: [
     "Restaurante de menú cerrado. Solo se vende lo que está en el menú y tiene precio.",
     "Si no está, no lo anotes. Di que no lo manejamos y ofrece lo más cercano que sí esté.",
@@ -35,15 +42,16 @@ const BY_CATEGORY: Record<OrderCategory, string> = {
   ].join("\n"),
 };
 
-export function categoryRules(category: OrderCategory): string {
-  return `${SHARED}\n${BY_CATEGORY[category]}`;
+export function categoryRules(category: OrderCategory, hasProductList = false): string {
+  const rules = category === "abarrotes" ? abarrotesRules(hasProductList) : BY_CATEGORY[category];
+  return `${SHARED}\n${rules}`;
 }
 
 export function buildOrderAgentSystem(store: AgentStore, cart: AgentLine[]): string {
   return [
-    categoryRules(store.category),
+    categoryRules(store.category, store.hasProductList === true),
     "",
-    `Tienda: ${store.name} (id ${store.id}, ${store.category}, ${store.catalogMode === "fixed" ? "menú con precio" : "lista sin precio"}).`,
+    `Tienda: ${store.name} (id ${store.id}, ${store.category}, ${store.catalogMode === "fixed" ? "menú con precio" : store.hasProductList ? "lista de productos" : "sin lista de productos"}).`,
     "Carrito actual, en JSON. Si el cliente no quitó una línea, sigue aquí:",
     JSON.stringify(cart),
   ].join("\n");

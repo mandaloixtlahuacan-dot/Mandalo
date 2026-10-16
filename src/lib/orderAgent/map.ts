@@ -18,10 +18,22 @@ export function agentProductsFromCatalog(catalog: CatalogSnapshot): AgentProduct
 }
 
 function agentUnit(unit: string | null | undefined): AgentUnit {
-  if (unit === "kg" || unit === "kilo" || unit === "kilos") return "kg";
-  if (unit === "pesos") return "pesos";
-  if (unit === "g") return "g";
+  const text = String(unit ?? "").trim().toLowerCase();
+  if (text === "kg" || text === "kilo" || text === "kilos") return "kg";
+  if (text === "pesos") return "pesos";
+  if (text === "g" || text === "gr" || text === "gramo" || text === "gramos") return "g";
+  if (text === "l" || text === "lt" || text === "lts" || text === "litro" || text === "litros") return "l";
   return "pz";
+}
+
+function packFromUnit(unit: string | null | undefined): string | null {
+  const text = String(unit ?? "").trim().toLowerCase();
+  if (text === "paquete" || text === "paquetes") return "paquete";
+  if (text === "bolsa" || text === "bolsas") return "bolsa";
+  if (text === "caja" || text === "cajas") return "caja";
+  if (text === "botella" || text === "botellas") return "botella";
+  if (text === "lata" || text === "latas") return "lata";
+  return null;
 }
 
 export function agentLinesFromCatalogCart(cart: CartLine[], catalog: CatalogSnapshot): AgentLine[] {
@@ -98,6 +110,6 @@ export function agentLinesFromItems(items: PedidoItemInput[]): AgentLine[] {
     note: item.notas ?? null,
     unitPrice: null,
     brand: item.marca ?? null,
-    presentation: item.presentacion ?? null,
+    presentation: item.presentacion ?? packFromUnit(item.unidad),
   }));
 }

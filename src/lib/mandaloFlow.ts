@@ -4,7 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getChatCompletion, getOpenAIModel } from "@/lib/openaiClient";
 import { buildMandaloSystemPrompt } from "@/lib/mandaloPrompt";
 import { normalizeWhatsAppText, waapiSendImage, waapiSendText } from "@/lib/waapi";
-import { outboundSendsLeft } from "@/lib/outboundGuard";
+import { customerFlowFallback, outboundSendsLeft } from "@/lib/outboundGuard";
 import { detectActorByPhone, ensureMxWhatsappIntl, normalizePhone } from "@/lib/roles";
 import { priceCatalogOrder, type CatalogPriceRow } from "@/lib/catalogQuantities";
 import {
@@ -717,7 +717,14 @@ async function getCurrentOrderStateForAgent(telefono: string): Promise<JsonObjec
 }
 
 async function sendWhatsApp(to: string, body: string): Promise<void> {
-  await waapiSendText({ to, body: normalizeWhatsAppText(body) });
+  const text = normalizeWhatsAppText(body);
+  const data = await waapiSendText({ to, body: text });
+  if (!data || typeof data !== "object") return;
+  const row = data as { suppressed?: boolean; reason?: string };
+  if (row.suppressed !== true || row.reason !== "duplicate") return;
+  const fallback = customerFlowFallback(text);
+  if (!fallback || fallback === text) return;
+  await waapiSendText({ to, body: fallback });
 }
 
 async function sendCatalogMenu(to: string, store: UxStore, caption: string): Promise<void> {
@@ -1007,11 +1014,12 @@ async function handleAwaitingProductList(
       snapshot.latitud = ubicacionCoords.latitude;
       snapshot.longitud = ubicacionCoords.longitude;
     }
+    const agentCart = orderAgentEnabled() && pedido.snapshot_json.flags?.agentCart === true;
     const validation = validationEngine.validateCaptureForConfirmation({
       snapshot,
       items: snapshot.items ?? [],
       knownZoneNames,
-      quoteStore: true,
+      quoteStore: !agentCart,
       userMessage: mensaje,
       priorItems: pedido.snapshot_json.items ?? [],
       storeKind: pedido.snapshot_json.storeKind ?? "abarrotes",
@@ -1081,12 +1089,13 @@ async function handleAwaitingProductList(
 
   const full = await pedidoRepositoryV2.getPedidoById(pedido.id).catch(() => null);
   const catalog = full?.tienda?.usaCatalogoFijo === true;
+  const agentCart = orderAgentEnabled() && pedido.snapshot_json.flags?.agentCart === true;
   const knownZoneNames = await fetchZonasCobertura();
   const validation = validationEngine.validateCaptureForConfirmation({
     snapshot,
     items: snapshot.items ?? [],
     knownZoneNames,
-    quoteStore: !catalog,
+    quoteStore: !catalog && !agentCart,
     userMessage: "",
   });
   const nextState = validation.readyForConfirmation ? "confirmacion_cliente" : "seleccion_productos";
@@ -2302,6 +2311,8 @@ async function handleOrderAgentQuoteTurn(
 
   const historial = await fetchHistorialReciente(telefono, 8).catch(() => []);
   const pendingAsk = pedido.snapshot_json.pendingAsk;
+  const hasProductList = await pedidoRepositoryV2.tiendaUsaListaProductos(full.tienda.tiendaId).catch(() => false);
+  const pendingUnit = pendingAsk?.agentUnit;
   const agent = await runOrderAgentTurn({
     message: text,
     cart: agentLinesFromItems(pedido.snapshot_json.items ?? []),
@@ -2309,9 +2320,14 @@ async function handleOrderAgentQuoteTurn(
       ? {
           question: pendingAsk.question,
           candidateIds: pendingAsk.catalog?.candidateIds ?? [],
-          qty: pendingAsk.catalog?.qty ?? null,
-          unit: pendingAsk.catalog?.unit === "kg" || pendingAsk.catalog?.unit === "pesos" ? pendingAsk.catalog.unit : "pz",
-          axis: null,
+          qty: pendingAsk.agentQty ?? pendingAsk.catalog?.qty ?? null,
+          unit:
+            pendingUnit === "kg" || pendingUnit === "pesos" || pendingUnit === "g" || pendingUnit === "l" || pendingUnit === "pz"
+              ? pendingUnit
+              : pendingAsk.catalog?.unit === "kg" || pendingAsk.catalog?.unit === "pesos"
+                ? pendingAsk.catalog.unit
+                : "pz",
+          axis: pendingAsk.agentAxis ?? null,
         }
       : null,
     history: historial
@@ -2327,6 +2343,7 @@ async function handleOrderAgentQuoteTurn(
       name: full.tienda.nombre ?? "la tienda",
       category: "abarrotes",
       catalogMode: "list",
+      hasProductList,
     },
     products: [],
     search: async (query) => {
@@ -2363,6 +2380,9 @@ async function handleOrderAgentQuoteTurn(
           count: 1,
           mode: "ask" as const,
           catalog: catalogPendingFromAgent(agent.pending),
+          agentUnit: agent.pending.unit,
+          agentQty: agent.pending.qty,
+          agentAxis: agent.pending.axis,
         }
       : null,
     flags: {
@@ -2370,6 +2390,7 @@ async function handleOrderAgentQuoteTurn(
       productosConfirmados: agent.confirmedList,
       awaitingProductConfirm: showedList,
       itemsValidated: agent.cart.length > 0 && !agent.pending,
+      agentCart: true,
     },
   };
   if (ubicacionCoords) {
@@ -2746,6 +2767,7 @@ async function steerCustomerFlow(params: {
       .filter((item) => item.nombre_producto),
     lastBotText,
     awaitingProductConfirm: snapshot?.flags?.awaitingProductConfirm === true,
+    agentPending: Boolean(snapshot?.pendingAsk?.question),
     media,
     locationInsideCoverage: media === "location" && params.ubicacionCoords ? isWithinCoverageArea(params.ubicacionCoords) : null,
     locationHasCoords: media === "location" ? Boolean(params.ubicacionCoords) : true,
@@ -3061,7 +3083,8 @@ async function handleClienteMessage(
       openPedido.snapshot_json.latitud == null &&
       !String(openPedido.snapshot_json.addressText ?? "").trim();
     const replyKind = classifyProductListReply(mensaje);
-    if ((onList && replyKind !== "ignore") || (waitingAddress && (replyKind === "relist" || replyKind === "revise"))) {
+    const agentRevise = orderAgentEnabled() && flags?.agentCart === true && replyKind === "revise";
+    if (!agentRevise && ((onList && replyKind !== "ignore") || (waitingAddress && (replyKind === "relist" || replyKind === "revise")))) {
       const productReply = await handleAwaitingProductList(telefono, mensaje, openPedido, ubicacionCoords);
       if (productReply) return productReply;
     }
