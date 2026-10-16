@@ -949,7 +949,8 @@ async function main(): Promise<void> {
   assert(!blockedNight.cart.some((line) => line.productId === 203), "no agrega el Amper que no pidió");
   assert(!blockedNight.cart.some((line) => line.productId === 202), "no elige solo el Chelita de 250 g");
   assert(!blockedNight.cart.some((line) => line.productId === 208), "no elige el maíz morado si hay latas");
-  assert(!blockedNight.cart.some((line) => line.productId === 209), "no elige un pan Bimbo si hay dos");
+  assert(!blockedNight.cart.some((line) => line.productId === 210), "no elige el pan Bimbo chico");
+  assert(blockedNight.cart.some((line) => line.productId === 207), "la lata de maíz es La Costeña");
   const kept: AgentLine[] = [
     line({ lineId: "l1", productId: 201, name: "Queso", brand: "Chelita", presentation: "1 kg", qty: 1, unit: "kg" }),
     line({ lineId: "l2", productId: 205, name: "Fabuloso", brand: "Fabuloso" }),

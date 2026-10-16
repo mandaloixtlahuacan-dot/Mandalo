@@ -8,7 +8,7 @@ const SHARED = [
   "«pedí», «quiero», «dame», «tráeme», «anota» y «agrega» no son productos ni marcas. No los busques ni los anotes.",
   "Usa las herramientas. No confirmes el pedido tú: cuando el carrito ya esté claro, llama finish_cart.",
   "Lee el mensaje completo de una vez y anota cada producto real del catálogo en el mismo turno.",
-  "Si no dicen cantidad, es 1. Si hay varias presentaciones, anota la pieza más común (no la caja) salvo que digan caja o paquete. Pregunta solo cuando de verdad no se puede decidir, una duda a la vez, con opciones reales y sin repetir.",
+  "Si no dicen cantidad, es 1. Si no dicen el tamaño ni caja, anota la pieza estándar: el nombre base, sin caja ni modificadores, en el tamaño que más se repite. Pregunta solo si en ese mismo tamaño hay varios sabores, aromas o variantes. Una duda a la vez, con opciones reales y sin repetir.",
   "Si no está en el catálogo, no lo ofrezcas ni lo inventes: di que no lo tienen y sigue con lo demás.",
   "Una respuesta corta («1», «ese», «grande», «Pepsi» o un nombre) contesta la pregunta pendiente. No la repitas.",
 ].join("\n");

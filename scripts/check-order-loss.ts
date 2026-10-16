@@ -106,9 +106,12 @@ const cases: Case[] = [
     id: "victor-pekes",
     store: "pekes",
     message: VICTOR_PEKES,
-    answers: ["1", "1"],
-    cartIncludes: ["Fuzetea/Frutos Rojos 600ml", "Fabuloso", "Nito"],
-    qty: [{ name: "Fuzetea/Frutos Rojos 600ml", qty: 2 }],
+    answers: ["1"],
+    cartIncludes: ["Fuzetea/Frutos Rojos 600ml", "Fabuloso", "Nito 62g"],
+    qty: [
+      { name: "Fuzetea/Frutos Rojos 600ml", qty: 2 },
+      { name: "Nito 62g", qty: 1 },
+    ],
     missing: ["frijol"],
     quote: true,
   },
@@ -141,7 +144,7 @@ const cases: Case[] = [
   { id: "pekes-no-esta", store: "pekes", message: "un kilo de frijol negro y una coca de 600", cartIncludes: ["Coca", "600"], missing: ["frijol"], quote: true },
   { id: "pekes-aceite", store: "pekes", message: "un litro de aceite y un kilo de azucar", answers: ["1", "1"], cartIncludes: ["Aceite"], quote: true },
   { id: "pekes-leche", store: "pekes", message: "2 leches lala de litro y un pan dulce", answers: ["1"], cartIncludes: ["Lala"], quote: true },
-  { id: "pekes-jabon", store: "pekes", message: "un jabon zote y un cloro", answers: ["1", "1"], cartIncludes: ["Zote"], quote: true },
+  { id: "pekes-jabon", store: "pekes", message: "un jabon zote y un cloro", cartIncludes: ["Cloro"], missing: ["zote"], quote: true },
   { id: "pekes-galletas", store: "pekes", message: "unas galletas marias y un nito", answers: ["1", "1"], cartIncludes: ["Marias", "Nito"], quote: true },
   { id: "pekes-huevo", store: "pekes", message: "un kilo de caviar y una coca de 600", cartIncludes: ["600"], missing: ["caviar"], quote: true },
   { id: "pekes-jugo", store: "pekes", message: "un jugo del valle y un agua ciel", answers: ["1", "1"], cartIncludes: ["Ciel"], quote: true },
@@ -248,8 +251,10 @@ async function main(): Promise<void> {
       }
       if (item.id === "victor-pekes") {
         const fuze = result.cart.find((line) => line.productId === 6476);
+        const nito = result.cart.find((line) => line.productId === 4034);
         assert(fuze && fuze.qty === 2, "fuste queda en Fuzetea/Frutos Rojos 600ml id 6476, cantidad 2");
-        assert(result.questions <= 2, "Peke's no da más de 2 vueltas");
+        assert(nito && nito.qty === 1, "un nito queda en Nito 62g id 4034");
+        assert(result.questions === 1, "Peke's pregunta solo el Fabuloso");
       }
       console.log(`PASA  ${item.id}  preguntas=${result.questions}  ${names}`);
     } catch (error) {

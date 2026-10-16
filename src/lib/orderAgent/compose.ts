@@ -198,7 +198,8 @@ function labelOf(clause: string): string {
 function unexplainedWords(product: AgentProduct, clause: string): string[] {
   const text = foldAgent(clause);
   return foldAgent(product.name).split(" ").filter((word) => {
-    if (!word || word.length < 2 || /^\d/.test(word)) return false;
+    if (!word || word.length < 2) return false;
+    if (/^\d+(?:[.,]\d+)?(?:ml|l|lt|lts|g|gr|kg|pz|paq)?$/.test(word)) return false;
     if (/^(?:ml|lt|lts|gr|kg|pz|paq|de|del|la|el|las|los)$/.test(word)) return false;
     if (/^marinad/.test(word)) return false;
     if (tokenInBlob(text, word)) return false;
@@ -301,6 +302,137 @@ function piecesFirst(products: AgentProduct[]): AgentProduct[] {
   return [...pieces, ...packs];
 }
 
+function hasFocusRank(product: AgentProduct, token: string): number {
+  const forms = new Set<string>([token]);
+  for (const form of listaRankTokens(token)) forms.add(form);
+  const words = productBlob(product).split(" ").filter(Boolean);
+  let best = 0;
+  for (const word of words) {
+    for (const form of forms) {
+      // «maria» no cuenta como «marias»: si no, el mole gana a las galletas.
+      if (form !== token && token.startsWith(form) && token.length - form.length <= 2) continue;
+      if (word === form) best = Math.max(best, 2);
+      else if (word === `${form}s` || form === `${word}s` || word === `${form}es` || form === `${word}es`) best = Math.max(best, 1);
+    }
+  }
+  return best;
+}
+
+function namedTokens(clause: string): string[] {
+  return clauseTokens(clause).filter((token) => token.length >= 4);
+}
+
+function bestNamed(products: AgentProduct[], token: string): AgentProduct[] {
+  const scored = products
+    .map((product) => ({ product, rank: hasFocusRank(product, token) }))
+    .filter((row) => row.rank > 0);
+  if (!scored.length) return [];
+  const best = Math.max(...scored.map((row) => row.rank));
+  return scored.filter((row) => row.rank === best).map((row) => row.product);
+}
+
+/** Palabras de categoría. No sustituyen al producto que el cliente nombró al final. */
+const CATEGORY_TOKENS = new Set([
+  "galleta", "galletas", "pan", "panes", "agua", "aguas", "leche", "leches",
+  "jabon", "jabones", "refresco", "jugo", "papel", "tortilla", "tortillas",
+  "carne", "huevo", "arroz", "frijol", "frijoles", "botella", "bolsa",
+]);
+
+/**
+ * Se queda con el producto nombrado.
+ * «galletas marías» usa marías, aunque el nombre no diga galleta.
+ * «jabón zote» no se vuelve Savile, y «fuse morado» no se vuelve maíz morado:
+ * una palabra que no está en ese producto no cambia a otro.
+ */
+function narrowToNamedProduct(clause: string, products: AgentProduct[]): AgentProduct[] | null {
+  const tokens = namedTokens(clause);
+  if (!tokens.length) return products;
+  const specific = tokens.filter((token) => !CATEGORY_TOKENS.has(token));
+  const wanted = specific.length ? specific : tokens;
+  const groups = wanted.map((token) => ({ token, hits: bestNamed(products, token) }));
+  if (!groups[groups.length - 1]?.hits.length) return null;
+  const known = groups.filter((group) => group.hits.length > 0);
+  const score = new Map<number, number>();
+  for (const group of known) {
+    for (const product of group.hits) score.set(product.id, (score.get(product.id) ?? 0) + 1);
+  }
+  const max = Math.max(...score.values());
+  let winners = products.filter((product) => score.get(product.id) === max);
+  if (known.length > 1 && max < known.length) {
+    const distinctive = [...known].sort((left, right) => {
+      if (left.hits.length !== right.hits.length) return left.hits.length - right.hits.length;
+      return wanted.indexOf(left.token) - wanted.indexOf(right.token);
+    })[0];
+    const ids = new Set(distinctive.hits.map((product) => product.id));
+    const narrowed = winners.filter((product) => ids.has(product.id));
+    if (narrowed.length) winners = narrowed;
+  }
+  return winners.length ? winners : null;
+}
+
+function sizeKeyOf(product: AgentProduct): string {
+  const parsed = presentationFromName(`${product.name} ${product.presentation ?? ""}`);
+  if (!parsed || parsed.pack) return parsed?.key ?? "";
+  const raw = `${product.name} ${product.presentation ?? ""}`
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "");
+  const ml = raw.match(/(\d+(?:[.,]\d+)?)\s*ml\b/);
+  if (ml) return `${ml[1].replace(",", ".")}ml`;
+  return parsed.key;
+}
+
+function offeringKey(product: AgentProduct): string {
+  return foldAgent([product.name, product.brand ?? "", product.presentation ?? ""].join(" "));
+}
+
+function shortestName(products: AgentProduct[]): number {
+  return Math.min(...products.map((product) => foldAgent(product.name).length));
+}
+
+function lowestId(products: AgentProduct[]): number {
+  return Math.min(...products.map((product) => product.id));
+}
+
+/**
+ * Presentación estándar de abarrotes, cuando el cliente no dijo tamaño ni caja.
+ *
+ * 1. Pieza, no caja. Caja, paquete, cj y multipack salen si hay pieza.
+ * 2. Nombre base. Se queda el producto cuyas palabras, ya sin el tamaño,
+ *    están en lo que el cliente dijo. Duo, funk, hotkis, cherry, retornable,
+ *    la marca o el aroma son modificadores y no se eligen si no los nombró.
+ * 3. Tamaño más común. Entre esos nombres base gana el tamaño que más veces
+ *    aparece. Si empatan, gana el grupo con el nombre más corto; si siguen
+ *    empatados, el id menor.
+ * 4. Pregunta solo si en ese tamaño quedan varias opciones distintas
+ *    (sabor, aroma, marca o variante). Si no hay nombre base, el mismo
+ *    tamaño se calcula entre las que sí tienen modificador.
+ * Una palabra de categoría (galleta, agua, pan) no cambia el producto.
+ * Si en la búsqueda solo aparece la caja, se pregunta y no se anota.
+ */
+function standardPresentation(clause: string, products: AgentProduct[]): AgentProduct[] {
+  const plain = products.filter((product) => unexplainedWords(product, clause).length === 0);
+  const family = plain.length ? plain : products;
+  const groups = new Map<string, AgentProduct[]>();
+  for (const product of family) {
+    const key = sizeKeyOf(product);
+    const list = groups.get(key) ?? [];
+    list.push(product);
+    groups.set(key, list);
+  }
+  const [winners] = [...groups.values()].sort((left, right) => {
+    if (right.length !== left.length) return right.length - left.length;
+    const nameGap = shortestName(left) - shortestName(right);
+    if (nameGap !== 0) return nameGap;
+    return lowestId(left) - lowestId(right);
+  });
+  const sized = winners ?? family;
+  if (!plain.length) return sized;
+  const distinct = new Set(sized.map((product) => offeringKey(product)));
+  if (distinct.size > 1) return sized;
+  return [...sized].sort((left, right) => left.id - right.id).slice(0, 1);
+}
+
 function marinadePair(products: AgentProduct[]): { plain: AgentProduct; seasoned: AgentProduct } | null {
   const plain = products.filter((product) => !/\bmarinad/.test(foldAgent(product.name)));
   const seasoned = products.filter((product) => /\bmarinad/.test(foldAgent(product.name)));
@@ -342,7 +474,7 @@ export function decideClause(clause: string, pool: AgentProduct[], store: AgentS
     if (packs.length) hits = packs;
   } else if (hits.some((product) => isPackProduct(product)) && hits.some((product) => !isPackProduct(product))) {
     const pieces = hits.filter((product) => !isPackProduct(product));
-    if (pieces.length === 1) hits = pieces;
+    if (store.category === "abarrotes" || pieces.length === 1) hits = pieces;
   }
   hits = uniqueProducts(hits);
   const named = hits.filter((product) => !falseFriend(text, product));
@@ -384,6 +516,19 @@ export function decideClause(clause: string, pool: AgentProduct[], store: AgentS
 
   const standard = pickStandardSize(text, hits);
   if (standard) hits = [standard];
+  if (store.category === "abarrotes" && !spokenPackageSize(text) && !saidPack(text)) {
+    const available = pool.filter((product) => product.available);
+    const pieces = available.filter((product) => !packInName(product));
+    const namedPieces = narrowToNamedProduct(text, pieces);
+    if (namedPieces?.length) {
+      hits = standardPresentation(text, namedPieces);
+    } else {
+      // En la ventana cruda de SQL a veces solo cabe la caja. Se pregunta, no se anota.
+      const namedPacks = narrowToNamedProduct(text, available.filter((product) => packInName(product)));
+      if (!namedPacks?.length) return { kind: "missing", clause: text, label: labelOf(text) };
+      hits = namedPacks;
+    }
+  }
   if (!saidPack(text)) hits = piecesFirst(hits);
 
   // «Caja Nito» no se anota sola. La columna presentación «paquete» sí: ahí es la unidad.

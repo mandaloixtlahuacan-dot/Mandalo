@@ -109,7 +109,7 @@ Acción interna: `productos_confirmados`
 
 ✅ *Pedido #22 confirmado*
 
-Llegará aproximadamente a las 5:04 p.m..
+Llegará aproximadamente a las 5:26 p.m..
 
 🛵 Estamos coordinando tu entrega.
 

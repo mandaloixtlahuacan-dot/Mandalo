@@ -421,16 +421,17 @@ async function main(): Promise<void> {
     assert(pepsi.cart.some((item) => item.productId === 30 && item.variant === "Pepsi"), "una pepsi anota el refresco");
   });
 
-  await check("Peke's TS: un Nito pregunta 62g, Duo y caja", async () => {
+  await check("Peke's TS: un Nito anota la pieza de 62g", async () => {
     const nito = await play({
       message: "un Nito",
       store: pekesStore,
       products: pekesProducts,
       steps: [{ toolCalls: [tool("search_products", { query: "nito" }, "s"), tool("set_cart_line", { product_id: 5378, qty: 1, unit: "pz" }, "caja"), tool("finish_cart", {}, "f")] }],
     });
-    assert(nito.cart.length === 0, "un Nito no elige la caja");
-    assert(/62g/.test(nito.reply) && /duo/i.test(nito.reply) && /caja/i.test(nito.reply), "pregunta 62g, Duo y Caja");
-    assert(!nito.reply.includes("¿Están bien estos productos?"), "no cierra sin tamaño");
+    assert(nito.cart.length === 1 && nito.cart[0].productId === 4034 && nito.cart[0].qty === 1, "un Nito anota Nito 62g");
+    assert(!/duo|caja|funk|hotkis/i.test(nito.cart[0].name), "no anota caja, duo, funk ni hotkis");
+    assert(/est[aá]n bien estos productos/i.test(nito.reply), "cierra la lista con la pieza estándar");
+    assert(!/cu[aá]l de estos/i.test(nito.reply), "no pregunta la presentación");
   });
 
   await check("Peke's SQL crudo: un Nito no anota cariñitos ni la caja", async () => {
@@ -452,7 +453,7 @@ async function main(): Promise<void> {
     assert(asks(nito.reply) && !nito.reply.includes("¿Están bien estos productos?"), "pregunta en vez de cerrar");
   });
 
-  await check("Peke's SQL reordenado: un Nito pregunta el de 62g", async () => {
+  await check("Peke's SQL reordenado: un Nito anota el de 62g", async () => {
     const nito = await play({
       message: "un Nito",
       store: pekesStore,
@@ -460,7 +461,7 @@ async function main(): Promise<void> {
       search: sqlReranked,
       steps: [{ toolCalls: [tool("search_products", { query: "nito" }, "s"), tool("set_cart_line", { product_id: 5378, qty: 1, unit: "pz" }, "caja"), tool("finish_cart", {}, "f")] }],
     });
-    assert(nito.cart.length === 0 && /62g/.test(nito.reply) && /caja/i.test(nito.reply), "con el rerank pregunta 62g y caja");
+    assert(nito.cart.some((item) => /nito 62g/i.test(item.name)) && !nito.cart.some((item) => item.productId === 5378), "con el rerank anota el de 62g y no la caja");
   });
 
   await check("Peke's: una caja de Nito anota la caja", async () => {
@@ -474,14 +475,15 @@ async function main(): Promise<void> {
     assert(!/cuál de estos/i.test(caja.reply), "no vuelve a preguntar el tamaño");
   });
 
-  await check("Peke's: agua mineral pregunta Ciel o Peñafiel", async () => {
+  await check("Peke's: agua mineral anota la Ciel de 600 ml", async () => {
     const agua = await play({
       message: "agua mineral",
       store: pekesStore,
       products: pekesProducts,
       steps: [{ toolCalls: [tool("search_products", { query: "agua mineral" }, "s"), tool("set_cart_line", { product_id: 6282, qty: 1, unit: "pz" }, "ciel"), tool("finish_cart", {}, "f")] }],
     });
-    assert(agua.cart.length === 0 && /ciel/i.test(agua.reply) && /peñafiel|penafiel/i.test(agua.reply), "agua mineral pregunta la marca");
+    assert(agua.cart.some((item) => item.productId === 6282), "agua mineral anota Agua Mineral Ciel 600ml");
+    assert(!/cu[aá]l de estos/i.test(agua.reply), "no pregunta otra marca de otro tamaño");
   });
 
   await check("Peke's: un kilo de azúcar no queda en una pieza", async () => {
@@ -504,8 +506,9 @@ async function main(): Promise<void> {
       products: pekesProducts,
       steps: [{ toolCalls: [tool("search_products", { query: "nito" }, "s"), tool("finish_cart", {}, "f")] }],
     });
-    assert(/ol[eé].*capuch/i.test(bundle(ole)) || ole.cart.some((item) => /capuch/i.test(item.name)), "olé capuchino no se pierde");
-    assert(!ole.reply.includes("¿Están bien estos productos?"), "no resume si falta el otro");
+    assert(ole.cart.some((item) => /capp?uccino|capuch/i.test(item.name)), "olé capuchino no se pierde");
+    assert(ole.cart.some((item) => /nito 62g/i.test(item.name)), "el Nito queda en la pieza de 62g");
+    assert(/est[aá]n bien estos productos/i.test(ole.reply), "los dos tienen presentación estándar y se cierra");
   });
 
   await check("Peke's: pan Bimbo pregunta presentación real", async () => {
@@ -622,10 +625,11 @@ async function main(): Promise<void> {
         ],
       }],
     });
-    assert(seisTurn.cart.length === 0, "el mensaje de seis productos no elige solo");
-    assert(asks(seisTurn.reply) && !seisTurn.reply.includes("¿Están bien estos productos?"), "pregunta uno");
-    assert((seisTurn.pending?.queue?.length ?? 0) >= 5, "los otros cinco esperan en la cola");
-    assert(/ol[eé]|capuch/i.test(bundle(seisTurn)), "el olé sigue en la cola o en la pregunta");
+    assert(seisTurn.cart.some((item) => /nito 62g/i.test(item.name)), "el Nito queda en la pieza de 62g");
+    assert(seisTurn.cart.some((item) => /coca/i.test(item.name)) && !seisTurn.cart.some((item) => item.productId === 6392), "la Coca queda en la pieza estándar");
+    assert(asks(seisTurn.reply) && !seisTurn.reply.includes("¿Están bien estos productos?"), "lo que cambia de sabor se pregunta");
+    assert(/pringles/i.test(bundle(seisTurn)), "las Pringles se preguntan");
+    assert(seisTurn.cart.some((item) => /capp?uccino|capuch/i.test(item.name)), "el olé capuchino queda en la presentación estándar");
   });
 
   await check("Peke's: el mensaje original no cierra ni pierde productos", async () => {
@@ -655,10 +659,10 @@ async function main(): Promise<void> {
     pekesQueue = (turn.pending?.queue ?? []).map((item) => item.question).join("\n---\n");
     const text = bundle(turn);
     assert(!turn.reply.includes("¿Están bien estos productos?"), "no cierra el pedido");
-    assert(/ciel/i.test(text) && /peñafiel|penafiel/i.test(text), "el agua mineral pregunta Ciel y Peñafiel");
-    assert(/62g/.test(text) && /caja/i.test(text), "el Nito pregunta pieza y caja");
+    assert(turn.cart.some((item) => /ciel/i.test(item.name)), "el agua mineral queda en Ciel");
+    assert(turn.cart.some((item) => /nito 62g/i.test(item.name)) && !turn.cart.some((item) => item.productId === 5378), "el Nito queda en 62g y no en la caja");
     assert(/pringles/i.test(text), "las Pringles se preguntan");
-    assert(/capuch/i.test(text) || turn.cart.some((item) => /capuch/i.test(item.name)), "el olé capuchino no se cae");
+    assert(/capp?uccino|capuch/i.test(text) || turn.cart.some((item) => /capp?uccino|capuch/i.test(item.name)), "el olé capuchino no se cae");
     assert(!turn.cart.some((item) => item.productId === 6392), "la Coca de 2.5 no entra");
     assert(!turn.cart.some((item) => /azucar/i.test(item.name) && item.unit === "pz"), "el azúcar no queda en piezas");
     assert(unitFor(turn, /azucar/i) === "kg" || turn.cart.some((item) => /azucar/i.test(item.name) && item.unit === "kg"), "el kilo de azúcar se queda en kg");

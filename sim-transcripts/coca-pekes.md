@@ -2,7 +2,7 @@
 
 Veredicto: **PASA**
 
-Opciones reales de Coca, sin monto ni total. 1278 de 1278 filas de Peke's traen precio null.
+Anotó la Coca estándar, sin precio de producto. 1278 de 1278 filas de Peke's traen precio null.
 
 Simulación en memoria. `ORDER_AGENT=on` solo en este proceso. El modelo es un `AgentModel` mock inyectado en `createOpenAIOrderAgentModel` (lo usa `runOrderAgentTurn`). No hubo llamada de red a OpenAI, Whapi ni Supabase.
 
@@ -74,14 +74,20 @@ Acción interna: `flow_switch_store`
 
 **Mándalo → cliente:**
 
-De coca, ¿cuál de estos?
+OK, pediste:
 
-1. Coca 355ml
-2. Coca Cola 1 Litro Vidrio
-3. Coca Cola 1 Lt Vidrio
-4. Coca Cola 1.250ml
-5. Coca Cola 1.750ml
+🛒 *Tu pedido*
 
-La tienda confirma el precio. Todavía no es un total cerrado.
+✅ 🥤 *Coca 355ml, 1 pieza*
+
+*¿Están bien estos productos?*
+
+*Si tu pedido está bien, responde sí.*
+
+_Si algún producto está mal, escríbeme cuál es y qué cambio quieres._
+
+_Solo es un ejemplo, no está en tu pedido: "cambia la leche Lala a 2 litros" o "quita la leche"._
+
+*La tienda cotiza tus productos, más $35 de envío y servicio.*
 
 Acción interna: `order_agent`

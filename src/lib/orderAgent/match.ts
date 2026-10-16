@@ -85,7 +85,7 @@ export function isPackProduct(product: Pick<AgentProduct, "name" | "presentation
 
 /** «Caja Nito» o «15paq» en el nombre. La columna presentación no cuenta: ahí «paquete» es la unidad. */
 export function packInName(product: Pick<AgentProduct, "name">): boolean {
-  return presentationFromName(product.name)?.pack === true || /\b(cajas?|paquetes?|cj)\b/.test(foldAgent(product.name));
+  return presentationFromName(product.name)?.pack === true || /\b(cajas?|paquetes?|cj|paq)\b/.test(foldAgent(product.name));
 }
 
 export function isPieceCorrection(message: string): boolean {

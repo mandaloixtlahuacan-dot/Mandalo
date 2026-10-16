@@ -77,10 +77,10 @@ Acción interna: `flow_switch_store`
 De leche, ¿cuál de estos?
 
 1. Leche 19 Hnos 1lt
-2. Leche 19 Hns Ligera
-3. Leche 19hns 1.89ml
-4. Leche 19hns 1lt
-5. Leche Alpura Caja
+2. Leche 19hns 1lt
+3. Leche Alpura Selecta 1L
+4. Leche Alpura Semi 1L
+5. Leche Amanecer 1 Lt
 
 La tienda confirma el precio. Todavía no es un total cerrado.
 

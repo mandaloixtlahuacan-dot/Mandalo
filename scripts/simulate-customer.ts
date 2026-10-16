@@ -226,24 +226,22 @@ async function main(): Promise<void> {
         const phone = "5213310001001";
         const turns = [...(await shop(phone, "abarrotes", "Peke's")), await say(phone, "quiero una coca")];
         const reply = customerText(turns.slice(-1));
-        const lines = reply.split("\n").filter((line) => /^\d+\./.test(line.trim()));
         const hasCoca = /coca/i.test(reply);
-        const hasPrice = /\$\s*\d/.test(reply);
-        const chooses = lines.length >= 2 || /cu[aá]l/i.test(reply);
+        const productPrice = reply.replace(/\$35/g, "").match(/\$\s*\d/);
         const closed = /est[aá]n bien estos productos/i.test(reply);
-        const quotes = /confirma el precio/i.test(reply);
+        const quotes = /cotiza|confirma el precio/i.test(reply);
         const problems: string[] = [];
         if (!hasCoca) problems.push("la respuesta no muestra Coca");
-        if (!chooses || closed) problems.push("no deja elegir: o no hay opciones, o ya cerró la lista");
-        if (hasPrice) problems.push("mostró un monto; Peke's cotiza y el precio lo confirma la tienda");
-        if (!quotes) problems.push("no dijo que la tienda confirma el precio");
+        if (!closed) problems.push("no anotó la Coca estándar");
+        if (productPrice) problems.push("mostró un monto de producto; Peke's cotiza");
+        if (!quotes) problems.push("no dijo que la tienda cotiza");
         return {
           turns,
           verdict: {
             status: problems.length ? "FALLA" : "PASA",
             detail: problems.length
               ? problems.join(". ")
-              : `Opciones reales de Coca, sin monto ni total. ${prices.pekesNullPrice} de ${prices.pekesRows} filas de Peke's traen precio null.`,
+              : `Anotó la Coca estándar, sin precio de producto. ${prices.pekesNullPrice} de ${prices.pekesRows} filas de Peke's traen precio null.`,
           },
         };
       },
@@ -298,16 +296,15 @@ async function main(): Promise<void> {
         const phone = "5213310001004";
         const turns = [...(await shop(phone, "abarrotes", "Peke's")), await say(phone, "un Nito")];
         const reply = customerText(turns.slice(-1));
-        const lines = reply.split("\n").filter((line) => /^\d+\./.test(line.trim()));
-        const asks = lines.length >= 2 || /cu[aá]l/i.test(reply);
-        const mentions = [/62/, /duo/i, /caja/i].filter((pattern) => pattern.test(reply)).length;
-        const closed = /est[aá]n bien estos productos/i.test(reply);
-        const ok = asks && mentions >= 2 && !closed;
+        const picked = /nito 62g/i.test(reply) && /est[aá]n bien estos productos/i.test(reply);
+        const asked = /cu[aá]l de estos/i.test(reply);
+        const other = /duo|funk|hotkis|caja nito/i.test(reply);
+        const ok = picked && !asked && !other;
         return {
           turns,
           verdict: {
             status: ok ? "PASA" : "FALLA",
-            detail: ok ? "Preguntó presentación (pieza, Duo o caja) y no cerró solo." : "Un Nito sin presentación debería preguntar 62 g, Duo o caja, sin anotar uno solo.",
+            detail: ok ? "Anotó Nito 62g, la pieza estándar, y cerró la lista." : "Un Nito sin presentación debe anotar Nito 62g, no la caja, el Duo, el Funk ni el Hotkis.",
           },
         };
       },

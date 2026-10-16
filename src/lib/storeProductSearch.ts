@@ -86,6 +86,7 @@ const SYNONYM_GROUPS: string[][] = [
   ["bonafont", "bonafon", "donado", "donafon", "donafont", "fonafont", "vonafont"],
   ["pepsi", "pepsis"],
   ["lata", "latas"],
+  ["capuchino", "capuccino", "cappuccino", "cappuchino"],
 ];
 
 const DRINK_HINTS = new Set([

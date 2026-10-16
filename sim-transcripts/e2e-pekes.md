@@ -74,24 +74,6 @@ Acción interna: `flow_switch_store`
 
 **Mándalo → cliente:**
 
-De coca, ¿cuál de estos?
-
-1. Coca 355ml
-2. Coca Cola 1 Litro Vidrio
-3. Coca Cola 1 Lt Vidrio
-4. Coca Cola 1.250ml
-5. Coca Cola 1.750ml
-
-La tienda confirma el precio. Todavía no es un total cerrado.
-
-Acción interna: `order_agent`
-
-### Turno 5
-
-**Cliente:** 1
-
-**Mándalo → cliente:**
-
 OK, pediste:
 
 🛒 *Tu pedido*
@@ -110,7 +92,7 @@ _Solo es un ejemplo, no está en tu pedido: "cambia la leche Lala a 2 litros" o 
 
 Acción interna: `order_agent`
 
-### Turno 6
+### Turno 5
 
 **Cliente:** sí
 
@@ -124,7 +106,7 @@ Si prefieres, también puedes escribirme tu dirección: calle y número, colonia
 
 Acción interna: `productos_confirmados`
 
-### Turno 7
+### Turno 6
 
 **Cliente:** [pin GPS]
 **Ubicación:** 20.865831, -103.240017
@@ -159,7 +141,7 @@ ORDEN #17 PRECIO 150
 ORDEN #17 NO_DISPONIBLE nombre del producto
 
 
-### Turno 8
+### Turno 7
 
 **Cliente:** ORDEN #17 PRECIO 48
 
@@ -190,7 +172,7 @@ Ya le avisé al cliente el total del pedido *#17*.
 ¿Confirmas tu pedido? Responde *SÍ*
 
 
-### Turno 9
+### Turno 8
 
 **Cliente:** sí
 
@@ -198,7 +180,7 @@ Ya le avisé al cliente el total del pedido *#17*.
 
 ✅ *Pedido #17 confirmado*
 
-Llegará aproximadamente a las 5:04 p.m..
+Llegará aproximadamente a las 5:25 p.m..
 
 🛵 Estamos coordinando tu entrega.
 
@@ -269,7 +251,7 @@ https://www.google.com/maps?q=20.865831,-103.240017
 #ENTREGADO 17
 
 
-### Turno 10
+### Turno 9
 
 **Cliente:** #CONFIRMO 17
 
@@ -297,7 +279,7 @@ Lo tomó el repartidor *Roberto*.
 
 Acción interna: `aceptado`
 
-### Turno 11
+### Turno 10
 
 **Cliente:** #CONFIRMO 17
 
@@ -307,7 +289,7 @@ Acción interna: `aceptado`
 
 Acción interna: `already_taken`
 
-### Turno 12
+### Turno 11
 
 **Cliente:** #RECOGI 17
 
@@ -327,7 +309,7 @@ Pedido *#17*.
 
 Acción interna: `en_camino`
 
-### Turno 13
+### Turno 12
 
 **Cliente:** #ENTREGADO 17
 
@@ -344,7 +326,7 @@ Pedido *#17*.
 Pedido entregado
 
 Total: $83
-Hora: 2026-10-16T22:44:25.949Z
+Hora: 2026-10-16T23:05:58.818Z
 Repartidor: Roberto
 
 - cliente / notificacion_cliente / 5213310001203

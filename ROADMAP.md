@@ -2,7 +2,16 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 16 de octubre de 2026. El agente lee el mensaje
+> Última actualización: 16 de octubre de 2026. Si el cliente no dice
+> tamaño ni caja, el abarrotes anota la pieza estándar: nombre base,
+> sin caja ni modificadores, en el tamaño que más se repite. Pregunta
+> solo cuando en ese mismo tamaño hay varios sabores, aromas o
+> variantes. «un nito» queda en Nito 62g (id 4034); caja, duo, funk y
+> hotkis solo si los nombran. El mensaje de Víctor en Peke's hace una
+> sola pregunta (los aromas de Fabuloso de 1 L). «una coca» queda en
+> Coca 355ml; «leche» sigue preguntando porque varias marcas comparten
+> el litro. Sigue en el draft #50, sin merge ni deploy, sin OpenAI.
+> Actualización anterior: 16 de octubre de 2026. El agente lee el mensaje
 > completo y no suelta un producto en silencio: queda en el carrito, se
 > dice «No tenemos…», o es la única pregunta abierta. Las opciones son
 > de esa categoría, sin repetir, y un «1», «ese» o un nombre parcial
