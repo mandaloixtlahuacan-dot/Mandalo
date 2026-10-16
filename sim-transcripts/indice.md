@@ -4,10 +4,10 @@ Peke's: 1278/1278 precios null.
 
 | Escenario | Resultado |
 | --- | --- |
-| coca-pekes | PASA. Opciones reales de Coca, sin monto ni total. 1278 de 1278 filas de Peke's traen precio null. |
+| coca-pekes | PASA. Anotó la Coca estándar, sin precio de producto. 1278 de 1278 filas de Peke's traen precio null. |
 | dogos-george | PASA. Anotó 3 dogos y mostró la lista para confirmar. |
 | nito-caja | PASA. Eligió la caja de Nito y la dejó en la lista. |
-| nito-pieza | PASA. Preguntó presentación (pieza, Duo o caja) y no cerró solo. |
+| nito-pieza | PASA. Anotó Nito 62g, la pieza estándar, y cerró la lista. |
 | leche-pekes | PASA. Mostró leches reales y dejó elegir. |
 | kilo-central | PASA. Anotó diezmillo por kilo, con el precio del menú si ya se puede mostrar. |
 | george-completo | PASA. Pidió la ubicación y, con el pin dentro de Ixtlahuacán, siguió la confirmación. |

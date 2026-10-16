@@ -54,7 +54,7 @@ export function closestAgentProducts(products: AgentProduct[], query: string, li
   return searchAgentProducts(products, query, Math.max(limit, 4)).slice(0, limit);
 }
 
-const GENERIC_DOGO = /^(?:un |una )?(?:dogo|dogos|hot dog|hotdog|hotdogs|jocho|jochos)$/;
+const GENERIC_DOGO = /^(?:(?:\d+|un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\s+)?(?:dogo|dogos|hot dog|hotdog|hotdogs|jocho|jochos)$/;
 
 export function genericDogoProduct(products: AgentProduct[]): AgentProduct | null {
   return (

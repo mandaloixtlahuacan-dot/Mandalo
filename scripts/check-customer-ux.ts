@@ -59,6 +59,7 @@ const george: UxStore = {
   telefono: "5213322222222",
   abierta: false,
   abreTexto: "abre mañana a las 7pm",
+  horarioTexto: "7pm a 9pm",
   usaCatalogoFijo: true,
 };
 const taqueria: UxStore = {
@@ -77,6 +78,7 @@ const laCentral: UxStore = {
   telefono: "5213344444444",
   abierta: false,
   abreTexto: "abre mañana a las 9am",
+  horarioTexto: "9am a 6pm",
   usaCatalogoFijo: true,
 };
 const stores = [zagu, george, taqueria, laCentral];
@@ -175,6 +177,10 @@ assert(
 );
 const centralMenu = renderCustomerTurn(pickedCentral, stores, carniceriasList);
 assert(centralMenu?.kind === "menu" && centralMenu.store.id === laCentral.id, "elegir La Central manda el menú como George");
+assert(
+  centralMenu != null && centralMenu.kind === "menu" && centralMenu.text.includes("está cerrada") && centralMenu.text.includes("Horario: 9am a 6pm") && centralMenu.text.includes("se programa"),
+  "al elegir La Central cerrada se dice el horario y que se programa",
+);
 assert(
   centralMenu != null && centralMenu.kind === "menu" && centralMenu.text.includes("$35") && !customerCopySplitsFee(centralMenu.text),
   "el menú de La Central cobra $35 junto",

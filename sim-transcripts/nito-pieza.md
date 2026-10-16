@@ -2,7 +2,7 @@
 
 Veredicto: **PASA**
 
-Preguntó presentación (pieza, Duo o caja) y no cerró solo.
+Anotó Nito 62g, la pieza estándar, y cerró la lista.
 
 Simulación en memoria. `ORDER_AGENT=on` solo en este proceso. El modelo es un `AgentModel` mock inyectado en `createOpenAIOrderAgentModel` (lo usa `runOrderAgentTurn`). No hubo llamada de red a OpenAI, Whapi ni Supabase.
 
@@ -74,14 +74,20 @@ Acción interna: `flow_switch_store`
 
 **Mándalo → cliente:**
 
-De un nito, ¿cuál de estos?
+OK, pediste:
 
-1. Nito 62g
-2. Nito Duo
-3. Nito Funk
-4. Caja Nito 15paq
-5. Hotkis Nito 50g
+🛒 *Tu pedido*
 
-La tienda confirma el precio. Todavía no es un total cerrado.
+✅ 🛍️ *Nito 62g, 1 pieza*
+
+*¿Están bien estos productos?*
+
+*Si tu pedido está bien, responde sí.*
+
+_Si algún producto está mal, escríbeme cuál es y qué cambio quieres._
+
+_Solo es un ejemplo, no está en tu pedido: "cambia la leche Lala a 2 litros" o "quita la leche"._
+
+*La tienda cotiza tus productos, más $35 de envío y servicio.*
 
 Acción interna: `order_agent`

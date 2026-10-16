@@ -99,6 +99,8 @@ export type UxStore = {
   abierta: boolean;
   /** "abre mañana a las 8am" cuando está cerrada; vacío si está abierta. */
   abreTexto: string;
+  /** "8am a 9pm" con el horario de la tienda, si está cargado. */
+  horarioTexto?: string;
   usaCatalogoFijo: boolean;
 };
 
@@ -342,8 +344,11 @@ export function formatNicheStoreList(niche: StoreNiche, stores: UxStore[]): stri
     niche.id === "abarrotes"
       ? `*La tienda cotiza tus productos, más ${formatMoney(CUSTOMER_FACING_FEE)} de envío y servicio.*`
       : `*El menú trae precio, más ${formatMoney(CUSTOMER_FACING_FEE)} de envío y servicio.*`;
+  const canSchedule = mine.some((store) => !store.abierta)
+    ? `\n\nSi está cerrada, se puede programar: la armamos y se manda cuando abra.`
+    : "";
 
-  return `🏪 *${niche.label}:*\n\n${joinBlocks(lines)}\n\n${fee}\n\n*${UX_STORE_LIST_MARKER}*`;
+  return `🏪 *${niche.label}:*\n\n${joinBlocks(lines)}\n\n${fee}${canSchedule}\n\n*${UX_STORE_LIST_MARKER}*`;
 }
 
 export function formatNicheSwitchList(niche: StoreNiche, stores: UxStore[]): string {
@@ -380,23 +385,24 @@ export function formatStuckCorrection(
   return lines.join("\n\n");
 }
 
-function closedStoreNote(store: UxStore, follow: string): string {
+function closedStoreNote(store: UxStore): string {
   if (store.abierta) return "";
   const when = store.abreTexto ? ` (${store.abreTexto})` : "";
-  return `\n\n⏰ Ojo: está cerrada ahora${when}.\n\n${follow}`;
+  const hours = store.horarioTexto ? ` Horario: ${store.horarioTexto}.` : "";
+  return `⏰ *${store.nombre} está cerrada ahora*${when}.${hours}\n\nSi quieres, lo armamos y se programa para cuando abra.`;
 }
 
 export function formatAbarrotesStoreAck(store: UxStore): string {
-  const closed = closedStoreNote(store, "Lo armamos igual y se manda en cuanto abra.");
+  const closed = store.abierta ? "" : `${closedStoreNote(store)}\n\n`;
   return (
     `🏪 *Va, de ${store.nombre}.*\n\n` +
-    `${ABARROTES_PRODUCT_REQUEST}${closed}\n\n` +
+    `${closed}${ABARROTES_PRODUCT_REQUEST}\n\n` +
     `*La tienda cotiza y se suman ${formatMoney(CUSTOMER_FACING_FEE)} de envío y servicio.*`
   );
 }
 
 export function formatCatalogCategories(store: UxStore, categories: string[]): string {
-  const closed = closedStoreNote(store, "Lo armamos igual y se manda en cuanto abra.");
+  const closed = store.abierta ? "" : `\n\n${closedStoreNote(store)}`;
   const lines = joinBlocks(categories.map((category, index) => `${index + 1}. *${category}*`));
   return (
     `🏪 *Va, de ${store.nombre}.*\n\n` +
@@ -423,10 +429,10 @@ export function formatCatalogMenuCaption(store: UxStore, options?: { photo?: boo
   const invite = photo
     ? "Pídeme lo que se te antoje, como sale en la foto."
     : "Pídeme lo que se te antoje, con el nombre del menú.";
-  const closed = closedStoreNote(store, "Lo armamos y se manda en cuanto abra.");
+  const closed = store.abierta ? "" : `${closedStoreNote(store)}\n\n`;
   return (
-    `${emoji} *${UX_MENU_IMAGE_MARKER} ${store.nombre}*\n\n` +
-    `${invite}${closed}\n\n` +
+    `${closed}${emoji} *${UX_MENU_IMAGE_MARKER} ${store.nombre}*\n\n` +
+    `${invite}\n\n` +
     `${formatCustomerFeeLine()}, aparte.`
   );
 }

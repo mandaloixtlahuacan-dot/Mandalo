@@ -48,7 +48,7 @@ export function itemsFromAgentLines(lines: AgentLine[]): PedidoItemInput[] {
     const presentacion = pack ? line.variant : [line.variant, line.presentation].filter((part) => part && String(part).trim()).join(", ") || null;
     let unidad = "pieza";
     if (line.unit === "kg") unidad = "kilo";
-    else if (line.unit === "g") unidad = "g";
+    else if (line.unit === "g") unidad = "gramo";
     else if (line.unit === "pesos") unidad = "pesos";
     else if (line.unit === "l") unidad = "litro";
     else if (pack) unidad = pack;
@@ -117,6 +117,10 @@ export function renderAgentReply(params: {
         kind,
       })
     : `${formatProductListConfirm(itemsFromAgentLines(params.cart), kind)}\n\n${formatPreConfirmFeeNote("cotiza_tienda")}`;
-  if (question) return [aside, question].filter(Boolean).join("\n\n");
+  if (question) {
+    const noted = params.cart.map((line) => agentLineLabel(line)).filter(Boolean).join(", ");
+    const held = noted ? `Ya anoté: ${noted}.` : "";
+    return [aside, held, question].filter(Boolean).join("\n\n");
+  }
   return [aside, list].filter(Boolean).join("\n\n");
 }
