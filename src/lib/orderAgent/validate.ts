@@ -6,6 +6,23 @@ import {
   parseGroceryFreeText,
   sameGroceryLine,
 } from "@/lib/orderAgent/grocery";
+import {
+  differKey,
+  isPackProduct,
+  packInName,
+  isPieceCorrection,
+  marinadeUnresolved,
+  messageSelectsProduct,
+  optionsLookDifferent,
+  presentationFromName,
+  productClause,
+  productMentionedStrict,
+  replacementLineId,
+  uniqueHitMentioned,
+  spokenMeasure,
+  spokenPackageSize,
+  variantFromMessage,
+} from "@/lib/orderAgent/match";
 import type {
   AgentClarification,
   AgentLine,
@@ -84,15 +101,19 @@ export function candidatesDiffer(products: AgentProduct[], ids: number[], axis: 
     return seasoned.some(Boolean) && seasoned.some((flag) => !flag);
   }
   if (axis === "size") {
-    const sizes = new Set(rows.map((row) => foldAgent(row.presentation ?? "")).filter(Boolean));
-    return sizes.size > 1;
+    const sizes = new Set(rows.map((row) => differKey(row)).filter(Boolean));
+    if (sizes.size > 1) return true;
+    if (rows.some((row) => isPackProduct(row)) && rows.some((row) => !isPackProduct(row))) return true;
+    return new Set(rows.map((row) => foldAgent(row.name))).size > 1;
   }
   if (axis === "flavor") {
     const flavors = rows.flatMap((row) => row.variants.map((variant) => foldAgent(variant)));
     return new Set(flavors).size > 1;
   }
   if (axis === "brand") {
-    return new Set(rows.map((row) => foldAgent(row.brand ?? "")).filter(Boolean)).size > 1;
+    const brands = new Set(rows.map((row) => foldAgent(row.brand ?? "")).filter(Boolean));
+    if (brands.size > 1) return true;
+    return new Set(rows.map((row) => foldAgent(row.name))).size > 1;
   }
   return ids.length > 1;
 }
@@ -150,11 +171,9 @@ function presentationKg(value: string): { kg: boolean; amount: string | null } {
 }
 
 function messageSelects(product: AgentProduct, siblings: AgentProduct[], message: string): boolean {
-  const text = foldAgent(message).replace(/\b(un|una|uno)\b/g, "1");
+  const text = foldAgent(productClause(message, product.name)).replace(/\b(un|una|uno)\b/g, "1");
   const wantsKg = spokenKilo(text);
-  const hits = siblings.filter((row) => {
-    const brand = foldAgent(row.brand ?? "");
-    if (brand && !text.includes(brand)) return false;
+  const narrowed = siblings.filter((row) => {
     const present = `${row.presentation ?? ""} ${row.name}`;
     const kg = presentationKg(present);
     if (wantsKg && !kg.kg) return false;
@@ -163,14 +182,11 @@ function messageSelects(product: AgentProduct, siblings: AgentProduct[], message
     if (!wantsKg && size && !textHasSize(text, size)) return false;
     return true;
   });
-  return hits.length === 1 && hits[0].id === product.id;
+  return messageSelectsProduct(product, narrowed.length ? narrowed : siblings, message);
 }
 
 function optionsDiffer(products: AgentProduct[]): boolean {
-  if (products.length <= 1) return false;
-  const brands = new Set(products.map((product) => foldAgent(product.brand ?? "")).filter(Boolean));
-  const sizes = new Set(products.map((product) => sizeKey(product.presentation ?? "") || foldAgent(product.presentation ?? "")).filter(Boolean));
-  return brands.size > 1 || sizes.size > 1;
+  return optionsLookDifferent(products);
 }
 
 function searchContaining(searches: AgentSearchHit[], productId: number): AgentSearchHit | null {
@@ -183,7 +199,7 @@ function searchContaining(searches: AgentSearchHit[], productId: number): AgentS
 function searchForText(searches: AgentSearchHit[], text: string): AgentSearchHit | null {
   const tokens = foldAgent(normalizeGroceryWords(text))
     .split(" ")
-    .filter((token) => token.length >= 4);
+    .filter((token) => token.length >= 3 && !/^(los|las|del|una|uno|con|por|que)$/.test(token));
   if (!tokens.length) return null;
   for (let index = searches.length - 1; index >= 0; index -= 1) {
     const query = foldAgent(searches[index].query);
@@ -202,6 +218,29 @@ export function formatProductOptions(query: string, products: AgentProduct[]): s
   return `De ${title}, ¿cuál de estos?\n\n${lines.join("\n")}`;
 }
 
+function marinadePrompt(products: AgentProduct[], query = ""): string | null {
+  const groups = new Map<string, { label: string; plain: boolean; seasoned: boolean }>();
+  for (const product of products) {
+    const key = foldAgent(product.name).replace(/\bmarinad[oa]s?\b/g, " ").replace(/\s+/g, " ").trim();
+    const entry = groups.get(key) ?? { label: product.name.replace(/\s+marinad[oa]s?\b/i, "").trim(), plain: false, seasoned: false };
+    if (/\bmarinad/.test(foldAgent(product.name))) entry.seasoned = true;
+    else entry.plain = true;
+    groups.set(key, entry);
+  }
+  const pairs = [...groups.entries()].filter(([, entry]) => entry.plain && entry.seasoned);
+  if (!pairs.length) return null;
+  const text = foldAgent(query);
+  const mentioned = text
+    ? pairs.filter(([key]) => {
+        const tokens = key.split(" ").filter((token) => token.length >= 4);
+        return tokens.length > 0 && tokens.every((token) => text.includes(token));
+      })
+    : pairs;
+  if (mentioned.length === 1) return `¿${mentioned[0][1].label} marinada o normal?`;
+  if (groups.size === 1) return `¿${pairs[0][1].label} marinada o normal?`;
+  return null;
+}
+
 function clarificationOf(
   query: string,
   products: AgentProduct[],
@@ -211,12 +250,13 @@ function clarificationOf(
 ): AgentClarification {
   const sliced = products.slice(0, 5);
   const brands = new Set(sliced.map((product) => foldAgent(product.brand ?? "")).filter(Boolean));
+  const marinade = marinadePrompt(sliced, query);
   return {
-    question: formatProductOptions(query, sliced),
+    question: marinade ?? formatProductOptions(query, sliced),
     candidateIds: sliced.map((product) => product.id),
     qty,
     unit,
-    axis: axis ?? (brands.size > 1 ? "brand" : sliced.length > 1 ? "size" : null),
+    axis: marinade ? "marinade" : axis ?? (brands.size > 1 ? "brand" : sliced.length > 1 ? "size" : null),
     query,
   };
 }
@@ -304,19 +344,30 @@ function mentionTokens(label: string): string[] {
     .filter((token) => token.length >= 4 && !MENTION_FILLER.has(token));
 }
 
+function tokenMentioned(text: string, token: string): boolean {
+  if (text.includes(token)) return true;
+  const stem = token.endsWith("s") && token.length > 4 ? token.slice(0, -1) : token;
+  if (new RegExp(`\\b${stem}s?\\b`).test(text)) return true;
+  return text.split(" ").some((word) => word.length >= 4 && (token.startsWith(word) || word.startsWith(token)));
+}
+
 function textMentions(message: string, label: string): boolean {
   const tokens = mentionTokens(label);
   if (!tokens.length) return false;
   const text = foldAgent(message);
-  return tokens.some((token) => {
-    if (text.includes(token)) return true;
-    return text.split(" ").some((word) => word.length >= 4 && (token.startsWith(word) || word.startsWith(token)));
-  });
+  return tokens.every((token) => tokenMentioned(text, token));
+}
+
+/** Texto libre: basta una palabra del cliente. El id de catálogo sí exige todas. */
+function textMentionsAny(message: string, label: string): boolean {
+  const tokens = mentionTokens(label);
+  if (!tokens.length) return false;
+  const text = foldAgent(message);
+  return tokens.some((token) => tokenMentioned(text, token));
 }
 
 function productMentioned(message: string, product: AgentProduct): boolean {
-  const labels = [product.name, product.brand ?? "", product.presentation ?? "", ...(product.alias ?? [])];
-  return labels.some((label) => textMentions(message, label));
+  return productMentionedStrict(message, product);
 }
 
 function lineMentioned(message: string, line: AgentLine): boolean {
@@ -480,7 +531,8 @@ export function validateToolCall(params: {
   const presentationText = clean(args.presentation);
   const replaceId = clean(args.line_id);
   let productId = args.product_id == null ? null : Number(args.product_id);
-  let freeText = args.free_text == null ? null : String(args.free_text).trim() || null;
+  const rawFree = args.free_text == null ? null : String(args.free_text).trim() || null;
+  let freeText = rawFree;
   if (freeText && isOrderVerbOnly(freeText)) {
     return { ok: false, error: "«Pedí», «quiero» o «dame» no son un producto." };
   }
@@ -525,43 +577,83 @@ export function validateToolCall(params: {
     if (!product || !product.available) {
       return { ok: false, error: `El producto ${productId} no está en esta tienda.` };
     }
-    if (store.hasProductList) {
+    const spoken = params.customerMessage ? spokenMeasure(params.customerMessage, product.name) : null;
+    const namedSize = presentationFromName(product.name)?.key ?? "";
+    const sizeAlreadyNamed = Boolean(
+      spoken && namedSize && (
+        (spoken.unit === "l" && (namedSize.endsWith("l") || namedSize.endsWith("ml")))
+        || (spoken.unit === "kg" && (namedSize.endsWith("kg") || namedSize.endsWith("g")))
+      ),
+    );
+    if (spoken && unit === "pz" && !sizeAlreadyNamed && (spoken.unit === "kg" || spoken.unit === "l" || spoken.unit === "pesos")) {
+      unit = spoken.unit;
+      qty = spoken.qty;
+      if (!saneQty(unit, qty)) return { ok: false, error: "La cantidad no es válida para esa unidad." };
+    }
+    if (!unit) return { ok: false, error: "La unidad tiene que ser pz, kg, pesos, g o l (litros)." };
+    const settledUnit = unit;
+    const mustSearch = store.hasProductList || store.catalogMode === "fixed";
+    let siblings: AgentProduct[] = [];
+    if (mustSearch) {
       const already = cart.some((line) => line.productId === productId);
       const hit = searchContaining(searches, productId);
       if (!already && !hit) {
         return { ok: false, error: "Busca con search_products antes de anotar ese producto." };
       }
-      const siblings = hit?.products ?? [];
+      siblings = hit?.products ?? [];
+      if (!already && params.customerMessage && marinadeUnresolved(product, products, params.customerMessage)) {
+        return { ok: false, error: "Hay versión marinada y normal. Pregunta con ask_customer (axis marinade). No elijas una tú." };
+      }
       if (!already && optionsDiffer(siblings) && !messageSelects(product, siblings, params.customerMessage ?? "")) {
         return { ok: false, error: listedChoiceError(siblings) };
+      }
+      const piece = Boolean(params.customerMessage && isPieceCorrection(params.customerMessage));
+      const clause = params.customerMessage ? foldAgent(productClause(params.customerMessage, product.name)) : "";
+      const saidPack = !piece && /\b(cajas?|paquetes?)\b/.test(clause);
+      if (!already && packInName(product) && !saidPack) {
+        return { ok: false, error: "Es caja o paquete. Pregunta si la quiere así o en pieza." };
+      }
+      const wanted = clause ? spokenPackageSize(clause) : null;
+      const namedKey = presentationFromName(product.name)?.key ?? "";
+      if (!already && wanted && namedKey && namedKey !== wanted) {
+        return { ok: false, error: "El tamaño no es el que dijo el cliente. Pregunta las presentaciones reales." };
       }
     }
     if (store.catalogMode === "fixed" && !(typeof product.price === "number" && product.price > 0)) {
       return { ok: false, error: `${product.name} no tiene precio. No lo anotes.` };
     }
-    if (!unitAllowed(store, product, unit)) {
-      return { ok: false, error: `${product.name} no se vende en ${unit}.` };
+    if (!unitAllowed(store, product, settledUnit)) {
+      return { ok: false, error: `${product.name} no se vende en ${settledUnit}.` };
     }
     const named = parsedVariant ? `${product.name} ${parsedVariant}` : product.name;
     const unchangedProduct = cart.some((item) =>
-      sameCartIdentity(item, { productId: product.id, name: named, qty, unit, freeText: null }),
+      sameCartIdentity(item, { productId: product.id, name: named, qty, unit: settledUnit, freeText: null }),
     );
-    if (params.customerMessage && !unchangedProduct && !productMentioned(params.customerMessage, product)) {
+    const lineReplace = replaceId || (params.customerMessage ? replacementLineId(cart, product, params.customerMessage) : null);
+    const pieceSwap = Boolean(lineReplace && params.customerMessage && isPieceCorrection(params.customerMessage));
+    const onlyHit = siblings.length === 1 && siblings[0].id === product.id;
+    if (
+      params.customerMessage
+      && !unchangedProduct
+      && !pieceSwap
+      && !productMentioned(params.customerMessage, product)
+      && !(onlyHit && uniqueHitMentioned(product, params.customerMessage))
+    ) {
       return { ok: false, error: `El cliente no pidió ${optionLabel(product)}. No lo agregues.` };
     }
     if (product.variants.length) {
-      const variant = matchVariant(product, parsedVariant);
+      const variant = matchVariant(product, parsedVariant ?? (params.customerMessage ? variantFromMessage(product.variants, params.customerMessage) : null));
       if (!variant) {
         return { ok: false, error: `${product.name} necesita una de estas variantes: ${product.variants.join(", ")}.` };
       }
       return {
         ok: true,
-        line: lineFromProduct(params.nextLineId, product, qty, unit, variant, parsedNote, replaceId),
+        line: lineFromProduct(params.nextLineId, product, qty, settledUnit, variant, parsedNote, lineReplace),
       };
     }
     return {
       ok: true,
-      line: lineFromProduct(params.nextLineId, product, qty, unit, null, parsedNote, replaceId),
+      line: lineFromProduct(params.nextLineId, product, qty, settledUnit, null, parsedNote, lineReplace),
     };
   }
 
@@ -621,8 +713,9 @@ export function validateToolCall(params: {
   if (
     params.customerMessage &&
     !unchangedText &&
-    !textMentions(params.customerMessage, freeText) &&
-    !textMentions(params.customerMessage, name)
+    !textMentionsAny(params.customerMessage, freeText) &&
+    !textMentionsAny(params.customerMessage, name) &&
+    !(rawFree && textMentionsAny(params.customerMessage, rawFree))
   ) {
     return { ok: false, error: "El cliente no pidió ese producto. No lo agregues." };
   }

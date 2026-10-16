@@ -4,6 +4,7 @@ import { createOpenAIOrderAgentModel } from "@/lib/orderAgent/model";
 import { resolveAgentPending } from "@/lib/orderAgent/pending";
 import { buildOrderAgentSystem } from "@/lib/orderAgent/prompt";
 import { renderAgentReply } from "@/lib/orderAgent/reply";
+import { contentTokens, presentationFromName, productClause, spokenMeasure, spokenPackageSize, uncoveredClauses } from "@/lib/orderAgent/match";
 import { formatProductOptions, openClarifications, upsertLine, validateToolCall, type AgentSearchHit } from "@/lib/orderAgent/validate";
 import type {
   AgentClarification,
@@ -49,6 +50,38 @@ function pendingFromListedOptions(question: string, searches: AgentSearchHit[]):
     axis: null,
     query: hit.query,
   };
+}
+
+/** El kilo o los pesos se quedan en la pregunta aunque el producto todavía no se anote. */
+function preferSpokenSize(message: string, query: string, products: AgentProduct[]): AgentProduct[] {
+  const wanted = spokenPackageSize(productClause(message, query)) ?? spokenPackageSize(query);
+  if (!wanted) return products;
+  const front: AgentProduct[] = [];
+  const rest: AgentProduct[] = [];
+  for (const product of products) {
+    if (presentationFromName(product.name)?.key === wanted) front.push(product);
+    else rest.push(product);
+  }
+  return front.length ? [...front, ...rest] : products;
+}
+
+function unavailableHit(products: AgentProduct[], clause: string): boolean {
+  const text = foldAgent(clause);
+  return products.some((product) => {
+    if (product.available) return false;
+    return contentTokens(product.name).some((token) => token.length >= 5 && text.includes(token));
+  });
+}
+
+function rememberSpoken<T extends AgentPending>(message: string, pending: T): T {
+  const apply = <I extends { query?: string | null; unit: AgentPending["unit"]; qty: number | null }>(item: I): I => {
+    if (item.unit) return item;
+    const spoken = spokenMeasure(message, item.query ?? "");
+    if (!spoken || spoken.unit === "l") return item;
+    return { ...item, qty: item.qty ?? spoken.qty, unit: spoken.unit };
+  };
+  const next = apply(pending);
+  return { ...next, queue: (next.queue ?? []).map((item) => apply(item)) };
 }
 
 function withQueue(current: AgentPending | null, extra: AgentClarification[]): { pending: AgentPending | null; question: string | null } {
@@ -245,11 +278,23 @@ export async function runOrderAgentTurn(input: OrderAgentTurnInput): Promise<Ord
   let askedThisTurn = false;
   const repairErrors: string[] = [];
   const searches: AgentSearchHit[] = [];
+  const failCounts = new Map<string, number>();
+  let stalled = false;
+
+  const callKey = (call: ToolCall): string => {
+    const keys = Object.keys(call.arguments ?? {}).sort();
+    const stable: Record<string, unknown> = {};
+    for (const key of keys) stable[key] = call.arguments[key];
+    return `${call.name}:${JSON.stringify(stable)}`;
+  };
 
   const find = async (query: string): Promise<AgentProduct[]> => {
     const cleaned = stripOrderVerbs(query);
-    const found = input.search ? (await input.search(cleaned)).filter((product) => product.available) : searchAgentProducts(products, cleaned, 8);
-    for (const product of found) {
+    const pool = input.search
+      ? (await input.search(cleaned)).filter((product) => product.available)
+      : searchAgentProducts(products, cleaned, 40);
+    const found = preferSpokenSize(input.message, cleaned, pool);
+    for (const product of found.slice(0, 8)) {
       if (known.has(product.id)) continue;
       known.add(product.id);
       products.push(product);
@@ -261,7 +306,7 @@ export async function runOrderAgentTurn(input: OrderAgentTurnInput): Promise<Ord
     let stepResult: { toolCalls: ToolCall[]; text: string | null };
     try {
       stepResult = await model.complete({
-        system: buildOrderAgentSystem(input.store, cart),
+        system: buildOrderAgentSystem(input.store, cart, products),
         history: input.history,
         cart,
         store: input.store,
@@ -296,11 +341,15 @@ export async function runOrderAgentTurn(input: OrderAgentTurnInput): Promise<Ord
         repairErrors.push(verdict.error);
         if (verdict.customerNote) aside = verdict.customerNote;
         trace.push({ call, ok: false, result: { error: verdict.error } });
+        const seen = (failCounts.get(callKey(call)) ?? 0) + 1;
+        failCounts.set(callKey(call), seen);
+        if (seen >= 2) stalled = true;
         if (failures >= ORDER_AGENT_ESCALATE_AFTER && escalationModel && !escalated) {
           model = escalationModel;
           modelName = escalationModel.name;
           escalated = true;
         }
+        if (stalled) break;
         continue;
       }
       if (call.name === "search_products") {
@@ -326,6 +375,7 @@ export async function runOrderAgentTurn(input: OrderAgentTurnInput): Promise<Ord
       }
       if (verdict.finished) finished = true;
     }
+    if (stalled) break;
     if (!stepFailed && (finished || question)) break;
   }
 
@@ -333,7 +383,7 @@ export async function runOrderAgentTurn(input: OrderAgentTurnInput): Promise<Ord
     ...(pending?.candidateIds ?? []),
     ...(pending?.queue ?? []).flatMap((item) => item.candidateIds),
   ];
-  if (input.store.hasProductList) {
+  if (input.store.hasProductList || input.store.catalogMode === "fixed") {
     const extra = openClarifications({ searches, cart, coveredIds: covered });
     if (extra.length && !input.pending) {
       const attached = withQueue(question ? pending : null, extra);
@@ -344,6 +394,41 @@ export async function runOrderAgentTurn(input: OrderAgentTurnInput): Promise<Ord
     } else if (extra.length && pending && question) {
       pending = { ...pending, queue: [...(pending.queue ?? []), ...extra] };
     }
+    if (!input.pending) {
+      const coveredText = [question ?? "", ...(pending?.queue ?? []).map((item) => `${item.question} ${item.query ?? ""}`)].join(" ");
+      const missing = uncoveredClauses(input.message, cart, coveredText);
+      const asks: AgentClarification[] = [];
+      for (const clause of missing) {
+        const found = (await find(clause)).slice(0, 5);
+        const lines = found.map((product, index) => `${index + 1}. ${product.name}`);
+        const text = found.length
+          ? `No encontré ${clause}, ¿cuál de estos?\n\n${lines.join("\n")}`
+          : unavailableHit(products, clause)
+            ? `Ahorita no tenemos ${clause}. ¿Quieres otra cosa del menú?`
+            : `No encontré ${clause}. ¿Me dices la marca o el tamaño?`;
+        asks.push({
+          question: text,
+          candidateIds: found.map((product) => product.id),
+          qty: null,
+          unit: null,
+          axis: found.length > 1 ? "size" : null,
+          query: clause,
+        });
+      }
+      if (asks.length) {
+        const attached = withQueue(question ? pending : null, asks);
+        if (attached.question) {
+          question = attached.question;
+          pending = attached.pending;
+        }
+      }
+    }
+    if (!input.pending && pending) pending = rememberSpoken(input.message, pending);
+  }
+  if (stalled && !question) {
+    question = "No me quedó claro. Dime un producto, con marca o tamaño.";
+    pending = { question, candidateIds: [], qty: null, unit: null, axis: null };
+    finished = false;
   }
   if (question) finished = false;
   if (input.store.hasProductList && pending && (pending.queue?.length ?? 0) > 0 && !question && !input.awaitingList) {

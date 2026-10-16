@@ -1,4 +1,5 @@
 import { foldAgent } from "@/lib/orderAgent/catalog";
+import { answerMatchesPresentation } from "@/lib/orderAgent/match";
 import type { AgentLine, AgentPending, AgentProduct, AgentUnit } from "@/lib/orderAgent/types";
 
 function asNumber(text: string): number | null {
@@ -90,6 +91,10 @@ export function resolveAgentPending(params: {
     const folded = foldAgent(message);
     const named = rows.filter((row) => folded.length > 0 && foldAgent(row.name).includes(folded));
     if (named.length === 1) chosen = named[0];
+  }
+  if (!chosen) {
+    const bySize = rows.filter((row) => answerMatchesPresentation(message, row));
+    if (bySize.length === 1) chosen = bySize[0];
   }
   if (!chosen) return null;
 

@@ -239,7 +239,21 @@ function scoreToken(row: ListaProducto, token: string): number {
   if (aliasHit === "includes" || aliasHit === "prefix") score += SCORE.aliasIncludes;
   else if (aliasHit === "similar") score += SCORE.aliasSimilar;
   if (bestHit(presentacion, token) === "includes" || bestHit(presentacion, token) === "prefix") score += SCORE.presentacionIncludes;
-  return score * weak;
+  // Palabra completa o el nombre que empieza con ella gana al pedazo
+  // ("nito" dentro de cariñitos o gusanito).
+  return score * weak + exactNameBonus(nombre, token);
+}
+
+function exactNameBonus(nombre: string, token: string): number {
+  if (!nombre || !token) return 0;
+  let best = 0;
+  const words = nombre.split(" ").filter(Boolean);
+  for (const form of synonymForms(token)) {
+    if (!words.some((word) => word === form)) continue;
+    if (words[0] === form || nombre === form) best = Math.max(best, 28);
+    else best = Math.max(best, 20);
+  }
+  return best;
 }
 
 /**

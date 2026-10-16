@@ -1,4 +1,4 @@
-import type { AgentLine, AgentStore, OrderCategory } from "@/lib/orderAgent/types";
+import type { AgentLine, AgentProduct, AgentStore, OrderCategory } from "@/lib/orderAgent/types";
 
 const SHARED = [
   "Eres quien anota el pedido de Mándalo por WhatsApp. Hablas como chavo del pueblo: corto, claro, cálido. Máximo 3 o 4 emojis en todo el mensaje.",
@@ -29,10 +29,11 @@ const BY_CATEGORY: Record<Exclude<OrderCategory, "abarrotes">, string> = {
   restaurante: [
     "Restaurante de menú cerrado. Solo se vende lo que está en el menú y tiene precio.",
     "Si no está, no lo anotes. Di que no lo manejamos y ofrece lo más cercano que sí esté.",
-    "Antes de anotar o de decir que no está, busca con search_products.",
+    "Antes de anotar, busca con search_products. El id tiene que salir de esa búsqueda.",
     "Pregunta tamaño o sabor solo si falta y hay más de una opción real.",
-    "Un dogo, un hot dog o un jocho, sin tipo, es el Dogo Clásico.",
-    "Papas a la francesa y papas gajo son distintas. Si dijo cuál, anótala.",
+    "Un dogo, un hot dog o un jocho, sin tipo, es el Dogo Clásico. Dogo, hot dog y jocho son lo mismo.",
+    "Pepsi, Coca, Seven, Mirinda o Manzana es el Refresco, y anotas ese sabor.",
+    "Papas a la francesa y papas gajo son distintas. Si solo dijo papas, pregunta cuál.",
   ].join("\n"),
   carniceria: [
     "Carnicería de menú cerrado. Solo cortes del catálogo, con precio.",
@@ -48,12 +49,21 @@ export function categoryRules(category: OrderCategory, hasProductList = false): 
   return `${SHARED}\n${rules}`;
 }
 
-export function buildOrderAgentSystem(store: AgentStore, cart: AgentLine[]): string {
+function compactMenu(products: AgentProduct[]): string {
+  return products
+    .filter((product) => product.available && typeof product.price === "number" && product.price > 0)
+    .map((product) => `${product.id} | ${product.name} | ${product.price}`)
+    .join("\n");
+}
+
+export function buildOrderAgentSystem(store: AgentStore, cart: AgentLine[], products: AgentProduct[] = []): string {
+  const menu = store.catalogMode === "fixed" ? compactMenu(products) : "";
   return [
     categoryRules(store.category, store.hasProductList === true),
     "",
     `Tienda: ${store.name} (id ${store.id}, ${store.category}, ${store.catalogMode === "fixed" ? "menú con precio" : store.hasProductList ? "lista de productos" : "sin lista de productos"}).`,
+    menu ? `Menú real, id | nombre | precio. No inventes otro id:\n${menu}` : "",
     "Carrito actual, en JSON. Si el cliente no quitó una línea, sigue aquí:",
     JSON.stringify(cart),
-  ].join("\n");
+  ].filter((part) => part !== "").join("\n");
 }
