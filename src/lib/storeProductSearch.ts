@@ -77,6 +77,69 @@ export function listaSearchTokens(text: string): string[] {
   return tokens;
 }
 
+/** Palabras de presentación o categoría. No deben tapar la marca. */
+const WEAK_TOKENS = new Set(["pan", "lata", "latas", "refresco", "jugo", "botella", "paquete", "bolsa", "caja"]);
+
+const SYNONYM_GROUPS: string[][] = [
+  ["fuse", "fuze", "fusi", "fuzetea", "fuzete"],
+  ["coca", "cocacola"],
+  ["lata", "latas"],
+];
+
+const DRINK_HINTS = new Set(["fuse", "fuze", "fusi", "fuzetea", "fuzete", "coca", "cocacola", "pepsi", "jugo", "refresco", "tea"]);
+
+function synonymForms(token: string): string[] {
+  const forms = new Set<string>([token]);
+  for (const group of SYNONYM_GROUPS) {
+    if (!group.includes(token)) continue;
+    for (const alias of group) {
+      if (alias.length >= 3) forms.add(alias);
+    }
+  }
+  if (token === "ti" || token === "tea" || token === "te") forms.add("tea");
+  return [...forms];
+}
+
+/**
+ * Tokens para ordenar en TypeScript. Incluye «lata» y «pan» aunque el buscador
+ * de SQL los trate como pista débil, y el té escrito «ti».
+ */
+export function listaRankTokens(text: string): string[] {
+  const tokens = listaSearchTokens(text);
+  const words = foldListaText(text).split(" ").filter(Boolean);
+  const seen = new Set(tokens);
+  const push = (token: string) => {
+    if (token.length < 3 || seen.has(token) || tokens.length >= 24) return;
+    seen.add(token);
+    tokens.push(token);
+  };
+  const drink = words.some((word) => DRINK_HINTS.has(word));
+  for (const word of words) {
+    if (WEAK_TOKENS.has(word)) push(word);
+    if ((word === "ti" || word === "tea" || (word === "te" && drink)) && drink) push("tea");
+    if (word === "ti" || word === "tea") push("tea");
+  }
+  return tokens;
+}
+
+/** Lo que se manda al SQL: sin la palabra genérica si ya hay una marca. Con sinónimos. */
+export function listaSqlTokens(text: string): string[] {
+  const rank = listaRankTokens(text);
+  const distinctive = rank.filter((token) => !WEAK_TOKENS.has(token));
+  const source = distinctive.length ? distinctive : rank;
+  const seen = new Set<string>();
+  const tokens: string[] = [];
+  const push = (token: string) => {
+    if (token.length < 3 || seen.has(token) || tokens.length >= LISTA_TOKEN_LIMIT) return;
+    seen.add(token);
+    tokens.push(token);
+  };
+  for (const token of source) {
+    for (const form of synonymForms(token)) push(form);
+  }
+  return tokens;
+}
+
 export function listaQueryText(
   message: string | null | undefined,
   items?: Array<{
@@ -137,20 +200,46 @@ function isSimilar(field: string, token: string): boolean {
   return wordSimilarity(token, field) >= SIMILARITY_MIN;
 }
 
+function fieldHit(field: string, token: string): "includes" | "prefix" | "similar" | null {
+  if (!field || !token) return null;
+  if (field.includes(token)) return "includes";
+  if (token.length >= 3) {
+    const words = field.split(" ");
+    if (words.some((word) => word.startsWith(token) || (token.startsWith(word) && word.length >= 4))) return "prefix";
+  }
+  if (isSimilar(field, token)) return "similar";
+  return null;
+}
+
+function bestHit(field: string, token: string): "includes" | "prefix" | "similar" | null {
+  let best: "includes" | "prefix" | "similar" | null = null;
+  const rank = { includes: 3, prefix: 2, similar: 1 };
+  for (const form of synonymForms(token)) {
+    const hit = fieldHit(field, form);
+    if (hit && (!best || rank[hit] > rank[best])) best = hit;
+  }
+  return best;
+}
+
 function scoreToken(row: ListaProducto, token: string): number {
   const nombre = foldListaText(row.nombre);
   const marca = foldListaText(row.marca ?? "");
   const presentacion = foldListaText(row.presentacion ?? "");
   const aliases = (row.alias ?? []).map((alias) => foldListaText(alias)).filter(Boolean);
+  const aliasText = aliases.join(" ");
+  const weak = WEAK_TOKENS.has(token) ? 0.25 : 1;
   let score = 0;
-  if (nombre.includes(token)) score += SCORE.nombreIncludes;
-  else if (isSimilar(nombre, token)) score += SCORE.nombreSimilar;
-  if (marca.includes(token)) score += SCORE.marcaIncludes;
-  else if (isSimilar(marca, token)) score += SCORE.marcaSimilar;
-  if (aliases.some((alias) => alias.includes(token))) score += SCORE.aliasIncludes;
-  else if (aliases.some((alias) => isSimilar(alias, token))) score += SCORE.aliasSimilar;
-  if (presentacion.includes(token)) score += SCORE.presentacionIncludes;
-  return score;
+  const nombreHit = bestHit(nombre, token);
+  if (nombreHit === "includes" || nombreHit === "prefix") score += SCORE.nombreIncludes;
+  else if (nombreHit === "similar") score += SCORE.nombreSimilar;
+  const marcaHit = bestHit(marca, token);
+  if (marcaHit === "includes" || marcaHit === "prefix") score += SCORE.marcaIncludes;
+  else if (marcaHit === "similar") score += SCORE.marcaSimilar;
+  const aliasHit = bestHit(aliasText, token);
+  if (aliasHit === "includes" || aliasHit === "prefix") score += SCORE.aliasIncludes;
+  else if (aliasHit === "similar") score += SCORE.aliasSimilar;
+  if (bestHit(presentacion, token) === "includes" || bestHit(presentacion, token) === "prefix") score += SCORE.presentacionIncludes;
+  return score * weak;
 }
 
 /**
@@ -163,7 +252,14 @@ export function rankListaByTokens(rows: ListaProducto[], tokens: string[], limit
   const scored: Array<{ row: ListaProducto; score: number; index: number }> = [];
   rows.forEach((row, index) => {
     let score = 0;
-    for (const token of tokens) score += scoreToken(row, token);
+    let distinctive = 0;
+    for (const token of tokens) {
+      const part = scoreToken(row, token);
+      if (part <= 0) continue;
+      score += part;
+      if (!WEAK_TOKENS.has(token)) distinctive += 1;
+    }
+    if (distinctive > 1) score += distinctive * 3;
     if (score > 0) scored.push({ row, score, index });
   });
   scored.sort((a, b) => b.score - a.score || a.row.nombre.localeCompare(b.row.nombre) || a.index - b.index);
@@ -171,5 +267,5 @@ export function rankListaByTokens(rows: ListaProducto[], tokens: string[], limit
 }
 
 export function rankListaCandidates(rows: ListaProducto[], text: string, limit = LISTA_SEARCH_LIMIT): ListaProducto[] {
-  return rankListaByTokens(rows, listaSearchTokens(text), limit);
+  return rankListaByTokens(rows, listaRankTokens(text), limit);
 }

@@ -1,6 +1,6 @@
 import type { StoreKind } from "@/lib/categoryCopy";
 import { formatCatalogFinalTicket, formatPreConfirmFeeNote } from "@/lib/customerUx";
-import { formatProductListConfirm, type PedidoItemInput } from "@/lib/services/captureEngine";
+import { formatProductListConfirm, formatSpecificItemLine, type PedidoItemInput } from "@/lib/services/captureEngine";
 import { formatMoney } from "@/lib/ordenes";
 import { foldAgent } from "@/lib/orderAgent/catalog";
 import type { AgentLine, AgentStore, OrderCategory } from "@/lib/orderAgent/types";
@@ -103,13 +103,20 @@ export function renderAgentReply(params: {
     return [aside, question, invite].filter(Boolean).join("\n\n");
   }
   const priced = priceAgentCart(params.cart);
+  const kind = kindOf(params.store.category);
+  const detailed = params.cart.map((line, index) => {
+    const label = formatSpecificItemLine(itemsFromAgentLines([line])[0]);
+    if (params.store.catalogMode !== "fixed") return label;
+    const money = String(priced.lines[index] ?? "").match(/\$[\d,.]+/);
+    return money ? `${label} — ${money[0]}` : label;
+  });
   const list = params.store.catalogMode === "fixed"
     ? formatCatalogFinalTicket({
-        itemLines: priced.lines,
+        itemLines: detailed,
         subtotal: priced.subtotal,
-        kind: kindOf(params.store.category),
+        kind,
       })
-    : `${formatProductListConfirm(itemsFromAgentLines(params.cart), "abarrotes")}\n\n${formatPreConfirmFeeNote("cotiza_tienda")}`;
+    : `${formatProductListConfirm(itemsFromAgentLines(params.cart), kind)}\n\n${formatPreConfirmFeeNote("cotiza_tienda")}`;
   if (question) return [aside, question].filter(Boolean).join("\n\n");
   return [aside, list].filter(Boolean).join("\n\n");
 }

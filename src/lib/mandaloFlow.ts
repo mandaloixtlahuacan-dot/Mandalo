@@ -4,7 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getChatCompletion, getOpenAIModel } from "@/lib/openaiClient";
 import { buildMandaloSystemPrompt } from "@/lib/mandaloPrompt";
 import { normalizeWhatsAppText, waapiSendImage, waapiSendText } from "@/lib/waapi";
-import { customerFlowFallback, outboundSendsLeft } from "@/lib/outboundGuard";
+import { customerFlowFallback, menuImageRecentlySent, outboundSendsLeft, recordMenuImage } from "@/lib/outboundGuard";
 import { detectActorByPhone, ensureMxWhatsappIntl, normalizePhone } from "@/lib/roles";
 import { priceCatalogOrder, type CatalogPriceRow } from "@/lib/catalogQuantities";
 import {
@@ -54,6 +54,7 @@ import { cancelBecauseNoCourier, findAvailableCouriers, offerOrderToCouriers } f
 import {
   buildGreeting,
   catalogMenuImageKind,
+  catalogUsesMenuImage,
   classifyCustomerTurn,
   messageAddsCatalogItems,
   formatCatalogMenu,
@@ -125,7 +126,7 @@ import {
   summaryCorrectionKind,
   withCategoryMenu,
 } from "@/lib/orderSession";
-import { routeCustomerFlow, type CustomerFlowPhase, type CustomerMedia, type FlowAction } from "@/lib/flowRouter";
+import { routeCustomerFlow, storeWelcomeMatchesMenu, type CustomerFlowPhase, type CustomerMedia, type FlowAction, type FlowDecision } from "@/lib/flowRouter";
 import type { PedidoFullRecord } from "@/lib/repositories/pedidoRepositoryV2";
 import type { PedidoV2Record } from "@/lib/services/captureEngine";
 
@@ -727,14 +728,27 @@ async function sendWhatsApp(to: string, body: string): Promise<void> {
   await waapiSendText({ to, body: fallback });
 }
 
+const AGENT_REPEAT = "Perdón, ¿me lo repites?";
+const MENU_IMAGE_AGAIN = "Te lo acabo de pasar. Dime qué quieres del menú 😊";
+
 async function sendCatalogMenu(to: string, store: UxStore, caption: string): Promise<void> {
   const text = normalizeWhatsAppText(caption);
+  if (catalogUsesMenuImage(store) && menuImageRecentlySent(to, store.id)) {
+    await sendWhatsApp(to, MENU_IMAGE_AGAIN);
+    return;
+  }
   const kind = catalogMenuImageKind(store);
   if (kind) {
     const png = await readCatalogMenuPng(kind).catch(() => null);
     if (png) {
       try {
-        await waapiSendImage({ to, caption: text, png, filename: `${kind}.png` });
+        const sent = await waapiSendImage({ to, caption: text, png, filename: `${kind}.png` });
+        const suppressed = Boolean(sent && typeof sent === "object" && (sent as { data?: { suppressed?: boolean } }).data?.suppressed);
+        if (suppressed) {
+          await sendWhatsApp(to, MENU_IMAGE_AGAIN);
+          return;
+        }
+        recordMenuImage(to, store.id);
         return;
       } catch (e: unknown) {
         console.error("[mandalo] no se pudo enviar la foto del menú", { message: getErrorMessage(e) });
@@ -1000,6 +1014,7 @@ async function handleAwaitingProductList(
   }
 
   if (replyKind === "revise") {
+    if (orderAgentEnabled() && pedido.snapshot_json.flags?.agentCart === true) return null;
     const knownZoneNames = await fetchZonasCobertura();
     const snapshot = {
       ...pedido.snapshot_json,
@@ -1098,10 +1113,18 @@ async function handleAwaitingProductList(
     quoteStore: !catalog && !agentCart,
     userMessage: "",
   });
-  const nextState = validation.readyForConfirmation ? "confirmacion_cliente" : "seleccion_productos";
+  const keptItems = agentCart ? (snapshot.items ?? []) : validation.validatedItems.items;
+  const addressReady = Boolean(validation.validatedAddress?.isValid);
+  const nextState = agentCart
+    ? addressReady
+      ? "confirmacion_cliente"
+      : "seleccion_productos"
+    : validation.readyForConfirmation
+      ? "confirmacion_cliente"
+      : "seleccion_productos";
   const nextSnapshot = {
     ...snapshot,
-    items: validation.validatedItems.items,
+    items: keptItems,
     flags: {
       ...(snapshot.flags ?? {}),
       addressValidated: Boolean(validation.validatedAddress?.isValid),
@@ -1122,7 +1145,7 @@ async function handleAwaitingProductList(
     longitud: nextSnapshot.longitud ?? null,
     tiendaId: validation.validatedBusiness.businessId,
   });
-  await pedidoRepositoryV2.replacePedidoItems({ pedidoId: pedido.id, items: validation.validatedItems.items });
+  await pedidoRepositoryV2.replacePedidoItems({ pedidoId: pedido.id, items: keptItems });
   await pedidoRepositoryV2.appendPedidoEvento({
     pedidoId: pedido.id,
     tipoEvento: "productos_confirmados",
@@ -1139,8 +1162,8 @@ async function handleAwaitingProductList(
 
   let feeNote = formatPreConfirmFeeNote(catalog ? "catalogo" : "cotiza_tienda");
   let pricedLines: string | null = null;
-  if (validation.readyForConfirmation && catalog && full?.tienda?.tiendaId) {
-    const priced = await catalogPriceLines(full.tienda.tiendaId, validation.validatedItems.items).catch(() => null);
+  if ((validation.readyForConfirmation || agentCart) && catalog && full?.tienda?.tiendaId && addressReady) {
+    const priced = await catalogPriceLines(full.tienda.tiendaId, keptItems).catch(() => null);
     if (priced) {
       pricedLines = priced.lines.join("\n");
       feeNote = formatCatalogReceiptFee(priced.subtotal);
@@ -1148,17 +1171,28 @@ async function handleAwaitingProductList(
   }
 
   const pendingQuestion = validation.issues.find((issue) => issue.customerQuestion)?.customerQuestion ?? "";
-  const msg = validation.readyForConfirmation
-    ? buildCustomerMessage({
-        validation,
-        snapshot: nextSnapshot,
-        items: validation.validatedItems.items,
-        feeNote,
-        pricedLines,
-      })
-    : pendingQuestion && !isProductListConfirmMessage(pendingQuestion) && !pendingQuestion.includes("ubicación por GPS")
-      ? pendingQuestion
-      : ADDRESS_ASK_MESSAGE;
+  const msg = agentCart
+    ? addressReady
+      ? confirmationCustomerMessage({
+          pedidoId: pedido.id,
+          snapshot: nextSnapshot,
+          items: keptItems,
+          readyForConfirmation: true,
+          feeNote,
+          pricedLines,
+        })
+      : ADDRESS_ASK_MESSAGE
+    : validation.readyForConfirmation
+      ? buildCustomerMessage({
+          validation,
+          snapshot: nextSnapshot,
+          items: keptItems,
+          feeNote,
+          pricedLines,
+        })
+      : pendingQuestion && !isProductListConfirmMessage(pendingQuestion) && !pendingQuestion.includes("ubicación por GPS")
+        ? pendingQuestion
+        : ADDRESS_ASK_MESSAGE;
   await sendWhatsApp(telefono, msg);
   await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
   return { ok: true, role: "cliente", accion: "productos_confirmados", stage: nextState, pedidoId: pedido.id };
@@ -1263,7 +1297,7 @@ async function handleEsperandoConfirmacionInicial(
     // también regresa a selección y lo atiende el agente.
     if (String(mensaje ?? "").trim()) {
       const correction = summaryCorrectionKind(mensaje);
-      const quoteAgent = orderAgentEnabled() && Boolean(full.tienda?.tiendaId) && !full.tienda?.usaCatalogoFijo;
+      const quoteAgent = orderAgentEnabled() && Boolean(full.tienda?.tiendaId);
       if (quoteAgent && (correction === "edit" || correction === "other")) {
         try {
           const seeded = applySummaryNegation(snapshot.items ?? [], mensaje);
@@ -2303,9 +2337,15 @@ async function handleOrderAgentQuoteTurn(
   if (!orderAgentEnabled()) return null;
   if (pedido.estado !== "seleccion_productos") return null;
   const full = await pedidoRepositoryV2.getPedidoById(pedido.id).catch(() => null);
-  if (!full?.tienda?.tiendaId || full.tienda.usaCatalogoFijo) return null;
-  const kind = pedido.snapshot_json.storeKind ?? storeKindFromCategoria(null);
-  if (kind !== "abarrotes") return null;
+  if (!full?.tienda?.tiendaId) return null;
+  if (full.tienda.usaCatalogoFijo) {
+    return handleFixedCatalogTurn(telefono, mensaje, pedido, ubicacionCoords, {
+      skipDeterministicUx: true,
+      suppressSend: options?.suppressSend,
+    });
+  }
+  const kind = pedido.snapshot_json.storeKind ?? "abarrotes";
+  const category = kind === "restaurante" || kind === "carniceria" ? kind : "abarrotes";
   const text = String(mensaje ?? "").trim();
   if (!text) return null;
 
@@ -2341,7 +2381,7 @@ async function handleOrderAgentQuoteTurn(
     store: {
       id: full.tienda.tiendaId,
       name: full.tienda.nombre ?? "la tienda",
-      category: "abarrotes",
+      category,
       catalogMode: "list",
       hasProductList,
     },
@@ -2435,9 +2475,9 @@ async function handleFixedCatalogTurn(
   mensaje: string,
   pedido: PedidoV2Record,
   ubicacionCoords: Coordinates | null,
-  options?: { skipDeterministicUx?: boolean },
+  options?: { skipDeterministicUx?: boolean; suppressSend?: boolean },
 ): Promise<JsonObject | null> {
-  if (catalogEngineIsLegacy()) return null;
+  if (catalogEngineIsLegacy() && !orderAgentEnabled()) return null;
   if (pedido.estado !== "seleccion_productos") return null;
   const full = await pedidoRepositoryV2.getPedidoById(pedido.id).catch(() => null);
   if (!full?.tienda?.usaCatalogoFijo || !full.tienda.tiendaId) return null;
@@ -2477,7 +2517,7 @@ async function handleFixedCatalogTurn(
   }
   if (!text) return null;
 
-  if (!ubicacionCoords && !options?.skipDeterministicUx) {
+  if (!ubicacionCoords && !options?.skipDeterministicUx && !orderAgentEnabled()) {
     const early = await tryDeterministicCustomerUx({ telefono, mensaje, openPedido: pedido }).catch((e: unknown) => {
       console.error("[mandalo] UX determinista falló en menú cerrado", { message: getErrorMessage(e) });
       return null;
@@ -2599,6 +2639,18 @@ async function handleFixedCatalogTurn(
     tiendaId: full.tienda.tiendaId,
   });
   await pedidoRepositoryV2.replacePedidoItems({ pedidoId: pedido.id, items });
+
+  if (options?.suppressSend) {
+    return {
+      ok: true,
+      role: "cliente",
+      accion: "order_agent",
+      pedidoId: pedido.id,
+      agentReply: result.reply,
+      agentPending: Boolean(result.pending),
+      items,
+    };
+  }
 
   if (result.confirmedList) {
     return completeFixedCatalogConfirmation(
@@ -2722,6 +2774,19 @@ async function persistWrittenAddress(params: {
   });
 }
 
+function fixedMenuStore(decision: FlowDecision, stores: UxStore[], text: string): UxStore | null {
+  const chosen = decision.rememberStoreId ? stores.find((store) => store.id === decision.rememberStoreId) ?? null : null;
+  if (
+    chosen &&
+    catalogUsesMenuImage(chosen) &&
+    (decision.action === "switch_store" || storeWelcomeMatchesMenu(chosen, text))
+  ) {
+    return chosen;
+  }
+  if (decision.action !== "reprompt" && decision.action !== "switch_store" && decision.action !== "back") return null;
+  return stores.find((store) => catalogUsesMenuImage(store) && storeWelcomeMatchesMenu(store, text)) ?? null;
+}
+
 async function steerCustomerFlow(params: {
   telefono: string;
   mensaje: string;
@@ -2831,8 +2896,19 @@ async function steerCustomerFlow(params: {
   if (decision.action === "cancel" || decision.action === "restart" || isOrderPhase(decision.phase)) {
     await rememberCursor(params.telefono, orderPhase, decision.nicheId);
   }
+  if (decision.action === "ignore") {
+    return {
+      kind: "done",
+      body: { ok: true, role: "cliente", accion: "media_ignorada", phase: decision.phase },
+    };
+  }
   await guardarMensajeChat({ telefono: params.telefono, texto: String(params.mensaje ?? ""), estado: "cliente" }).catch(() => {});
-  await sendWhatsApp(params.telefono, outgoing);
+  const menuStore = fixedMenuStore(decision, stores, outgoing);
+  if (menuStore) {
+    await sendCatalogMenu(params.telefono, menuStore, outgoing);
+  } else {
+    await sendWhatsApp(params.telefono, outgoing);
+  }
   await guardarMensajeChat({ telefono: params.telefono, texto: outgoing, estado: "bot" }).catch(() => {});
   return {
     kind: "done",
@@ -3091,7 +3167,11 @@ async function handleClienteMessage(
   }
 
   const inCapture = !openPedido || openPedido.estado === "seleccion_productos";
-  if (inCapture && !ubicacionCoords && String(mensaje ?? "").trim() && flowAction !== "agent") {
+  const agentOwnsOrder =
+    orderAgentEnabled() &&
+    Boolean(openPedido) &&
+    (openPedido?.estado === "seleccion_productos" || openPedido?.estado === "confirmacion_cliente");
+  if (inCapture && !agentOwnsOrder && !ubicacionCoords && String(mensaje ?? "").trim() && flowAction !== "agent") {
     const early = await tryDeterministicCustomerUx({ telefono, mensaje, openPedido }).catch((e: unknown) => {
       console.error("[mandalo] UX determinista falló, sigo con la IA", { message: getErrorMessage(e) });
       return null;
@@ -3099,14 +3179,15 @@ async function handleClienteMessage(
     if (early) return early;
   }
 
-  if (inCapture && !ubicacionCoords && String(mensaje ?? "").trim()) {
+  if (inCapture && !agentOwnsOrder && !ubicacionCoords && String(mensaje ?? "").trim()) {
     const held = await holdGeneralBot(telefono, mensaje, openPedido, false);
     if (held) return held;
   }
 
   // Modo conversación: si el usuario está charlando o expresando emociones,
   // contestamos con IA y NO aplicamos la lógica de captura en este turno.
-  if (flowAction !== "agent" && isConversationModeMessage(mensaje)) {
+  // Con el agente prendido, el pedido y el resumen no se los queda el bot general.
+  if (!agentOwnsOrder && flowAction !== "agent" && isConversationModeMessage(mensaje)) {
     await guardarMensajeChat({ telefono, texto: String(mensaje ?? ""), estado: "cliente" }).catch(() => {});
 
     const historial = await fetchHistorialReciente(telefono, 12).catch(() => []);
@@ -3142,12 +3223,19 @@ async function handleClienteMessage(
     if (agentTurn) return agentTurn;
   }
 
-  if (inCapture && orderAgentEnabled() && !ubicacionCoords && String(mensaje ?? "").trim()) {
+  if (inCapture && orderAgentEnabled() && !ubicacionCoords && String(mensaje ?? "").trim() && !agentOwnsOrder) {
     const held = await holdGeneralBot(telefono, mensaje, openPedido, true);
     if (held) return held;
   }
 
-  // Flujo de captura (IA + captureEngine): pedido nuevo o seguimos en seleccion_productos.
+  if (orderAgentEnabled() && inCapture && String(mensaje ?? "").trim()) {
+    await guardarMensajeChat({ telefono, texto: String(mensaje ?? ""), estado: "cliente" }).catch(() => {});
+    await sendWhatsApp(telefono, AGENT_REPEAT);
+    await guardarMensajeChat({ telefono, texto: AGENT_REPEAT, estado: "bot" }).catch(() => {});
+    return { ok: true, role: "cliente", accion: "agente_repite" };
+  }
+
+  // Flujo de captura (IA + captureEngine): solo cuando el agente de pedido está apagado.
   await guardarMensajeChat({ telefono, texto: String(mensaje ?? ""), estado: "cliente" }).catch((e: unknown) => {
     console.error("[mandalo] guardarMensajeChat(cliente) falló", { message: getErrorMessage(e) });
   });

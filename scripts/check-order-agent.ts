@@ -22,6 +22,7 @@ import {
   type AgentStore,
   type ToolCall,
 } from "../src/lib/orderAgent";
+import { searchAgentProducts } from "../src/lib/orderAgent/catalog";
 import { ADDRESS_ASK_MESSAGE } from "../src/lib/services/captureEngine";
 import { validateCaptureForConfirmation } from "../src/lib/services/validationEngine";
 import { listaSearchTokens } from "../src/lib/storeProductSearch";
@@ -895,6 +896,166 @@ async function main(): Promise<void> {
   const pekesPrompt = buildOrderAgentSystem(pekesListed, []);
   assert(aguaPrompt.includes("no tiene lista") && aguaPrompt.includes("La que sea"), "Agua Santa pregunta lo genérico y acepta la que sea");
   assert(pekesPrompt.includes("tiene lista") && pekesPrompt.includes("obligatorio"), "Peke's obliga a buscar antes de anotar");
+
+  const orderText = "un kilo de queso Chelita, un Fuse ti morado, un Fabuloso, unos chicles, una lata de maíz y un pan bimbo";
+  const nightProducts: AgentProduct[] = [
+    product({ id: 201, name: "Queso", brand: "Chelita", presentation: "1 kg", alias: ["queso chelita"] }),
+    product({ id: 202, name: "Queso", brand: "Chelita", presentation: "250 g", alias: ["queso chelita"] }),
+    product({ id: 203, name: "Amper Mora Azul", brand: "Amper", presentation: "600 ml", alias: ["amper"] }),
+    product({ id: 204, name: "Fuzetea Frutos Rojos", brand: "Fuze Tea", presentation: "600 ml", alias: ["fuse", "fuze", "fusi", "frutos rojos"] }),
+    product({ id: 205, name: "Fabuloso", brand: "Fabuloso", presentation: "lavanda 1 L", alias: ["fabuloso"] }),
+    product({ id: 206, name: "Chicles", brand: "Clorets", presentation: "caja", alias: ["chicle", "chicles"] }),
+    product({ id: 207, name: "Maíz", brand: "La Costeña", presentation: "lata 220 g", alias: ["elote", "maiz costeña"] }),
+    product({ id: 208, name: "Maíz Morado", brand: "Morado", presentation: "bolsa 500 g", alias: ["maiz morado"] }),
+    product({ id: 209, name: "Bimbo Blanco", brand: "Bimbo", presentation: "620 g", alias: ["pan bimbo"] }),
+    product({ id: 210, name: "Bimbo Blanco Ch", brand: "Bimbo", presentation: "300 g", alias: ["pan bimbo"] }),
+  ];
+  const nightStore: AgentStore = { ...pekesStore, hasProductList: true };
+  const nightSearch = (query: string) => searchAgentProducts(nightProducts, query, 8);
+  const blockedNight = await runOrderAgentTurn({
+    message: orderText,
+    cart: [],
+    pending: null,
+    history: [],
+    store: nightStore,
+    products: [],
+    search: nightSearch,
+    model: scripted("noche-mal", [
+      {
+        toolCalls: [
+          tool("search_products", { query: "queso chelita" }, "q"),
+          tool("search_products", { query: "fuse ti morado" }, "f"),
+          tool("search_products", { query: "pan bimbo" }, "p"),
+          tool("search_products", { query: "lata de maiz" }, "m"),
+          tool("set_cart_line", { product_id: 202, qty: 1, unit: "pz" }, "chelita-chica"),
+          tool("set_cart_line", { product_id: 203, qty: 1, unit: "pz" }, "amper"),
+          tool("set_cart_line", { product_id: 208, qty: 1, unit: "pz" }, "morado"),
+          tool("set_cart_line", { product_id: 209, qty: 1, unit: "pz" }, "bimbo"),
+        ],
+      },
+    ], []),
+    logEvent: () => {},
+  });
+  assert(!blockedNight.cart.some((line) => line.productId === 203), "no agrega el Amper que no pidió");
+  assert(!blockedNight.cart.some((line) => line.productId === 202), "no elige solo el Chelita de 250 g");
+  assert(!blockedNight.cart.some((line) => line.productId === 208), "no elige el maíz morado si hay latas");
+  assert(!blockedNight.cart.some((line) => line.productId === 209), "no elige un pan Bimbo si hay dos");
+  const kept: AgentLine[] = [
+    line({ lineId: "l1", productId: 201, name: "Queso", brand: "Chelita", presentation: "1 kg", qty: 1, unit: "kg" }),
+    line({ lineId: "l2", productId: 205, name: "Fabuloso", brand: "Fabuloso" }),
+    line({ lineId: "l3", productId: 206, name: "Chicles", brand: "Clorets" }),
+  ];
+  const dropFabuloso = validateToolCall({
+    call: tool("remove_line", { line_id: "l2" }),
+    store: nightStore,
+    products: nightProducts,
+    cart: kept,
+    pending: { question: "¿El Fuse de frutos rojos?", candidateIds: [204], qty: 1, unit: "pz", axis: null },
+    nextLineId: "l9",
+    customerMessage: "No quítame el Amper, era un Fusi de frutos rojos",
+  });
+  assert(dropFabuloso.ok === false, "no quita el Fabuloso si el cliente no lo pidió");
+  const nightYes = await runOrderAgentTurn({
+    message: "Sí",
+    cart: kept,
+    pending: null,
+    history: [],
+    store: nightStore,
+    products: nightProducts,
+    awaitingList: false,
+    model: {
+      name: "no",
+      async complete() {
+        throw new Error("el sí con carrito no debía llamar al modelo");
+      },
+    },
+    logEvent: () => {},
+  });
+  assert(nightYes.cart.length === 3 && nightYes.reply.includes("¿Están bien estos productos?"), "el sí muestra la lista y no borra líneas");
+  assert(nightYes.reply.includes("Chelita") && nightYes.reply.includes("Fabuloso") && nightYes.reply.includes("Chicles"), "la lista trae marca y producto");
+  const nightConfirm = await runOrderAgentTurn({
+    message: "Así está bien",
+    cart: kept,
+    pending: null,
+    history: [],
+    store: nightStore,
+    products: nightProducts,
+    awaitingList: true,
+    model: {
+      name: "no",
+      async complete() {
+        throw new Error("así está bien no debía llamar al modelo");
+      },
+    },
+    logEvent: () => {},
+  });
+  assert(nightConfirm.confirmedList === true && nightConfirm.cart.length === 3, "así está bien confirma la lista");
+  const nightItems = itemsFromAgentLines(nightConfirm.cart);
+  const nightLocation = validateCaptureForConfirmation({
+    snapshot: {
+      businessId: nightStore.id,
+      businessName: nightStore.name,
+      storeKind: "abarrotes",
+      items: nightItems,
+      flags: { productosConfirmados: true, awaitingProductConfirm: false, agentCart: true },
+    },
+    items: nightItems,
+    quoteStore: false,
+    userMessage: "Así está bien",
+    storeKind: "abarrotes",
+  });
+  const nightAsk = nightLocation.issues.find((issue) => issue.customerQuestion)?.customerQuestion ?? "";
+  assert(nightAsk === ADDRESS_ASK_MESSAGE, "así está bien de la noche pasa a la ubicación");
+  const withAmper = [
+    ...kept,
+    line({ lineId: "l4", productId: 203, name: "Amper Mora Azul", brand: "Amper", presentation: "600 ml" }),
+  ];
+  const quitalo = await runOrderAgentTurn({
+    message: "Mejor quítamelo",
+    cart: withAmper,
+    pending: { question: "¿El Amper Mora Azul?", candidateIds: [203], qty: 1, unit: "pz", axis: null },
+    history: [],
+    store: nightStore,
+    products: nightProducts,
+    model: scripted("quita-amper", [{ toolCalls: [tool("remove_line", { line_id: "l4" }, "quita")] }], []),
+    logEvent: () => {},
+  });
+  assert(!quitalo.cart.some((item) => item.productId === 203), "quítamelo quita el Amper de la pregunta");
+  assert(quitalo.cart.some((item) => item.productId === 205) && quitalo.cart.some((item) => item.productId === 206), "quítamelo deja Fabuloso y chicles");
+  const costeña = await runOrderAgentTurn({
+    message: "1",
+    cart: kept,
+    pending: {
+      question: "¿Cuál lata de maíz?\n\n1. La Costeña 220 g\n\n2. Maíz Morado",
+      candidateIds: [207, 208],
+      qty: 1,
+      unit: "pz",
+      axis: null,
+    },
+    history: [],
+    store: nightStore,
+    products: nightProducts,
+    model: {
+      name: "no",
+      async complete() {
+        throw new Error("el 1 de la lata no debía llamar al modelo");
+      },
+    },
+    logEvent: () => {},
+  });
+  assert(costeña.cart.some((item) => item.productId === 207), "el 1 se queda con la lata Costeña");
+  assert(!costeña.cart.some((item) => item.productId === 208), "el 1 no anota el maíz morado");
+  const namedCan = validateToolCall({
+    call: tool("set_cart_line", { product_id: 207, qty: 1, unit: "pz" }, "costena"),
+    store: nightStore,
+    products: nightProducts,
+    cart: kept,
+    pending: null,
+    nextLineId: "l8",
+    searches: [{ query: "lata de maiz la costeña", products: nightProducts.filter((item) => item.id === 207 || item.id === 208) }],
+    customerMessage: "es una lata de la costeña de maíz",
+  });
+  assert(namedCan.ok === true, "si nombra La Costeña se anota esa lata");
 
   const priced = centralTurn.reply;
   assert(priced.includes("*"), "el ticket usa negritas de WhatsApp");

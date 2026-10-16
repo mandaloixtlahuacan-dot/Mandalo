@@ -15,6 +15,7 @@ export type OutboundVerdict = "send" | "duplicate" | "rate";
 type Stamp = { body: string; at: number };
 
 const sentByPhone = new Map<string, Stamp[]>();
+const menuImageAt = new Map<string, number>();
 
 function phoneKey(to: string): string {
   const digits = String(to ?? "").replace(/[^\d]/g, "");
@@ -34,6 +35,16 @@ function load(phone: string, now: number): Stamp[] {
 
 export function resetOutboundGuard(): void {
   sentByPhone.clear();
+  menuImageAt.clear();
+}
+
+export function menuImageRecentlySent(to: string, storeId: number, now = Date.now()): boolean {
+  const at = menuImageAt.get(`${phoneKey(to)}:${storeId}`);
+  return at != null && now - at <= OUTBOUND_WINDOW_MS;
+}
+
+export function recordMenuImage(to: string, storeId: number, now = Date.now()): void {
+  menuImageAt.set(`${phoneKey(to)}:${storeId}`, now);
 }
 
 function foldBody(body: string): string {
@@ -78,18 +89,31 @@ export function customerFlowFallback(blockedBody: string): string | null {
   const folded = foldBody(blockedBody)
     .normalize("NFD")
     .replace(/\p{Diacritic}/gu, "");
-  if (!folded || folded.startsWith("sigo en este paso")) return null;
-  if (/#(confirmo|recogi|entregado|precio)/.test(folded) || /\borden\b/.test(folded) || folded.includes("cobrar")) return null;
+  if (!folded || folded.startsWith("sigo en este paso") || folded.startsWith("aqui sigo")) return null;
+  if (folded.startsWith("va, dime que quieres") || folded.startsWith("te lo acabo de pasar")) return null;
+  if (folded.startsWith("perdon, me lo repites") || folded.startsWith("escribemelo por favor")) return null;
+  if (
+    /#(confirmo|recogi|entregado|precio)/.test(folded) ||
+    /\borden\b/.test(folded) ||
+    folded.includes("cobrar") ||
+    folded.includes("no_disponible") ||
+    folded.includes("repartidor")
+  ) {
+    return null;
+  }
   if (folded.includes("ubicacion por gps") || folded.includes("compartes tu ubicacion") || folded.includes("mandame el pin")) {
     return "Sigo en este paso. Mándame el pin de tu ubicación, o escribe calle y número.";
   }
   if (folded.includes("estan bien estos productos") || folded.includes("tu pedido esta bien")) {
     return "Sigo en este paso. Si la lista ya está bien, responde sí. Si no, dime qué le cambio.";
   }
+  if (folded.includes("menu") || folded.includes("foto")) {
+    return "Va, dime qué quieres del menú 😊";
+  }
   if (folded.includes("?")) {
     return "Sigo en este paso. Contéstame lo que te pregunté: la marca, el tamaño o el número.";
   }
-  return null;
+  return "Aquí sigo 😊, dime qué te gustaría pedir";
 }
 
 export function releaseOutbound(to: string, body: string, now = Date.now()): void {

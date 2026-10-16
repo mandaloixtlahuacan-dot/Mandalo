@@ -19,6 +19,21 @@ import type {
 import { foldAgent } from "@/lib/orderAgent/catalog";
 import { isProductListYes, isYesConfirmation } from "@/lib/messages";
 
+function pendingFromListedOptions(question: string, searches: AgentSearchHit[]): AgentPending | null {
+  const folded = foldAgent(question);
+  if (!folded || folded.includes("estan bien estos productos")) return null;
+  if (!/[?¿]/.test(question) && !/\b1\b/.test(folded)) return null;
+  const last = [...searches].reverse().find((hit) => hit.products.length > 1);
+  if (!last) return null;
+  return {
+    question: question.trim(),
+    candidateIds: last.products.slice(0, 5).map((product) => product.id),
+    qty: null,
+    unit: null,
+    axis: null,
+  };
+}
+
 function broadYes(message: string): boolean {
   if (isYesConfirmation(message) || isProductListYes(message)) return true;
   return /^(asi esta bien|todo bien|correcto|esta bien)$/.test(foldAgent(message));
@@ -104,8 +119,14 @@ export async function runOrderAgentTurn(input: OrderAgentTurnInput): Promise<Ord
     return full;
   };
 
-  if (input.awaitingList && !pending && broadYes(input.message) && cart.length > 0) {
-    return finish({ cart, pending: null, reply: "", confirmedList: true });
+  if (!pending && broadYes(input.message) && cart.length > 0) {
+    if (input.awaitingList) return finish({ cart, pending: null, reply: "", confirmedList: true });
+    return finish({
+      cart,
+      pending: null,
+      reply: renderAgentReply({ store: input.store, cart, question: null, aside: null }),
+      confirmedList: false,
+    });
   }
 
   if (pending) {
@@ -237,6 +258,10 @@ export async function runOrderAgentTurn(input: OrderAgentTurnInput): Promise<Ord
 
   if (question) finished = false;
   if (changed && !question) pending = null;
+  if (!pending && question) {
+    const fromText = pendingFromListedOptions(question, searches);
+    if (fromText) pending = fromText;
+  }
   const reply = renderAgentReply({
     store: input.store,
     cart,
