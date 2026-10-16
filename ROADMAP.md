@@ -2,7 +2,16 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 16 de octubre de 2026. La prueba en vivo de
+> Última actualización: 16 de octubre de 2026. Abarrotes con lista
+> pregunta un producto por mensaje (máximo 5 opciones reales) y guarda
+> la cola en `pendingAsk`. En George, un sí de la lista («sí», «así está
+> bien», «ok sí», «1») pide la ubicación aunque haya un pending viejo;
+> fuera de horario ese mensaje dice que el pedido se programa. Antes de
+> borrar el pedido se copia el chat a `conversaciones_archivo`
+> (`supabase/migrations/20261016_conversaciones_archivo.sql`, Víctor lo
+> corre en el SQL Editor; si no está, el cierre sigue). Prueba offline:
+> `scripts/check-order-agent.ts`. No está mergeado ni desplegado.
+> Actualización anterior: 16 de octubre de 2026. La prueba en vivo de
 > Víctor (15 de octubre, 9:20–9:27 pm) en Mini Super Peke's y George,
 > con `ORDER_AGENT=on`, se salió al bot viejo, anotó productos que no
 > pidió, soltó Fabuloso y chicles, no mandó la foto del menú y se quedó

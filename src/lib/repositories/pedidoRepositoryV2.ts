@@ -813,7 +813,47 @@ export async function listPedidoIdsAwaitingStoreQuote(tiendaId: number): Promise
   return [...new Set(ids.filter((id) => Number.isInteger(id) && id > 0))];
 }
 
+/**
+ * Copia agent_turn y el chat antes de que la retención borre el pedido.
+ * Si la tabla todavía no existe, o el insert falla, el cierre sigue.
+ */
+async function archiveConversation(params: { pedidoId: number; customerPhone: string }): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  const telefono = normalizePhone(params.customerPhone) || String(params.customerPhone ?? "").trim();
+  const eventsResult = await supabase
+    .from("pedido_eventos")
+    .select("id, created_at, tipo_evento, payload_json")
+    .eq("pedido_id", params.pedidoId)
+    .eq("tipo_evento", "agent_turn")
+    .order("created_at", { ascending: true });
+  if (eventsResult.error) throw eventsResult.error;
+
+  let chatHistory: unknown[] = [];
+  if (telefono) {
+    const cliente = await supabase.from("clientes").select("metadata_json").eq("telefono", telefono).maybeSingle();
+    if (cliente.error) throw cliente.error;
+    const metadata = toPlainObject(cliente.data?.metadata_json as Record<string, unknown> | null);
+    chatHistory = Array.isArray(metadata.chat_history) ? metadata.chat_history : [];
+  }
+
+  const { error } = await supabase.from("conversaciones_archivo").insert({
+    telefono,
+    pedido_id: params.pedidoId,
+    payload: {
+      agent_turns: eventsResult.data ?? [],
+      chat_history: chatHistory,
+    },
+  });
+  if (error) throw error;
+}
+
 export async function finalizePedidoRetention(params: { pedidoId: number; customerPhone: string }): Promise<void> {
+  await archiveConversation(params).catch((error: unknown) => {
+    console.error(
+      "[pedidoRepository] no se pudo archivar la conversación",
+      error instanceof Error ? error.message : error,
+    );
+  });
   await resetChatHistory(params.customerPhone);
   await deletePedido(params.pedidoId);
 }

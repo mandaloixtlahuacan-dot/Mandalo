@@ -15,7 +15,7 @@ export const ORDER_AGENT_TOOLS: Array<{ name: ToolName; description: string }> =
   },
   {
     name: "ask_customer",
-    description: "Una sola pregunta, con todas las dudas. Solo opciones que de verdad existan.",
+    description: "Una sola duda: un producto y hasta 5 opciones reales. Las otras dudas esperan al siguiente mensaje.",
   },
   {
     name: "finish_cart",

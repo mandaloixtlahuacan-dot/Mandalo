@@ -1,6 +1,7 @@
 import type { CartLine, CatalogSnapshot, PendingCatalogAsk, SellUnit } from "@/lib/catalogOrder/types";
+import type { PendingAsk } from "@/lib/clarificationAnswers";
 import type { PedidoItemInput } from "@/lib/services/captureEngine";
-import type { AgentLine, AgentPending, AgentProduct, AgentUnit } from "@/lib/orderAgent/types";
+import type { AgentClarification, AgentLine, AgentPending, AgentProduct, AgentUnit, PendingAxis } from "@/lib/orderAgent/types";
 
 export function agentProductsFromCatalog(catalog: CatalogSnapshot): AgentProduct[] {
   return catalog.rows.map((row) => ({
@@ -95,6 +96,71 @@ export function catalogPendingFromAgent(pending: AgentPending | null): PendingCa
     family: null,
     question: pending.question,
     count: 1,
+  };
+}
+
+function asAxis(value: unknown): PendingAxis {
+  if (value === "number" || value === "size" || value === "flavor" || value === "marinade" || value === "brand") return value;
+  return null;
+}
+
+function storedClarification(item: AgentClarification): NonNullable<PendingAsk["agentQueue"]>[number] {
+  return {
+    question: item.question,
+    candidateIds: item.candidateIds,
+    qty: item.qty,
+    unit: item.unit,
+    axis: item.axis,
+    query: item.query ?? null,
+  };
+}
+
+function readClarification(item: NonNullable<PendingAsk["agentQueue"]>[number]): AgentClarification {
+  const unit = item.unit;
+  return {
+    question: item.question,
+    candidateIds: Array.isArray(item.candidateIds) ? item.candidateIds.filter((id) => Number.isFinite(id)) : [],
+    qty: typeof item.qty === "number" && item.qty > 0 ? item.qty : null,
+    unit: unit === "kg" || unit === "pesos" || unit === "g" || unit === "l" || unit === "pz" ? unit : null,
+    axis: asAxis(item.axis),
+    query: item.query ?? null,
+  };
+}
+
+/** Lo que se guarda en snapshot_json.pendingAsk para retomar la cola sin el modelo. */
+export function snapshotFieldsFromAgentPending(pending: AgentPending): Pick<
+  PendingAsk,
+  "question" | "count" | "agentUnit" | "agentQty" | "agentAxis" | "agentQuery" | "agentQueue"
+> {
+  const queue = (pending.queue ?? []).map(storedClarification);
+  return {
+    question: pending.question,
+    count: 1 + queue.length,
+    agentUnit: pending.unit,
+    agentQty: pending.qty,
+    agentAxis: pending.axis,
+    agentQuery: pending.query ?? null,
+    agentQueue: queue,
+  };
+}
+
+export function agentPendingFromStoredAsk(stored: PendingAsk | null | undefined): AgentPending | null {
+  if (!stored?.question) return null;
+  const unit = stored.agentUnit;
+  const catalogUnit = stored.catalog?.unit;
+  return {
+    question: stored.question,
+    candidateIds: stored.catalog?.candidateIds ?? [],
+    qty: stored.agentQty ?? stored.catalog?.qty ?? null,
+    unit:
+      unit === "kg" || unit === "pesos" || unit === "g" || unit === "l" || unit === "pz"
+        ? unit
+        : catalogUnit === "kg" || catalogUnit === "pesos"
+          ? catalogUnit
+          : "pz",
+    axis: asAxis(stored.agentAxis),
+    query: stored.agentQuery ?? null,
+    queue: (stored.agentQueue ?? []).map(readClarification).filter((item) => item.question && item.candidateIds.length),
   };
 }
 
