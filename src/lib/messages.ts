@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { UnsupportedMedia } from "@/lib/inboundMessage";
+import { normalizeCoverageCoords } from "@/lib/services/geo";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { normalizePhone } from "@/lib/roles";
 
@@ -58,7 +59,7 @@ export function parseIncomingWhatsAppMessage(payload: unknown): IncomingWhatsApp
   const longitude = parsed.data?.longitude ?? parsed.longitude;
   const location =
     typeof latitude === "number" && typeof longitude === "number"
-      ? { latitude, longitude }
+      ? normalizeCoverageCoords(latitude, longitude) ?? undefined
       : undefined;
 
   return { from, body, raw: payload, location };

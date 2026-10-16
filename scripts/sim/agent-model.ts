@@ -43,39 +43,73 @@ function unitFromMessage(message: string): "pz" | "kg" | "pesos" {
   return "pz";
 }
 
+function fold(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "");
+}
+
+function clausesOf(message: string): string[] {
+  const text = message.replace(/\s+y\s+/gi, ", ");
+  const parts = text
+    .split(",")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 1);
+  return parts.length ? parts : [message.trim()].filter(Boolean);
+}
+
 export function createSimAgentModel(name: string): AgentModel {
   return {
     name: `sim-${name}`,
     async complete(request) {
-      const searched = request.toolTrace.some((entry) => entry.ok && entry.call.name === "search_products");
-      if (!searched) {
-        const query = stripOrderVerbs(request.message).trim();
-        if (!query || isOrderVerbOnly(query)) return { toolCalls: [], text: null };
+      if (request.repairErrors.length) return { toolCalls: [], text: null };
+      const clauses = clausesOf(request.message)
+        .map((clause) => stripOrderVerbs(clause).trim())
+        .filter((clause) => clause && !isOrderVerbOnly(clause));
+      const searched = request.toolTrace.filter((entry) => entry.ok && entry.call.name === "search_products");
+      const searchedQueries = new Set(searched.map((entry) => fold(String(entry.call.arguments?.query ?? ""))));
+      const pending = clauses.filter((clause) => !searchedQueries.has(fold(clause)));
+      if (pending.length && searched.length === 0) {
         return {
-          toolCalls: [{ id: "sim-search", name: "search_products", arguments: { query } }],
+          toolCalls: pending.map((clause, index) => ({
+            id: `sim-search-${index}`,
+            name: "search_products" as const,
+            arguments: { query: clause },
+          })),
           text: null,
         };
       }
-      const alreadySet = request.toolTrace.some((entry) => entry.call.name === "set_cart_line");
-      if (alreadySet || request.repairErrors.length) return { toolCalls: [], text: null };
-      const last = [...request.toolTrace].reverse().find((entry) => entry.ok && entry.call.name === "search_products");
-      const products = asProducts(last?.result);
-      const picked = products.filter((product) => messageSelectsProduct(product, products, request.message));
-      if (picked.length !== 1) return { toolCalls: [], text: null };
-      return {
-        toolCalls: [
-          {
-            id: "sim-set",
-            name: "set_cart_line",
-            arguments: {
-              product_id: picked[0].id,
-              qty: qtyFromMessage(request.message),
-              unit: unitFromMessage(request.message),
-            },
+      if (pending.length) {
+        return {
+          toolCalls: [{ id: "sim-search-next", name: "search_products", arguments: { query: pending[0] } }],
+          text: null,
+        };
+      }
+      const calls: Array<{ id: string; name: "set_cart_line"; arguments: { product_id: number; qty: number; unit: string } }> = [];
+      for (const entry of searched) {
+        const products = asProducts(entry.result);
+        const query = String(entry.call.arguments?.query ?? "");
+        const picked = products.filter((product) => messageSelectsProduct(product, products, query));
+        if (picked.length !== 1) continue;
+        const product = picked[0];
+        const inCart = request.cart.some((line) => line.productId === product.id);
+        const alreadySet = request.toolTrace.some(
+          (item) => item.call.name === "set_cart_line" && Number(item.call.arguments?.product_id) === product.id,
+        );
+        if (inCart || alreadySet) continue;
+        calls.push({
+          id: `sim-set-${product.id}`,
+          name: "set_cart_line",
+          arguments: {
+            product_id: product.id,
+            qty: qtyFromMessage(query),
+            unit: unitFromMessage(query),
           },
-        ],
-        text: null,
-      };
+        });
+      }
+      if (!calls.length) return { toolCalls: [], text: null };
+      return { toolCalls: calls, text: null };
     },
   };
 }

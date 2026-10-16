@@ -138,7 +138,7 @@ const TIMEOUT_CONFIGS: TimeoutKindConfig[] = [
       if (pedido.tienda?.telefono) {
         notices.push({
           telefono: ensureMxWhatsappIntl(pedido.tienda.telefono),
-          body: `🏪 *Pedido #${pedido.id}*\n\nSe canceló: el cliente no confirmó a tiempo. Ya no es necesario prepararlo.`,
+          body: `🏪 *Pedido #${pedido.id}*\n\nSe canceló: no se confirmó el precio a tiempo. Ya no es necesario prepararlo.`,
           tipoMensaje: "cotizacion_tienda",
           destinatarioTipo: "negocio",
           destinatarioId: pedido.tienda.tiendaId,
@@ -147,7 +147,7 @@ const TIMEOUT_CONFIGS: TimeoutKindConfig[] = [
       return notices;
     },
     adminMessage: (pedido) =>
-      `Timeout de confirmación final.\n\nPedido: ${pedido.id}\nEl cliente no confirmó el precio en 10 min. Pedido cancelado.`,
+      `Timeout de confirmación final.\n\nPedido: ${pedido.id}\nNo se confirmó el precio en 10 min. Pedido cancelado.`,
   },
   {
     kind: "courier_confirmation",
@@ -231,7 +231,7 @@ const TIMEOUT_CONFIGS: TimeoutKindConfig[] = [
       if (pedido.tienda?.telefono) {
         notices.push({
           telefono: ensureMxWhatsappIntl(pedido.tienda.telefono),
-          body: `🏪 *Pedido #${pedido.id}*\n\nSe canceló: el cliente no respondió a tiempo sobre "${itemNombre}". Ya no es necesario prepararlo.`,
+          body: `🏪 *Pedido #${pedido.id}*\n\nSe canceló: no hubo respuesta a tiempo sobre "${itemNombre}". Ya no es necesario prepararlo.`,
           tipoMensaje: "cotizacion_tienda",
           destinatarioTipo: "negocio",
           destinatarioId: pedido.tienda.tiendaId,
@@ -240,7 +240,7 @@ const TIMEOUT_CONFIGS: TimeoutKindConfig[] = [
       return notices;
     },
     adminMessage: (pedido) =>
-      `Timeout de ajuste de producto.\n\nPedido: ${pedido.id}\nEl cliente no decidió en 10 min. Pedido cancelado.`,
+      `Timeout de ajuste de producto.\n\nPedido: ${pedido.id}\nNo hubo decisión en 10 min. Pedido cancelado.`,
   },
 ];
 
@@ -276,9 +276,9 @@ async function findDueReminderPedidoIds(config: TimeoutKindConfig, nowIso: strin
 }
 
 function noticeTag(base: string, notice: OutboundNotice): string {
-  if (notice.destinatarioTipo !== "repartidor") return base;
+  if (notice.destinatarioTipo === "cliente") return base;
   const phone = notice.telefono.replace(/\D/g, "").slice(-10) || "sin-telefono";
-  return `${base}:repartidor:${phone}`;
+  return `${base}:${notice.destinatarioTipo}:${phone}`;
 }
 
 async function sendNotice(pedidoId: number, kind: OrderTimeoutKind, tag: string, notice: OutboundNotice): Promise<void> {

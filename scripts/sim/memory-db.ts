@@ -11,7 +11,10 @@ type Filter =
   | { kind: "neq"; column: string; value: unknown }
   | { kind: "in"; column: string; value: unknown[] }
   | { kind: "not-in"; column: string; value: unknown[] }
-  | { kind: "ilike"; column: string; value: string };
+  | { kind: "ilike"; column: string; value: string }
+  | { kind: "lte"; column: string; value: unknown }
+  | { kind: "gt"; column: string; value: unknown }
+  | { kind: "is-null"; column: string };
 
 type SelectField = { name: string; children: SelectField[] | null };
 
@@ -90,6 +93,15 @@ function parseList(value: unknown): unknown[] {
   const text = String(value ?? "").trim().replace(/^\(/, "").replace(/\)$/, "");
   if (!text) return [];
   return text.split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+function cellOf(row: MemoryRow, column: string): unknown {
+  const arrow = column.match(/^([A-Za-z0-9_]+)->>([A-Za-z0-9_]+)$/);
+  if (!arrow) return row[column];
+  const parent = row[arrow[1]];
+  if (!parent || typeof parent !== "object" || Array.isArray(parent)) return null;
+  const value = (parent as MemoryRow)[arrow[2]];
+  return value === undefined ? null : value;
 }
 
 function ilikeMatch(cell: unknown, pattern: string): boolean {
@@ -235,6 +247,22 @@ class MemoryQuery implements PromiseLike<QueryResult> {
     return this;
   }
 
+  lte(column: string, value: unknown): this {
+    this.filters.push({ kind: "lte", column, value });
+    return this;
+  }
+
+  gt(column: string, value: unknown): this {
+    this.filters.push({ kind: "gt", column, value });
+    return this;
+  }
+
+  is(column: string, value: unknown): this {
+    if (value !== null) throw new Error("supabase simulado: is solo acepta null");
+    this.filters.push({ kind: "is-null", column });
+    return this;
+  }
+
   ilike(column: string, value: string): this {
     this.filters.push({ kind: "ilike", column, value: String(value ?? "") });
     return this;
@@ -269,11 +297,14 @@ class MemoryQuery implements PromiseLike<QueryResult> {
 
   private matches(row: MemoryRow): boolean {
     return this.filters.every((filter) => {
-      const cell = row[filter.column];
+      const cell = cellOf(row, filter.column);
       if (filter.kind === "eq") return same(cell, filter.value);
       if (filter.kind === "neq") return !same(cell, filter.value);
       if (filter.kind === "in") return filter.value.some((item) => same(cell, item));
       if (filter.kind === "not-in") return !filter.value.some((item) => same(cell, item));
+      if (filter.kind === "is-null") return cell == null;
+      if (filter.kind === "lte") return cell != null && String(cell) <= String(filter.value ?? "");
+      if (filter.kind === "gt") return cell != null && String(cell) > String(filter.value ?? "");
       return ilikeMatch(cell, filter.value);
     });
   }

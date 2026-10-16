@@ -91,10 +91,16 @@ import { confirmationCustomerMessage, planConfirmationAmendment, renderPedidoSum
 import {
   extractCoordsFromUbicacion,
   isWithinCoverageArea,
+  haversineDistanceKm,
+  IXTLAHUACAN_CENTER,
+  COVERAGE_RADIUS_KM,
+  COVERAGE_REJECT_MESSAGE,
   buildAddressTextFromCoords,
   buildMapsLinkFromCoords,
   type Coordinates,
 } from "@/lib/services/geo";
+import { GPS_PLACEHOLDER } from "@/lib/inboundMessage";
+import { scrubOutboundText } from "@/lib/outboundCopy";
 import { MandaloAgentResponse, mandaloAgentResponseSchema } from "@/lib/llmResponseSchema";
 import {
   fetchRecentChatHistory as fetchHistorialReciente,
@@ -721,7 +727,7 @@ async function getCurrentOrderStateForAgent(telefono: string): Promise<JsonObjec
 }
 
 async function sendWhatsApp(to: string, body: string): Promise<void> {
-  const text = normalizeWhatsAppText(body);
+  const text = normalizeWhatsAppText(scrubOutboundText(body));
   const data = await waapiSendText({ to, body: text });
   if (!data || typeof data !== "object") return;
   const row = data as { suppressed?: boolean; reason?: string };
@@ -845,7 +851,7 @@ async function notifyCancelParties(pedido: PedidoV2Record): Promise<void> {
   if (TIENDA_NOTIFIABLE_CANCEL_STATES.includes(pedido.estado) && storePhone) {
     await sendWhatsApp(
       ensureMxWhatsappIntl(storePhone),
-      `🏪 *Pedido #${pedido.id}*\n\nEl cliente lo canceló. Ya no hace falta que le des seguimiento.`,
+      `🏪 *Pedido #${pedido.id}*\n\nEste pedido se canceló. Ya no hace falta que le des seguimiento.`,
     );
   }
   const courierId = full?.repartidorId ?? null;
@@ -854,7 +860,7 @@ async function notifyCancelParties(pedido: PedidoV2Record): Promise<void> {
   if (!phone) return;
   await sendWhatsApp(
     ensureMxWhatsappIntl(phone),
-    `🛵 *Pedido #${pedido.id}*\n\nEl cliente lo canceló. Ya no hace falta entregarlo.`,
+    `🛵 *Pedido #${pedido.id}*\n\nEste pedido se canceló. Ya no hace falta entregarlo.`,
   );
 }
 
@@ -1204,6 +1210,7 @@ async function handleAwaitingProductList(
         : ADDRESS_ASK_MESSAGE;
   await sendWhatsApp(telefono, msg);
   await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+  if (msg.includes("ubicación por GPS")) await rememberCursor(telefono, "ubicacion", null);
   return { ok: true, role: "cliente", accion: "productos_confirmados", stage: nextState, pedidoId: pedido.id };
 }
 
@@ -2302,6 +2309,7 @@ async function completeFixedCatalogConfirmation(
       : formatScheduledLocationAsk(scheduleNote);
   await sendWhatsApp(telefono, msg);
   await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+  if (msg.includes("ubicación por GPS")) await rememberCursor(telefono, "ubicacion", null);
   return { ok: true, role: "cliente", accion: "productos_confirmados", stage: nextState, pedidoId: pedido.id };
 }
 
@@ -2722,6 +2730,7 @@ function customerFlowPhase(params: {
   ) {
     return "esperando_repartidor";
   }
+  if (params.waitingAddress && pedido.estado === "seleccion_productos") return "ubicacion";
   const inferred = inferOrderPhase({
     hasOpenOrder: true,
     estado: pedido.estado,
@@ -2918,6 +2927,12 @@ async function steerCustomerFlow(params: {
   };
 }
 
+function isPinCaption(text: string): boolean {
+  const trimmed = String(text ?? "").trim();
+  if (!trimmed) return true;
+  return trimmed === GPS_PLACEHOLDER || trimmed === "📍";
+}
+
 async function handleClienteMessage(
   telefono: string,
   mensaje: string,
@@ -2925,15 +2940,41 @@ async function handleClienteMessage(
   media: CustomerMedia = "text",
 ): Promise<JsonObject> {
   const ubicacionCoords = extractCoordsFromUbicacion(ubicacion);
+  if (ubicacionCoords && isPinCaption(mensaje)) mensaje = "";
 
   // Regla de oro #1: si la ubicación cae fuera del radio de cobertura, cancelamos aquí
   // mismo, antes de tocar la base de datos (ni leer ni crear ningún registro de pedido).
   if (ubicacionCoords && !isWithinCoverageArea(ubicacionCoords)) {
-    const msg =
-      "📍 *Por ahora Mándalo solo cubre entregas dentro de Ixtlahuacán del Río.*\n\n" +
-      "Tu ubicación quedó fuera de esa zona.\n\nEn cuanto ampliemos la cobertura te avisamos. ¡Gracias por tu interés!";
-    await sendWhatsApp(telefono, msg);
-    await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+    const distanceKm = Math.round(haversineDistanceKm(ubicacionCoords, IXTLAHUACAN_CENTER) * 1000) / 1000;
+    console.warn("[mandalo] pin fuera de cobertura", {
+      latitude: ubicacionCoords.latitude,
+      longitude: ubicacionCoords.longitude,
+      distanceKm,
+      radiusKm: COVERAGE_RADIUS_KM,
+      center: IXTLAHUACAN_CENTER,
+    });
+    const openForPin = await pedidoRepositoryV2.getOpenPedidoByCustomerPhone(telefono).catch(() => null);
+    if (openForPin && !isTerminalState(openForPin.estado)) {
+      await pedidoRepositoryV2
+        .setPedidoEstado({
+          pedidoId: openForPin.id,
+          estado: openForPin.estado,
+          metadataPatch: {
+            rejected_pin: {
+              latitude: ubicacionCoords.latitude,
+              longitude: ubicacionCoords.longitude,
+              distance_km: distanceKm,
+              at: new Date().toISOString(),
+            },
+          },
+        })
+        .catch((e: unknown) => {
+          console.error("[mandalo] no se pudo guardar el pin rechazado", { message: getErrorMessage(e) });
+        });
+      await rememberCursor(telefono, "ubicacion", null);
+    }
+    await sendWhatsApp(telefono, COVERAGE_REJECT_MESSAGE);
+    await guardarMensajeChat({ telefono, texto: COVERAGE_REJECT_MESSAGE, estado: "bot" }).catch(() => {});
     return { ok: true, role: "cliente", accion: "rechazado_fuera_de_zona" };
   }
 
@@ -3115,6 +3156,35 @@ async function handleClienteMessage(
       return null;
     });
     if (catalogTurn) return catalogTurn;
+  }
+
+  if (
+    openPedido &&
+    openPedido.estado === "seleccion_productos" &&
+    !String(mensaje ?? "").trim() &&
+    ubicacionCoords &&
+    openPedido.snapshot_json.flags?.productosConfirmados === true &&
+    openPedido.snapshot_json.flags?.agentCart === true &&
+    openPedido.snapshot_json.latitud == null &&
+    !String(openPedido.snapshot_json.addressText ?? "").trim()
+  ) {
+    const addressText = buildAddressTextFromCoords();
+    const snapshot = {
+      ...openPedido.snapshot_json,
+      addressText,
+      latitud: ubicacionCoords.latitude,
+      longitud: ubicacionCoords.longitude,
+    };
+    await pedidoRepositoryV2.updatePedidoSnapshot({
+      pedidoId: openPedido.id,
+      estado: "confirmacion_cliente",
+      snapshot,
+      addressText,
+      latitud: ubicacionCoords.latitude,
+      longitud: ubicacionCoords.longitude,
+    });
+    const moved = await pedidoRepositoryV2.getOpenPedidoByCustomerPhone(telefono).catch(() => null);
+    if (moved) return handleEsperandoConfirmacionInicial(telefono, "sí", moved, ubicacionCoords);
   }
 
   if (openPedido && openPedido.estado === "seleccion_productos" && String(mensaje ?? "").trim()) {

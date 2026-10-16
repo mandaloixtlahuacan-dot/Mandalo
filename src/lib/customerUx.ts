@@ -198,7 +198,7 @@ export function formatNoCourierStore(pedidoId: number): string {
 }
 
 export function formatNoCourierAdmin(pedidoId: number): string {
-  return `Sin repartidor.\n\nPedido: ${pedidoId}\nEl cliente ya confirmó y no hay repartidor activo. Pedido cancelado.`;
+  return `Sin repartidor.\n\nPedido: ${pedidoId}\nYa estaba confirmado y no hay repartidor activo. Pedido cancelado.`;
 }
 
 export function formatStoreCommandHelp(orderIds: number[]): string {

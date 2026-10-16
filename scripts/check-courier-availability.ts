@@ -110,7 +110,8 @@ check("primero-gana", first.claimed && first.row.repartidorId === roberto.id && 
 check("segundo-pierde", !second.claimed && second.row.repartidorId === roberto.id);
 check(
   "aviso-ya-lo-tomo",
-  second.message === COURIER_ORDER_TAKEN_MESSAGE && COURIER_ORDER_TAKEN_MESSAGE === "⚠️ Ya lo tomó otro repartidor.",
+  second.message === COURIER_ORDER_TAKEN_MESSAGE &&
+    COURIER_ORDER_TAKEN_MESSAGE === "⚠️ Ya lo tomó otro repartidor. Este pedido ya no es tuyo.",
 );
 
 const offered = [

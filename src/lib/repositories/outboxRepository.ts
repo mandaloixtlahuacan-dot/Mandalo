@@ -1,3 +1,4 @@
+import { scrubOutboundText } from "@/lib/outboundCopy";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getEnv } from "@/lib/env";
 import { getAdminPhone } from "@/lib/repositories/configRepository";
@@ -53,7 +54,7 @@ function mapRow(row: UnknownRow): ReservedOutboxMessage {
 
 export async function enqueueOutboundMessage(input: EnqueueOutboundMessageInput): Promise<number> {
   const supabase = getSupabaseAdmin();
-  const body = String(input.payload.body ?? "").trim();
+  const body = scrubOutboundText(String(input.payload.body ?? "")).trim();
   if (!body) throw new Error("enqueueOutboundMessage: payload.body es obligatorio.");
 
   const { data: existing, error: existingError } = await supabase

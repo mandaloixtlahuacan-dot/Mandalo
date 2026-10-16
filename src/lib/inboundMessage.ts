@@ -1,3 +1,5 @@
+import { coordsFromMapText, extractCoordsFromUbicacion } from "@/lib/services/geo";
+
 /**
  * Clasifica el webhook de Whapi antes de tocar el pedido.
  * Un pin, una ubicación en tiempo real, un adjunto real o un texto vacío
@@ -153,10 +155,9 @@ function captionOf(payload: unknown): string | null {
 
 function coordsOf(value: unknown): { latitude: number; longitude: number } | null {
   const loc = asRecord(value);
-  const latitude = Number(loc.latitude);
-  const longitude = Number(loc.longitude);
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
-  return { latitude, longitude };
+  const fromNumbers = extractCoordsFromUbicacion(loc);
+  if (fromNumbers) return fromNumbers;
+  return coordsFromMapText(`${String(loc.url ?? "")}\n${String(loc.address ?? "")}\n${String(loc.name ?? "")}`);
 }
 
 function pinOf(payload: unknown): { latitude: number; longitude: number } | null {
@@ -167,7 +168,7 @@ function pinOf(payload: unknown): { latitude: number; longitude: number } | null
     const coords = coordsOf(candidate);
     if (coords) return coords;
   }
-  return null;
+  return coordsFromMapText(textOf(payload) ?? "");
 }
 
 function mediaOf(payload: unknown, type: string): UnsupportedMedia | null {

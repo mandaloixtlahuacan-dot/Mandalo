@@ -28,13 +28,13 @@ Acción interna: `flow_confirm_cancel`
 
 🏪 *Pedido #11*
 
-El cliente lo canceló. Ya no hace falta que le des seguimiento.
+Este pedido se canceló. Ya no hace falta que le des seguimiento.
 
 **Mándalo → repartidor:**
 
 🛵 *Pedido #11*
 
-El cliente lo canceló. Ya no hace falta entregarlo.
+Este pedido se canceló. Ya no hace falta entregarlo.
 
 **Mándalo → cliente:**
 

@@ -188,7 +188,7 @@ for (const phase of phases) {
   add("mejor de George", phase, "mejor de George", locked
     ? { action: "tracking", phase, includes: ["pedido nuevo"] }
     : hasOpenCart(phase)
-      ? { action: "confirm_switch", phase, clearCart: false, storeId: null, includes: ["Ya tienes un pedido en", "Coca-Cola", "¿Quieres borrarlo para pedir de Hamburguesas Hotdogs George?"] }
+      ? { action: "confirm_cancel", phase, clearCart: false, storeId: null, includes: ["¿Quieres cancelar el pedido?"] }
       : { action: "switch_store", phase: "ejemplo", exactWelcome: george, storeId: george.id, clearCart: false });
   add("Penes", phase, "Penes", locked
     ? { action: "tracking", phase, includes: ["pedido nuevo"] }
@@ -204,14 +204,14 @@ for (const phase of phases) {
     : phase === "categoria" || phase === "entregado"
       ? { action: "reprompt", phase: "categoria", includes: ["¿De dónde quieres?"] }
       : hasOpenCart(phase)
-        ? { action: "confirm_switch", phase, clearCart: false, storeId: null, includes: ["Ya tienes un pedido en", "otra tienda"] }
+        ? { action: "confirm_cancel", phase, clearCart: false, storeId: null, includes: ["¿Quieres cancelar el pedido?"] }
         : { action: "show_niche", phase: "tienda", includes: ["¿De cuál te hago el mandado?"] });
   add("quiero de otra tienda", phase, "quiero de otra tienda", locked
     ? { action: "tracking", phase }
     : phase === "categoria" || phase === "entregado"
       ? { action: "reprompt", phase: "categoria", includes: ["¿De dónde quieres?"] }
       : hasOpenCart(phase)
-        ? { action: "confirm_switch", phase, clearCart: false, includes: ["¿Quieres borrarlo para pedir de otra tienda?"] }
+        ? { action: "confirm_cancel", phase, clearCart: false, includes: ["¿Quieres cancelar el pedido?"] }
         : { action: "show_niche", phase: "tienda", includes: ["Abarrotes"] });
   add("hola", phase, "hola", phase === "categoria" || phase === "entregado"
     ? { action: "greeting", phase: "categoria", includes: ["¿De dónde quieres?"] }
@@ -304,24 +304,24 @@ add("número 2 abarrotes", "tienda", "2", { action: "switch_store", phase: "ejem
 add("número 1 restaurantes cerrado", "tienda", "1", { action: "switch_store", phase: "ejemplo", exactWelcome: george, storeId: george.id, includes: ["cerrada"] }, { store: null, nicheId: "restaurantes", items: [], lastBot: formatNicheStoreList(nicheById("restaurantes")!, stores) });
 add("typo abarotes", "categoria", "abarotes", { action: "show_niche", phase: "tienda", includes: ["Abarrotes"] }, { store: null, items: [] });
 add("typo restorantes", "categoria", "restorantes", { action: "show_niche", phase: "tienda", includes: ["George"] }, { store: null, items: [] });
-add("typo carniseria", "pedido", "carniseria", { action: "disambiguate", phase: "pedido", clearCart: false, storeId: null, includes: ["Primero terminamos tu pedido de Mini Super Peke's", "Carnicerías"] });
+add("typo carniseria", "pedido", "carniseria", { action: "confirm_cancel", phase: "pedido", clearCart: false, storeId: null, includes: ["¿Quieres cancelar el pedido?"] });
 add("typo hamburgesas", "categoria", "hamburgesas", { action: "show_niche", phase: "tienda", includes: ["George"] }, { store: null, items: [] });
 add("pedido antes de tienda", "categoria", "quiero 2 cocas", { action: "reprompt", phase: "categoria", includes: ["¿De dónde quieres?"], agent: false }, { store: null, items: [] });
 add("pedido en ejemplo", "ejemplo", "quiero 2 cocas", { action: "agent", phase: "pedido", agent: true }, { store: pekes, items: [] });
 add("segundo mensaje", "pedido", "y un pinol de 1 litro", { action: "agent", phase: "pedido", agent: true });
 add("hamburguesa en abarrotes", "pedido", "una hamburguesa", { action: "agent", phase: "pedido", agent: true, storeId: null });
 add("producto de otra tienda", "pedido", "mejor de la central un kilo de bistec", {
-  action: "confirm_switch",
+  action: "confirm_cancel",
   phase: "pedido",
   clearCart: false,
   storeId: null,
-  includes: ["Ya tienes un pedido en Mini Super Peke's", "¿Quieres borrarlo para pedir de Carnicería La Central?"],
+  includes: ["¿Quieres cancelar el pedido?"],
 });
 add("dos tiendas", "pedido", "de pekes y de george", {
-  action: "disambiguate",
+  action: "confirm_cancel",
   phase: "pedido",
   clearCart: false,
-  includes: ["Primero terminamos tu pedido de Mini Super Peke's", "Hamburguesas Hotdogs George"],
+  includes: ["¿Quieres cancelar el pedido?"],
 });
 add("dos tiendas sin elegir", "categoria", "de pekes y de george", {
   action: "disambiguate",
@@ -336,11 +336,11 @@ add("dos categorías sin tienda", "categoria", "abarrotes y carnicería", {
   includes: ["¿Con cuál empezamos?", "Abarrotes", "Carnicerías"],
 }, { store: null, items: [] });
 add("otra categoría a medias", "pedido", "quiero de carnicería", {
-  action: "disambiguate",
+  action: "confirm_cancel",
   phase: "pedido",
   clearCart: false,
   storeId: null,
-  includes: ["Primero terminamos tu pedido de Mini Super Peke's", "Carnicerías"],
+  includes: ["¿Quieres cancelar el pedido?"],
 });
 add("mensaje largo sin tienda", "categoria", `${"quiero muchas cocas ".repeat(40)}por favor`, { action: "reprompt", phase: "categoria", includes: ["largo"], agent: false }, { store: null, items: [] });
 add("mensaje largo con tienda", "pedido", `${"coca cola 600 ".repeat(40)}`, { action: "agent", phase: "pedido", agent: true });

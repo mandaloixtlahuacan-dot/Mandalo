@@ -1,8 +1,8 @@
 # Quiero una coca en Peke's
 
-Veredicto: **FALLA**
+Veredicto: **PASA**
 
-no muestra precio. En el fixture, 1278 de 1278 filas de Peke's traen precio null (0 con precio)
+Opciones reales de Coca, sin monto ni total. 1278 de 1278 filas de Peke's traen precio null.
 
 Simulación en memoria. `ORDER_AGENT=on` solo en este proceso. El modelo es un `AgentModel` mock inyectado en `createOpenAIOrderAgentModel` (lo usa `runOrderAgentTurn`). No hubo llamada de red a OpenAI, Whapi ni Supabase.
 
@@ -81,5 +81,7 @@ De una coca, ¿cuál de estos?
 3. Coca Cola 1 Lt Vidrio
 4. Coca Cola 1.250ml
 5. Coca Cola 1.750ml
+
+La tienda confirma el precio. Todavía no es un total cerrado.
 
 Acción interna: `order_agent`

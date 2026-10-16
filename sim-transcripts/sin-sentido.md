@@ -36,6 +36,8 @@ Acción interna: `flow_greeting`
 
 **Mándalo → cliente:**
 
+No entendí «asdf qwerty blorp».
+
 👋 *¡Hola! Soy Mándalo, tu mandadero en Ixtlahuacán del Río.*
 
 Con gusto pido en la tienda, el restaurante o la carnicería que me digas y te lo llevo a la puerta.

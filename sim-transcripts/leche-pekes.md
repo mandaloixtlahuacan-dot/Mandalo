@@ -82,4 +82,6 @@ De leche, ¿cuál de estos?
 4. Leche 19hns 1lt
 5. Leche 3ltr Bolsa 19hns
 
+La tienda confirma el precio. Todavía no es un total cerrado.
+
 Acción interna: `order_agent`

@@ -2,13 +2,24 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 16 de octubre de 2026. Una queja o «quiero hablar
+> Última actualización: 16 de octubre de 2026. Sigue en el draft #49, sin
+> merge ni deploy. Peke's cotiza (opciones sin monto; la tienda manda
+> ORDEN #x PRECIO). Carnicería y restaurante siguen con precio fijo.
+> Un pin dentro del círculo de 1.5 km se acepta; uno de afuera se rechaza
+> y el chat se queda pidiendo otra ubicación, la dirección o cancelar.
+> Un pin vacío ya no se lee como 0,0 (eso caía fuera de la cabecera).
+> Si Whapi manda grados, un entero ×1e7 o un link de Maps, se usan esas
+> coordenadas. El bbox equivalente está propuesto en `geo.ts`
+> (`PROPOSED_CABECERA_BBOX`) y no está activo. Si nadie acepta el pedido,
+> la tienda también recibe el aviso de cancelación. Cambiar de tienda con carrito pregunta si se cancela.
+> El repartidor ya no lee «contacta al administrador».
+> Actualización anterior del mismo día: una queja o «quiero hablar
 > con alguien» se atiende en el chat, sin avisar al admin y sin prometer
 > que alguien va a llamar. Cancelar, en cualquier fase, pregunta «¿Quieres
 > cancelar el pedido? Sí o No»: el sí borra el pedido y vuelve al saludo;
 > el no sigue donde iba. Si la tienda o el repartidor ya tenían el pedido,
 > el aviso les llega directo por WhatsApp. Timeouts, alerta operativa y
-> sin repartidor no cambian. No está mergeado ni desplegado.
+> sin repartidor no cambian.
 > Actualización anterior: 16 de octubre de 2026. Las pruebas de pareo usan
 > el export real: George 56, La Central 19 y 1,278 filas de Peke's
 > (`scripts/fixtures/george-catalogo.json`, `lacentral-catalogo.json`,

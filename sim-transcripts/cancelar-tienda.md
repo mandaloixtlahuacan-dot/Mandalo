@@ -28,7 +28,7 @@ Acción interna: `flow_confirm_cancel`
 
 🏪 *Pedido #10*
 
-El cliente lo canceló. Ya no hace falta que le des seguimiento.
+Este pedido se canceló. Ya no hace falta que le des seguimiento.
 
 **Mándalo → cliente:**
 

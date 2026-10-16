@@ -1,8 +1,8 @@
 # Pedido George hasta ubicación y confirmación
 
-Veredicto: **FALLA**
+Veredicto: **PASA**
 
-Pidió el pin, pero al recibirlo lo rechazó (location_early): la fase guardada sigue en pedido, así que el GPS no cuenta todavía.
+Pidió la ubicación y, con el pin dentro de Ixtlahuacán, siguió la confirmación.
 
 Simulación en memoria. `ORDER_AGENT=on` solo en este proceso. El modelo es un `AgentModel` mock inyectado en `createOpenAIOrderAgentModel` (lo usa `runOrderAgentTurn`). No hubo llamada de red a OpenAI, Whapi ni Supabase.
 
@@ -68,11 +68,11 @@ Acción interna: `flow_switch_store`
 
 De un dogo clasico, ¿cuál de estos?
 
-1. Dogo Clásico
-2. Dogo Arrachera
-3. Dogo Cubano
-4. Dogo de Camarón
-5. Dogo de Pollo
+1. Dogo Clásico — $35
+2. Dogo Arrachera — $45
+3. Dogo Cubano — $60
+4. Dogo de Camarón — $60
+5. Dogo de Pollo — $45
 
 Acción interna: `catalogo_fijo`
 
@@ -123,12 +123,57 @@ Acción interna: `productos_confirmados`
 
 **Mándalo → cliente:**
 
-La ubicación la anoto para la entrega, cuando ya esté armado el pedido. Ahí vale el pin o la dirección escrita.
+✅ *Pedido #7 confirmado*
 
-🍔 *Te paso el menú de Hamburguesas Hotdogs George*
+Llegará aproximadamente a las 3:18 p.m..
 
-Pídeme lo que se te antoje, como sale en la foto.
+🛵 Estamos coordinando tu entrega con *Roberto*.
 
-*Envío y servicio: $35*, aparte.
+Te aviso en cuanto confirme.
 
-Acción interna: `flow_location_early`
+**Outbox `admin_notificaciones`:**
+
+- negocio / cotizacion_tienda / 5213300000005
+
+🏪 *Nuevo pedido #7*
+
+Ya trae precio del menú. Prepáralo en cuanto puedas.
+
+📍 *Entrega:*
+Ubicación compartida por GPS 📍
+
+🛒 *Pedido*
+
+✅ 🌭 *1 Dogo Clásico, 1 pz — $35*
+
+- repartidor / dispatch_repartidor / 5213300000011
+
+🛵 *Hola Roberto, tienes un nuevo pedido*
+
+🧾 *Pedido #7*
+
+🏪 *Hamburguesas Hotdogs George*
+
+📍 *Recoger en:*
+Ixtlahuacán del Río
+
+📍 *Entregar en:*
+Ubicación compartida por GPS 📍
+https://www.google.com/maps?q=20.865831,-103.240017
+
+🛒 *Productos:*
+
+✅ 🌭 *Dogo Clásico, 1 pz*
+
+💵 *Cobrar: $70*
+
+*Tel. cliente:* 5213310001007
+
+*Responde con:*
+#CONFIRMO 7
+
+*Luego:*
+#RECOGI 7
+
+#ENTREGADO 7
+

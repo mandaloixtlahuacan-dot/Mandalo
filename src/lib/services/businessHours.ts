@@ -9,6 +9,15 @@
 
 const MANDALO_TIMEZONE = "America/Mexico_City";
 
+/** Reloj del proceso. MANDALO_CLOCK_ISO solo lo usa el simulador; en producción no viene y se usa la hora real. */
+export function mandaloNow(explicit?: Date): Date {
+  if (explicit) return explicit;
+  const raw = String(process.env.MANDALO_CLOCK_ISO ?? "").trim();
+  if (!raw) return new Date();
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
 const DIAS_SEMANA = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
 
 function nowInMandaloMinutes(now: Date): number {
@@ -221,7 +230,7 @@ export function checkTiendaSchedule(params: {
   horarioPorDia?: unknown;
   now?: Date;
 }): TiendaScheduleCheck {
-  const now = params.now ?? new Date();
+  const now = params.now ?? mandaloNow();
   const diasCerrado = parseDiasCerrado(params.diasCerrado);
   const horarioPorDia = parseHorarioPorDia(params.horarioPorDia);
   const weekday = weekdayInMandalo(now);

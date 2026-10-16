@@ -36,6 +36,7 @@ import {
 import { isOrderingSmallTalk, reaskForPhase, type OrderPhase } from "@/lib/orderSession";
 import { LIVE_LOCATION_REPLY, TEXT_ONLY_REPLY } from "@/lib/inboundMessage";
 import { ADDRESS_ASK_MESSAGE } from "@/lib/services/captureEngine";
+import { COVERAGE_REJECT_MESSAGE } from "@/lib/services/geo";
 import { formatHour12, MANDALO_HORA_APERTURA, MANDALO_HORA_CIERRE } from "@/lib/services/businessHours";
 import { formatMoney } from "@/lib/ordenes";
 
@@ -369,7 +370,13 @@ function repromptText(input: FlowRouteInput): { phase: CustomerFlowPhase; nicheI
 
 function withReprompt(input: FlowRouteInput, lead: string, action: FlowAction): FlowDecision {
   const again = repromptText(input);
-  const text = lead ? `${lead}\n\n${again.text}` : again.text;
+  let text = lead ? `${lead}\n\n${again.text}` : again.text;
+  const previous = String(input.lastBotText ?? "").trim();
+  if (previous && text.trim() === previous) {
+    const heard = String(input.message ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
+    const note = heard ? `No entendí «${heard}».` : "No te entendí.";
+    text = `${note}\n\n${again.text}`;
+  }
   return decision({
     effect: "handled",
     action,
@@ -428,11 +435,12 @@ function handledSwitch(input: FlowRouteInput, store: UxStore): FlowDecision {
   if (isLockedPhase(input.phase)) {
     return withReprompt(input, "Ese pedido ya salió de la tienda que elegiste. Para otro, escribe *pedido nuevo*.", "tracking");
   }
-  if (input.store && input.store.id !== store.id && input.items.length > 0) return askToReplaceCart(input, store.nombre);
+  if (input.store && input.store.id !== store.id && input.items.length > 0) return confirmCancel(input);
   return directSwitch(store, false);
 }
 
 function oneOrderAtATime(input: FlowRouteInput, otra: string): FlowDecision {
+  if (input.store && input.items.length > 0) return confirmCancel(input);
   const tienda = input.store?.nombre ?? "esta tienda";
   return withReprompt(
     input,
@@ -558,14 +566,13 @@ export function routeCustomerFlow(input: FlowRouteInput): FlowDecision {
   const text = whole(message);
 
   if (input.media === "location" && input.locationHasCoords !== false && input.locationInsideCoverage === false) {
+    const ordering = Boolean(input.store) || input.items.length > 0;
     return decision({
       effect: "handled",
       action: "location_reject",
-      phase: input.phase,
+      phase: ordering ? "ubicacion" : input.phase,
       nicheId: input.nicheId,
-      text:
-        "📍 *Por ahora Mándalo solo cubre entregas dentro de Ixtlahuacán del Río.*\n\n" +
-        "Tu ubicación quedó fuera de esa zona.\n\nEn cuanto ampliemos la cobertura te avisamos. ¡Gracias por tu interés!",
+      text: COVERAGE_REJECT_MESSAGE,
     });
   }
 
@@ -716,7 +723,7 @@ export function routeCustomerFlow(input: FlowRouteInput): FlowDecision {
     if (isLockedPhase(input.phase)) {
       return withReprompt(input, "Ese pedido ya va con la tienda elegida.", "tracking");
     }
-    if (input.store && input.items.length > 0) return askToReplaceCart(input, "otra tienda");
+    if (input.store && input.items.length > 0) return confirmCancel(input);
     if (!nicheId) return withReprompt(input, "Va, elige de nuevo.", "reprompt");
     const had = input.store != null;
     return showNiche(input, nicheId, had);

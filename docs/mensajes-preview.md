@@ -254,7 +254,7 @@ ABARROTES — fuera de cobertura
 
 Tu ubicación quedó fuera de esa zona.
 
-En cuanto ampliemos la cobertura te avisamos. ¡Gracias por tu interés!
+Mándame otra ubicación, o escríbeme tu dirección (calle y número, colonia o una referencia). Si ya no quieres el pedido, escribe *cancelar*.
 
 
 ================================================================

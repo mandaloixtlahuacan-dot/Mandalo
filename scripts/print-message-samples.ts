@@ -158,7 +158,7 @@ section(
 );
 section(
   "ABARROTES — fuera de cobertura",
-  "📍 *Por ahora Mándalo solo cubre entregas dentro de Ixtlahuacán del Río.*\n\nTu ubicación quedó fuera de esa zona.\n\nEn cuanto ampliemos la cobertura te avisamos. ¡Gracias por tu interés!",
+  "📍 *Por ahora Mándalo solo cubre entregas dentro de Ixtlahuacán del Río.*\n\nTu ubicación quedó fuera de esa zona.\n\nMándame otra ubicación, o escríbeme tu dirección (calle y número, colonia o una referencia). Si ya no quieres el pedido, escribe *cancelar*.",
 );
 section("ABARROTES — producto que la tienda no tiene", mensajeClienteProductoNoDisponible("ZAGU", "Pinol 1 litro"));
 section(

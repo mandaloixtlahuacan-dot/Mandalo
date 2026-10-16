@@ -82,4 +82,6 @@ De un nito, ¿cuál de estos?
 4. Caja Nito 15paq
 5. Hotkis Nito 50g
 
+La tienda confirma el precio. Todavía no es un total cerrado.
+
 Acción interna: `order_agent`

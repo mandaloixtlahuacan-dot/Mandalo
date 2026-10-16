@@ -32,7 +32,8 @@ export const ROBERTO_HORARIO_JSON = {
   "5": { abre: "08:00", cierra: "21:00" },
 } as const;
 
-export const COURIER_ORDER_TAKEN_MESSAGE = "⚠️ Ya lo tomó otro repartidor.";
+export const COURIER_ORDER_TAKEN_MESSAGE =
+  "⚠️ Ya lo tomó otro repartidor. Este pedido ya no es tuyo.";
 
 export type CourierScheduleRow = {
   id?: number | null;
