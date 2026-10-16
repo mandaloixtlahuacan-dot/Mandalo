@@ -66,22 +66,6 @@ Acción interna: `flow_switch_store`
 
 **Mándalo → cliente:**
 
-De un dogo clasico, ¿cuál de estos?
-
-1. Dogo Clásico — $35
-2. Dogo Arrachera — $45
-3. Dogo Cubano — $60
-4. Dogo de Camarón — $60
-5. Dogo de Pollo — $45
-
-Acción interna: `catalogo_fijo`
-
-### Turno 5
-
-**Cliente:** sí
-
-**Mándalo → cliente:**
-
 OK, pediste:
 
 🛒 *Tu pedido*
@@ -102,7 +86,7 @@ _Solo es un ejemplo, no está en tu pedido: "quita las papas" o "agrega 1 refres
 
 Acción interna: `catalogo_fijo`
 
-### Turno 6
+### Turno 5
 
 **Cliente:** sí
 
@@ -116,7 +100,7 @@ Si prefieres, también puedes escribirme tu dirección: calle y número, colonia
 
 Acción interna: `productos_confirmados`
 
-### Turno 7
+### Turno 6
 
 **Cliente:** [pin GPS]
 **Ubicación:** 20.865831, -103.240017
@@ -125,11 +109,11 @@ Acción interna: `productos_confirmados`
 
 ✅ *Pedido #7 confirmado*
 
-Llegará aproximadamente a las 3:18 p.m..
+Llegará aproximadamente a las 5:04 p.m..
 
-🛵 Estamos coordinando tu entrega con *Roberto*.
+🛵 Estamos coordinando tu entrega.
 
-Te aviso en cuanto confirme.
+Te aviso en cuanto un repartidor confirme.
 
 **Outbox `admin_notificaciones`:**
 
@@ -149,6 +133,37 @@ Ubicación compartida por GPS 📍
 - repartidor / dispatch_repartidor / 5213300000011
 
 🛵 *Hola Roberto, tienes un nuevo pedido*
+
+🧾 *Pedido #7*
+
+🏪 *Hamburguesas Hotdogs George*
+
+📍 *Recoger en:*
+Ixtlahuacán del Río
+
+📍 *Entregar en:*
+Ubicación compartida por GPS 📍
+https://www.google.com/maps?q=20.865831,-103.240017
+
+🛒 *Productos:*
+
+✅ 🌭 *Dogo Clásico, 1 pz*
+
+💵 *Cobrar: $70*
+
+*Tel. cliente:* 5213310001007
+
+*Responde con:*
+#CONFIRMO 7
+
+*Luego:*
+#RECOGI 7
+
+#ENTREGADO 7
+
+- repartidor / dispatch_repartidor / 5213300000012
+
+🛵 *Hola Mateo, tienes un nuevo pedido*
 
 🧾 *Pedido #7*
 

@@ -80,7 +80,7 @@ De leche, ¿cuál de estos?
 2. Leche 19 Hns Ligera
 3. Leche 19hns 1.89ml
 4. Leche 19hns 1lt
-5. Leche 3ltr Bolsa 19hns
+5. Leche Alpura Caja
 
 La tienda confirma el precio. Todavía no es un total cerrado.
 

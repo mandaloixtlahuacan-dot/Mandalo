@@ -1,4 +1,5 @@
 import { searchAgentProducts, stripOrderVerbs } from "@/lib/orderAgent/catalog";
+import { composeMessage, lineFromDecision, messageIsNotAnOrder } from "@/lib/orderAgent/compose";
 import { ORDER_AGENT_ESCALATE_AFTER, ORDER_AGENT_MAX_STEPS, orderAgentEscalationModel, orderAgentModel } from "@/lib/orderAgent/env";
 import { createOpenAIOrderAgentModel } from "@/lib/orderAgent/model";
 import { resolveAgentPending } from "@/lib/orderAgent/pending";
@@ -425,7 +426,75 @@ export async function runOrderAgentTurn(input: OrderAgentTurnInput): Promise<Ord
     }
     if (!input.pending && pending) pending = rememberSpoken(input.message, pending);
   }
-  if (stalled && !question) {
+  let composedReply = false;
+  if ((input.store.hasProductList || input.store.catalogMode === "fixed") && !input.pending && !messageIsNotAnOrder(input.message)) {
+    const decisions = await composeMessage({
+      message: input.message,
+      store: input.store,
+      pool: products,
+      search: async (query) => {
+        const cleaned = stripOrderVerbs(query);
+        const pool = input.search
+          ? (await input.search(cleaned)).filter((product) => product.available)
+          : searchAgentProducts(products, cleaned, 24);
+        rememberProducts(pool);
+        return pool.slice(0, 24);
+      },
+    });
+    const missing: string[] = [];
+    const asks: AgentClarification[] = [];
+    const fresh = cart.filter((line) => !input.cart.some((prior) => prior.lineId === line.lineId));
+    if (decisions.some((decision) => decision.kind !== "skip")) {
+      const priorIds = new Set(input.cart.map((line) => line.lineId));
+      cart = cart.filter((line) => priorIds.has(line.lineId));
+    }
+    for (const decision of decisions) {
+      if (decision.kind === "skip") continue;
+      if (decision.kind === "missing") {
+        missing.push(decision.label);
+        continue;
+      }
+      if (decision.kind === "add") {
+        seq += 1;
+        const line = lineFromDecision(`l${seq}`, decision);
+        const previous = fresh.find((item) => item.productId === line.productId);
+        if (previous && line.qty === 1 && previous.qty !== 1) {
+          line.qty = previous.qty;
+          line.unit = previous.unit;
+        }
+        cart = upsertLine(cart, line);
+        changed = true;
+        continue;
+      }
+      const cut = decision.products[0]?.name.replace(/\s+marinad[oa]s?\b/i, "").trim() || decision.query;
+      const questionText = decision.marinade
+        ? `¿${cut} marinada o normal?`
+        : formatProductOptions(decision.query, decision.products);
+      asks.push({
+        question: questionText,
+        candidateIds: decision.products.slice(0, 5).map((product) => product.id),
+        qty: decision.qty,
+        unit: decision.unit,
+        axis: decision.marinade ? "marinade" : decision.products.length > 1 ? "size" : null,
+        query: decision.clause,
+      });
+    }
+    composedReply = decisions.some((decision) => decision.kind !== "skip");
+    if (missing.length) {
+      const note = missing.map((label) => `No tenemos *${label}*.`).join(" ");
+      aside = aside ? `${aside}\n\n${note}` : note;
+    }
+    if (asks.length) {
+      const [first, ...rest] = asks;
+      question = first.question;
+      pending = { ...first, queue: rest };
+      finished = false;
+    } else if (changed || missing.length) {
+      question = null;
+      pending = null;
+    }
+  }
+  if (stalled && !question && !composedReply) {
     question = "No me quedó claro. Dime un producto, con marca o tamaño.";
     pending = { question, candidateIds: [], qty: null, unit: null, axis: null };
     finished = false;

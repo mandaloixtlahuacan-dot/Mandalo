@@ -1,5 +1,6 @@
 import { formatMoney } from "@/lib/ordenes";
 import { closestAgentProducts, foldAgent, genericDogoProduct, isGenericDogoText, isOrderVerbOnly, stripOrderVerbs } from "@/lib/orderAgent/catalog";
+import { clauseResolvesTo } from "@/lib/orderAgent/compose";
 import {
   groceryClarityError,
   groceryFamily,
@@ -124,7 +125,33 @@ function sameQuestion(left: string, right: string): boolean {
 }
 
 function optionLabel(product: AgentProduct): string {
-  return [product.brand, product.name, product.presentation].filter((part) => part && String(part).trim()).join(" ");
+  const name = String(product.name ?? "").trim();
+  const presentation = String(product.presentation ?? "").trim();
+  const foldedName = foldAgent(name);
+  const foldedPresentation = foldAgent(presentation);
+  const showPresentation = Boolean(foldedPresentation) && !foldedName.includes(foldedPresentation);
+  return [product.brand, name, showPresentation ? presentation : ""].filter((part) => part && String(part).trim()).join(" ");
+}
+
+function answersPending(message: string | undefined, pending: AgentPending | null, product: AgentProduct, products: AgentProduct[]): boolean {
+  if (!message || !pending?.candidateIds.includes(product.id)) return false;
+  const text = foldAgent(message);
+  const number = text.match(/^(?:(?:la|el|opcion|numero|pues|es)\s+)?(\d+)$/);
+  if (number) return pending.candidateIds[Number(number[1]) - 1] === product.id;
+  if (/^(?:pues\s+|es\s+)?(?:ese|esa|eso|ese mismo|esa misma|el primero|la primera|el de arriba)$/.test(text)) {
+    return pending.candidateIds[0] === product.id;
+  }
+  if (text.length < 3) return false;
+  const rows = pending.candidateIds
+    .map((id) => products.find((item) => item.id === id))
+    .filter((row): row is AgentProduct => Boolean(row));
+  const words = text.split(" ").filter((token) => token.length >= 3);
+  const named = rows.filter((row) => {
+    const blob = foldAgent(`${row.brand ?? ""} ${row.name} ${row.presentation ?? ""}`);
+    if (blob.includes(text)) return true;
+    return words.length > 0 && words.every((token) => blob.includes(token));
+  });
+  return named.length === 1 && named[0].id === product.id;
 }
 
 function sizeKey(value: string): string {
@@ -214,8 +241,32 @@ function optionPrice(product: AgentProduct): string | null {
   return formatMoney(Number(product.price));
 }
 
+const TYPE_HINTS = ["pollo", "res", "gajo", "francesa", "cuban", "hawaian", "camaron", "arrachera", "clasic", "puerco", "pastor"];
+
+function narrowAskedProducts(query: string, products: AgentProduct[]): AgentProduct[] {
+  const text = foldAgent(query);
+  const wanted = TYPE_HINTS.filter((hint) => new RegExp(`\\b${hint}`).test(text));
+  let rows = products;
+  if (wanted.length) {
+    const filtered = products.filter((product) => {
+      const name = foldAgent(product.name);
+      return wanted.every((hint) => name.includes(hint));
+    });
+    if (filtered.length) rows = filtered;
+  }
+  const seen = new Set<string>();
+  const unique: AgentProduct[] = [];
+  for (const product of rows) {
+    const label = foldAgent(optionLabel(product));
+    if (!label || seen.has(label)) continue;
+    seen.add(label);
+    unique.push(product);
+  }
+  return unique;
+}
+
 export function formatProductOptions(query: string, products: AgentProduct[]): string {
-  const rows = products.slice(0, 5);
+  const rows = narrowAskedProducts(query, products).slice(0, 5);
   const lines = rows.map((product, index) => {
     const label = [product.brand, product.name, product.presentation].filter((part) => part && String(part).trim()).join(" ");
     const price = optionPrice(product);
@@ -607,14 +658,21 @@ export function validateToolCall(params: {
     if (!unit) return { ok: false, error: "La unidad tiene que ser pz, kg, pesos, g o l (litros)." };
     const settledUnit = unit;
     const mustSearch = store.hasProductList || store.catalogMode === "fixed";
+    const already = cart.some((line) => line.productId === productId);
+    const pendingAnswer = answersPending(params.customerMessage, pending, product, products);
+    const resolved = Boolean(
+      params.customerMessage && clauseResolvesTo(params.customerMessage, product, products, store),
+    );
+    const trusted = already || pendingAnswer || resolved;
     let siblings: AgentProduct[] = [];
-    if (mustSearch) {
-      const already = cart.some((line) => line.productId === productId);
+    if (mustSearch && !trusted) {
       const hit = searchContaining(searches, productId);
-      if (!already && !hit) {
-        return { ok: false, error: "Busca con search_products antes de anotar ese producto." };
-      }
       siblings = hit?.products ?? [];
+      if (!siblings.length) {
+        const name = foldAgent(product.name);
+        const same = products.filter((item) => foldAgent(item.name) === name);
+        if (same.length) siblings = same;
+      }
       if (!already && params.customerMessage && marinadeUnresolved(product, products, params.customerMessage)) {
         return { ok: false, error: "Hay versión marinada y normal. Pregunta con ask_customer (axis marinade). No elijas una tú." };
       }
@@ -648,6 +706,7 @@ export function validateToolCall(params: {
     const onlyHit = siblings.length === 1 && siblings[0].id === product.id;
     if (
       params.customerMessage
+      && !trusted
       && !unchangedProduct
       && !pieceSwap
       && !productMentioned(params.customerMessage, product)
@@ -687,7 +746,10 @@ export function validateToolCall(params: {
   if (store.hasProductList) {
     const hit = searchForText(searches, `${freeText} ${name}`);
     if (!hit) {
-      return { ok: false, error: "Busca con search_products antes de anotar ese producto." };
+      return {
+        ok: false,
+        error: `"${freeText}" no está anotado con un id del catálogo. No lo inventes. Si no está, di que no lo tienen.`,
+      };
     }
     if (hit.products.length === 1) {
       return { ok: false, error: `Está en la lista. Anótalo con product_id ${hit.products[0].id} (${optionLabel(hit.products[0])}).` };

@@ -74,7 +74,7 @@ Acción interna: `flow_switch_store`
 
 **Mándalo → cliente:**
 
-De una coca, ¿cuál de estos?
+De coca, ¿cuál de estos?
 
 1. Coca 355ml
 2. Coca Cola 1 Litro Vidrio
@@ -198,7 +198,7 @@ Ya le avisé al cliente el total del pedido *#17*.
 
 ✅ *Pedido #17 confirmado*
 
-Llegará aproximadamente a las 3:18 p.m..
+Llegará aproximadamente a las 5:04 p.m..
 
 🛵 Estamos coordinando tu entrega.
 
@@ -344,7 +344,7 @@ Pedido *#17*.
 Pedido entregado
 
 Total: $83
-Hora: 2026-10-16T20:58:42.847Z
+Hora: 2026-10-16T22:44:25.949Z
 Repartidor: Roberto
 
 - cliente / notificacion_cliente / 5213310001203

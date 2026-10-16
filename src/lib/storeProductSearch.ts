@@ -81,12 +81,18 @@ export function listaSearchTokens(text: string): string[] {
 const WEAK_TOKENS = new Set(["pan", "lata", "latas", "refresco", "jugo", "botella", "paquete", "bolsa", "caja"]);
 
 const SYNONYM_GROUPS: string[][] = [
-  ["fuse", "fuze", "fusi", "fuzetea", "fuzete"],
+  ["fuse", "fuze", "fusi", "fuste", "fuzet", "fuzete", "fuzetea"],
   ["coca", "cocacola"],
+  ["bonafont", "bonafon", "donado", "donafon", "donafont", "fonafont", "vonafont"],
+  ["pepsi", "pepsis"],
   ["lata", "latas"],
 ];
 
-const DRINK_HINTS = new Set(["fuse", "fuze", "fusi", "fuzetea", "fuzete", "coca", "cocacola", "pepsi", "jugo", "refresco", "tea"]);
+const DRINK_HINTS = new Set([
+  "fuse", "fuze", "fusi", "fuste", "fuzet", "fuzete", "fuzetea",
+  "coca", "cocacola", "pepsi", "pepsis", "jugo", "refresco", "tea",
+  "bonafont", "bonafon", "donado", "fonafont",
+]);
 
 function synonymForms(token: string): string[] {
   const forms = new Set<string>([token]);
@@ -118,6 +124,11 @@ export function listaRankTokens(text: string): string[] {
     if (WEAK_TOKENS.has(word)) push(word);
     if ((word === "ti" || word === "tea" || (word === "te" && drink)) && drink) push("tea");
     if (word === "ti" || word === "tea") push("tea");
+  }
+  // «fuste» y «donado» no comparten tres letras con la marca. El sinónimo
+  // entra aquí para que el ranking de TypeScript y el de SQL vean lo mismo.
+  for (const token of [...tokens]) {
+    for (const form of synonymForms(token)) push(form);
   }
   return tokens;
 }
@@ -260,7 +271,42 @@ function exactNameBonus(nombre: string, token: string): number {
  * Las mismas pesas que `buscar_lista_productos_tienda`: nombre, marca y alias
  * pesan; la presentación solo desempata para no perder el tamaño. Máximo 80.
  */
-export function rankListaByTokens(rows: ListaProducto[], tokens: string[], limit = LISTA_SEARCH_LIMIT): ListaProducto[] {
+/** «coca de 600», «2 litros», «62 g». El número suelto de 3–4 cifras es mililitros, salvo que diga pesos. */
+export function listaPackageKey(text: string): string | null {
+  const folded = foldListaText(text);
+  const amount = (raw: string) => raw.replace(",", ".");
+  const ml = folded.match(/\b(\d+(?:[.,]\d+)?)\s*ml\b/);
+  if (ml) return `${amount(ml[1])}ml`;
+  const liters = folded.match(/\b(\d+(?:[.,]\d+)?)\s*(?:l|lt|lts|litros?)\b/);
+  if (liters) return `${amount(liters[1])}l`;
+  const grams = folded.match(/\b(\d+(?:[.,]\d+)?)\s*(?:g|gr|gramos?)\b/);
+  if (grams) return `${amount(grams[1])}g`;
+  if (/\bpesos\b/.test(folded)) return null;
+  const bare = folded.match(/\b(\d{3,4})\b/);
+  if (bare && Number(bare[1]) >= 100) return `${bare[1]}ml`;
+  return null;
+}
+
+function rowPackageKey(row: ListaProducto): string | null {
+  return listaPackageKey(`${row.nombre} ${row.presentacion ?? ""}`);
+}
+
+function samePackage(wanted: string, got: string): boolean {
+  if (wanted === got) return true;
+  const litersOf = (key: string) => (key.endsWith("ml") ? null : key.endsWith("l") ? Number(key.slice(0, -1)) : null);
+  const wantedLiters = litersOf(wanted);
+  const gotLiters = litersOf(got);
+  if (wantedLiters != null && got === `${wantedLiters * 1000}ml`) return true;
+  if (gotLiters != null && wanted === `${gotLiters * 1000}ml`) return true;
+  return false;
+}
+
+export function rankListaByTokens(
+  rows: ListaProducto[],
+  tokens: string[],
+  limit = LISTA_SEARCH_LIMIT,
+  packageKey: string | null = null,
+): ListaProducto[] {
   if (!tokens.length || !rows.length) return [];
   const cap = Math.max(1, Math.min(limit, LISTA_SEARCH_LIMIT));
   const scored: Array<{ row: ListaProducto; score: number; index: number }> = [];
@@ -274,6 +320,10 @@ export function rankListaByTokens(rows: ListaProducto[], tokens: string[], limit
       if (!WEAK_TOKENS.has(token)) distinctive += 1;
     }
     if (distinctive > 1) score += distinctive * 3;
+    if (packageKey) {
+      const got = rowPackageKey(row);
+      if (got && samePackage(packageKey, got)) score += 50;
+    }
     if (score > 0) scored.push({ row, score, index });
   });
   scored.sort((a, b) => b.score - a.score || a.row.nombre.localeCompare(b.row.nombre) || a.index - b.index);
@@ -281,5 +331,5 @@ export function rankListaByTokens(rows: ListaProducto[], tokens: string[], limit
 }
 
 export function rankListaCandidates(rows: ListaProducto[], text: string, limit = LISTA_SEARCH_LIMIT): ListaProducto[] {
-  return rankListaByTokens(rows, listaRankTokens(text), limit);
+  return rankListaByTokens(rows, listaRankTokens(text), limit, listaPackageKey(text));
 }

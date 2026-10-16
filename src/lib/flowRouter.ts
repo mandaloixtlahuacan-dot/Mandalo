@@ -396,7 +396,7 @@ function answerFor(input: FlowRouteInput, kind: "fee" | "hours" | "have"): strin
   if (!input.store) return `${mandalo} El horario de la tienda te lo digo cuando la elijas.`;
   const shop = input.store.abierta
     ? `*${input.store.nombre}* está abierta ahora.`
-    : `*${input.store.nombre}* está cerrada${input.store.abreTexto ? ` (${input.store.abreTexto})` : ""}. Lo armamos y se manda en cuanto abra.`;
+    : `*${input.store.nombre}* está cerrada${input.store.abreTexto ? ` (${input.store.abreTexto})` : ""}${input.store.horarioTexto ? `. Horario: ${input.store.horarioTexto}` : ""}. Si quieres, lo armamos y se programa para cuando abra.`;
   return `${mandalo} ${shop}`;
 }
 

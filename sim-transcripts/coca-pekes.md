@@ -74,7 +74,7 @@ Acción interna: `flow_switch_store`
 
 **Mándalo → cliente:**
 
-De una coca, ¿cuál de estos?
+De coca, ¿cuál de estos?
 
 1. Coca 355ml
 2. Coca Cola 1 Litro Vidrio

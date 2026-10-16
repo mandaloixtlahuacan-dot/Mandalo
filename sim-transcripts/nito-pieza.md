@@ -74,13 +74,13 @@ Acción interna: `flow_switch_store`
 
 **Mándalo → cliente:**
 
-De un nito, ¿cuál de estos?
+De nito, ¿cuál de estos?
 
 1. Nito 62g
 2. Nito Duo
 3. Nito Funk
-4. Caja Nito 15paq
-5. Hotkis Nito 50g
+4. Hotkis Nito 50g
+5. Caja Nito 15paq
 
 La tienda confirma el precio. Todavía no es un total cerrado.
 

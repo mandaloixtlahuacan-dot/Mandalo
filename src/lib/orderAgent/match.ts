@@ -18,7 +18,8 @@ const STOP = new Set([
   "gramo", "gramos", "pieza", "piezas", "caja", "cajas", "paquete", "paquetes",
   "paq", "botella", "botellas", "lata", "latas", "bolsa", "bolsas", "medio",
   "media", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve",
-  "diez", "quiero", "solo", "esta", "mala", "mal", "mas", "muy", "bien", "the",
+  "diez", "quiero", "quisiera", "dame", "das", "deme", "traeme", "tambien", "despues", "luego",
+  "entonces", "recia", "reciona", "solo", "esta", "mala", "mal", "mas", "muy", "bien", "the",
 ]);
 
 function wordsOf(value: string): string[] {
@@ -45,7 +46,7 @@ export function presentationFromName(name: string): NamePresentation | null {
   const text = foldAgent(name);
   if (!text) return null;
   const duo = /\bduo\b/.test(text);
-  const caja = /\b(cajas?|paquetes?|multipack)\b/.test(text);
+  const caja = /\b(cajas?|paquetes?|multipack|cj)\b/.test(text);
   const paq = text.match(/\b(\d+)\s*paq\b/);
   const slash = text.match(/\/\s*(\d+)\b/);
   const pieces = text.match(/\b(\d+)\s*pz\b/);
@@ -84,7 +85,7 @@ export function isPackProduct(product: Pick<AgentProduct, "name" | "presentation
 
 /** «Caja Nito» o «15paq» en el nombre. La columna presentación no cuenta: ahí «paquete» es la unidad. */
 export function packInName(product: Pick<AgentProduct, "name">): boolean {
-  return presentationFromName(product.name)?.pack === true || /\b(cajas?|paquetes?)\b/.test(foldAgent(product.name));
+  return presentationFromName(product.name)?.pack === true || /\b(cajas?|paquetes?|cj)\b/.test(foldAgent(product.name));
 }
 
 export function isPieceCorrection(message: string): boolean {
@@ -237,6 +238,8 @@ export function spokenPackageSize(text: string): string | null {
   if (liters) return `${liters[1].replace(",", ".")}l`;
   const grams = folded.match(/\b(\d+(?:[.,]\d+)?)\s*(?:g|gr|gramos?)\b/);
   if (grams) return `${grams[1].replace(",", ".")}g`;
+  const bare = folded.match(/\b(?:de\s+)?(\d{3,4})\b/);
+  if (bare && Number(bare[1]) >= 100) return `${bare[1]}ml`;
   return null;
 }
 
@@ -383,11 +386,28 @@ export function replacementLineId(cart: AgentLine[], product: AgentProduct, mess
   return line?.lineId ?? null;
 }
 
+const CLAUSE_SPLIT = new RegExp(
+  [
+    "\\s*(?:,|;|\\btambi[eé]n\\b|\\bdespu[eé]s\\b|\\bluego\\b|\\by\\b|\\be\\b)\\s*",
+    "\\s+(?=\\d+(?:[.,]\\d+)?\\s+(?:(?:kg|kilos?|l|lt|lts|litros?|g|gr|gramos?)\\s+de\\s+[a-zñ]|(?!(?:ml|l|lt|lts|litros?|g|gr|gramos?|kg|kilos?)\\b)[a-zñ]{3,}))",
+    "\\s+(?=(?:un|una|uno|unos|unas|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|medio|media)\\b)",
+  ].join("|"),
+  "i",
+);
+
 export function orderClauses(message: string): string[] {
-  return String(message ?? "")
-    .split(/\s*(?:,|;|\by\b|\be\b)\s*|\s+(?=\d+(?:[.,]\d+)?(?!\s*(?:ml|l|lt|lts|litros?|g|gr|gramos?|kg|kilos?)\b)\b)|\s+(?=(?:un|una|uno|unos|unas|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|medio|media)\b)/i)
+  const parts = String(message ?? "")
+    .split(CLAUSE_SPLIT)
     .map((part) => part.trim())
     .filter((part) => contentTokens(part).length > 0);
+  const merged: string[] = [];
+  for (const part of parts) {
+    const text = foldAgent(part);
+    const continues = /^(?:de\b|recia\b|reciona\b|grande\b|chica\b|chico\b|marinad|una recia|un recio|una grande|una chica)/.test(text);
+    if (merged.length && continues) merged[merged.length - 1] = `${merged[merged.length - 1]} ${part}`;
+    else merged.push(part);
+  }
+  return merged;
 }
 
 function clauseCovered(clause: string, blob: string): boolean {

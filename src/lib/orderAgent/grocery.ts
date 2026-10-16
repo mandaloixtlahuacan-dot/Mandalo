@@ -277,7 +277,7 @@ export function groceryFamily(text: string): string | null {
 
 function probeItem(line: Pick<AgentLine, "name" | "brand" | "presentation" | "variant" | "qty" | "unit" | "note">): PedidoItemInput {
   const sizeHint = line.unit === "l" ? `${line.qty} litros` : line.unit === "kg" ? `${line.qty} kilos` : line.unit === "g" ? `${line.qty} g` : "";
-  const unidad = line.unit === "l" ? "litro" : line.unit === "kg" ? "kilo" : line.unit === "g" ? "g" : line.unit === "pesos" ? "pesos" : "pieza";
+  const unidad = line.unit === "l" ? "litro" : line.unit === "kg" ? "kilo" : line.unit === "g" ? "gramo" : line.unit === "pesos" ? "pesos" : "pieza";
   return {
     nombre_producto: line.name,
     marca: line.brand,

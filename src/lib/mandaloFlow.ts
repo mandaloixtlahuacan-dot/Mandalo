@@ -777,9 +777,11 @@ async function sendCatalogMenu(to: string, store: UxStore, caption: string): Pro
         "Menú",
         rows.map((row) => ({ nombre: row.nombreProducto, precio: row.precio })),
       );
+      const when = store.abreTexto ? ` (${store.abreTexto})` : "";
+      const hours = store.horarioTexto ? ` Horario: ${store.horarioTexto}.` : "";
       const closed = store.abierta
         ? ""
-        : `\n\n⏰ *Ojo:* está cerrada ahora${store.abreTexto ? ` (${store.abreTexto})` : ""}.\n\nLo armamos y se manda en cuanto abra.`;
+        : `\n\n⏰ *${store.nombre} está cerrada ahora*${when}.${hours}\n\nSi quieres, lo armamos y se programa para cuando abra.`;
       const marker = `*${UX_MENU_MARKER}*`;
       const body = menu.includes(marker) ? menu.replace(`\n\n${marker}`, `${closed}\n\n${marker}`) : `${formatCatalogMenuCaption(store, { photo: false })}\n\n${menu}`;
       await sendWhatsApp(to, body);
@@ -1870,6 +1872,13 @@ const TRACKING_MESSAGES: Partial<Record<OrderState, string>> = {
   en_camino_cliente: "🛵 *Tu pedido ya va con el repartidor.*\n\nEn cuanto haya una actualización, te aviso.",
 };
 
+function scheduleHoursText(abre: unknown, cierra: unknown): string {
+  const open = abre == null ? "" : formatHour12(String(abre));
+  const close = cierra == null ? "" : formatHour12(String(cierra));
+  if (!open || !close || open === "null" || close === "null") return "";
+  return `${open} a ${close}`;
+}
+
 async function loadUxStores(): Promise<UxStore[]> {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
@@ -1897,6 +1906,10 @@ async function loadUxStores(): Promise<UxStore[]> {
       telefono: ensureMxWhatsappIntl(telefono),
       abierta: schedule.withinSchedule,
       abreTexto: schedule.withinSchedule ? "" : schedule.abreTexto,
+      horarioTexto: scheduleHoursText(
+        (row as { hora_apertura?: unknown }).hora_apertura,
+        (row as { hora_cierre?: unknown }).hora_cierre,
+      ),
       usaCatalogoFijo: (row as { usa_catalogo_fijo?: unknown }).usa_catalogo_fijo === true,
     });
   }

@@ -3,10 +3,14 @@ import { answerMatchesPresentation } from "@/lib/orderAgent/match";
 import type { AgentLine, AgentPending, AgentProduct, AgentUnit } from "@/lib/orderAgent/types";
 
 function asNumber(text: string): number | null {
-  const match = foldAgent(text).match(/^(?:(?:la|el|opcion|numero)\s+)?(\d+)$/);
+  const match = foldAgent(text).match(/^(?:(?:la|el|opcion|numero|pues|es)\s+)?(\d+)$/);
   if (!match) return null;
   const value = Number(match[1]);
   return Number.isInteger(value) && value > 0 ? value : null;
+}
+
+function pointsAtFirst(text: string): boolean {
+  return /^(?:pues\s+|es\s+)?(?:ese|esa|eso|ese mismo|esa misma|el primero|la primera|el de arriba)$/.test(foldAgent(text));
 }
 
 function sizeWord(text: string): string | null {
@@ -64,6 +68,7 @@ export function resolveAgentPending(params: {
 
   const number = asNumber(message);
   if (number != null) chosen = rows[number - 1] ?? null;
+  if (!chosen && pointsAtFirst(message)) chosen = rows[0] ?? null;
 
   const size = sizeWord(message);
   if (!chosen && size) {
@@ -89,7 +94,12 @@ export function resolveAgentPending(params: {
 
   if (!chosen) {
     const folded = foldAgent(message);
-    const named = rows.filter((row) => folded.length > 0 && foldAgent(row.name).includes(folded));
+    const words = folded.split(" ").filter((token) => token.length >= 3);
+    const named = rows.filter((row) => {
+      const name = foldAgent(`${row.brand ?? ""} ${row.name} ${row.presentation ?? ""}`);
+      if (folded.length >= 3 && name.includes(folded)) return true;
+      return words.length > 0 && words.every((token) => name.includes(token) || name.split(" ").some((word) => word.startsWith(token) || token.startsWith(word)));
+    });
     if (named.length === 1) chosen = named[0];
   }
   if (!chosen) {

@@ -4,6 +4,8 @@
  */
 import { readFileSync } from "node:fs";
 
+import { rankListaByTokens } from "../../src/lib/storeProductSearch";
+
 export type MemoryRow = Record<string, unknown>;
 
 type Filter =
@@ -453,17 +455,6 @@ class MemoryQuery implements PromiseLike<QueryResult> {
   }
 }
 
-function scoreRow(row: MemoryRow, tokens: string[]): number {
-  const blob = fold(`${row.nombre_producto ?? ""} ${row.marca ?? ""} ${row.presentacion ?? ""} ${Array.isArray(row.alias) ? row.alias.join(" ") : ""}`);
-  let score = 0;
-  for (const token of tokens) {
-    const key = fold(token);
-    if (key.length < 3) continue;
-    if (blob.includes(key)) score += 4;
-  }
-  return score;
-}
-
 export class MemorySupabase {
   constructor(private readonly db: MemoryDatabase) {}
 
@@ -493,24 +484,39 @@ export class MemorySupabase {
       const tiendaId = Number(args.p_tienda_id);
       const tokens = Array.isArray(args.p_tokens) ? args.p_tokens.map((item) => String(item)) : [];
       const limit = Number(args.p_limit ?? 80);
-      const ranked = this.db
+      const rows = this.db
         .rows("productos_tienda")
-        .filter((row) => same(row.tienda_id, tiendaId) && row.disponible !== false)
-        .map((row) => ({ row, score: scoreRow(row, tokens) }))
-        .filter((item) => item.score > 0)
-        .sort((left, right) => right.score - left.score || Number(left.row.id) - Number(right.row.id))
-        .slice(0, Number.isFinite(limit) ? limit : 80)
-        .map((item) => ({
-          id: item.row.id,
-          nombre_producto: item.row.nombre_producto,
-          precio: item.row.precio ?? null,
-          categoria: item.row.categoria ?? null,
-          marca: item.row.marca ?? null,
-          presentacion: item.row.presentacion ?? null,
-          alias: item.row.alias ?? [],
-          rank: item.score,
-        }));
-      return { data: ranked, error: null };
+        .filter((row) => same(row.tienda_id, tiendaId) && row.disponible !== false);
+      const ranked = rankListaByTokens(
+        rows.map((row) => ({
+          id: Number(row.id),
+          nombre: String(row.nombre_producto ?? ""),
+          marca: row.marca == null ? null : String(row.marca),
+          presentacion: row.presentacion == null ? null : String(row.presentacion),
+          categoria: row.categoria == null ? null : String(row.categoria),
+          alias: Array.isArray(row.alias) ? row.alias.map((item) => String(item)) : [],
+          precio: row.precio == null ? null : Number(row.precio),
+        })),
+        tokens,
+        Number.isFinite(limit) ? limit : 80,
+      );
+      return {
+        data: ranked.map((item) => {
+          const id = (item as { id?: number }).id;
+          const source = rows.find((row) => Number(row.id) === id);
+          return {
+            id,
+            nombre_producto: source?.nombre_producto ?? item.nombre,
+            precio: source?.precio ?? item.precio ?? null,
+            categoria: source?.categoria ?? item.categoria ?? null,
+            marca: source?.marca ?? item.marca ?? null,
+            presentacion: source?.presentacion ?? item.presentacion ?? null,
+            alias: source?.alias ?? item.alias ?? [],
+            rank: 1,
+          };
+        }),
+        error: null,
+      };
     }
     return { data: null, error: { message: `rpc ${fn} no está en el simulador` } };
   }

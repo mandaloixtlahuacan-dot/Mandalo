@@ -109,7 +109,7 @@ Acción interna: `productos_confirmados`
 
 ✅ *Pedido #16 confirmado*
 
-Llegará aproximadamente a las 3:18 p.m..
+Llegará aproximadamente a las 5:04 p.m..
 
 🛵 Estamos coordinando tu entrega.
 
@@ -268,7 +268,7 @@ Pedido *#16*.
 Pedido entregado
 
 Total: $250
-Hora: 2026-10-16T20:58:42.282Z
+Hora: 2026-10-16T22:44:25.482Z
 Repartidor: Roberto
 
 - cliente / notificacion_cliente / 5213310001202

@@ -2,7 +2,23 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 16 de octubre de 2026. Sigue en el draft #49, sin
+> Última actualización: 16 de octubre de 2026. El agente lee el mensaje
+> completo y no suelta un producto en silencio: queda en el carrito, se
+> dice «No tenemos…», o es la única pregunta abierta. Las opciones son
+> de esa categoría, sin repetir, y un «1», «ese» o un nombre parcial
+> contestan esa pregunta. «fuste» cae en Fuzetea y «donado» / «bonafon»
+> en Bonafont. George y La Central cierran con precio y $35 a la
+> primera (la marinada pregunta solo si existen las dos). Peke's lista
+> sin precio de producto. La caja no se anota si no la pidieron. Al
+> elegir una tienda cerrada se dice su horario y que se puede programar.
+> `scripts/check-order-loss.ts` entra en `npm run check` y falla si se
+> pierde un producto o el pedido pasa de 2 preguntas. Los mensajes de
+> Víctor (Peke's y George) y los kilos/gramos de La Central salen bien
+> a la primera con el modelo mock. El SQL
+> `supabase/migrations/20261016_lista_sinonimos_faltas.sql` no está
+> aplicado: el ranking de TypeScript ya expande esos sinónimos. No está
+> mergeado ni desplegado. No se llamó a OpenAI.
+> Actualización anterior: 16 de octubre de 2026. Sigue en el draft #49, sin
 > merge ni deploy. Peke's cotiza (opciones sin monto; la tienda manda
 > ORDEN #x PRECIO). Carnicería y restaurante siguen con precio fijo.
 > Un pin dentro del círculo de 1.5 km se acepta; uno de afuera se rechaza

@@ -317,10 +317,10 @@ async function main(): Promise<void> {
         ],
       })),
     });
-    assert(invented.cart.length === 0, "los ids inventados no entran al carrito");
-    assert(inventedCalls.length === 2, "repite la misma llamada fallida y se corta");
-    assert(asks(invented.reply) && !invented.reply.includes("¿Están bien estos productos?"), "deja una pregunta");
-    assert(/dogo|pepsi|gajo|papas/i.test(invented.reply), "la pregunta habla de lo que pidió");
+    assert(!invented.cart.some((item) => item.productId === 1 || item.productId === 2 || item.productId === 7), "los ids que no pidió no entran al carrito");
+    assert(invented.cart.some((item) => /pollo/i.test(item.name)), "el dogo de pollo se arma aunque el modelo anote otro id");
+    assert(invented.reply.includes("¿Están bien estos productos?"), "el pedido claro pide el sí");
+    assert(/pepsi|gajo|papas/i.test(invented.reply), "el ticket trae lo que sí pidió");
   });
 
   await check("George: un dogo es el Clásico", async () => {
@@ -353,7 +353,8 @@ async function main(): Promise<void> {
       products: georgeProducts,
       steps: [{ toolCalls: [tool("search_products", { query: "hamburguesa de res" }, "s"), tool("set_cart_line", { product_id: 1, qty: 1, unit: "pz" }, "c"), tool("finish_cart", {}, "f")] }],
     });
-    assert(res.cart.length === 0 && /chica/i.test(res.reply) && /grande/i.test(res.reply), "pregunta chica o grande");
+    assert(res.cart.some((item) => item.productId === 1) && /chica/i.test(res.reply), "sin tamaño, la de res queda en la chica");
+    assert(!/grande/i.test(res.cart.map((item) => item.name).join(" ")), "no anota la grande si no la pidió");
     const grande = await play({
       message: "hamburguesa de res grande",
       store: georgeStore,

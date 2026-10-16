@@ -6,7 +6,7 @@ import { resetChatHistory } from "@/lib/messages";
 import { parseDiasCerrado } from "@/lib/services/businessHours";
 import type { OrderState } from "@/lib/orderStateMachine";
 import { formatSpecificItemLine, type PedidoItemInput, type PedidoSnapshot, type PedidoV2Record } from "@/lib/services/captureEngine";
-import { listaFetchMode, listaRankTokens, listaSqlTokens, LISTA_SEARCH_LIMIT, rankListaByTokens } from "@/lib/storeProductSearch";
+import { listaFetchMode, listaPackageKey, listaRankTokens, listaSqlTokens, LISTA_SEARCH_LIMIT, rankListaByTokens } from "@/lib/storeProductSearch";
 
 type UnknownRow = Record<string, unknown>;
 
@@ -572,10 +572,10 @@ export async function queryListaProductos(
     if (searched.error) throw new Error(searched.error.message);
     rows = mapListaRows(searched.data);
   }
-  return rememberLista(cacheKey, rerankListaRows(rows, rankTokens));
+  return rememberLista(cacheKey, rerankListaRows(rows, rankTokens, listaPackageKey(queryText ?? "")));
 }
 
-function rerankListaRows(rows: ListaProductoRow[], tokens: string[]): ListaProductoRow[] {
+function rerankListaRows(rows: ListaProductoRow[], tokens: string[], packageKey: string | null = null): ListaProductoRow[] {
   if (!tokens.length || rows.length <= 1) return rows;
   const tagged = rows.map((row) => ({
     id: row.id,
@@ -586,7 +586,7 @@ function rerankListaRows(rows: ListaProductoRow[], tokens: string[]): ListaProdu
     alias: row.alias,
     precio: row.precio,
   }));
-  const ranked = rankListaByTokens(tagged, tokens, LISTA_SEARCH_LIMIT);
+  const ranked = rankListaByTokens(tagged, tokens, LISTA_SEARCH_LIMIT, packageKey);
   const byId = new Map(rows.map((row) => [row.id, row]));
   const next: ListaProductoRow[] = [];
   for (const row of ranked) {

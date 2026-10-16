@@ -60,6 +60,7 @@ const george: UxStore = {
   telefono: "5213388888888",
   abierta: false,
   abreTexto: "abre mañana a las 7pm",
+  horarioTexto: "7pm a 9pm",
   usaCatalogoFijo: true,
 };
 const central: UxStore = {
@@ -307,7 +308,7 @@ const move = customerDecision("sí", "pedido", { lastBot: switchAsk });
 assert(move.action === "switch_store" && move.clearCart === true, "sí a cambiar de tienda suelta el carrito una vez");
 
 const closed = customerDecision("George", "categoria", { store: null, items: [] });
-assert(closed.action === "switch_store" && closed.text.includes("cerrada") && closed.text.includes("en cuanto abra"), "George cerrado se arma y se manda al abrir");
+assert(closed.action === "switch_store" && closed.text.includes("cerrada") && closed.text.includes("Horario: 7pm a 9pm") && closed.text.includes("se programa"), "George cerrado se arma, dice su horario y se programa");
 assert(canTransition("confirmacion_cliente", "esperando_apertura_tienda"), "un pedido confirmado con tienda cerrada puede esperar la apertura");
 assert(canTransition("esperando_apertura_tienda", "pendiente_tiendas"), "al abrir, el pedido pasa a la tienda");
 assert(canTransition("esperando_apertura_tienda", "cancelado"), "mientras espera la apertura se puede cancelar");
@@ -333,6 +334,6 @@ for (const text of fixed) {
   assert(!/\$25\b/.test(text) && !/\$20\b/.test(text), "un texto fijo trae $20 o $25");
 }
 assert(pekesAck.includes("$35") && pekesAck.includes("Solo es un ejemplo"), "Peke's cobra $35 y marca el ejemplo");
-assert(georgeMenu.includes("cerrada") && georgeMenu.includes("$35"), "George cerrado avisa y cobra $35");
+assert(georgeMenu.includes("cerrada") && georgeMenu.includes("Horario: 7pm a 9pm") && georgeMenu.includes("se programa") && georgeMenu.includes("$35"), "George cerrado avisa horario, se programa y cobra $35");
 
 console.log("check-outbound-loops: ok");

@@ -42,6 +42,8 @@ Acción interna: `flow_greeting`
 
 *El menú trae precio, más $35 de envío y servicio.*
 
+Si está cerrada, se puede programar: la armamos y se manda cuando abra.
+
 *¿De cuál te hago el mandado?*
 
 Acción interna: `flow_show_niche`
@@ -52,13 +54,13 @@ Acción interna: `flow_show_niche`
 
 **Mándalo → cliente (foto):**
 
+⏰ *Hamburguesas Hotdogs George está cerrada ahora* (abre hoy a las 7pm). Horario: 7pm a 12am.
+
+Si quieres, lo armamos y se programa para cuando abra.
+
 🍔 *Te paso el menú de Hamburguesas Hotdogs George*
 
 Pídeme lo que se te antoje, como sale en la foto.
-
-⏰ Ojo: está cerrada ahora (abre hoy a las 7pm).
-
-Lo armamos y se manda en cuanto abra.
 
 *Envío y servicio: $35*, aparte.
 
@@ -70,33 +72,21 @@ Acción interna: `flow_switch_store`
 
 **Mándalo → cliente:**
 
-No encontré 3 dogos de pollo, ¿cuál de estos?
-
-1. Dogo de Pollo
-2. Dogo Clásico
-3. Dogo Arrachera
-4. Dogo Cubano
-5. Dogo de Camarón
-
-Acción interna: `catalogo_fijo`
-
-### Turno 5
-
-**Cliente:** 1
-
-**Mándalo → cliente:**
-
 OK, pediste:
 
 🛒 *Tu pedido*
 
+✅ 🌭 *Dogo de Pollo, 3 piezas — $135*
+
+✅ 🌭 *Dogo Clásico, 2 piezas — $70*
+
 ✅ 🥤 *Refresco Pepsi, 1 pieza — $20*
 
-✅ 🌭 *Dogo de Pollo, 1 pieza — $45*
+✅ 🥤 *Refresco Manzana, 1 pieza — $20*
 
 *Envío y servicio: $35*
 
-*Total: $100*
+*Total: $280*
 
 *¿Están bien estos productos?*
 
@@ -108,7 +98,7 @@ _Solo es un ejemplo, no está en tu pedido: "quita las papas" o "agrega 1 refres
 
 Acción interna: `catalogo_fijo`
 
-### Turno 6
+### Turno 5
 
 **Cliente:** Si
 
@@ -124,7 +114,7 @@ Si prefieres, también puedes escribirme tu dirección: calle y número, colonia
 
 Acción interna: `productos_confirmados`
 
-### Turno 7
+### Turno 6
 
 **Cliente:** [pin GPS]
 **Ubicación:** 21.05, -103.24
@@ -139,7 +129,7 @@ Mándame otra ubicación, o escríbeme tu dirección (calle y número, colonia o
 
 Acción interna: `rechazado_fuera_de_zona`
 
-### Turno 8
+### Turno 7
 
 **Cliente:** Ok gracias
 
@@ -153,7 +143,7 @@ Si prefieres, también puedes escribirme tu dirección: calle y número, colonia
 
 Acción interna: `flow_greeting`
 
-### Turno 9
+### Turno 8
 
 **Cliente:** cambiar de tienda
 
@@ -163,7 +153,7 @@ Acción interna: `flow_greeting`
 
 Acción interna: `flow_confirm_cancel`
 
-### Turno 10
+### Turno 9
 
 **Cliente:** Si
 
