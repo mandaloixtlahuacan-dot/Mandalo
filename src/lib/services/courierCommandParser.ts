@@ -79,6 +79,13 @@ function cleanText(value: unknown): string | null {
   return text.length ? text : null;
 }
 
+export const COURIER_COMMAND_HELP =
+  "🛵 *Comando inválido.*\n\nUsa uno de estos formatos:\n\n#CONFIRMO 123\n\n#RECOGI 123\n\n#ENTREGADO 123";
+
+export function isExactCourierCommand(text: string): boolean {
+  return parseStrictCourierCommand(text) != null;
+}
+
 function parseStrictCourierCommand(text: string): { type: CourierCommandType; orderRef: number } | null {
   const normalized = String(text ?? "").trim().toUpperCase();
   const match = normalized.match(/^#(CONFIRMO|RECOGI|ENTREGADO)\s+(\d+)$/i);
@@ -148,8 +155,7 @@ export function createCourierCommandParser() {
         return {
           ok: false,
           action: "invalid",
-          courierMessage:
-            "🛵 *Comando inválido.*\n\nUsa uno de estos formatos:\n\n#CONFIRMO 123\n\n#RECOGI 123\n\n#ENTREGADO 123",
+          courierMessage: COURIER_COMMAND_HELP,
         };
       }
 

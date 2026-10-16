@@ -25,7 +25,16 @@ import {
 import { isCancelIntent, isConversationModeMessage, isNewOrderIntent } from "../src/lib/messages";
 import { gateGeneralBot, phaseForUxTurn } from "../src/lib/orderSession";
 import { classifyInbound, LIVE_LOCATION_REPLY, TEXT_ONLY_REPLY } from "../src/lib/inboundMessage";
+import {
+  outboundDecision,
+  OUTBOUND_MAX_PER_MINUTE,
+  OUTBOUND_WINDOW_MS,
+  recordOutbound,
+  releaseOutbound,
+  resetOutboundGuard,
+} from "../src/lib/outboundGuard";
 import { runOrderAgentTurn, type AgentModel, type AgentStore, type ToolCall } from "../src/lib/orderAgent";
+import { waapiSendImage, waapiSendTextRequest } from "../src/lib/waapi";
 import { matchCoverageZone, validateAddress } from "../src/lib/services/validationEngine";
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -584,9 +593,129 @@ async function main(): Promise<void> {
   const status = classifyInbound({ event: "statuses", statuses: [{ id: "s1", status: "delivered" }] });
   assert(status.kind === "ignore", "un acuse de entrega no es un mensaje del cliente");
   const reaction = classifyInbound({ messages: [{ id: "m6", from: "5213312345678", type: "reaction", reaction: { emoji: "👍" } }] });
-  assert(reaction.kind === "media" && reaction.media === "unsupported", "una reacción no se queda sin respuesta");
+  assert(reaction.kind === "ignore", "una reacción no es un mensaje y no se contesta");
+  const systemUnknown = {
+    messages: [
+      {
+        id: "whapi-system-unknown",
+        from_me: false,
+        type: "unknown",
+        source: "system",
+        from: "5213312345678",
+        chat_id: "5213312345678@s.whatsapp.net",
+        timestamp: 1760568000,
+      },
+    ],
+    event: { type: "messages", event: "post" },
+    channel_id: "TEST",
+  };
+  for (const type of ["unknown", "system", "revoked", "e2e_notification", "call_log", "reaction", "action", "notification"]) {
+    const noise = classifyInbound({ messages: [{ id: type, from: "5213312345678", from_me: false, type }] });
+    assert(noise.kind === "ignore", `${type} no se contesta`);
+  }
+  const disguised = classifyInbound({
+    messages: [{ id: "sys-text", from: "5213312345678", from_me: false, type: "text", source: "system", text: { body: "hola" } }],
+  });
+  assert(disguised.kind === "ignore" && disguised.reason === "system", "source system no se contesta aunque traiga texto");
+  const emptyWeird = classifyInbound({ messages: [{ id: "poll", from: "5213312345678", from_me: false, type: "poll" }] });
+  assert(emptyWeird.kind === "ignore", "sin texto y sin medio reconocido se ignora");
+  const voice = classifyInbound({ messages: [{ id: "voice", from: "5213312345678", from_me: false, type: "voice", voice: { id: "v" } }] });
+  const gif = classifyInbound({ messages: [{ id: "gif", from: "5213312345678", from_me: false, type: "gif", gif: { id: "g" } }] });
+  const vcard = classifyInbound({ messages: [{ id: "vcard", from: "5213312345678", from_me: false, type: "vcard", vcard: "BEGIN:VCARD" }] });
+  const sticker = classifyInbound({ messages: [{ id: "stk", from: "5213312345678", from_me: false, type: "sticker", sticker: { id: "s" } }] });
+  assert(voice.kind === "media" && voice.media === "audio", "un audio de voz pide texto");
+  assert(gif.kind === "media" && gif.media === "video", "un gif pide texto");
+  assert(vcard.kind === "media" && vcard.media === "contact", "una vcard pide texto");
+  assert(sticker.kind === "media" && sticker.media === "sticker", "un sticker pide texto");
+
+  function replyForRealMedia(type: "audio" | "image", nest: Record<string, unknown>): string {
+    const inbound = classifyInbound({
+      messages: [{ id: type, from: "5213312345678", from_me: false, type, ...nest }],
+    });
+    assert(inbound.kind === "media" && inbound.media === type, `${type} sigue siendo un adjunto real`);
+    const decision = routeCustomerFlow({
+      message: "",
+      phase: "pedido",
+      nicheId: "abarrotes",
+      store: pekes,
+      stores,
+      items: coke,
+      lastBotText: "",
+      awaitingProductConfirm: false,
+      media: inbound.media,
+      locationInsideCoverage: null,
+      orderId: null,
+    });
+    assert(decision.action === "media" && decision.text.includes(TEXT_ONLY_REPLY), `${type} recibe una respuesta de solo texto`);
+    assert(decision.text.split(TEXT_ONLY_REPLY).length === 2, `${type} recibe una sola respuesta`);
+    return decision.text;
+  }
+
+  const audioReply = replyForRealMedia("audio", { audio: { id: "aud" } });
+  const imageReply = replyForRealMedia("image", { image: { id: "img" } });
+  resetOutboundGuard();
+  const now = 1_760_568_000_000;
+  let systemSends = 0;
+  for (let burst = 0; burst < 5; burst += 1) {
+    const inbound = classifyInbound({
+      ...systemUnknown,
+      messages: [{ ...systemUnknown.messages[0], id: `whapi-system-unknown-${burst}` }],
+    });
+    const wouldSend = inbound.kind !== "ignore" && inbound.kind !== "missing_from";
+    if (wouldSend) {
+      recordOutbound("5213312345678", TEXT_ONLY_REPLY, now);
+      systemSends += 1;
+    }
+    assert(inbound.kind === "ignore" && inbound.reason === "system", "el evento system unknown de Whapi se ignora");
+  }
+  assert(systemSends === 0, "una ráfaga de 5 eventos system unknown manda 0 respuestas");
+
+  const audioPhone = "5213300000001";
+  const imagePhone = "5213300000002";
+  assert(outboundDecision(audioPhone, audioReply, now) === "send", "el audio real sale una vez");
+  recordOutbound(audioPhone, audioReply, now);
+  assert(outboundDecision(imagePhone, imageReply, now) === "send", "la imagen real sale una vez");
+  recordOutbound(imagePhone, imageReply, now);
+  assert(outboundDecision(audioPhone, audioReply, now + 1_000) === "duplicate", "la misma respuesta dentro de 60 s se suprime");
+  assert(outboundDecision(audioPhone, audioReply, now + OUTBOUND_WINDOW_MS) === "duplicate", "a los 60 s justos sigue suprimida");
+  assert(outboundDecision(audioPhone, audioReply, now + OUTBOUND_WINDOW_MS + 1) === "send", "pasado el minuto el mismo texto puede salir otra vez");
+  const menu = "¿De dónde quieres?";
+  const example = "Ejemplo: 2 cocas de 600 ml y un kilo de tortillas.";
+  const flowPhone = "5213300000003";
+  assert(outboundDecision(flowPhone, menu, now) === "send", "el menú sale");
+  recordOutbound(flowPhone, menu, now);
+  assert(outboundDecision(flowPhone, example, now + 500) === "send", "el ejemplo, distinto del menú, también sale");
+  recordOutbound(flowPhone, example, now + 500);
+  const capPhone = "5213300000004";
+  for (let sent = 0; sent < OUTBOUND_MAX_PER_MINUTE; sent += 1) {
+    const body = `aviso ${sent}`;
+    assert(outboundDecision(capPhone, body, now) === "send", `el mensaje ${sent + 1} de ${OUTBOUND_MAX_PER_MINUTE} sale`);
+    recordOutbound(capPhone, body, now);
+  }
+  assert(outboundDecision(capPhone, "aviso extra", now + 1_000) === "rate", "el séptimo mensaje distinto en un minuto se tira");
+  assert(outboundDecision("5213300000005", "aviso extra", now) === "send", "el tope de un número no bloquea a otro");
+  recordOutbound(audioPhone, "intento fallido", now);
+  releaseOutbound(audioPhone, "intento fallido", now);
+  assert(outboundDecision(audioPhone, "intento fallido", now) === "send", "si Whapi no acepta el envío, el reintento sí sale");
+
+  resetOutboundGuard();
+  recordOutbound(audioPhone, audioReply);
+  recordOutbound(imagePhone, imageReply);
+  const suppressedText = await waapiSendTextRequest({ to: `${audioPhone}@c.us`, body: audioReply });
+  const suppressedImage = await waapiSendImage({
+    to: `${imagePhone}@s.whatsapp.net`,
+    caption: imageReply,
+    png: Buffer.from("no-se-sube"),
+  });
+  function isSuppressed(result: { data: unknown }): boolean {
+    return Boolean(result.data && typeof result.data === "object" && (result.data as { suppressed?: boolean }).suppressed === true);
+  }
+  assert(isSuppressed(suppressedText), "el segundo texto idéntico no llama a Whapi");
+  assert(isSuppressed(suppressedImage), "la misma imagen dentro de 60 s no se repite");
+
+  assert(scenarios.length === 345, "siguen los 345 escenarios");
   assert(greeting.includes("¿De dónde quieres?"), "el menú de categorías sigue igual");
-  assert(pekesWelcome.includes("Ejemplo") && georgeWelcome.includes("Te paso el menú"), "los avisos de tienda siguen igual");
+  assert(pekesWelcome.includes("Solo es un ejemplo") && georgeWelcome.includes("Te paso el menú"), "los avisos de tienda siguen igual");
 
   console.log(`Matriz del flujo: ${scenarios.length} escenarios.`);
   console.log(`Antes se salían y ahora quedan en el flujo: ${fixed.length}.`);

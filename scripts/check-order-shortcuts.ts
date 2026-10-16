@@ -152,7 +152,7 @@ async function main(): Promise<void> {
     assert(turn.type === "pick_store" && turn.store.id === pekes.id, `${alias} elige Mini Super Peke's`);
     const rendered = renderCustomerTurn(turn, stores, "");
     assert(rendered?.rememberStore?.id === pekes.id, `${alias} recuerda la tienda`);
-    assert(rendered?.kind === "text" && rendered.text.includes("Ejemplo"), `${alias} manda el ejemplo`);
+    assert(rendered?.kind === "text" && rendered.text.includes("Solo es un ejemplo"), `${alias} manda el ejemplo`);
     assert(rendered.text === formatAbarrotesStoreAck(pekes), `${alias} usa el aviso fijo de abarrotes`);
   }
 
@@ -220,7 +220,7 @@ async function main(): Promise<void> {
   const picked = replyOf(state, "Penes");
   assert(picked.type === "pick_store" && picked.store.id === pekes.id, "Penes después de la lista elige Peke's");
   const welcome = renderCustomerTurn(picked, stores, state.lastBot);
-  assert(welcome?.rememberStore?.id === pekes.id && welcome.kind === "text" && welcome.text.includes("Ejemplo"), "elige, recuerda y manda el ejemplo");
+  assert(welcome?.rememberStore?.id === pekes.id && welcome.kind === "text" && welcome.text.includes("Solo es un ejemplo"), "elige, recuerda y manda el ejemplo");
   state = { phase: "ejemplo", nicheId: null, store: pekes, lastBot: welcome.kind === "text" ? welcome.text : "", items: [] };
 
   const small = gateGeneralBot({

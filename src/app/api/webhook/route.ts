@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { classifyInbound } from "@/lib/inboundMessage";
+import { classifyInbound, WEBHOOK_PROCESS_ERROR_REPLY } from "@/lib/inboundMessage";
 import { parseIncomingWhatsAppMessage, processMandaloWebhook } from "@/lib/mandaloFlow";
+import { wasRecentlySent } from "@/lib/outboundGuard";
+import { isOwnOutboundCopy } from "@/lib/reliability";
 import { normalizePhone } from "@/lib/roles";
 import { getEnv } from "@/lib/env";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
@@ -70,9 +72,11 @@ export async function POST(req: NextRequest) {
     console.log("[Webhook] Payload entrante:", JSON.stringify(body, null, 2));
 
     const inbound = classifyInbound(body);
-    if (inbound.kind === "ignore") {
-      console.log(`[Webhook] Ignorando evento ${inbound.reason}.`);
-      return NextResponse.json({ ok: true, ignored: inbound.reason === "from_me" ? "FROM_ME" : "NOT_A_MESSAGE" }, { status: 200 });
+    if (inbound.kind === "ignore" || (inbound.kind === "media" && inbound.media === "unsupported")) {
+      const reason = inbound.kind === "ignore" ? inbound.reason : "not_a_message";
+      console.log(`[Webhook] Ignorando evento ${reason}.`);
+      const ignored = reason === "from_me" ? "FROM_ME" : reason === "system" ? "SYSTEM" : "NOT_A_MESSAGE";
+      return NextResponse.json({ ok: true, ignored }, { status: 200 });
     }
     if (inbound.kind === "missing_from") {
       return NextResponse.json({ ok: false, error: "MISSING_FROM" }, { status: 200 });
@@ -80,6 +84,11 @@ export async function POST(req: NextRequest) {
 
     const numeroRaw = inbound.from;
     const numero = normalizePhone(String(numeroRaw));
+    if (inbound.kind === "text" && (wasRecentlySent(numero, inbound.body) || isOwnOutboundCopy(inbound.body))) {
+      console.log("[inbound] ignorando eco de un mensaje nuestro", { to: numero });
+      return NextResponse.json({ ok: true, ignored: "ECHO" }, { status: 200 });
+    }
+
     const textoMensaje = inbound.body;
     const ubicacion = inbound.kind === "location" ? { latitude: inbound.latitude, longitude: inbound.longitude } : null;
     const messageId = inbound.messageId;
@@ -128,9 +137,7 @@ export async function POST(req: NextRequest) {
       try {
         await waapiSendText({
           to: numero,
-          body: normalizeWhatsAppText(
-            "⚠️ Tuve un problema procesando tu mensaje. Intenta escribirlo de nuevo en un momento — si sigue sin funcionar, ya le avisé a nuestro equipo. 🙏",
-          ),
+          body: normalizeWhatsAppText(WEBHOOK_PROCESS_ERROR_REPLY),
         });
       } catch (notifyErr: unknown) {
         console.error("[Webhook Error] no se pudo mandar el mensaje de respaldo al cliente:", notifyErr);
