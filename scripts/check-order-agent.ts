@@ -15,7 +15,6 @@ import {
   orderAgentEnabled,
   orderAgentEscalationModel,
   orderAgentModel,
-  ORDER_AGENT_MAX_STEPS,
   runOrderAgentTurn,
   snapshotFieldsFromAgentPending,
   validateToolCall,
@@ -408,6 +407,10 @@ async function main(): Promise<void> {
     model: scripted("gpt-4o-mini", [
       {
         toolCalls: [
+          tool("search_products", { query: "arrachera marinada" }, "sa"),
+          tool("search_products", { query: "chamberete" }, "sc"),
+          tool("search_products", { query: "pulpa de puerco" }, "sp"),
+          tool("search_products", { query: "chorizo" }, "sz"),
           tool("set_cart_line", { product_id: 1, qty: 1, unit: "kg" }, "a"),
           tool("set_cart_line", { product_id: 2, qty: 1, unit: "kg" }, "c"),
           tool("set_cart_line", { product_id: 3, qty: 0.5, unit: "kg" }, "p"),
@@ -557,7 +560,7 @@ async function main(): Promise<void> {
     escalationModel: null,
     logEvent: () => {},
   });
-  assert(steps.length === ORDER_AGENT_MAX_STEPS, "el ciclo de herramientas se detiene a los 6 pasos");
+  assert(steps.length === 2, "la misma llamada rechazada dos veces corta el ciclo");
   assert(capped.cart.length === held.length, "los rechazos no vacían el carrito");
   assert(!capped.reply.includes("999"), "el error de la herramienta no se le manda al cliente");
 
@@ -1285,7 +1288,8 @@ async function main(): Promise<void> {
     ),
     logEvent: () => {},
   });
-  assert(vague.pending == null, "una pregunta que no enumera las opciones no deja pending");
+  assert(vague.pending != null && /chica/i.test(vague.reply) && /grande/i.test(vague.reply), "una hamburguesa pregunta chica o grande");
+  assert(!vague.reply.includes("Quieres algo más"), "la pregunta vaga no reemplaza las opciones");
 
   const archiveMigration = readFileSync(new URL("../supabase/migrations/20261016_conversaciones_archivo.sql", import.meta.url), "utf8");
   assert(/create table if not exists public\.conversaciones_archivo/i.test(archiveMigration), "la migración crea conversaciones_archivo");

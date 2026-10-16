@@ -252,7 +252,7 @@ const ADD_PRODUCT_REGEX =
 // Sumar una pieza, cambiar la cantidad o decir «ya no quiero este» también
 // corrige la lista. «Otra vez la lista» no entra: «otra» no va seguida de «vez».
 const LIST_EDIT_REGEX =
-  /\botr[oa]s?\b(?!\s+vez)|\b(?:una|otro|otra)\s+mas\b|\bagregale\b|\bponle\b|\bsumale\b|\bya no quiero\b|\bque sean\b|\bmejor sean\b|\bdejalo en\b|\bdejala en\b/;
+  /\botr[oa]s?\b(?!\s+vez)|\b(?:una|otro|otra)\s+mas\b|\bagregale\b|\bponle\b|\bsumale\b|\bya no quiero\b|\bque sean\b|\bmejor sean\b|\bdejalo en\b|\bdejala en\b|\bsolo una pieza\b|\bquiero una pieza\b|\bno es caja\b/;
 
 export function messageCorrectsOrder(text: string): boolean {
   const raw = String(text ?? "").trim();
@@ -613,7 +613,7 @@ export function isComplaintMessage(text: string): boolean {
     t.includes("no me llego") ||
     t.includes("no ha llegado") ||
     t.includes("salio mal") ||
-    t.includes("esta mal") ||
+    /\besta mal\b/.test(t) ||
     t.includes("llego mal") ||
     t.includes("llego incompleto") ||
     t.includes("faltaron") ||

@@ -2,7 +2,17 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 16 de octubre de 2026. Abarrotes con lista
+> Última actualización: 16 de octubre de 2026. El agente ya no anota un
+> id que no salió de `search_products` ni cierra con «¿Están bien?» si
+> falta un producto o la misma llamada falló dos veces. El tamaño se lee
+> del nombre cuando marca y presentación vienen vacías: un Nito pregunta
+> (62 g, Duo o caja) y una caja sí elige la caja. «está mala» no se
+> escala; «solo una pieza» cambia la línea. El orden de la búsqueda
+> amplia (palabra exacta antes que el pedazo) está en
+> `supabase/migrations/20261016_lista_productos_orden_exacto.sql` y no
+> está aplicado. Prueba offline: `scripts/check-order-matching.ts`.
+> No está mergeado ni desplegado.
+> Actualización anterior: 16 de octubre de 2026. Abarrotes con lista
 > pregunta un producto por mensaje (máximo 5 opciones reales) y guarda
 > la cola en `pendingAsk`. En George, un sí de la lista («sí», «así está
 > bien», «ok sí», «1») pide la ubicación aunque haya un pending viejo;
