@@ -7,6 +7,7 @@ import {
   buildGreeting,
   classifyCustomerTurn,
   formatAbarrotesStoreAck,
+  catalogUsesMenuImage,
   formatCatalogMenuCaption,
   formatNicheStoreList,
   nicheById,
@@ -284,9 +285,17 @@ for (const phase of phases) {
     ? { action: "reprompt", phase: "categoria", includes: ["no está"] }
     : phase === "tienda"
       ? { action: "reprompt", phase: "tienda", includes: ["no está"] }
-      : { action: "reprompt", phase, includes: ["número"] });
-  add("sticker", phase, "", { action: "media", phase, includes: [TEXT_ONLY_REPLY] }, { media: "sticker" });
-  add("imagen", phase, "", { action: "media", phase, includes: [TEXT_ONLY_REPLY] }, { media: "image" });
+      : hasOpenCart(phase) && (phase === "pedido" || phase === "ubicacion")
+        ? { action: "agent", phase: "pedido" }
+        : { action: "reprompt", phase, includes: ["número"] });
+  const visualMid =
+    (phase === "ejemplo" || phase === "pedido" || phase === "ubicacion" || phase === "resumen") && Boolean(storeFor(phase));
+  add("sticker", phase, "", visualMid
+    ? { action: "media", phase, includes: ["Escríbeme tu pedido"] }
+    : { action: "ignore", phase }, { media: "sticker" });
+  add("imagen", phase, "", visualMid
+    ? { action: "media", phase, includes: ["Escríbeme tu pedido"] }
+    : { action: "ignore", phase }, { media: "image" });
   add("audio", phase, "", { action: "media", phase, includes: [TEXT_ONLY_REPLY] }, { media: "audio" });
   add("video", phase, "", { action: "media", phase, includes: [TEXT_ONLY_REPLY] }, { media: "video" });
   add("documento", phase, "", { action: "media", phase, includes: [TEXT_ONLY_REPLY] }, { media: "document" });
@@ -370,7 +379,7 @@ const switchAsk = cartSwitchQuestion(pekes.nombre, coke, george.nombre);
 add("sí borra y cambia", "pedido", "sí", { action: "switch_store", phase: "ejemplo", exactWelcome: george, storeId: george.id, clearCart: true }, { lastBot: switchAsk });
 add("no conserva el pedido", "pedido", "no", { action: "reprompt", phase: "pedido", clearCart: false, storeId: null, includes: ["Peke"] }, { lastBot: switchAsk });
 add("sí otra tienda", "pedido", "sí", { action: "show_niche", phase: "tienda", clearCart: true, includes: ["¿De cuál te hago el mandado?"] }, { lastBot: cartSwitchQuestion(pekes.nombre, coke, "otra tienda") });
-add("imagen con texto", "pedido", "2 cocas", { action: "media", phase: "pedido", includes: [TEXT_ONLY_REPLY] }, { media: "image" });
+add("imagen con texto", "pedido", "2 cocas", { action: "media", phase: "pedido", includes: ["Escríbeme tu pedido"] }, { media: "image" });
 
 function decide(scenario: Scenario): FlowDecision {
   const input: FlowRouteInput = {
@@ -646,8 +655,13 @@ async function main(): Promise<void> {
       locationInsideCoverage: null,
       orderId: null,
     });
-    assert(decision.action === "media" && decision.text.includes(TEXT_ONLY_REPLY), `${type} recibe una respuesta de solo texto`);
-    assert(decision.text.split(TEXT_ONLY_REPLY).length === 2, `${type} recibe una sola respuesta`);
+    if (type === "audio") {
+      assert(decision.action === "media" && decision.text.includes(TEXT_ONLY_REPLY), "audio recibe una respuesta de solo texto");
+      assert(decision.text.split(TEXT_ONLY_REPLY).length === 2, "audio recibe una sola respuesta");
+    } else {
+      assert(decision.action === "media" && decision.text.includes("Escríbeme tu pedido"), "imagen a media pedido pide que lo escriba");
+      assert(!decision.text.includes(TEXT_ONLY_REPLY), "una foto no se contesta como audio");
+    }
     return decision.text;
   }
 
@@ -756,10 +770,85 @@ async function main(): Promise<void> {
     locationInsideCoverage: null,
     orderId: null,
   });
+  assert(bareStill.action === "agent" && !bareStill.text.includes("El número solo"), "un número con carrito se lo queda el agente");
+  const bareEmpty = routeCustomerFlow({
+    message: "4",
+    phase: "ejemplo",
+    nicheId: "abarrotes",
+    store: pekes,
+    stores,
+    items: [],
+    lastBotText: "",
+    awaitingProductConfirm: false,
+    media: "text",
+    locationInsideCoverage: null,
+    orderId: null,
+  });
   assert(
-    bareStill.action === "reprompt" && bareStill.text.includes("El número solo no me dice el producto"),
-    "sin pregunta pendiente el número solo sigue sin ser un producto",
+    bareEmpty.action === "reprompt" && bareEmpty.text.includes("El número solo no me dice el producto"),
+    "sin carrito y sin opciones el número solo sigue sin ser un producto",
   );
+
+  const yesCart = routeCustomerFlow({
+    message: "Así está bien",
+    phase: "pedido",
+    nicheId: "abarrotes",
+    store: pekes,
+    stores,
+    items: coke,
+    lastBotText: "OK, pediste:\n\n🛒 *Tu pedido*",
+    awaitingProductConfirm: false,
+    media: "text",
+    locationInsideCoverage: null,
+    orderId: 90,
+  });
+  assert(yesCart.action === "agent" && !yesCart.text.includes("Sigo en"), "así está bien con carrito no dice sigo en");
+  const okMenu = routeCustomerFlow({
+    message: "Ok",
+    phase: "ejemplo",
+    nicheId: "restaurantes",
+    store: george,
+    stores,
+    items: [],
+    lastBotText: georgeWelcome,
+    awaitingProductConfirm: false,
+    media: "text",
+    locationInsideCoverage: null,
+    orderId: 90,
+  });
+  assert(okMenu.text.includes("Va, dime qué quieres del menú"), "ok en el menú de George sí contesta");
+  const offered = routeCustomerFlow({
+    message: "1",
+    phase: "pedido",
+    nicheId: "abarrotes",
+    store: pekes,
+    stores,
+    items: coke,
+    lastBotText: "¿Cuál Fuse?\n\n1. Frutos rojos\n\n2. Limón",
+    awaitingProductConfirm: false,
+    media: "text",
+    locationInsideCoverage: null,
+    orderId: 90,
+  });
+  assert(offered.action === "agent" && !offered.text.includes("El número solo"), "si el texto ofreció opciones, el 1 se lo queda el agente");
+  const audioOnly = routeCustomerFlow({
+    message: "",
+    phase: "pedido",
+    nicheId: "abarrotes",
+    store: pekes,
+    stores,
+    items: coke,
+    lastBotText: "",
+    awaitingProductConfirm: false,
+    media: "audio",
+    locationInsideCoverage: null,
+    orderId: 90,
+  });
+  assert(audioOnly.text.includes(TEXT_ONLY_REPLY), "el audio sigue pidiendo texto");
+  assert(flow.includes("fixedMenuStore") && flow.includes("sendCatalogMenu") && flow.includes("waapiSendImage"), "George y La Central salen con la foto del menú");
+  assert(catalogUsesMenuImage(george) && catalogUsesMenuImage(central) && storeWelcomeMatchesMenu(george, georgeWelcome), "elegir George o La Central manda la foto, no solo el texto");
+  assert(flow.includes("Perdón, ¿me lo repites?"), "si el agente falla se pide repetir, sin el bot viejo");
+  assert(!flow.includes('kind !== "abarrotes"'), "el agente ya no se apaga fuera de abarrotes");
 
   assert(scenarios.length === 345, "siguen los 345 escenarios");
   assert(greeting.includes("¿De dónde quieres?"), "el menú de categorías sigue igual");

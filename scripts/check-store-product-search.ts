@@ -11,6 +11,7 @@ import {
   listaFetchMode,
   listaQueryText,
   listaSearchTokens,
+  listaSqlTokens,
   LISTA_SEARCH_LIMIT,
   rankListaByTokens,
   rankListaCandidates,
@@ -396,6 +397,29 @@ async function main() {
   const santaCalls = santa.calls.length;
   await loadListaProductosSiActiva(santa.client, 1, "pan bimbo");
   check("Agua Santa también se consulta una vez por turno", santa.calls.length === santaCalls);
+
+  const night: ListaProducto[] = [
+    { nombre: "Queso", marca: "Chelita", presentacion: "1 kg", alias: ["queso chelita"] },
+    { nombre: "Queso", marca: "Chelita", presentacion: "250 g", alias: ["queso chelita"] },
+    { nombre: "Amper", marca: "Amper", presentacion: "Mora Azul 600 ml", alias: [] },
+    { nombre: "Fuzetea", marca: "Fuze Tea", presentacion: "Frutos Rojos 600 ml", alias: ["fuse tea", "fuze tea"] },
+    { nombre: "Fuzetea", marca: "Fuze Tea", presentacion: "Limón 600 ml", alias: ["fuse tea"] },
+    { nombre: "Fabuloso", marca: "Fabuloso", presentacion: "lavanda 1 L", alias: [] },
+    { nombre: "Chicles", marca: "Clorets", presentacion: "caja", alias: ["chicle"] },
+    { nombre: "Maíz", marca: "La Costeña", presentacion: "lata 220 g", alias: ["elote", "maiz enlatado"] },
+    { nombre: "Maíz", marca: "Morado", presentacion: "bolsa 500 g", alias: ["maiz morado"] },
+    { nombre: "Pan", marca: "Bimbo", presentacion: "Blanco 620 g", alias: ["pan bimbo"] },
+    { nombre: "Pan", marca: "Bimbo", presentacion: "Blanco Ch 300 g", alias: ["pan bimbo chico"] },
+    { nombre: "Pan", marca: "Wonder", presentacion: "integral", alias: [] },
+  ];
+  const bimbo = rankListaCandidates(night, "pan bimbo").slice(0, 4).map(hitLine);
+  check("pan bimbo trae el Blanco 620 g", bimbo.some((line) => line.includes("620")), bimbo.join(" || "));
+  check("pan bimbo trae el Blanco chico", bimbo.some((line) => line.includes("300")), bimbo.join(" || "));
+  const fuse = rankListaCandidates(night, "fuse ti frutos rojos");
+  check("fuse ti frutos rojos es el Fuzetea", fuse[0]?.marca === "Fuze Tea" && /frutos rojos/i.test(fuse[0]?.presentacion ?? ""), hitLine(fuse[0]));
+  const lata = rankListaCandidates(night, "lata de maíz la costeña");
+  check("la lata de maíz es La Costeña", lata[0]?.marca === "La Costeña", hitLine(lata[0]));
+  check("el sql de fuse incluye fuzetea", listaSqlTokens("fuse ti frutos rojos").includes("fuzetea"), listaSqlTokens("fuse ti frutos rojos").join(","));
 
   console.log(`\n${passed} passed, ${failed} failed`);
   if (failed) process.exit(1);

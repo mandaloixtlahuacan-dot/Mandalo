@@ -3,6 +3,15 @@
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
 > Última actualización: 16 de octubre de 2026. La prueba en vivo de
+> Víctor (15 de octubre, 9:20–9:27 pm) en Mini Super Peke's y George,
+> con `ORDER_AGENT=on`, se salió al bot viejo, anotó productos que no
+> pidió, soltó Fabuloso y chicles, no mandó la foto del menú y se quedó
+> callado en un «Ok». Este borrador deja el pedido en el agente para
+> abarrotes, carnicería, restaurante y tienda sin lista. El buscador
+> de la lista rankea sinónimos y tokens parciales en TypeScript; hay
+> una función SQL nueva (`buscar_lista_productos_tienda_amplia`) que
+> no está aplicada. No está mergeado ni desplegado.
+> Actualización anterior: 16 de octubre de 2026. La prueba en vivo de
 > Abarrotes Agua Santa (15 de octubre, 6:47–6:52 pm) no preguntó marca
 > ni tamaño, armó nombres como «2 2 Queso Crema», soltó la leche y, al
 > confirmar, volvió a preguntar maíz o harina hasta quedarse en silencio.

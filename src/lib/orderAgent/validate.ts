@@ -129,13 +129,29 @@ function textHasSize(text: string, size: string): boolean {
   return false;
 }
 
+function spokenKilo(text: string): boolean {
+  return /\b(kilo|kilos|kg)\b/.test(text);
+}
+
+function presentationKg(value: string): { kg: boolean; amount: string | null } {
+  const text = foldAgent(value);
+  const amount = text.match(/(\d+(?:[.,]\d+)?)\s*(kg|kilo|kilos)\b/);
+  const kg = Boolean(amount) || /\b(kg|kilo|kilos)\b/.test(text);
+  return { kg, amount: amount ? amount[1].replace(",", ".") : null };
+}
+
 function messageSelects(product: AgentProduct, siblings: AgentProduct[], message: string): boolean {
-  const text = foldAgent(message);
+  const text = foldAgent(message).replace(/\b(un|una|uno)\b/g, "1");
+  const wantsKg = spokenKilo(text);
   const hits = siblings.filter((row) => {
     const brand = foldAgent(row.brand ?? "");
     if (brand && !text.includes(brand)) return false;
+    const present = `${row.presentation ?? ""} ${row.name}`;
+    const kg = presentationKg(present);
+    if (wantsKg && !kg.kg) return false;
+    if (wantsKg && kg.amount && !new RegExp(`\\b${kg.amount}\\s*(kg|kilo|kilos)\\b`).test(text)) return false;
     const size = sizeKey(row.presentation ?? "");
-    if (size && !textHasSize(text, size)) return false;
+    if (!wantsKg && size && !textHasSize(text, size)) return false;
     return true;
   });
   return hits.length === 1 && hits[0].id === product.id;
@@ -168,10 +184,61 @@ function searchForText(searches: AgentSearchHit[], text: string): AgentSearchHit
 }
 
 function listedChoiceError(products: AgentProduct[]): string {
-  const labels = products.slice(0, 4).map(optionLabel).filter(Boolean);
+  const labels = products.slice(0, 5).map(optionLabel).filter(Boolean);
   const brands = new Set(products.map((product) => foldAgent(product.brand ?? "")).filter(Boolean));
   const axis = brands.size > 1 ? "brand" : "size";
   return `Hay varias opciones de verdad. Pregunta con ask_customer (axis ${axis}) y estas opciones: ${labels.join("; ")}. No elijas una tú.`;
+}
+
+const MENTION_FILLER = new Set([
+  "kilo", "kilos", "litro", "litros", "paquete", "paquetes", "lata", "latas",
+  "pieza", "piezas", "gramo", "gramos", "medio", "media", "unos", "unas",
+  "caja", "cajas", "bolsa", "bolsas", "botella", "botellas",
+]);
+
+function mentionTokens(label: string): string[] {
+  return foldAgent(label)
+    .split(" ")
+    .filter((token) => token.length >= 4 && !MENTION_FILLER.has(token));
+}
+
+function textMentions(message: string, label: string): boolean {
+  const tokens = mentionTokens(label);
+  if (!tokens.length) return false;
+  const text = foldAgent(message);
+  return tokens.some((token) => {
+    if (text.includes(token)) return true;
+    return text.split(" ").some((word) => word.length >= 4 && (token.startsWith(word) || word.startsWith(token)));
+  });
+}
+
+function productMentioned(message: string, product: AgentProduct): boolean {
+  const labels = [product.name, product.brand ?? "", product.presentation ?? "", ...(product.alias ?? [])];
+  return labels.some((label) => textMentions(message, label));
+}
+
+function lineMentioned(message: string, line: AgentLine): boolean {
+  return [line.name, line.brand ?? "", line.freeText ?? "", line.presentation ?? ""].some((label) => textMentions(message, label));
+}
+
+function removalVerb(message: string): boolean {
+  return /\b(quita|quitame|quitamelo|quitamela|quitalo|quitala|sin el|sin la|ya no|no pedi|no quiero|borra|elimina)\b/.test(foldAgent(message));
+}
+
+function removalAllowed(message: string, line: AgentLine, pending: AgentPending | null): boolean {
+  if (!removalVerb(message)) return false;
+  if (lineMentioned(message, line)) return true;
+  const pronoun = /\b(quitamelo|quitamela|quitalo|quitala)\b/.test(foldAgent(message));
+  if (!pronoun || !pending) return false;
+  if (line.productId != null && pending.candidateIds.includes(line.productId)) return true;
+  return lineMentioned(pending.question, line);
+}
+
+function sameCartIdentity(existing: AgentLine, next: { productId: number | null; name: string; qty: number; unit: AgentUnit; freeText: string | null }): boolean {
+  if (existing.qty !== next.qty || existing.unit !== next.unit) return false;
+  if (next.productId != null && existing.productId === next.productId) return true;
+  if (next.freeText && existing.freeText && foldAgent(existing.freeText) === foldAgent(next.freeText)) return true;
+  return foldAgent(existing.name) === foldAgent(next.name);
 }
 
 function clarifyShortType(name: string, cart: AgentLine[]): { name: string; variant: string | null } | null {
@@ -219,6 +286,9 @@ export function validateToolCall(params: {
       return Boolean(freeText) && foldAgent(item.freeText ?? item.name) === freeText;
     });
     if (!line) return { ok: false, error: "Esa línea no está en el carrito." };
+    if (params.customerMessage && !removalAllowed(params.customerMessage, line, pending)) {
+      return { ok: false, error: "El cliente no pidió quitar esa línea. No la borres." };
+    }
     return { ok: true, removedId: line.lineId };
   }
 
@@ -349,6 +419,13 @@ export function validateToolCall(params: {
     if (!unitAllowed(store, product, unit)) {
       return { ok: false, error: `${product.name} no se vende en ${unit}.` };
     }
+    const named = parsedVariant ? `${product.name} ${parsedVariant}` : product.name;
+    const unchangedProduct = cart.some((item) =>
+      sameCartIdentity(item, { productId: product.id, name: named, qty, unit, freeText: null }),
+    );
+    if (params.customerMessage && !unchangedProduct && !productMentioned(params.customerMessage, product)) {
+      return { ok: false, error: `El cliente no pidió ${optionLabel(product)}. No lo agregues.` };
+    }
     if (product.variants.length) {
       const variant = matchVariant(product, parsedVariant);
       if (!variant) {
@@ -414,6 +491,17 @@ export function validateToolCall(params: {
   if (!store.hasProductList) {
     const clarity = groceryClarityError(draft);
     if (clarity) return { ok: false, error: clarity };
+  }
+  const unchangedText = cart.some((item) =>
+    sameCartIdentity(item, { productId: null, name, qty, unit, freeText }),
+  );
+  if (
+    params.customerMessage &&
+    !unchangedText &&
+    !textMentions(params.customerMessage, freeText) &&
+    !textMentions(params.customerMessage, name)
+  ) {
+    return { ok: false, error: "El cliente no pidió ese producto. No lo agregues." };
   }
   return { ok: true, line: draft };
 }

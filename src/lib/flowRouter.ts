@@ -68,6 +68,7 @@ export type FlowAction =
   | "cancel"
   | "escalate_cancel"
   | "media"
+  | "ignore"
   | "location_early"
   | "location_reject"
   | "live_location"
@@ -422,7 +423,45 @@ function askWhichToStart(input: FlowRouteInput, labels: string[]): FlowDecision 
   return withReprompt(input, `¿Con cuál empezamos?\n\n${lines}\n\nDime solo una.`, "disambiguate");
 }
 
+function midOrder(input: FlowRouteInput): boolean {
+  return input.phase === "ejemplo" || input.phase === "pedido" || input.phase === "ubicacion" || input.phase === "resumen";
+}
+
+function menuOkReply(store: UxStore | null): string {
+  if (store?.usaCatalogoFijo) return "Va, dime qué quieres del menú 😊";
+  if (store) return "Va, dime qué se te antoja 😊";
+  return "Va, dime qué te gustaría pedir 😊";
+}
+
+function lastBotOfferedOptions(text: string): boolean {
+  const raw = String(text ?? "");
+  const folded = whole(raw);
+  if (!folded) return false;
+  const numbered = /\b1\b/.test(folded) && /\b2\b/.test(folded);
+  const asked = raw.includes("?") || /\b o \b/.test(folded) || /\b(cual|elige|opcion)\b/.test(folded);
+  return numbered && asked;
+}
+
 function refuseMedia(input: FlowRouteInput): FlowDecision {
+  const visual = input.media === "image" || input.media === "sticker";
+  if (visual) {
+    if (!midOrder(input) || !input.store) {
+      return decision({
+        effect: "handled",
+        action: "ignore",
+        phase: input.phase,
+        nicheId: input.nicheId,
+        text: "",
+      });
+    }
+    return decision({
+      effect: "handled",
+      action: "media",
+      phase: input.phase,
+      nicheId: input.nicheId,
+      text: "Escríbeme tu pedido por favor",
+    });
+  }
   const again = repromptText(input);
   return decision({
     effect: "handled",
@@ -666,11 +705,9 @@ export function routeCustomerFlow(input: FlowRouteInput): FlowDecision {
     return showNiche(input, nicheId, had);
   }
 
-  if (
-    input.agentPending &&
-    !input.awaitingProductConfirm &&
-    (input.phase === "pedido" || input.phase === "ejemplo")
-  ) {
+  const optionsOpen = Boolean(input.agentPending) || lastBotOfferedOptions(input.lastBotText);
+  const ordering = input.phase === "ejemplo" || input.phase === "pedido" || input.phase === "ubicacion";
+  if (optionsOpen && !input.awaitingProductConfirm && ordering) {
     const words = text.split(" ").filter(Boolean);
     if (words.length > 0 && words.length <= 8) {
       return fallthrough({ ...input, phase: "pedido" }, "agent");
@@ -692,6 +729,7 @@ export function routeCustomerFlow(input: FlowRouteInput): FlowDecision {
       return withReprompt(input, "Ese número no está en la lista.", "reprompt");
     }
     if (!input.awaitingProductConfirm) {
+      if (ordering && (optionsOpen || input.items.length > 0)) return fallthrough({ ...input, phase: "pedido" }, "agent");
       return withReprompt(input, "El número solo no me dice el producto.", "reprompt");
     }
   }
@@ -774,6 +812,19 @@ export function routeCustomerFlow(input: FlowRouteInput): FlowDecision {
   if ((input.phase === "ejemplo" || input.phase === "pedido") && input.store) {
     const bareYes = isYesConfirmation(message) && !input.awaitingProductConfirm;
     const bareNo = /^(no|nel|nop|nope)$/.test(text) && !input.awaitingProductConfirm;
+    const affirm = /^(si|ok|va|dale|asi esta bien|esta bien|correcto|la que sea|cualquiera)$/.test(text);
+    if ((bareYes || affirm) && input.items.length > 0 && !input.agentPending && !lastBotOfferedOptions(input.lastBotText)) {
+      return fallthrough({ ...input, phase: "pedido" }, "agent");
+    }
+    if ((bareYes || affirm) && input.items.length === 0) {
+      return decision({
+        effect: "handled",
+        action: "reprompt",
+        phase: "ejemplo",
+        nicheId: nicheOf(input.store, input.nicheId),
+        text: menuOkReply(input.store),
+      });
+    }
     if (bareYes || bareNo) return withReprompt(input, "", "reprompt");
     if (isProductEdit(message) || text.length > 0) {
       return fallthrough({ ...input, phase: "pedido" }, "agent");

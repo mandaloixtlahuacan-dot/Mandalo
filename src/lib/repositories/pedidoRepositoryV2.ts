@@ -6,7 +6,7 @@ import { resetChatHistory } from "@/lib/messages";
 import { parseDiasCerrado } from "@/lib/services/businessHours";
 import type { OrderState } from "@/lib/orderStateMachine";
 import { formatSpecificItemLine, type PedidoItemInput, type PedidoSnapshot, type PedidoV2Record } from "@/lib/services/captureEngine";
-import { listaFetchMode, listaSearchTokens, LISTA_SEARCH_LIMIT } from "@/lib/storeProductSearch";
+import { listaFetchMode, listaRankTokens, listaSqlTokens, LISTA_SEARCH_LIMIT, rankListaByTokens } from "@/lib/storeProductSearch";
 
 type UnknownRow = Record<string, unknown>;
 
@@ -534,11 +534,12 @@ export async function queryListaProductos(
   tiendaId: number,
   queryText?: string | null,
 ): Promise<ListaProductoRow[]> {
-  const tokens = listaSearchTokens(queryText ?? "");
+  const sqlTokens = listaSqlTokens(queryText ?? "");
+  const rankTokens = listaRankTokens(queryText ?? "");
   const count = await countListaDisponible(supabase, tiendaId);
-  const mode = listaFetchMode(count, tokens);
+  const mode = listaFetchMode(count, sqlTokens);
   const cacheKey =
-    mode === "full" ? `full:${tiendaId}` : mode === "empty" ? `empty:${tiendaId}` : `search:${tiendaId}:${[...tokens].sort().join("\u0001")}`;
+    mode === "full" ? `full:${tiendaId}` : mode === "empty" ? `empty:${tiendaId}` : `search:${tiendaId}:${[...sqlTokens].sort().join("\u0001")}`;
   const cached = readListaCache(cacheKey);
   if (cached) return cached;
 
@@ -554,13 +555,46 @@ export async function queryListaProductos(
     return rememberLista(cacheKey, mapListaRows(selected.data));
   }
 
-  const searched = await supabase.rpc("buscar_lista_productos_tienda", {
+  const amplia = await supabase.rpc("buscar_lista_productos_tienda_amplia", {
     p_tienda_id: tiendaId,
-    p_tokens: tokens,
-    p_limit: LISTA_SEARCH_LIMIT,
+    p_tokens: sqlTokens,
+    p_limit: 200,
   });
-  if (searched.error) throw new Error(searched.error.message);
-  return rememberLista(cacheKey, mapListaRows(searched.data));
+  let rows: ListaProductoRow[];
+  if (!amplia.error) {
+    rows = mapListaRows(amplia.data);
+  } else {
+    const searched = await supabase.rpc("buscar_lista_productos_tienda", {
+      p_tienda_id: tiendaId,
+      p_tokens: sqlTokens,
+      p_limit: LISTA_SEARCH_LIMIT,
+    });
+    if (searched.error) throw new Error(searched.error.message);
+    rows = mapListaRows(searched.data);
+  }
+  return rememberLista(cacheKey, rerankListaRows(rows, rankTokens));
+}
+
+function rerankListaRows(rows: ListaProductoRow[], tokens: string[]): ListaProductoRow[] {
+  if (!tokens.length || rows.length <= 1) return rows;
+  const tagged = rows.map((row) => ({
+    id: row.id,
+    nombre: row.nombreProducto,
+    marca: row.marca,
+    presentacion: row.presentacion,
+    categoria: row.categoria,
+    alias: row.alias,
+    precio: row.precio,
+  }));
+  const ranked = rankListaByTokens(tagged, tokens, LISTA_SEARCH_LIMIT);
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  const next: ListaProductoRow[] = [];
+  for (const row of ranked) {
+    const id = (row as { id?: number }).id;
+    const source = id == null ? undefined : byId.get(id);
+    if (source) next.push(source);
+  }
+  return next.length ? next : rows;
 }
 
 export async function getListaProductosTienda(tiendaId: number, queryText?: string | null): Promise<ListaProductoRow[]> {
