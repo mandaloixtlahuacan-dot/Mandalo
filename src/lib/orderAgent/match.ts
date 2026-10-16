@@ -32,6 +32,7 @@ export function contentTokens(value: string): string[] {
   for (const token of wordsOf(head)) {
     if (token.length < 3 || token.length > 40) continue;
     if (STOP.has(token) || /^\d+$/.test(token)) continue;
+    if (/^(?:lts|lt|ltr|ltrs|gr|grs|mls|kgs)$/.test(token)) continue;
     if (/^\d+(?:[.,]\d+)?(?:ml|l|lt|lts|g|gr|kg|pz|paq)$/.test(token)) continue;
     if (seen.has(token)) continue;
     seen.add(token);
@@ -78,6 +79,11 @@ export function differKey(product: Pick<AgentProduct, "name" | "presentation">):
 export function isPackProduct(product: Pick<AgentProduct, "name" | "presentation">): boolean {
   const column = foldAgent(product.presentation ?? "");
   if (/\b(cajas?|paquetes?)\b/.test(column)) return true;
+  return packInName(product);
+}
+
+/** «Caja Nito» o «15paq» en el nombre. La columna presentación no cuenta: ahí «paquete» es la unidad. */
+export function packInName(product: Pick<AgentProduct, "name">): boolean {
   return presentationFromName(product.name)?.pack === true || /\b(cajas?|paquetes?)\b/.test(foldAgent(product.name));
 }
 
@@ -106,6 +112,8 @@ function tokenIn(text: string, token: string): boolean {
   if (token === "refresco" || token === "refrescos") {
     return /\b(refrescos?|pepsis?|cocas?|seven|mirinda|manzanitas?|manzanas?)\b/.test(text);
   }
+  if (token === "cola" && /\bcocas?\b/.test(text)) return true;
+  if (token === "coca" && /\bcolas?\b/.test(text)) return true;
   const stem = token.endsWith("s") && token.length > 4 ? token.slice(0, -1) : token;
   if (new RegExp(`\\b${stem}s?\\b`).test(text)) return true;
   return text.split(" ").some((word) => word.length >= 4 && (token.startsWith(word) || word.startsWith(token)));
@@ -131,6 +139,12 @@ function messageHasExtraType(message: string, product: Pick<AgentProduct, "name"
   const name = foldAgent(product.name);
   const extras = ["pollo", "gajo", "francesa", "cuban", "hawaian", "camaron", "arrachera", "duo", "funk", "malteada"];
   return extras.some((token) => new RegExp(`\\b${token}`).test(text) && !name.includes(token));
+}
+
+/** La única fila de la búsqueda comparte una palabra con el cliente («una botana» → Botana Completa). */
+export function uniqueHitMentioned(product: AgentProduct, message: string): boolean {
+  const text = foldAgent(productClause(message, product.name));
+  return contentTokens(product.name).some((token) => tokenIn(text, token));
 }
 
 /** Todas las palabras que distinguen el producto, o un sinónimo. No basta una. */
@@ -212,6 +226,20 @@ function spokenKilo(text: string): boolean {
   return /\b(kilo|kilos|kg)\b/.test(text);
 }
 
+const SIZE_WORD = new Set(["lts", "lt", "ltr", "ltrs", "gr", "grs", "mls", "kgs"]);
+
+/** Tamaño de empaque dicho por el cliente: «2 litros», «2 l», «62 g». El kilo suelto es cantidad. */
+export function spokenPackageSize(text: string): string | null {
+  const folded = foldAgent(text);
+  const ml = folded.match(/\b(\d+(?:[.,]\d+)?)\s*ml\b/);
+  if (ml) return `${ml[1].replace(",", ".")}ml`;
+  const liters = folded.match(/\b(\d+(?:[.,]\d+)?)\s*(?:l|lt|lts|litros?)\b/);
+  if (liters) return `${liters[1].replace(",", ".")}l`;
+  const grams = folded.match(/\b(\d+(?:[.,]\d+)?)\s*(?:g|gr|gramos?)\b/);
+  if (grams) return `${grams[1].replace(",", ".")}g`;
+  return null;
+}
+
 function hasKilo(product: Pick<AgentProduct, "name" | "presentation">): boolean {
   return /\b(kg|kilos?)\b/.test(foldAgent(`${product.presentation ?? ""} ${product.name}`));
 }
@@ -253,6 +281,20 @@ export function messageSelectsProduct(product: AgentProduct, siblings: AgentProd
     const measured = singles.filter((row) => Boolean(presentationFromName(row.name)?.key));
     const pick = measured.length ? measured : singles;
     return pick.length === 1 && pick[0].id === product.id;
+  }
+  // Caja o paquete solo si el cliente lo dijo. Si la pieza no vino en esta
+  // ventana (el SQL de prod ordena Caja Nito antes que Nito 62g), no se elige.
+  if (packInName(product)) return false;
+  const wanted = spokenPackageSize(text);
+  if (wanted) {
+    const sized = family.filter((row) => {
+      if (isPackProduct(row)) return false;
+      if (presentationFromName(row.name)?.key !== wanted) return false;
+      const extras = contentTokens(row.name).filter((token) => !SIZE_WORD.has(token) && !tokenIn(text, token));
+      return extras.length === 0;
+    });
+    if (sized.length === 1) return sized[0].id === product.id;
+    if (sized.length > 1) return false;
   }
   if (spokenKilo(text)) {
     const kilos = family.filter((row) => hasKilo(row));
@@ -343,7 +385,7 @@ export function replacementLineId(cart: AgentLine[], product: AgentProduct, mess
 
 export function orderClauses(message: string): string[] {
   return String(message ?? "")
-    .split(/\s*(?:,|;|\by\b|\be\b)\s*|\s+(?=\d+(?:[.,]\d+)?\b)|\s+(?=(?:un|una|uno|unos|unas|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|medio|media)\b)/i)
+    .split(/\s*(?:,|;|\by\b|\be\b)\s*|\s+(?=\d+(?:[.,]\d+)?(?!\s*(?:ml|l|lt|lts|litros?|g|gr|gramos?|kg|kilos?)\b)\b)|\s+(?=(?:un|una|uno|unos|unas|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|medio|media)\b)/i)
     .map((part) => part.trim())
     .filter((part) => contentTokens(part).length > 0);
 }

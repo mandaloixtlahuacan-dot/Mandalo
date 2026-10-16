@@ -9,14 +9,18 @@ import {
 import {
   differKey,
   isPackProduct,
+  packInName,
   isPieceCorrection,
   marinadeUnresolved,
   messageSelectsProduct,
-  productClause,
   optionsLookDifferent,
+  presentationFromName,
+  productClause,
   productMentionedStrict,
   replacementLineId,
+  uniqueHitMentioned,
   spokenMeasure,
+  spokenPackageSize,
   variantFromMessage,
 } from "@/lib/orderAgent/match";
 import type {
@@ -574,7 +578,14 @@ export function validateToolCall(params: {
       return { ok: false, error: `El producto ${productId} no está en esta tienda.` };
     }
     const spoken = params.customerMessage ? spokenMeasure(params.customerMessage, product.name) : null;
-    if (spoken && unit === "pz" && (spoken.unit === "kg" || spoken.unit === "l" || spoken.unit === "pesos")) {
+    const namedSize = presentationFromName(product.name)?.key ?? "";
+    const sizeAlreadyNamed = Boolean(
+      spoken && namedSize && (
+        (spoken.unit === "l" && (namedSize.endsWith("l") || namedSize.endsWith("ml")))
+        || (spoken.unit === "kg" && (namedSize.endsWith("kg") || namedSize.endsWith("g")))
+      ),
+    );
+    if (spoken && unit === "pz" && !sizeAlreadyNamed && (spoken.unit === "kg" || spoken.unit === "l" || spoken.unit === "pesos")) {
       unit = spoken.unit;
       qty = spoken.qty;
       if (!saneQty(unit, qty)) return { ok: false, error: "La cantidad no es válida para esa unidad." };
@@ -582,18 +593,30 @@ export function validateToolCall(params: {
     if (!unit) return { ok: false, error: "La unidad tiene que ser pz, kg, pesos, g o l (litros)." };
     const settledUnit = unit;
     const mustSearch = store.hasProductList || store.catalogMode === "fixed";
+    let siblings: AgentProduct[] = [];
     if (mustSearch) {
       const already = cart.some((line) => line.productId === productId);
       const hit = searchContaining(searches, productId);
       if (!already && !hit) {
         return { ok: false, error: "Busca con search_products antes de anotar ese producto." };
       }
-      const siblings = hit?.products ?? [];
+      siblings = hit?.products ?? [];
       if (!already && params.customerMessage && marinadeUnresolved(product, products, params.customerMessage)) {
         return { ok: false, error: "Hay versión marinada y normal. Pregunta con ask_customer (axis marinade). No elijas una tú." };
       }
       if (!already && optionsDiffer(siblings) && !messageSelects(product, siblings, params.customerMessage ?? "")) {
         return { ok: false, error: listedChoiceError(siblings) };
+      }
+      const piece = Boolean(params.customerMessage && isPieceCorrection(params.customerMessage));
+      const clause = params.customerMessage ? foldAgent(productClause(params.customerMessage, product.name)) : "";
+      const saidPack = !piece && /\b(cajas?|paquetes?)\b/.test(clause);
+      if (!already && packInName(product) && !saidPack) {
+        return { ok: false, error: "Es caja o paquete. Pregunta si la quiere así o en pieza." };
+      }
+      const wanted = clause ? spokenPackageSize(clause) : null;
+      const namedKey = presentationFromName(product.name)?.key ?? "";
+      if (!already && wanted && namedKey && namedKey !== wanted) {
+        return { ok: false, error: "El tamaño no es el que dijo el cliente. Pregunta las presentaciones reales." };
       }
     }
     if (store.catalogMode === "fixed" && !(typeof product.price === "number" && product.price > 0)) {
@@ -608,7 +631,14 @@ export function validateToolCall(params: {
     );
     const lineReplace = replaceId || (params.customerMessage ? replacementLineId(cart, product, params.customerMessage) : null);
     const pieceSwap = Boolean(lineReplace && params.customerMessage && isPieceCorrection(params.customerMessage));
-    if (params.customerMessage && !unchangedProduct && !pieceSwap && !productMentioned(params.customerMessage, product)) {
+    const onlyHit = siblings.length === 1 && siblings[0].id === product.id;
+    if (
+      params.customerMessage
+      && !unchangedProduct
+      && !pieceSwap
+      && !productMentioned(params.customerMessage, product)
+      && !(onlyHit && uniqueHitMentioned(product, params.customerMessage))
+    ) {
       return { ok: false, error: `El cliente no pidió ${optionLabel(product)}. No lo agregues.` };
     }
     if (product.variants.length) {

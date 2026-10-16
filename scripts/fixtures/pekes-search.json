@@ -1,0 +1,9093 @@
+{
+ "function": "buscar_lista_productos_tienda_amplia(7,tokens,200)",
+ "search_results": {
+  "nito": [
+   {
+    "id": 272,
+    "nombre_producto": "Bold 3 Barra Cariñitos 400g",
+    "precio": null,
+    "categoria": "jabon de barra y bañ",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 491,
+    "nombre_producto": "Bold 3 Cariñitos De Mama 550gr 10%gratis",
+    "precio": null,
+    "categoria": "detergentes",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5378,
+    "nombre_producto": "Caja Nito 15paq",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6994,
+    "nombre_producto": "Cd Inf Gusanito",
+    "precio": null,
+    "categoria": "medicina y salud",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 713,
+    "nombre_producto": "Chicharron El Alteñito",
+    "precio": null,
+    "categoria": "botanas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7641,
+    "nombre_producto": "Cuernito El Panque",
+    "precio": null,
+    "categoria": "el panque",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3822,
+    "nombre_producto": "Cuernitos Tia Rosa 100g",
+    "precio": null,
+    "categoria": "tia rosa",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 314,
+    "nombre_producto": "Det Bold 3 Cariñitos 5k",
+    "precio": null,
+    "categoria": "javon en polvo y liq",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 94,
+    "nombre_producto": "Det Bold 3 Cariñitos Mama/850gr",
+    "precio": null,
+    "categoria": "detergentes",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 159,
+    "nombre_producto": "Det Bold 3 Liq Cariñitos De Mama 800ml",
+    "precio": null,
+    "categoria": "javon en polvo y liq",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 198,
+    "nombre_producto": "Det Liq Bold 3 Cariñitos De Mama 4.23lt",
+    "precio": null,
+    "categoria": "javon en polvo y liq",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 12274,
+    "nombre_producto": "Fritura De Papa El Alteñito",
+    "precio": null,
+    "categoria": "botana",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 12268,
+    "nombre_producto": "Fritura H/Papa Gd El Alteñito",
+    "precio": null,
+    "categoria": "harinas y galletas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 12219,
+    "nombre_producto": "Fritura Trigo Gd El Alteñito",
+    "precio": null,
+    "categoria": "harinas y galletas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1580,
+    "nombre_producto": "Gummy Duraznitos Las Delicias 1kg",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3621,
+    "nombre_producto": "Hotkis Nito 50g",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8226,
+    "nombre_producto": "Jelly Conito 24pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5399,
+    "nombre_producto": "Malteada Nito 236ml",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 4034,
+    "nombre_producto": "Nito 62g",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5449,
+    "nombre_producto": "Nito Duo",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 4005,
+    "nombre_producto": "Nito Funk",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 12447,
+    "nombre_producto": "Papa Dorada El Alteñito 100g",
+    "precio": null,
+    "categoria": "aceites",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 12009,
+    "nombre_producto": "Pinito Black Ice",
+    "precio": null,
+    "categoria": "aromatizantes",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11894,
+    "nombre_producto": "Pinito Bubble",
+    "precio": null,
+    "categoria": "aromatizantes",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11903,
+    "nombre_producto": "Pinito Cereza",
+    "precio": null,
+    "categoria": "aromatizantes",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11686,
+    "nombre_producto": "Pinito Cinnamon Apple",
+    "precio": null,
+    "categoria": "aromatizantes",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11652,
+    "nombre_producto": "Pinito Coco",
+    "precio": null,
+    "categoria": "aromatizantes",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11707,
+    "nombre_producto": "Pinito Gold",
+    "precio": null,
+    "categoria": "aromatizantes",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11749,
+    "nombre_producto": "Pinito Leather",
+    "precio": null,
+    "categoria": "aromatizantes",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11584,
+    "nombre_producto": "Pinito Naranja",
+    "precio": null,
+    "categoria": "aromatizantes",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11901,
+    "nombre_producto": "Pinito New Car",
+    "precio": null,
+    "categoria": "aromatizantes",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11940,
+    "nombre_producto": "Pinito Pino",
+    "precio": null,
+    "categoria": "aromatizantes",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 12017,
+    "nombre_producto": "Pinito Vainilla",
+    "precio": null,
+    "categoria": "aromatizantes",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8151,
+    "nombre_producto": "Rellenitos Rejilete 3D Hobin 30pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3397,
+    "nombre_producto": "Sh Pantene Liso Infinito 700ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 4753,
+    "nombre_producto": "Sopa Moderna 200g Moñito",
+    "precio": null,
+    "categoria": "pastas y consome",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 4096,
+    "nombre_producto": "Tequila Hornitos Reposada 1L",
+    "precio": null,
+    "categoria": "vinos y licores",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 12550,
+    "nombre_producto": "Tortilla /Harina Ch El Alteñito",
+    "precio": null,
+    "categoria": "harinas y galletas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 12518,
+    "nombre_producto": "Tortilla/Harina El Alteñito",
+    "precio": null,
+    "categoria": "otros",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 12522,
+    "nombre_producto": "Tortilla/Harina Gd El Alteñito",
+    "precio": null,
+    "categoria": "harinas y galletas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 12455,
+    "nombre_producto": "Tostada El Alteñito",
+    "precio": null,
+    "categoria": "otros",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 12407,
+    "nombre_producto": "Totopos El Alteñito",
+    "precio": null,
+    "categoria": "aceites",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   }
+  ],
+  "coca": [
+   {
+    "id": 6180,
+    "nombre_producto": "Bacardi Coca Cola 355ml",
+    "precio": null,
+    "categoria": "coca cola",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6235,
+    "nombre_producto": "Coca 355ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6518,
+    "nombre_producto": "Coca Cola 1 Litro Vidrio",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6364,
+    "nombre_producto": "Coca Cola 1 Lt Vidrio",
+    "precio": null,
+    "categoria": "coca cola",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6238,
+    "nombre_producto": "Coca Cola 1.250ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6145,
+    "nombre_producto": "Coca Cola 1.750ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6392,
+    "nombre_producto": "Coca Cola 2.5 Lt",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6478,
+    "nombre_producto": "Coca Cola 235ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6104,
+    "nombre_producto": "Coca Cola 235ml Retornable",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6249,
+    "nombre_producto": "Coca Cola 250ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6490,
+    "nombre_producto": "Coca Cola 300",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6287,
+    "nombre_producto": "Coca Cola 3L",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6505,
+    "nombre_producto": "Coca Cola 400ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6083,
+    "nombre_producto": "Coca Cola 450ml",
+    "precio": null,
+    "categoria": "coca cola",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3528,
+    "nombre_producto": "Coca Cola 500ml Retornable",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3698,
+    "nombre_producto": "Coca Cola 600 ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6574,
+    "nombre_producto": "Coca Cola Cherry 600ml",
+    "precio": null,
+    "categoria": "coca cola",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6568,
+    "nombre_producto": "Coca Cola de 2 Lts",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3725,
+    "nombre_producto": "Coca Cola De 500ml Pet",
+    "precio": null,
+    "categoria": "coca cola",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6182,
+    "nombre_producto": "Coca Cola Lata 235ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6138,
+    "nombre_producto": "Coca Cola Lata 355ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6126,
+    "nombre_producto": "Coca Cola Lata 355ml 32pz",
+    "precio": null,
+    "categoria": "coca cola",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6539,
+    "nombre_producto": "Coca Cola Lata 473ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6264,
+    "nombre_producto": "Coca Cola Lata Rosalia 355ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6435,
+    "nombre_producto": "Coca Cola Ligh 500ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6458,
+    "nombre_producto": "Coca Cola Light 2L",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6336,
+    "nombre_producto": "Coca Cola Retornable 2.5 Litros",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6186,
+    "nombre_producto": "Coca Cola Retornable 2L",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6397,
+    "nombre_producto": "Coca Cola Retornble 1.5 L",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6523,
+    "nombre_producto": "Coca Cola S/Azucar taparosca 500ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6254,
+    "nombre_producto": "Coca Cola Sin Azucar 250ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6209,
+    "nombre_producto": "Coca Cola Taparrosca 500ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6294,
+    "nombre_producto": "Coca Cola Zero 2L",
+    "precio": null,
+    "categoria": "coca cola",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 12653,
+    "nombre_producto": "Cocada Rompope",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7951,
+    "nombre_producto": "Cocadas Acapulco",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 12824,
+    "nombre_producto": "Cocadas Pepe",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 12654,
+    "nombre_producto": "Emplaye Coca Cola 2.5L",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6265,
+    "nombre_producto": "Paq Coca Cola 12pz",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 12652,
+    "nombre_producto": "Rollo Cocada De Leche",
+    "precio": null,
+    "categoria": "aceites",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   }
+  ],
+  "agua mineral": [
+   {
+    "id": 6282,
+    "nombre_producto": "Agua Mineral Ciel 600ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 14
+   },
+   {
+    "id": 6685,
+    "nombre_producto": "Agua Mineral Peñafiel 2L",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 14
+   },
+   {
+    "id": 11352,
+    "nombre_producto": "Ac Fructis Hair Food Aguacate 300ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2986,
+    "nombre_producto": "Ac Herbal Agua De Coco 400ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2749,
+    "nombre_producto": "Ac Herbal Agua De Coco Y Jazmin 600ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 9917,
+    "nombre_producto": "Ac Sedal Agua De Arroz 650ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8681,
+    "nombre_producto": "Aceite de Aguacate Belskin 120ml",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 12594,
+    "nombre_producto": "Aceite De Aguacate Chosen 250ml",
+    "precio": null,
+    "categoria": "aceites",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 12526,
+    "nombre_producto": "Aceite De Aguacate En Aerosol 419ml",
+    "precio": null,
+    "categoria": "aceites",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 9071,
+    "nombre_producto": "Aceite De Aguacate Ines 250ml",
+    "precio": null,
+    "categoria": "aceites",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3992,
+    "nombre_producto": "Aceite De Aguacate Members 1lt",
+    "precio": null,
+    "categoria": "aceites",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11500,
+    "nombre_producto": "Agua Bonafon Limon 1lt",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11374,
+    "nombre_producto": "Agua Bonafon Mango 1lt",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11134,
+    "nombre_producto": "Agua Bonafont 1 Lt",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11229,
+    "nombre_producto": "Agua Bonafont 15 Lt",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11156,
+    "nombre_producto": "Agua Bonafont 330ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11164,
+    "nombre_producto": "Agua Bonafont 500ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6369,
+    "nombre_producto": "Agua Ciel 1.2L",
+    "precio": null,
+    "categoria": "coca cola",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6461,
+    "nombre_producto": "Agua Ciel 1.5 Lt",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 279,
+    "nombre_producto": "Agua Ciel 20Lts",
+    "precio": null,
+    "categoria": "coca cola",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6482,
+    "nombre_producto": "Agua Ciel 5 Lts",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6425,
+    "nombre_producto": "Agua Ciel 600ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6536,
+    "nombre_producto": "Agua Ciel 6pz 1lt",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6153,
+    "nombre_producto": "Agua Ciel De 1 L",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 12659,
+    "nombre_producto": "Agua Ciel Garrafon 20lt",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6094,
+    "nombre_producto": "Agua Ciel Limon 1 Lt",
+    "precio": null,
+    "categoria": "coca cola",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6328,
+    "nombre_producto": "Agua Ciel Sabor Fresa 1l",
+    "precio": null,
+    "categoria": "coca cola",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11823,
+    "nombre_producto": "Agua De Aloe Jaloma 250ml",
+    "precio": null,
+    "categoria": "farmacia",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11799,
+    "nombre_producto": "Agua De Arroz Jaloma 5en1 250ml",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8686,
+    "nombre_producto": "Agua De Coco 330ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3850,
+    "nombre_producto": "Agua De Coco Caja 18pz",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 12224,
+    "nombre_producto": "Agua De Coco Calahua 330ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 12727,
+    "nombre_producto": "Agua De Coco Kirkland",
+    "precio": null,
+    "categoria": "kirklan",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8779,
+    "nombre_producto": "Agua De Coco Original Sinn Azucar 1lt",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11655,
+    "nombre_producto": "Agua De Lavanda Jaloma 250ml",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 10773,
+    "nombre_producto": "Agua De Rosas AV 250ml",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11741,
+    "nombre_producto": "Agua De Rosas Jaloma 130ml",
+    "precio": null,
+    "categoria": "farmacia",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 12005,
+    "nombre_producto": "Agua De Rosas Jaloma 250ml",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7070,
+    "nombre_producto": "Agua E Pura 5L",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6622,
+    "nombre_producto": "Agua EPura 1.5 lt",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6598,
+    "nombre_producto": "Agua Epura 1lt",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7074,
+    "nombre_producto": "Agua Epura 20lt",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6789,
+    "nombre_producto": "Agua Epura 330ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6967,
+    "nombre_producto": "Agua Epura 600 Ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6656,
+    "nombre_producto": "Agua Epura De 10 L",
+    "precio": null,
+    "categoria": "pepsi",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11460,
+    "nombre_producto": "Agua Fonafont Frutos Rojos 1l",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 290,
+    "nombre_producto": "Agua Gasificada Kirkland Frambuesa 503ml",
+    "precio": null,
+    "categoria": "refrigerados",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 566,
+    "nombre_producto": "Agua Gasificada Kirkland Fresa Kiwi 503ml",
+    "precio": null,
+    "categoria": "refrigerados",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 332,
+    "nombre_producto": "Agua Gasificada Kirkland Mango Naranja 503ml",
+    "precio": null,
+    "categoria": "refrigerados",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 12746,
+    "nombre_producto": "Agua Gasificada Limon 355ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 12745,
+    "nombre_producto": "Agua Gasificada Limon Amarillo 355ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 12728,
+    "nombre_producto": "Agua Gasificada Paquete Kirkland 35pz",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 520,
+    "nombre_producto": "Agua Gasificada Saborizada Kirkland 500ml 24pz",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 4450,
+    "nombre_producto": "Agua Gerber 4lt",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 12751,
+    "nombre_producto": "Agua Kirkland 237ml 70pza",
+    "precio": null,
+    "categoria": "kirklan",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 12752,
+    "nombre_producto": "Agua Kirkland 40/500ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 12770,
+    "nombre_producto": "Agua Kirkland 500ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3647,
+    "nombre_producto": "Agua Memberrs Mark 1ltr",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3632,
+    "nombre_producto": "Agua Members 355ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3644,
+    "nombre_producto": "Agua Members Mark 1 Lt",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3755,
+    "nombre_producto": "Agua Members Mark 355ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 4039,
+    "nombre_producto": "Agua Members Mark 45pz",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 861,
+    "nombre_producto": "Agua Micelar Garnier 100ml",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1056,
+    "nombre_producto": "Agua Micelar Garnier 400ml",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11430,
+    "nombre_producto": "Agua Micelar Garnier Vtamina C 400ml",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7681,
+    "nombre_producto": "Agua Micelar Lab 400ml",
+    "precio": null,
+    "categoria": "higiene y belleza",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11533,
+    "nombre_producto": "Agua Micelar Loreal 200ml",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11276,
+    "nombre_producto": "Agua Micelar Loreal 5en1 200ml",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1541,
+    "nombre_producto": "Agua Micelar Nivea Iluminadora 400ml",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1535,
+    "nombre_producto": "Agua Micelar Nivea Reparadora 400ml",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1244,
+    "nombre_producto": "Agua Micelar Nivea Rosas 100ml",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7002,
+    "nombre_producto": "Agua Micelar Nuvel 125ml",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6929,
+    "nombre_producto": "Agua Nestle 1lt",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6904,
+    "nombre_producto": "Agua Nestle 500 Ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6823,
+    "nombre_producto": "Agua Nestle 500ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11273,
+    "nombre_producto": "Agua Oxigenada 112ml",
+    "precio": null,
+    "categoria": "farmacia",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11107,
+    "nombre_producto": "Agua Oxigenada 448ml",
+    "precio": null,
+    "categoria": "farmacia",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11144,
+    "nombre_producto": "Agua Oxigenada 56ml",
+    "precio": null,
+    "categoria": "farmacia",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11170,
+    "nombre_producto": "Agua Oxigenada Jaloma 224ml",
+    "precio": null,
+    "categoria": "farmacia",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1716,
+    "nombre_producto": "Agua Oxigenada Sanax 70ml",
+    "precio": null,
+    "categoria": "higiene y belleza",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7393,
+    "nombre_producto": "Agua Sello Rojo 3.71lt",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2691,
+    "nombre_producto": "Agua Skarch 330ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2978,
+    "nombre_producto": "Agua Skarch 750ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11518,
+    "nombre_producto": "Agua Vitamina C Jaloma 250ml",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 9452,
+    "nombre_producto": "Agua Ziboo Durazno 500ml",
+    "precio": null,
+    "categoria": "pepsi",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 9312,
+    "nombre_producto": "Agua Ziboo Manzana 500ml",
+    "precio": null,
+    "categoria": "pepsi",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 9264,
+    "nombre_producto": "Agua Ziboo Piña 500ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 9502,
+    "nombre_producto": "Agua Ziboo Uva 500ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2665,
+    "nombre_producto": "Agua Zoe 500ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 12814,
+    "nombre_producto": "Aguacate",
+    "precio": null,
+    "categoria": "verdura",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1349,
+    "nombre_producto": "Atun Corina En Agua 130g",
+    "precio": null,
+    "categoria": "enlatados",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6068,
+    "nombre_producto": "Atun Dolores En Agua 133gr",
+    "precio": null,
+    "categoria": "enlatados",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5895,
+    "nombre_producto": "Atun Dolores En Agua 140g",
+    "precio": null,
+    "categoria": "enlatados",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5873,
+    "nombre_producto": "Atun Dolores En Agua 295g",
+    "precio": null,
+    "categoria": "enlatados",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5639,
+    "nombre_producto": "Atun Dorado/Agua 140gr",
+    "precio": null,
+    "categoria": "enlatados",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5707,
+    "nombre_producto": "Atun Tuny/Agua 140gr",
+    "precio": null,
+    "categoria": "enlatados",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8134,
+    "nombre_producto": "Bexy Crema Aguacate 180ml",
+    "precio": null,
+    "categoria": "higiene y belleza",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6931,
+    "nombre_producto": "Carta Blanca Caguamon",
+    "precio": null,
+    "categoria": "cerveza",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11130,
+    "nombre_producto": "Charola #66 Jaguar",
+    "precio": null,
+    "categoria": "desechables",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11101,
+    "nombre_producto": "Charola #855 Jaguar 50pz",
+    "precio": null,
+    "categoria": "desechables",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11466,
+    "nombre_producto": "Charola Jaguar #835",
+    "precio": null,
+    "categoria": "desechables",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6246,
+    "nombre_producto": "Ciel Mineralizada 2 Lt",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1515,
+    "nombre_producto": "Cj Vaso Jaguar #12",
+    "precio": null,
+    "categoria": "desechables",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11383,
+    "nombre_producto": "Contenedor Jaguar 500ml 25pz",
+    "precio": null,
+    "categoria": "desechables",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11513,
+    "nombre_producto": "Cp Fructis Aguacate 350ml",
+    "precio": null,
+    "categoria": "higiene y belleza",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 603,
+    "nombre_producto": "Cr Ricitos De Oro Agua De Coco 250ml",
+    "precio": null,
+    "categoria": "bebes",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1983,
+    "nombre_producto": "Crema Naturals Aguacate 100g",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5888,
+    "nombre_producto": "Dos Equis Caguamon",
+    "precio": null,
+    "categoria": "cerveza",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 9925,
+    "nombre_producto": "Ds Aer Savile Agua De Rosas 150ml",
+    "precio": null,
+    "categoria": "higiene y belleza",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11036,
+    "nombre_producto": "Ds Barra Savile Agua/Rosas 45g",
+    "precio": null,
+    "categoria": "higiene y belleza",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1653,
+    "nombre_producto": "Espuma Limpiadora Agua/Rosas 150ml",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8469,
+    "nombre_producto": "Gomitubo Agua 50pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5745,
+    "nombre_producto": "Heineken Caguamon",
+    "precio": null,
+    "categoria": "cerveza",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 847,
+    "nombre_producto": "Huggies Little Swimmers/Agua 11pz",
+    "precio": null,
+    "categoria": "pañales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7728,
+    "nombre_producto": "Indio Caguamon",
+    "precio": null,
+    "categoria": "cerveza",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 9834,
+    "nombre_producto": "Jabon Savile/Aguac 150gr",
+    "precio": null,
+    "categoria": "higiene y belleza",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8501,
+    "nombre_producto": "Jalador/Agua Perico",
+    "precio": null,
+    "categoria": "jarceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 12365,
+    "nombre_producto": "Jt Grisi Agua De Rosas 125g",
+    "precio": null,
+    "categoria": "jabon de barra y bañ",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 9954,
+    "nombre_producto": "Jt Savile Agua De Rosas 135g",
+    "precio": null,
+    "categoria": "jabon de barra y bañ",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 9837,
+    "nombre_producto": "Jt Savile Aguacate 135g",
+    "precio": null,
+    "categoria": "jabon de barra y bañ",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3092,
+    "nombre_producto": "Lechuguilla Mineral",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 373,
+    "nombre_producto": "Lirio Liqudo Corporal Aguacate 400ml",
+    "precio": null,
+    "categoria": "jabon de barra y bañ",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 145,
+    "nombre_producto": "Mineral Skarch 355ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11368,
+    "nombre_producto": "Plato Jaguar Ph6 25pzas",
+    "precio": null,
+    "categoria": "desechables",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11098,
+    "nombre_producto": "Plato Pastelero #6 Jaguar 20pz",
+    "precio": null,
+    "categoria": "desechables",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11264,
+    "nombre_producto": "Plato Ph8 Jaguar 25p",
+    "precio": null,
+    "categoria": "desechables",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 532,
+    "nombre_producto": "Pquet Agua Ciel 1l",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7729,
+    "nombre_producto": "Repuesto Wiese Agua De Coco 180g",
+    "precio": null,
+    "categoria": "aromatizantes",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11123,
+    "nombre_producto": "Sh Fructis Hair Food Aguacate 300ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3072,
+    "nombre_producto": "Sh Herbal Agua De Coco 400ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2886,
+    "nombre_producto": "Sh Herbal Agua De Coco Y Jazmin 600ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3426,
+    "nombre_producto": "Sh Herbal Essences Aguacate 865ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 12395,
+    "nombre_producto": "Sh Pert Agave Y Aguacate 650ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 9875,
+    "nombre_producto": "Sh Savile/Agua De Coco 780ml",
+    "precio": null,
+    "categoria": "higiene y belleza",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 9489,
+    "nombre_producto": "Sh Savile/Aguacate",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 9686,
+    "nombre_producto": "Shliq Corporal Agua /Coco 400ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 10306,
+    "nombre_producto": "Suavitel Agua De Rosas 2.8L",
+    "precio": null,
+    "categoria": "suavizantes de telas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1797,
+    "nombre_producto": "Teatrical Aguacate 200g",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1790,
+    "nombre_producto": "Teatrical Aguacate 400ml",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7061,
+    "nombre_producto": "Tecate Caguamon",
+    "precio": null,
+    "categoria": "cerveza",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6956,
+    "nombre_producto": "Tecate Light Caguamon",
+    "precio": null,
+    "categoria": "cerveza",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 10213,
+    "nombre_producto": "Th Desmaq Max Beuty Agua Micelar 30pz",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5870,
+    "nombre_producto": "Tuny Express Agua 270g",
+    "precio": null,
+    "categoria": "enlatados",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11384,
+    "nombre_producto": "Vaso Jaguar #10",
+    "precio": null,
+    "categoria": "desechables",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11152,
+    "nombre_producto": "Vaso Jaguar #12 50pz",
+    "precio": null,
+    "categoria": "desechables",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11332,
+    "nombre_producto": "Vaso Jaguar #16 50pz",
+    "precio": null,
+    "categoria": "desechables",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11096,
+    "nombre_producto": "Vaso Jaguar #5.5 50pz",
+    "precio": null,
+    "categoria": "desechables",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11148,
+    "nombre_producto": "Vaso Jaguar #6 50pz",
+    "precio": null,
+    "categoria": "desechables",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11318,
+    "nombre_producto": "Vaso Jaguar #8",
+    "precio": null,
+    "categoria": "desechables",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11486,
+    "nombre_producto": "Vaso Jaguar 14/50pz",
+    "precio": null,
+    "categoria": "desechables",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 9759,
+    "nombre_producto": "Zest Agua De Coco Pack 5pz",
+    "precio": null,
+    "categoria": "jabon de barra y bañ",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 392,
+    "nombre_producto": "Avena Integral 1 Minuto 300g",
+    "precio": null,
+    "categoria": "cereales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 1375,
+    "nombre_producto": "Costal Minino",
+    "precio": null,
+    "categoria": "mascotas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 3797,
+    "nombre_producto": "Croassan Tines Minis 60gr",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 10219,
+    "nombre_producto": "Pd Colgate Total Original Mint 160ml",
+    "precio": null,
+    "categoria": "farmacia",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   }
+  ],
+  "pringles": [
+   {
+    "id": 1396,
+    "nombre_producto": "Papa Pringles Crema Y Cebolla Caja/12",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 846,
+    "nombre_producto": "Papas Pringles Sabor A Queso 40g",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1060,
+    "nombre_producto": "Papas Pringles sabor Original 40g",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 725,
+    "nombre_producto": "Pringles Adobada 124gr",
+    "precio": null,
+    "categoria": "sabritas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 4137,
+    "nombre_producto": "Pringles Adobada 141gr",
+    "precio": null,
+    "categoria": "sabritas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1052,
+    "nombre_producto": "Pringles Bbq 158gr",
+    "precio": null,
+    "categoria": "sabritas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 4247,
+    "nombre_producto": "Pringles Crema Cebolla 37g",
+    "precio": null,
+    "categoria": "sabritas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 802,
+    "nombre_producto": "Pringles Crema Cebolla124gr",
+    "precio": null,
+    "categoria": "sabritas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 4179,
+    "nombre_producto": "Pringles Crema Y Cebolla 141gr",
+    "precio": null,
+    "categoria": "sabritas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 4090,
+    "nombre_producto": "Pringles Enchilada 7g",
+    "precio": null,
+    "categoria": "sabritas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 811,
+    "nombre_producto": "Pringles Habaneras 124g",
+    "precio": null,
+    "categoria": "sabritas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1875,
+    "nombre_producto": "Pringles Habaneras 37g",
+    "precio": null,
+    "categoria": "sabritas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 4202,
+    "nombre_producto": "Pringles Jalapeño 37g",
+    "precio": null,
+    "categoria": "sabritas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 4497,
+    "nombre_producto": "Pringles Original 37g",
+    "precio": null,
+    "categoria": "sabritas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 4253,
+    "nombre_producto": "Pringles Pack 15pz",
+    "precio": null,
+    "categoria": "otros",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1034,
+    "nombre_producto": "Pringles Pizza 158gr",
+    "precio": null,
+    "categoria": "botana",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 961,
+    "nombre_producto": "Pringles Queso 124gr",
+    "precio": null,
+    "categoria": "sabritas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 4108,
+    "nombre_producto": "Pringles Queso Nacho 37g",
+    "precio": null,
+    "categoria": "sabritas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 986,
+    "nombre_producto": "Pringles Sabor Original 124g",
+    "precio": null,
+    "categoria": "sabritas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 12265,
+    "nombre_producto": "Castillo Princesas Barbie 12pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 9190,
+    "nombre_producto": "Gall Principe 315g",
+    "precio": null,
+    "categoria": "galletas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 9520,
+    "nombre_producto": "Gall Principe Avellana 315g",
+    "precio": null,
+    "categoria": "galletas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 3768,
+    "nombre_producto": "Gall Principe Reeses 378gr",
+    "precio": null,
+    "categoria": "galletas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 5897,
+    "nombre_producto": "Galleta Principe 147gr",
+    "precio": null,
+    "categoria": "harinas y galletas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 5204,
+    "nombre_producto": "Galletas Principe 378gr",
+    "precio": null,
+    "categoria": "harinas y galletas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 3900,
+    "nombre_producto": "Galletas Principe Blanco 105gr",
+    "precio": null,
+    "categoria": "marinela",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 3600,
+    "nombre_producto": "Galletas Principe C8 Mar",
+    "precio": null,
+    "categoria": "marinela",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 7227,
+    "nombre_producto": "Gel Extreme Princesa 200g",
+    "precio": null,
+    "categoria": "higiene y belleza",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 8876,
+    "nombre_producto": "Gel Super Fix Princess 230g",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 9431,
+    "nombre_producto": "Huevo Princesa 6pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 5095,
+    "nombre_producto": "Maxitubo Principe 210g",
+    "precio": null,
+    "categoria": "marinela",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 3974,
+    "nombre_producto": "Pastelito Principe 5pz",
+    "precio": null,
+    "categoria": "marinela",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 9448,
+    "nombre_producto": "Pastelito Principe38gr",
+    "precio": null,
+    "categoria": "marinela",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 3957,
+    "nombre_producto": "Principe 126g",
+    "precio": null,
+    "categoria": "gamesa",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 4028,
+    "nombre_producto": "Principe 12pz",
+    "precio": null,
+    "categoria": "marinela",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 9356,
+    "nombre_producto": "Principe 252g",
+    "precio": null,
+    "categoria": "galletas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 5217,
+    "nombre_producto": "Principe 9pz/42g",
+    "precio": null,
+    "categoria": "galletas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 5316,
+    "nombre_producto": "Principe Avellana 105gr",
+    "precio": null,
+    "categoria": "marinela",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 9496,
+    "nombre_producto": "Principe Avellana Maxitubo 210g",
+    "precio": null,
+    "categoria": "marinela",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 3912,
+    "nombre_producto": "Principe Choc Blanco 126g",
+    "precio": null,
+    "categoria": "galletas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 4014,
+    "nombre_producto": "Principe Doble Chocolate 126g",
+    "precio": null,
+    "categoria": "marinela",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 9537,
+    "nombre_producto": "Principe Fresa 105gr",
+    "precio": null,
+    "categoria": "marinela",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 5349,
+    "nombre_producto": "Principe Limon 105gr",
+    "precio": null,
+    "categoria": "marinela",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 4059,
+    "nombre_producto": "Principe Limon 126g",
+    "precio": null,
+    "categoria": "marinela",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 3946,
+    "nombre_producto": "Principe Reeses 42gr",
+    "precio": null,
+    "categoria": "galletas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 3827,
+    "nombre_producto": "Sandwich Principe",
+    "precio": null,
+    "categoria": "marinela",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 12366,
+    "nombre_producto": "Sh Grisi Kids Princesas 300ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 2051,
+    "nombre_producto": "Sh Vanart Princess Glow Reparacion De Avena 750ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 8445,
+    "nombre_producto": "St Princesa Amanecer 750ml",
+    "precio": null,
+    "categoria": "suavizantes de telas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 8100,
+    "nombre_producto": "St Princesa Argan Vainilla 750ml",
+    "precio": null,
+    "categoria": "suavizantes de telas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 8526,
+    "nombre_producto": "St Princesa Bebe 750ml",
+    "precio": null,
+    "categoria": "suavizantes de telas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 8466,
+    "nombre_producto": "St Princesa Soleada Primavera 750ml",
+    "precio": null,
+    "categoria": "suavizantes de telas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 8288,
+    "nombre_producto": "St Princesa Suave Placer 750ml",
+    "precio": null,
+    "categoria": "suavizantes de telas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 3902,
+    "nombre_producto": "Takis Fuego+ Principe",
+    "precio": null,
+    "categoria": "barcel",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   }
+  ],
+  "azucar": [
+   {
+    "id": 8779,
+    "nombre_producto": "Agua De Coco Original Sinn Azucar 1lt",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 9497,
+    "nombre_producto": "Algodon De Azucar 20pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 234,
+    "nombre_producto": "Azucar",
+    "precio": null,
+    "categoria": "endulsantes",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1843,
+    "nombre_producto": "Azucar Balance Stevia Zulka 500g",
+    "precio": null,
+    "categoria": "endulsantes",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6805,
+    "nombre_producto": "Azucar Bc 1.35kg",
+    "precio": null,
+    "categoria": "granos",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7295,
+    "nombre_producto": "Azucar Bc 3.25kg",
+    "precio": null,
+    "categoria": "granos",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7138,
+    "nombre_producto": "Azucar Bc 390gr",
+    "precio": null,
+    "categoria": "endulsantes",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7519,
+    "nombre_producto": "Azucar Bc 4k",
+    "precio": null,
+    "categoria": "endulsantes",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6808,
+    "nombre_producto": "Azucar Bc 700g",
+    "precio": null,
+    "categoria": "endulsantes",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 12834,
+    "nombre_producto": "Azucar Estandar 25k",
+    "precio": null,
+    "categoria": "endulsantes",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8116,
+    "nombre_producto": "Azucar Glas Zulka 3kg",
+    "precio": null,
+    "categoria": "endulsantes",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1936,
+    "nombre_producto": "Azucar Glass Zulka 500g",
+    "precio": null,
+    "categoria": "endulsantes",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8572,
+    "nombre_producto": "Azucar Mascabado 2kg",
+    "precio": null,
+    "categoria": "endulsantes",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1802,
+    "nombre_producto": "Azucar Mascabado 500g",
+    "precio": null,
+    "categoria": "endulsantes",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 378,
+    "nombre_producto": "Azucaradas 250g",
+    "precio": null,
+    "categoria": "cereales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8297,
+    "nombre_producto": "Banderilla Micho Azucarada 800g",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 447,
+    "nombre_producto": "Caja Maizoro Azucaradas 5kg",
+    "precio": null,
+    "categoria": "cereales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7893,
+    "nombre_producto": "Cereal La Cosecha Azucaradas 500g",
+    "precio": null,
+    "categoria": "cereales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1771,
+    "nombre_producto": "Cero Azucar Vailnilla 60gr",
+    "precio": null,
+    "categoria": "galletas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1475,
+    "nombre_producto": "Cj Cereal Michel Azucarado 5k",
+    "precio": null,
+    "categoria": "cajas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6523,
+    "nombre_producto": "Coca Cola S/Azucar taparosca 500ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6254,
+    "nombre_producto": "Coca Cola Sin Azucar 250ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2773,
+    "nombre_producto": "Crest Escudo Anti-Azucar 130ml",
+    "precio": null,
+    "categoria": "higiene y belleza",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2969,
+    "nombre_producto": "Crest Escudo Anti-Azucar 50ml",
+    "precio": null,
+    "categoria": "higiene y belleza",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5737,
+    "nombre_producto": "Danone Mix Azucaradas",
+    "precio": null,
+    "categoria": "danone",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5189,
+    "nombre_producto": "Donas Azucaradas 6pz",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7544,
+    "nombre_producto": "Dr Pepper Zero Azucar 355ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7372,
+    "nombre_producto": "Gall Azucarada El Panque 80gr",
+    "precio": null,
+    "categoria": "el panque",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8387,
+    "nombre_producto": "Gall Azucaradas Cayro 400g",
+    "precio": null,
+    "categoria": "cayro",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8068,
+    "nombre_producto": "galleta Azucarada El Panque 160g",
+    "precio": null,
+    "categoria": "el panque",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1907,
+    "nombre_producto": "Integrales Sin Azucar Chispas Chocolate 60gr",
+    "precio": null,
+    "categoria": "galletas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8117,
+    "nombre_producto": "Leche Almendra Sin Azucar Natures 946ml",
+    "precio": null,
+    "categoria": "lacteos",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 10686,
+    "nombre_producto": "Magnun Zero Azucar",
+    "precio": null,
+    "categoria": "holanda",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3261,
+    "nombre_producto": "Marias Azucaradas 140g",
+    "precio": null,
+    "categoria": "galletas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3438,
+    "nombre_producto": "Marias Azucaradas 144g",
+    "precio": null,
+    "categoria": "galletas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 4011,
+    "nombre_producto": "Marias Azucaradas 150g",
+    "precio": null,
+    "categoria": "gamesa",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6261,
+    "nombre_producto": "Mermelada Sin azucar Clemente 225g",
+    "precio": null,
+    "categoria": "enlatados",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2257,
+    "nombre_producto": "Michel Caja Azucarado",
+    "precio": null,
+    "categoria": "cereales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8524,
+    "nombre_producto": "Mini Banderilla Azucarada Micho 650g",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8431,
+    "nombre_producto": "Natures Heart Almendra Vainilla Sin Azucar 946ml",
+    "precio": null,
+    "categoria": "bebes",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5959,
+    "nombre_producto": "Oikos Natural Sin Azucar 150g",
+    "precio": null,
+    "categoria": "lacteos",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8341,
+    "nombre_producto": "Paleta Dulce Vida Sin Azucar 12pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2500,
+    "nombre_producto": "Paleta Sin Azucar Las Sevillanas 130g",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5147,
+    "nombre_producto": "Pastisetas Sin Azucar 70g",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3983,
+    "nombre_producto": "Pastisetas Sin azucar 84g",
+    "precio": null,
+    "categoria": "marinela",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2766,
+    "nombre_producto": "Pd Crest Escudo-Antiazucar 100ml",
+    "precio": null,
+    "categoria": "higiene y belleza",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 338,
+    "nombre_producto": "Saco De Azucar 50kg",
+    "precio": null,
+    "categoria": "granos",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 781,
+    "nombre_producto": "Silk Almendra Sin Azucar 6pz",
+    "precio": null,
+    "categoria": "lacteos",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 957,
+    "nombre_producto": "Silk Almendra Sin Azucar 946ml",
+    "precio": null,
+    "categoria": "lacteos",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6426,
+    "nombre_producto": "Sprite Sin Azucar 600ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7009,
+    "nombre_producto": "Squirt Sin Azucar 2L",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 12015,
+    "nombre_producto": "Tang Jamaica Sin Azucar",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11978,
+    "nombre_producto": "Tang Mango Sin Azucar 13gr",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11582,
+    "nombre_producto": "Tang Naranja Sin Azucar 13gr",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11726,
+    "nombre_producto": "Tang Uva Sin Azucar 13gr",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 9289,
+    "nombre_producto": "Tarugos Azucar 320g",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11154,
+    "nombre_producto": "Vaso C/Calca Azucar",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5734,
+    "nombre_producto": "Yg Griego Sin Azucar 120g",
+    "precio": null,
+    "categoria": "fud",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5835,
+    "nombre_producto": "Yg Griego Sin Azucar Fresa 220g",
+    "precio": null,
+    "categoria": "lacteos",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5642,
+    "nombre_producto": "Yoplait Griego Coco Sin Azucar 750g",
+    "precio": null,
+    "categoria": "lacteos",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5826,
+    "nombre_producto": "Yoplait Griego Fresa Sin Azucar 750g",
+    "precio": null,
+    "categoria": "lacteos",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6018,
+    "nombre_producto": "Yoplait Griego Sin Azucar 145g",
+    "precio": null,
+    "categoria": "lacteos",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5857,
+    "nombre_producto": "Yoplait Griego Sin Azucar 750g",
+    "precio": null,
+    "categoria": "lacteos",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 9187,
+    "nombre_producto": "Amper Mora Azul 473ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 12307,
+    "nombre_producto": "Arenitas Mora Azul Pigui",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 5633,
+    "nombre_producto": "Aromatizante Glade Odisea Azul",
+    "precio": null,
+    "categoria": "aromatizantes",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 5880,
+    "nombre_producto": "Aromatizante Glade/Paraiso Azul",
+    "precio": null,
+    "categoria": "higiene y belleza",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 1044,
+    "nombre_producto": "Azul",
+    "precio": null,
+    "categoria": "especies",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 5915,
+    "nombre_producto": "Azul Centenario Reposado 1L",
+    "precio": null,
+    "categoria": "vinos y licores",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 7698,
+    "nombre_producto": "Bazucazo 45pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 277,
+    "nombre_producto": "Blue Vino Espuso Azul 750ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 11679,
+    "nombre_producto": "Bubbalooo Rollo mora Azul",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 7073,
+    "nombre_producto": "Canastilla Harpic Azul Prof 35g",
+    "precio": null,
+    "categoria": "jabon de barra y bañ",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 1389,
+    "nombre_producto": "Cartera Azul",
+    "precio": null,
+    "categoria": "especies",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 339,
+    "nombre_producto": "Chicle Icee Mora Azul 45pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 12046,
+    "nombre_producto": "Chupa Chups Xtreme Mora Azul 8pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 5321,
+    "nombre_producto": "Det Liquido Zote Azul 1L",
+    "precio": null,
+    "categoria": "javon en polvo y liq",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 5690,
+    "nombre_producto": "Disfruta Mora Azul 307g",
+    "precio": null,
+    "categoria": "lacteos",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 8197,
+    "nombre_producto": "Electrolit Mora Azul 1 Lt",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 9262,
+    "nombre_producto": "Electrolit Mora Azul 355ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 7487,
+    "nombre_producto": "Electrolit/Mora Azul",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 5295,
+    "nombre_producto": "Ensueño Frescura Azul 1L",
+    "precio": null,
+    "categoria": "suavizantes de telas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 5412,
+    "nombre_producto": "Ensueño Max Frescura Azul 3.7lt",
+    "precio": null,
+    "categoria": "suavizantes de telas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 5237,
+    "nombre_producto": "Ensueño Ultra 7en1 Fescura Azul 740ml",
+    "precio": null,
+    "categoria": "suavizantes de telas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 5536,
+    "nombre_producto": "Ensueño/Frescura Azul 5.1lt",
+    "precio": null,
+    "categoria": "suavizantes de telas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 5221,
+    "nombre_producto": "Fibra Scotch Brite Azul",
+    "precio": null,
+    "categoria": "jarceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 1517,
+    "nombre_producto": "Frijol Azufrado",
+    "precio": null,
+    "categoria": "granos",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 11416,
+    "nombre_producto": "Frutaffy Mora Azul 180g",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 4557,
+    "nombre_producto": "Frutela / Mora Azul 37g",
+    "precio": null,
+    "categoria": "cereales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 4298,
+    "nombre_producto": "Gall Crisp Bar Mora Azul 90g",
+    "precio": null,
+    "categoria": "galletas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 5608,
+    "nombre_producto": "Gel Glade Azul Auto 70g",
+    "precio": null,
+    "categoria": "aromatizantes",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 12327,
+    "nombre_producto": "Glade Palitos Paraiso Azul 100ml",
+    "precio": null,
+    "categoria": "aromatizantes",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 9355,
+    "nombre_producto": "Glade Paraiso Azul Y Hawai",
+    "precio": null,
+    "categoria": "aromatizantes",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 11886,
+    "nombre_producto": "Halls Mora Azul 12pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 152,
+    "nombre_producto": "Ice Mini Mora Azul 9pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 203,
+    "nombre_producto": "Icee Mora Azul",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 2061,
+    "nombre_producto": "Jabon Asepxia Azufre 100gr",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 5092,
+    "nombre_producto": "Jb Zote Azul De 400g",
+    "precio": null,
+    "categoria": "jabon de barra y bañ",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 12431,
+    "nombre_producto": "Jt Azufre Grisi 100g",
+    "precio": null,
+    "categoria": "jabon de barra y bañ",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 4946,
+    "nombre_producto": "Jumex Bida Ice Mora Azul 237ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 11774,
+    "nombre_producto": "Limpiador Baños Y Azulejos Members 2pz",
+    "precio": null,
+    "categoria": "blanqueadores",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 8086,
+    "nombre_producto": "Marcador Aink Azul",
+    "precio": null,
+    "categoria": "papeleria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 7863,
+    "nombre_producto": "Matizador Ms Azul 250ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 8544,
+    "nombre_producto": "Miguelito Mora Azul 250g",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 9519,
+    "nombre_producto": "Mr Blue Azulito",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 3114,
+    "nombre_producto": "Pal Puerquitos Fuego Azul",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 11671,
+    "nombre_producto": "Pastilla Azul Sanitario Konnig 4pz",
+    "precio": null,
+    "categoria": "baño",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 5228,
+    "nombre_producto": "Pastilla Cloralex Azul 2pz",
+    "precio": null,
+    "categoria": "baño",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 5533,
+    "nombre_producto": "Pastilla Cloralex Azul 40g",
+    "precio": null,
+    "categoria": "baño",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 5248,
+    "nombre_producto": "Pastilla Cloralex Frescura Azul 2pz",
+    "precio": null,
+    "categoria": "baño",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 7856,
+    "nombre_producto": "Pastilla Wiese Azul Pino 2pz De 48g",
+    "precio": null,
+    "categoria": "jabon de barra y bañ",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 7976,
+    "nombre_producto": "Pastilla Wiese Azul Tanque 48g",
+    "precio": null,
+    "categoria": "jabon de barra y bañ",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 5569,
+    "nombre_producto": "Pastlla Cloralex Frescura Azul 40g",
+    "precio": null,
+    "categoria": "baño",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 11740,
+    "nombre_producto": "Pinta Azul Vero 70gr",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 7486,
+    "nombre_producto": "Pintura Mariposa Azul Marino",
+    "precio": null,
+    "categoria": "jarceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 7413,
+    "nombre_producto": "Pintura Mariposa Azul Mezclilla 32g",
+    "precio": null,
+    "categoria": "otros",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 3290,
+    "nombre_producto": "Puerquitos Fuego Azul 285g",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 11904,
+    "nombre_producto": "Repuesto Glade Paraiso Azul 270ml",
+    "precio": null,
+    "categoria": "aromatizantes",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 9063,
+    "nombre_producto": "Sal Diamante Azul 1kg",
+    "precio": null,
+    "categoria": "granos",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 7365,
+    "nombre_producto": "Solural Mora Azul",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 1877,
+    "nombre_producto": "Suerox Mora Azul 630",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 6044,
+    "nombre_producto": "Talco Mennen Azul 100g",
+    "precio": null,
+    "categoria": "bebes",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 5614,
+    "nombre_producto": "Talco Para Bebe Azul 200g",
+    "precio": null,
+    "categoria": "bebes",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 1867,
+    "nombre_producto": "Tequila Campo Azul 1lt",
+    "precio": null,
+    "categoria": "vinos y licores",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 8814,
+    "nombre_producto": "Th Baby Sky Azul 80pz",
+    "precio": null,
+    "categoria": "pañales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 5083,
+    "nombre_producto": "Tinte Garnier Negro Azulado 5562",
+    "precio": null,
+    "categoria": "higiene y belleza",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 872,
+    "nombre_producto": "Tinte Revlon Negro Azulado 12",
+    "precio": null,
+    "categoria": "higiene y belleza",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 11670,
+    "nombre_producto": "Trident X-Twist Mora Azul Y Frambuesa",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 10284,
+    "nombre_producto": "Vaso Neon Azul 14/25pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 95,
+    "nombre_producto": "Vaso Reyma Azul #5 50pz",
+    "precio": null,
+    "categoria": "desechables",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 9038,
+    "nombre_producto": "Volt Mora Azul 437",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 2543,
+    "nombre_producto": "Xtremes Mora Azul",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   }
+  ],
+  "ole": [
+   {
+    "id": 11455,
+    "nombre_producto": "Ac Elvive Oleo 400ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11490,
+    "nombre_producto": "Ac Elvive Oleo 680ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11215,
+    "nombre_producto": "Ac Elvive Oleo De Coco 400ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11435,
+    "nombre_producto": "Ac Elvive Oleo Extraordinario 680ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 10052,
+    "nombre_producto": "Ac Tresemme Regeneracion Molecular 715ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8363,
+    "nombre_producto": "Arroz Ole 500g",
+    "precio": null,
+    "categoria": "granos",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8332,
+    "nombre_producto": "Arroz Ole 900g",
+    "precio": null,
+    "categoria": "granos",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8937,
+    "nombre_producto": "Bioleven",
+    "precio": null,
+    "categoria": "farmacia",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8741,
+    "nombre_producto": "Cafe Ole 281ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8735,
+    "nombre_producto": "Cafe Ole Moka Capuccino 281ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7736,
+    "nombre_producto": "Cera Fria Cargolet",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2759,
+    "nombre_producto": "Choco Roles 67g",
+    "precio": null,
+    "categoria": "marinela",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 4009,
+    "nombre_producto": "Choco Roles Black 80gr",
+    "precio": null,
+    "categoria": "marinela",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3937,
+    "nombre_producto": "Choco Roles Individual 50gr",
+    "precio": null,
+    "categoria": "marinela",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 12851,
+    "nombre_producto": "Churro De Maiz Doña Chole",
+    "precio": null,
+    "categoria": "botana",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11088,
+    "nombre_producto": "Cp Elvive Oleo 300g",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11137,
+    "nombre_producto": "Cp Elvive Oleo Extraordinario 300ml",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3326,
+    "nombre_producto": "Cp Pantene Molecular 300ml",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8161,
+    "nombre_producto": "Cuchara Pozolera Max25p",
+    "precio": null,
+    "categoria": "desechables",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 9269,
+    "nombre_producto": "Cuchara Pozolera Mufrance",
+    "precio": null,
+    "categoria": "desechables",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 320,
+    "nombre_producto": "Cuchara Pozolera Reyher",
+    "precio": null,
+    "categoria": "desechables",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8089,
+    "nombre_producto": "Det Solex Total 1K",
+    "precio": null,
+    "categoria": "detergentes",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11404,
+    "nombre_producto": "Duvalin Bitrolero 65pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11467,
+    "nombre_producto": "Elvive Crema/Peinar Oleo 300ml",
+    "precio": null,
+    "categoria": "higiene y belleza",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5218,
+    "nombre_producto": "Ensueño Rocio De Violeta 9L",
+    "precio": null,
+    "categoria": "suavizantes de telas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5215,
+    "nombre_producto": "Ensueño Rocio De Violetas 1l",
+    "precio": null,
+    "categoria": "suavizantes de telas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7903,
+    "nombre_producto": "Esponja Lustradora Bolero",
+    "precio": null,
+    "categoria": "jarceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 12425,
+    "nombre_producto": "Ferrero Colection 77g",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 931,
+    "nombre_producto": "Frijoles Adobados",
+    "precio": null,
+    "categoria": "otros",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6602,
+    "nombre_producto": "Frijoles Bayos Isadora 430g",
+    "precio": null,
+    "categoria": "enlatados",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6313,
+    "nombre_producto": "Frijoles bayos La Sierra 440g",
+    "precio": null,
+    "categoria": "granos",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6247,
+    "nombre_producto": "Frijoles Charros La Sierra Lata 616g",
+    "precio": null,
+    "categoria": "enlatados",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5178,
+    "nombre_producto": "Frijoles Chata Chorizo Y Queso 430g",
+    "precio": null,
+    "categoria": "enlatados",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 853,
+    "nombre_producto": "Frijoles De La Olla",
+    "precio": null,
+    "categoria": "otros",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 869,
+    "nombre_producto": "Frijoles Fritos",
+    "precio": null,
+    "categoria": "otros",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6878,
+    "nombre_producto": "Frijoles Isadora Bayos 450gr",
+    "precio": null,
+    "categoria": "enlatados",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6433,
+    "nombre_producto": "Frijoles La Sierra Bayos 400g",
+    "precio": null,
+    "categoria": "enlatados",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6257,
+    "nombre_producto": "Frijoles La Sierra Con Chorizo 430g",
+    "precio": null,
+    "categoria": "enlatados",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7000,
+    "nombre_producto": "Frijoles Peruanos Isadora 430g",
+    "precio": null,
+    "categoria": "granos",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6357,
+    "nombre_producto": "Frijoles Peruanos La Sierra 430g",
+    "precio": null,
+    "categoria": "enlatados",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1730,
+    "nombre_producto": "Goleros Chilimon 50g",
+    "precio": null,
+    "categoria": "encanto",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 4507,
+    "nombre_producto": "Guacamole Mccormick 305g",
+    "precio": null,
+    "categoria": "aderezos",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 10582,
+    "nombre_producto": "Hig Kleenex Cottonelle Violet Blossom 32r",
+    "precio": null,
+    "categoria": "higienicos",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2640,
+    "nombre_producto": "Jabon Torre Oleofinos 350g",
+    "precio": null,
+    "categoria": "jabon de barra y bañ",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 789,
+    "nombre_producto": "Jl Grisi Corporal Oleos 450ml",
+    "precio": null,
+    "categoria": "jabon de barra y bañ",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 10067,
+    "nombre_producto": "Jl Solei Almond Pouch 600ml",
+    "precio": null,
+    "categoria": "jabon de barra y bañ",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 9675,
+    "nombre_producto": "Jl Solei Apple 450ml",
+    "precio": null,
+    "categoria": "javon en polvo y liq",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 9698,
+    "nombre_producto": "Jl Solei Cherry 450ml",
+    "precio": null,
+    "categoria": "javon en polvo y liq",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 9939,
+    "nombre_producto": "Jl Solei Cherry Pouch",
+    "precio": null,
+    "categoria": "jabon de barra y bañ",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 9604,
+    "nombre_producto": "Jl Solei Coco Pouch 600ml",
+    "precio": null,
+    "categoria": "jabon de barra y bañ",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 9842,
+    "nombre_producto": "Jl Solei Coconut 450ml",
+    "precio": null,
+    "categoria": "javon en polvo y liq",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 9733,
+    "nombre_producto": "Jl Solei Cucumber 450ml",
+    "precio": null,
+    "categoria": "javon en polvo y liq",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 9841,
+    "nombre_producto": "Jl Solei Mango 450ml",
+    "precio": null,
+    "categoria": "javon en polvo y liq",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 9670,
+    "nombre_producto": "Jl Solei Manzana Pouch 600ml",
+    "precio": null,
+    "categoria": "jabon de barra y bañ",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 9633,
+    "nombre_producto": "Jl Solei Vainilla 450ml",
+    "precio": null,
+    "categoria": "jabon de barra y bañ",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 10059,
+    "nombre_producto": "Jt Liquido Solei Cucumber 550ml",
+    "precio": null,
+    "categoria": "jabon de barra y bañ",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 9744,
+    "nombre_producto": "Jt Manos Solei Berries 550ml",
+    "precio": null,
+    "categoria": "jabon de barra y bañ",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 9739,
+    "nombre_producto": "Jt Manos Solei Cherry 550ml",
+    "precio": null,
+    "categoria": "jabon de barra y bañ",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 9648,
+    "nombre_producto": "Jt Manos Solei Coconut 550ml",
+    "precio": null,
+    "categoria": "jabon de barra y bañ",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 9864,
+    "nombre_producto": "Jt Manos Solei Mango 550ml",
+    "precio": null,
+    "categoria": "jabon de barra y bañ",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 9724,
+    "nombre_producto": "Jt Manos Solei Vainilla 550ml",
+    "precio": null,
+    "categoria": "jabon de barra y bañ",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 9825,
+    "nombre_producto": "Jt Solei Almond 550ml",
+    "precio": null,
+    "categoria": "javon en polvo y liq",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 9839,
+    "nombre_producto": "Jt Solei Apple 550ml",
+    "precio": null,
+    "categoria": "javon en polvo y liq",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 668,
+    "nombre_producto": "Koleston 120 Rubio",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1002,
+    "nombre_producto": "Koleston 121 Rubio Cenizo",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1540,
+    "nombre_producto": "Koleston 31 Castaño",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1141,
+    "nombre_producto": "Koleston 34 Castaño",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 963,
+    "nombre_producto": "Koleston 40 castaño",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1352,
+    "nombre_producto": "Koleston 41 Castaño Medio",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 710,
+    "nombre_producto": "Loleston 50 castaño",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11282,
+    "nombre_producto": "Lp Fabuloso Coleccion Zen 10lt",
+    "precio": null,
+    "categoria": "limpiadores de piso",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 9980,
+    "nombre_producto": "Lt Manos Solei Coco 550ml",
+    "precio": null,
+    "categoria": "jabon de barra y bañ",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1236,
+    "nombre_producto": "Maiz Blanco Pozolero",
+    "precio": null,
+    "categoria": "cereales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1182,
+    "nombre_producto": "Maiz Blanco Pozolero El Mexicano 822g",
+    "precio": null,
+    "categoria": "enlatados",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1281,
+    "nombre_producto": "Maiz Negro Pozolero",
+    "precio": null,
+    "categoria": "cereales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8964,
+    "nombre_producto": "Maiz Pozolero Blanco Blanco 3.1kg",
+    "precio": null,
+    "categoria": "enlatados",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8600,
+    "nombre_producto": "Maiz Pozolero Blanco Carey 830gr",
+    "precio": null,
+    "categoria": "enlatados",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1472,
+    "nombre_producto": "Maiz Pozolero Mexicano 3k",
+    "precio": null,
+    "categoria": "enlatados",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5694,
+    "nombre_producto": "Malteada Ole Chocolate 281ml",
+    "precio": null,
+    "categoria": "fud",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5964,
+    "nombre_producto": "Malteada Ole Fresa 281ml",
+    "precio": null,
+    "categoria": "fud",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6014,
+    "nombre_producto": "Malteada Ole Vainilla 281ml",
+    "precio": null,
+    "categoria": "fud",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3372,
+    "nombre_producto": "Mascarilla Pantene Molecular 300ml",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8007,
+    "nombre_producto": "Miel Depilatoria Cargolet 100gr",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8049,
+    "nombre_producto": "Miel Depilatoria Cargolet 300g",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5088,
+    "nombre_producto": "Min Choco Roles 28gr",
+    "precio": null,
+    "categoria": "marinela",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8846,
+    "nombre_producto": "Mini Choco Roles 224g",
+    "precio": null,
+    "categoria": "marinela",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8630,
+    "nombre_producto": "Mini Chocorroles Caja 24pz",
+    "precio": null,
+    "categoria": "marinela",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11446,
+    "nombre_producto": "Mini Roles De Canela 510g",
+    "precio": null,
+    "categoria": "pan",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 4252,
+    "nombre_producto": "Mole Almendrado Doña Maria 235gr",
+    "precio": null,
+    "categoria": "enlatados",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 4196,
+    "nombre_producto": "Mole Doña Maria 125g",
+    "precio": null,
+    "categoria": "enlatados",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 4367,
+    "nombre_producto": "Mole Doña Maria 235g",
+    "precio": null,
+    "categoria": "otros",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 4438,
+    "nombre_producto": "Mole Poblano 360g",
+    "precio": null,
+    "categoria": "enlatados",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7099,
+    "nombre_producto": "Mole Provinciano 235g",
+    "precio": null,
+    "categoria": "enlatados",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 658,
+    "nombre_producto": "Mole Provinciano Agranel",
+    "precio": null,
+    "categoria": "enlatados",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7396,
+    "nombre_producto": "Mole Provincianos 3kg",
+    "precio": null,
+    "categoria": "enlatados",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7478,
+    "nombre_producto": "Mole Xiqueño 500gr",
+    "precio": null,
+    "categoria": "enlatados",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 10003,
+    "nombre_producto": "Mousse Savile Oleos Florales 200ml",
+    "precio": null,
+    "categoria": "higiene y belleza",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7335,
+    "nombre_producto": "Odolex Amarillo 150g",
+    "precio": null,
+    "categoria": "higiene y belleza",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7226,
+    "nombre_producto": "Odolex Fresh 150g",
+    "precio": null,
+    "categoria": "farmacia",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7263,
+    "nombre_producto": "Odolex Fresh Talco 300g",
+    "precio": null,
+    "categoria": "higiene y belleza",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7548,
+    "nombre_producto": "Odolex Herbal 150g",
+    "precio": null,
+    "categoria": "higiene y belleza",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7406,
+    "nombre_producto": "Odolex Talco Natural 300g",
+    "precio": null,
+    "categoria": "higiene y belleza",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6036,
+    "nombre_producto": "Ole Cappuccino Espresso",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5722,
+    "nombre_producto": "Ole Capuccino Moka 330ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5723,
+    "nombre_producto": "Ole Cero 281ml",
+    "precio": null,
+    "categoria": "lacteos",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5859,
+    "nombre_producto": "Ole Chia Vailnilla 281ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5908,
+    "nombre_producto": "Ole Clasico 330ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5652,
+    "nombre_producto": "Ole Moka 330ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5901,
+    "nombre_producto": "Ole Oreo",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2414,
+    "nombre_producto": "Pasadores Violeta 35pz",
+    "precio": null,
+    "categoria": "otros",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7443,
+    "nombre_producto": "Pegamento Kole",
+    "precio": null,
+    "categoria": "papeleria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7488,
+    "nombre_producto": "Pegamento Super Kole 30g",
+    "precio": null,
+    "categoria": "otros",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7415,
+    "nombre_producto": "Plantilla D-Dolex #7",
+    "precio": null,
+    "categoria": "jarceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7163,
+    "nombre_producto": "Plantilla D-Dolex #8",
+    "precio": null,
+    "categoria": "jarceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7089,
+    "nombre_producto": "Plantilla O-Dolex #3",
+    "precio": null,
+    "categoria": "jarceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7177,
+    "nombre_producto": "Plantilla O-Dolex #4",
+    "precio": null,
+    "categoria": "jarceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7366,
+    "nombre_producto": "Plantilla O-Dolex #5",
+    "precio": null,
+    "categoria": "jarceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7086,
+    "nombre_producto": "Plantilla O-Dolex #6",
+    "precio": null,
+    "categoria": "jarceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7300,
+    "nombre_producto": "Plato Pozolero Ph8 Convermex 20pz",
+    "precio": null,
+    "categoria": "desechables",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2492,
+    "nombre_producto": "Rastrillo Bic Solei 2pz",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2509,
+    "nombre_producto": "Rastrillo Bic Solei 3hojas",
+    "precio": null,
+    "categoria": "higiene y belleza",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2158,
+    "nombre_producto": "Rastrillo Soleil 2pz",
+    "precio": null,
+    "categoria": "higiene y belleza",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8818,
+    "nombre_producto": "Roles Canela 180g",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3826,
+    "nombre_producto": "Roles De Canela Familiares 365g",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8599,
+    "nombre_producto": "Roles Glaseados 205g",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 4383,
+    "nombre_producto": "Salsa De Guacamole Herdez 240g",
+    "precio": null,
+    "categoria": "salsas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 4543,
+    "nombre_producto": "Salsa De Guacamole Picante Hdz 240g",
+    "precio": null,
+    "categoria": "salsas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 12860,
+    "nombre_producto": "Salsa Guacamole Las Cazuelas 250g",
+    "precio": null,
+    "categoria": "salsas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7257,
+    "nombre_producto": "Salsa Para Pozole Pato 287g",
+    "precio": null,
+    "categoria": "salsas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11492,
+    "nombre_producto": "Sh Elvive Oleo 680ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11477,
+    "nombre_producto": "Sh Elvive Oleo Cabello Seco 680ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11402,
+    "nombre_producto": "Sh Elvive Oleo De Coco 370ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11452,
+    "nombre_producto": "Sh Elvive Oleo Extraordinario 370ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11246,
+    "nombre_producto": "Sh Fructis/Oleo Grosella 650ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3315,
+    "nombre_producto": "Sh Pantene Molecular 950ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 9582,
+    "nombre_producto": "Sh Sedal Arandanos Y Oleos 620ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 10936,
+    "nombre_producto": "Solero Frutos Rojos 70g",
+    "precio": null,
+    "categoria": "holanda",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7342,
+    "nombre_producto": "Solero Limon",
+    "precio": null,
+    "categoria": "holanda",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 9840,
+    "nombre_producto": "Solero Limones Mousse 51g",
+    "precio": null,
+    "categoria": "holanda",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8139,
+    "nombre_producto": "Spray Para Pies O-Dolex 140ml",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8466,
+    "nombre_producto": "St Princesa Soleada Primavera 750ml",
+    "precio": null,
+    "categoria": "suavizantes de telas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2268,
+    "nombre_producto": "Sun Soleil Nivea",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3643,
+    "nombre_producto": "Takis Huacamole 70g",
+    "precio": null,
+    "categoria": "barcel",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7287,
+    "nombre_producto": "Talco O-Dolex Lady 150g",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7391,
+    "nombre_producto": "Talco ODolex 300g",
+    "precio": null,
+    "categoria": "higiene y belleza",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 268,
+    "nombre_producto": "Tortilla Doña Chole",
+    "precio": null,
+    "categoria": "harinas y galletas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 12850,
+    "nombre_producto": "Tostada Botanera Doña Chole",
+    "precio": null,
+    "categoria": "tostadas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 9518,
+    "nombre_producto": "Tostada Pozolera Tricas 220g",
+    "precio": null,
+    "categoria": "otros",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1506,
+    "nombre_producto": "Truenoleta",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1642,
+    "nombre_producto": "Veladora Soledad",
+    "precio": null,
+    "categoria": "velas/aromatizantes",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   }
+  ],
+  "pan bimbo": [
+   {
+    "id": 4064,
+    "nombre_producto": "Empanizador Panko Bimbo 300gr",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 14
+   },
+   {
+    "id": 3854,
+    "nombre_producto": "Mini Pan Tostado Bimbo",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 14
+   },
+   {
+    "id": 3897,
+    "nombre_producto": "Pan Bimbo Chico",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 14
+   },
+   {
+    "id": 3675,
+    "nombre_producto": "Pan Integral Bimbo Gde",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 14
+   },
+   {
+    "id": 3814,
+    "nombre_producto": "Pan Integral Chico Bimbo",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 14
+   },
+   {
+    "id": 3862,
+    "nombre_producto": "Pan Integral Gde Bimbo 620g",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 14
+   },
+   {
+    "id": 3977,
+    "nombre_producto": "Pan Molido Bimbo 175g",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 14
+   },
+   {
+    "id": 3821,
+    "nombre_producto": "Pan Oroweat 12 Granos Bimbo 680g",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 14
+   },
+   {
+    "id": 4018,
+    "nombre_producto": "Pan Tostado Bimbo",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 14
+   },
+   {
+    "id": 3971,
+    "nombre_producto": "Pan Tostado Clasico Bimbo 90gr",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 14
+   },
+   {
+    "id": 3706,
+    "nombre_producto": "Panque Marmol 300gBimbo",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 14
+   },
+   {
+    "id": 3010,
+    "nombre_producto": "Ac Pantene Bambu 200ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2647,
+    "nombre_producto": "Ac Pantene Bambu 3 Minute Miracle 170ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2852,
+    "nombre_producto": "Ac Pantene Bambu 400ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2778,
+    "nombre_producto": "Ac Pantene Bambu 700ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2711,
+    "nombre_producto": "Ac Pantene Billo Extremo 700ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3562,
+    "nombre_producto": "Ac Pantene Biotinamina B3 250ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2738,
+    "nombre_producto": "Ac Pantene Colageno 250ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 4273,
+    "nombre_producto": "Ac Pantene Control Caida 400ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2676,
+    "nombre_producto": "Ac Pantene Control Caida 700ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 10838,
+    "nombre_producto": "Ac Pantene Control Caida 975ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2921,
+    "nombre_producto": "Ac Pantene Fuerza 700ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 10790,
+    "nombre_producto": "Ac Pantene Hidratacion 400ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2944,
+    "nombre_producto": "Ac Pantene Hidratacion Extrema 700ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2653,
+    "nombre_producto": "Ac Pantene Micelar 700ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3220,
+    "nombre_producto": "Ac Pantene Multi Beneficios 1.19lt",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3337,
+    "nombre_producto": "Ac Pantene Multi-Beneficios 1L",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3334,
+    "nombre_producto": "Ac Pantene Pro-V Keratina 250ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2662,
+    "nombre_producto": "Ac Pantene Restauracion 300ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 4272,
+    "nombre_producto": "Ac Pantene Restauracion 400ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2853,
+    "nombre_producto": "Ac Pantene Restauracion 700ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2734,
+    "nombre_producto": "Ac Pantene Rizos Definidos 300ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 4169,
+    "nombre_producto": "Ac Pantene Rizos Definidos 400ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2780,
+    "nombre_producto": "Ac Pantene Rizos Definidos 700ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3566,
+    "nombre_producto": "Ac Pantene Volumen 700ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3011,
+    "nombre_producto": "Acondicionador Pantene Restauracion 300ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8973,
+    "nombre_producto": "Arroz Guadalupano 1K",
+    "precio": null,
+    "categoria": "granos",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5191,
+    "nombre_producto": "Artesano Bimbo 567g",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3895,
+    "nombre_producto": "Bimbo Blanco 620g",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 4019,
+    "nombre_producto": "Bimbo Blanco Ch 300g",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5465,
+    "nombre_producto": "Bimbo Cero Cero",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3864,
+    "nombre_producto": "Bimbocao Con Avellan 52g",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3749,
+    "nombre_producto": "Bimbollo Extra Grande 6pz",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3648,
+    "nombre_producto": "Bimbollos 12pz",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3780,
+    "nombre_producto": "Bimbollos Bimbo c8",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5294,
+    "nombre_producto": "Bimbollos Brioche 6pz",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3894,
+    "nombre_producto": "Bimbollos Parrilleros 6pz",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5101,
+    "nombre_producto": "Bimbollos Parrilleros 8pz",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7814,
+    "nombre_producto": "Bisquet El Panque 160g",
+    "precio": null,
+    "categoria": "el panque",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 4052,
+    "nombre_producto": "Caja Pañal Members Et-2",
+    "precio": null,
+    "categoria": "pañales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1341,
+    "nombre_producto": "Caja Pañal Tene Confort Med",
+    "precio": null,
+    "categoria": "aceites",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 4785,
+    "nombre_producto": "Calzon Pants Tena Ch 10pz",
+    "precio": null,
+    "categoria": "pañales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 461,
+    "nombre_producto": "Charola Pan De Muerto",
+    "precio": null,
+    "categoria": "harinas y galletas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8867,
+    "nombre_producto": "Chia Organica Eco Pan 907g",
+    "precio": null,
+    "categoria": "kirklan",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 193,
+    "nombre_producto": "Chorizo Español 500gr",
+    "precio": null,
+    "categoria": "carnes frias",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 4000,
+    "nombre_producto": "Conchas Bimbo 120g",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3881,
+    "nombre_producto": "Conchas Bimbo 2pz",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3932,
+    "nombre_producto": "Conchas Chocolate Bimbo",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7873,
+    "nombre_producto": "Conchas El Panque 155g",
+    "precio": null,
+    "categoria": "el panque",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1171,
+    "nombre_producto": "Cotonete Bambu Panda 200pz",
+    "precio": null,
+    "categoria": "higiene y belleza",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 4186,
+    "nombre_producto": "Cp Pantene 300ml",
+    "precio": null,
+    "categoria": "higiene y belleza",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 10942,
+    "nombre_producto": "Cp Pantene Anti-Friz 300ml",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2843,
+    "nombre_producto": "Cp Pantene Bambu 300ml",
+    "precio": null,
+    "categoria": "desodorantes y crema",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2736,
+    "nombre_producto": "Cp Pantene Colageno 300ml",
+    "precio": null,
+    "categoria": "shampoo y acondicion",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2912,
+    "nombre_producto": "Cp Pantene Contral Caida 160ml",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 4128,
+    "nombre_producto": "Cp Pantene Control Caida 300ml",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2861,
+    "nombre_producto": "Cp Pantene Fuerza 300ml",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3440,
+    "nombre_producto": "Cp Pantene Keratina 300ml",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3564,
+    "nombre_producto": "Cp Pantene Keratina 510ml",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 4234,
+    "nombre_producto": "Cp Pantene Liso 300ml",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2807,
+    "nombre_producto": "Cp Pantene Liso 9ml",
+    "precio": null,
+    "categoria": "higiene y belleza",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3326,
+    "nombre_producto": "Cp Pantene Molecular 300ml",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 10868,
+    "nombre_producto": "Cp Pantene Repara 160ml",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 10708,
+    "nombre_producto": "Cp Pantene Repara 300ml",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 10979,
+    "nombre_producto": "Cp Pantene Rizos 160ml",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 4084,
+    "nombre_producto": "Cp Pantene Rizos 300ml",
+    "precio": null,
+    "categoria": "aceites",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1138,
+    "nombre_producto": "Crema Cacahuate Peter Pan 462g",
+    "precio": null,
+    "categoria": "aceites",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2945,
+    "nombre_producto": "Crema De Peinar Pantene 510g",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 4567,
+    "nombre_producto": "Crema Pantene 300ml",
+    "precio": null,
+    "categoria": "higiene y belleza",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7641,
+    "nombre_producto": "Cuernito El Panque",
+    "precio": null,
+    "categoria": "el panque",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7909,
+    "nombre_producto": "Cuernos El Panque 105g",
+    "precio": null,
+    "categoria": "el panque",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5176,
+    "nombre_producto": "Donitas Espolvoreadas Bimbo",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3608,
+    "nombre_producto": "Donuts Bimbo 55g",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1767,
+    "nombre_producto": "Empanada Integral Josefinas 200gr",
+    "precio": null,
+    "categoria": "galletas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 9565,
+    "nombre_producto": "Empanaditas Tia Rosa",
+    "precio": null,
+    "categoria": "tia rosa",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 10148,
+    "nombre_producto": "Empanizador Con Ajo Uc",
+    "precio": null,
+    "categoria": "especies",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5363,
+    "nombre_producto": "Empanizador Crujiente 400gr",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 4430,
+    "nombre_producto": "Empanizador Kelloggs 350g",
+    "precio": null,
+    "categoria": "cereales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1460,
+    "nombre_producto": "Empanizador Kellogs Suelto",
+    "precio": null,
+    "categoria": "especies",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 10184,
+    "nombre_producto": "Empanizador/ Curcuma",
+    "precio": null,
+    "categoria": "aceites",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 10335,
+    "nombre_producto": "Empanizador/Avena Y Ajonjoli 245gr",
+    "precio": null,
+    "categoria": "cereales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 10390,
+    "nombre_producto": "Empanizador/Chipotle 245gr",
+    "precio": null,
+    "categoria": "cereales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 10205,
+    "nombre_producto": "Empanizador/Crujiente 245gr",
+    "precio": null,
+    "categoria": "cereales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 10440,
+    "nombre_producto": "Empanizdor/Hiervas Finas",
+    "precio": null,
+    "categoria": "cereales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 10572,
+    "nombre_producto": "Fabuloso Tulipanes 1.4 L",
+    "precio": null,
+    "categoria": "limpiadores de piso",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7341,
+    "nombre_producto": "Gall Avena Panque 80gr",
+    "precio": null,
+    "categoria": "el panque",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7372,
+    "nombre_producto": "Gall Azucarada El Panque 80gr",
+    "precio": null,
+    "categoria": "el panque",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7682,
+    "nombre_producto": "Gall Nevadas Panque 45gr",
+    "precio": null,
+    "categoria": "el panque",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7841,
+    "nombre_producto": "Gall Nuez Panque80gr",
+    "precio": null,
+    "categoria": "el panque",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8068,
+    "nombre_producto": "galleta Azucarada El Panque 160g",
+    "precio": null,
+    "categoria": "el panque",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7884,
+    "nombre_producto": "Galleta China El Panque 160g",
+    "precio": null,
+    "categoria": "el panque",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7092,
+    "nombre_producto": "Galleta De Linaza El Panque",
+    "precio": null,
+    "categoria": "el panque",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1967,
+    "nombre_producto": "Gummytoon Pandas 30pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 10850,
+    "nombre_producto": "Huggies Ultra Confort Niña Etapa-3 40 Pañales",
+    "precio": null,
+    "categoria": "pañales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8657,
+    "nombre_producto": "Juliatas De Cajeta Bimbo",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 4809,
+    "nombre_producto": "Kleenex Pañuelos",
+    "precio": null,
+    "categoria": "higienicos",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 219,
+    "nombre_producto": "Levadura TradiPan Caja",
+    "precio": null,
+    "categoria": "harinas y galletas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7932,
+    "nombre_producto": "Limas El Panque 155g",
+    "precio": null,
+    "categoria": "el panque",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7855,
+    "nombre_producto": "Lucas Panzon 10pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8063,
+    "nombre_producto": "Lucas Panzon 20pz",
+    "precio": null,
+    "categoria": "aceites",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3950,
+    "nombre_producto": "Mantecadas Bimbo2pz",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7619,
+    "nombre_producto": "Mantecadas El Panque 100g",
+    "precio": null,
+    "categoria": "panque",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 9085,
+    "nombre_producto": "Mantecadas Mix El Panque 2pz",
+    "precio": null,
+    "categoria": "panque",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3372,
+    "nombre_producto": "Mascarilla Pantene Molecular 300ml",
+    "precio": null,
+    "categoria": "perfumeria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 971,
+    "nombre_producto": "Mazapan",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2389,
+    "nombre_producto": "Mazapan Almendra",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2458,
+    "nombre_producto": "Mazapan Almendra 360g",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2406,
+    "nombre_producto": "Mazapan Chico Cja60",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2357,
+    "nombre_producto": "Mazapan Cubierto De Choc. 16pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2465,
+    "nombre_producto": "Mazapan Cubierto De Chocolate 16pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2470,
+    "nombre_producto": "Mazapan Gigante 20pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1301,
+    "nombre_producto": "Mazapan Gigante De La Rosa",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 910,
+    "nombre_producto": "Mazapan Montes 30pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2387,
+    "nombre_producto": "Mazapan Nuez",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2278,
+    "nombre_producto": "Mazapan Nuez 360g",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2322,
+    "nombre_producto": "Mazapan Original 12pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2516,
+    "nombre_producto": "Mazapan Original 30pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2382,
+    "nombre_producto": "Mazapan Splenda 18pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2478,
+    "nombre_producto": "Mazapan Untable De La Rosa 400g",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3806,
+    "nombre_producto": "Medias Noches Bimbo",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3578,
+    "nombre_producto": "Mini Pan Tostado Mantequilla 115g",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8869,
+    "nombre_producto": "Mini Pandita Ricolino",
+    "precio": null,
+    "categoria": "Ricolino",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3889,
+    "nombre_producto": "Mini Panque 70g",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1241,
+    "nombre_producto": "Mini Panquesitos 21pz Kirkland",
+    "precio": null,
+    "categoria": "kirklan",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7992,
+    "nombre_producto": "Morenas Panque 160g",
+    "precio": null,
+    "categoria": "el panque",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6225,
+    "nombre_producto": "Nescafe Reserva Xiapan 50gr",
+    "precio": null,
+    "categoria": "cafes y chocolates",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2271,
+    "nombre_producto": "Nugs Mazapan",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2129,
+    "nombre_producto": "Nugs Mazapan 12pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 4025,
+    "nombre_producto": "Pan Blanco Grande 650g",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11600,
+    "nombre_producto": "Pan Blanco Members Mark",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 542,
+    "nombre_producto": "Pan De Charola",
+    "precio": null,
+    "categoria": "harinas y galletas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 395,
+    "nombre_producto": "Pan De Muerto",
+    "precio": null,
+    "categoria": "harinas y galletas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 330,
+    "nombre_producto": "Pan De Muerto 15pz Sams",
+    "precio": null,
+    "categoria": "harinas y galletas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7990,
+    "nombre_producto": "Pan De Muerto El Panque",
+    "precio": null,
+    "categoria": "el panque",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1393,
+    "nombre_producto": "Pan De Muerto Kirkland",
+    "precio": null,
+    "categoria": "kirklan",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7670,
+    "nombre_producto": "Pan Frances 160g",
+    "precio": null,
+    "categoria": "el panque",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3904,
+    "nombre_producto": "Pan Integral 720gms",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3792,
+    "nombre_producto": "Pan Integral Biombo Ch 300g",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 9302,
+    "nombre_producto": "Pan Molido Cero/Cero",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3702,
+    "nombre_producto": "Pan Molido Clasico 400gr",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 4285,
+    "nombre_producto": "Pan Molido Corn Flakes 160g",
+    "precio": null,
+    "categoria": "cereales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3711,
+    "nombre_producto": "Pan Molido Crujiente 175 G",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 10174,
+    "nombre_producto": "Pan Molido/Extra Fino 245gr",
+    "precio": null,
+    "categoria": "cereales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3630,
+    "nombre_producto": "Pan Multigrano Cero Cero",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3718,
+    "nombre_producto": "Pan Oroweat Multigrano 680g",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7794,
+    "nombre_producto": "Pan Pita 1.1kg",
+    "precio": null,
+    "categoria": "harinas y galletas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3772,
+    "nombre_producto": "Pan Tostado Brioche",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5542,
+    "nombre_producto": "Pan Tostado Cero Cero",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3764,
+    "nombre_producto": "Pan Tostado Doble Fibra",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5914,
+    "nombre_producto": "Pan Tostado Integral",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3584,
+    "nombre_producto": "Pan Tostado Protein 315gr",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 11450,
+    "nombre_producto": "Pan Upper Crust Limon 793g",
+    "precio": null,
+    "categoria": "pan",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8015,
+    "nombre_producto": "Pañal Absorsec Et-2 40pz",
+    "precio": null,
+    "categoria": "pañales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 4827,
+    "nombre_producto": "Pañal Absorsec Etapa 5 40pz",
+    "precio": null,
+    "categoria": "pañales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 4893,
+    "nombre_producto": "Pañal Absorsec Grande 40pz",
+    "precio": null,
+    "categoria": "bebes",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7744,
+    "nombre_producto": "Pañal Adulto Diapro Grande 10pz",
+    "precio": null,
+    "categoria": "pañales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7807,
+    "nombre_producto": "Pañal Adulto Diapro Med 10pz",
+    "precio": null,
+    "categoria": "pañales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 453,
+    "nombre_producto": "Pañal Affective Gd 10pz",
+    "precio": null,
+    "categoria": "pañales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 171,
+    "nombre_producto": "Pañal Affective Med 10pz",
+    "precio": null,
+    "categoria": "pañales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 297,
+    "nombre_producto": "Pañal Affective Predoblado 10pz",
+    "precio": null,
+    "categoria": "pañales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 481,
+    "nombre_producto": "Pañal Bbtips #3 T/M 40PZ",
+    "precio": null,
+    "categoria": "pañales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 376,
+    "nombre_producto": "Pañal Bbtips 4 T/G",
+    "precio": null,
+    "categoria": "pañales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 550,
+    "nombre_producto": "Pañal Bbtips 5",
+    "precio": null,
+    "categoria": "pañales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 493,
+    "nombre_producto": "Pañal Bbtips E6/40pz",
+    "precio": null,
+    "categoria": "pañales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 148,
+    "nombre_producto": "Pañal Bbtips Et7/40pz",
+    "precio": null,
+    "categoria": "pañales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 465,
+    "nombre_producto": "Pañal Bbtips Etapa 1 40pz",
+    "precio": null,
+    "categoria": "pañales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 525,
+    "nombre_producto": "Pañal Bbtips T/2",
+    "precio": null,
+    "categoria": "pañales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1968,
+    "nombre_producto": "Pañal Bebin Ch Et 2 40pz",
+    "precio": null,
+    "categoria": "pañales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1694,
+    "nombre_producto": "Pañal Bebin Et-5 Xg 40 +4pz",
+    "precio": null,
+    "categoria": "pañales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1913,
+    "nombre_producto": "Pañal Bebin Etapa 6",
+    "precio": null,
+    "categoria": "pañales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1965,
+    "nombre_producto": "Pañal Bebin Super Et-3/Med 40pz",
+    "precio": null,
+    "categoria": "pañales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1618,
+    "nombre_producto": "Pañal Bebin Super Et-5/XG 40pz",
+    "precio": null,
+    "categoria": "pañales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1821,
+    "nombre_producto": "Pañal Bebin Super Et4-Gde 40pz",
+    "precio": null,
+    "categoria": "pañales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8391,
+    "nombre_producto": "Pañal Brazil Grande 40pz",
+    "precio": null,
+    "categoria": "bebes",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 12817,
+    "nombre_producto": "Pañal Brazil Mediano 40pz",
+    "precio": null,
+    "categoria": "bebes",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 12818,
+    "nombre_producto": "Pañal Brazil Xg 40pz",
+    "precio": null,
+    "categoria": "bebes",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 327,
+    "nombre_producto": "Pañal Chicolastic Et-6 44pz",
+    "precio": null,
+    "categoria": "pañales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 2067,
+    "nombre_producto": "Pañal Cordial Cubrecama 10pz",
+    "precio": null,
+    "categoria": "pañales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 10962,
+    "nombre_producto": "Pañal Huggies E4 46pz",
+    "precio": null,
+    "categoria": "pañales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 10761,
+    "nombre_producto": "Pañal Huggies Etap 5",
+    "precio": null,
+    "categoria": "pañales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7952,
+    "nombre_producto": "Pañal Huggies Etapa 3 90pz",
+    "precio": null,
+    "categoria": "otros",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7889,
+    "nombre_producto": "Pañal Huggies Supreme Rn 40pz",
+    "precio": null,
+    "categoria": "pañales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 10794,
+    "nombre_producto": "Pañal Huggies Ulta Confort Rn 44pz",
+    "precio": null,
+    "categoria": "pañales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 10815,
+    "nombre_producto": "Pañal Huggies Ultra Confort",
+    "precio": null,
+    "categoria": "pañales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 10910,
+    "nombre_producto": "Pañal Huggies Ultra Confort 46p",
+    "precio": null,
+    "categoria": "pañales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8031,
+    "nombre_producto": "Pañal Huggies Ultra Confort Et- 2 44pz",
+    "precio": null,
+    "categoria": "pañales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 10772,
+    "nombre_producto": "Pañal Kleen Bebe Autoajustable Etapa XJ6 40pz",
+    "precio": null,
+    "categoria": "pañales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 10765,
+    "nombre_producto": "Pañal Kleen Bebe Autoajustable Etapa XXJ7 40pz",
+    "precio": null,
+    "categoria": "pañales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 10655,
+    "nombre_producto": "Pañal Kleen Bebe Autoajustable Jumbo Et5 40pz",
+    "precio": null,
+    "categoria": "pañales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3694,
+    "nombre_producto": "Pañal Members Et 5 78pz",
+    "precio": null,
+    "categoria": "pañales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   }
+  ],
+  "jamon": [
+   {
+    "id": 5596,
+    "nombre_producto": "Jamon Americano PavCe 170g",
+    "precio": null,
+    "categoria": "carnes frias",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 1542,
+    "nombre_producto": "Jamon De Pavo 1/4",
+    "precio": null,
+    "categoria": "carnes frias",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5944,
+    "nombre_producto": "Jamon De Pavo Americano 170g",
+    "precio": null,
+    "categoria": "carnes frias",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5890,
+    "nombre_producto": "Jamon De Pavo Americano 196g",
+    "precio": null,
+    "categoria": "carnes frias",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5860,
+    "nombre_producto": "Jamon De Pavo San Rafael",
+    "precio": null,
+    "categoria": "fud",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5709,
+    "nombre_producto": "Jamon De Pavo Virginia 290g",
+    "precio": null,
+    "categoria": "lacteos",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 478,
+    "nombre_producto": "Jamon De Pierna 1/4",
+    "precio": null,
+    "categoria": "carnes frias",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 6025,
+    "nombre_producto": "Jamon De Pierna Chimex 225g",
+    "precio": null,
+    "categoria": "carnes frias",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7387,
+    "nombre_producto": "Jamon De Pierna Corona 250g",
+    "precio": null,
+    "categoria": "carnes frias",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 3906,
+    "nombre_producto": "Jamon De Pierna Members 567g",
+    "precio": null,
+    "categoria": "carnes frias",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5822,
+    "nombre_producto": "Jamon Pavo Y Cerdo Amer 196g",
+    "precio": null,
+    "categoria": "harinas y galletas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5981,
+    "nombre_producto": "Jamon Pavo Y Cerdo Virginia 290g",
+    "precio": null,
+    "categoria": "carnes frias",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5904,
+    "nombre_producto": "Jamon Pechuga Pavo Virginia 250",
+    "precio": null,
+    "categoria": "carnes frias",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 630,
+    "nombre_producto": "Jamon Pizzer",
+    "precio": null,
+    "categoria": "carnes frias",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 7554,
+    "nombre_producto": "Jamon Serrano Cinta De Oro",
+    "precio": null,
+    "categoria": "carnes frias",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 4884,
+    "nombre_producto": "Jamon Virg/Pavo Nutri Deli 250g",
+    "precio": null,
+    "categoria": "carnes frias",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 9018,
+    "nombre_producto": "Jamoncillo 40pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8497,
+    "nombre_producto": "Jamoncillo Beileys 104g",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8592,
+    "nombre_producto": "Jamoncillo Yohari 880g",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 5605,
+    "nombre_producto": "Pizza Fut Peperoni Y Jamon 2pz",
+    "precio": null,
+    "categoria": "carnes frias",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   }
+  ],
+  "chicles": [
+   {
+    "id": 185,
+    "nombre_producto": "Canels Chicles",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 8506,
+    "nombre_producto": "Chicles Canels 4s",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 158,
+    "nombre_producto": "Chicles Canels 4Tab Caja",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 7
+   },
+   {
+    "id": 12304,
+    "nombre_producto": "Basket Gum Chicle 6pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 6
+   },
+   {
+    "id": 12608,
+    "nombre_producto": "Candy Gas Chicle 6pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 6
+   },
+   {
+    "id": 2259,
+    "nombre_producto": "Chicle Atomic 450g",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 6
+   },
+   {
+    "id": 2163,
+    "nombre_producto": "Chicle Babu 100pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 6
+   },
+   {
+    "id": 260,
+    "nombre_producto": "Chicle Canels 1k",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 6
+   },
+   {
+    "id": 142,
+    "nombre_producto": "Chicle Canels C60 Paq",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 6
+   },
+   {
+    "id": 449,
+    "nombre_producto": "Chicle Canels Icee 40pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 6
+   },
+   {
+    "id": 125,
+    "nombre_producto": "Chicle Canels Miniatura 231g",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 6
+   },
+   {
+    "id": 9203,
+    "nombre_producto": "Chicle Chicks",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 6
+   },
+   {
+    "id": 2483,
+    "nombre_producto": "Chicle Cubin De La Rosa 400g",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 6
+   },
+   {
+    "id": 2386,
+    "nombre_producto": "Chicle De La Rosa 100pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 6
+   },
+   {
+    "id": 128,
+    "nombre_producto": "Chicle Doublemint Hierbabuena 20pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 6
+   },
+   {
+    "id": 11785,
+    "nombre_producto": "Chicle En Polvo 12g",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 6
+   },
+   {
+    "id": 11875,
+    "nombre_producto": "Chicle En Polvo Frutal Oka Loka 12pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 6
+   },
+   {
+    "id": 11842,
+    "nombre_producto": "Chicle En Polvo Oka Loka 12pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 6
+   },
+   {
+    "id": 2039,
+    "nombre_producto": "Chicle Glacium 40pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 6
+   },
+   {
+    "id": 536,
+    "nombre_producto": "Chicle Hubba Bubba",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 6
+   },
+   {
+    "id": 12682,
+    "nombre_producto": "Chicle Hubba Bubba Fresa 6pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 6
+   },
+   {
+    "id": 7716,
+    "nombre_producto": "Chicle Hubba Bubba Mora",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 6
+   },
+   {
+    "id": 7661,
+    "nombre_producto": "Chicle Hubba Bubba Uva",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 6
+   },
+   {
+    "id": 10460,
+    "nombre_producto": "Chicle Icee",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 6
+   },
+   {
+    "id": 87,
+    "nombre_producto": "Chicle Icee 45pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 6
+   },
+   {
+    "id": 339,
+    "nombre_producto": "Chicle Icee Mora Azul 45pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 6
+   },
+   {
+    "id": 2535,
+    "nombre_producto": "Chicle Mini Bu 100pz De La Rosa",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 6
+   },
+   {
+    "id": 134,
+    "nombre_producto": "Chicle Orbit Hierbabuena 12pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 6
+   },
+   {
+    "id": 472,
+    "nombre_producto": "Chicle Orbit Polar Mint 14pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 6
+   },
+   {
+    "id": 2265,
+    "nombre_producto": "Chicle Pinta-T 40PZ",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 6
+   },
+   {
+    "id": 3194,
+    "nombre_producto": "Chicle Rocka Leta 20pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 6
+   },
+   {
+    "id": 9499,
+    "nombre_producto": "Chicle Tattoo",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 6
+   },
+   {
+    "id": 1445,
+    "nombre_producto": "Chicle Tattoo 100pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 6
+   },
+   {
+    "id": 547,
+    "nombre_producto": "Chicle Winterfresh Menta 20pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 6
+   },
+   {
+    "id": 11440,
+    "nombre_producto": "Crayon Chicle",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 6
+   },
+   {
+    "id": 2951,
+    "nombre_producto": "Lenguas De Gato Chic",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 6
+   },
+   {
+    "id": 1727,
+    "nombre_producto": "Roly Chicle Tattoo 20pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 6
+   },
+   {
+    "id": 9171,
+    "nombre_producto": "Aderezo Chiles Verdes Sauco",
+    "precio": null,
+    "categoria": "salsas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 12833,
+    "nombre_producto": "Atomizador Chico",
+    "precio": null,
+    "categoria": "jarceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 12512,
+    "nombre_producto": "Aura Cereza 30ml Chico",
+    "precio": null,
+    "categoria": "aromatizantes",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 5410,
+    "nombre_producto": "Biberon Chico Evenflo",
+    "precio": null,
+    "categoria": "bebes",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 9119,
+    "nombre_producto": "Bolsa Camiseta Chica Anguiplus 1kg",
+    "precio": null,
+    "categoria": "desechables",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 8371,
+    "nombre_producto": "Bolsa Camiseta Chica Eco",
+    "precio": null,
+    "categoria": "desechables",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 8768,
+    "nombre_producto": "Cacahuate Tostado Chico 500g",
+    "precio": null,
+    "categoria": "botana",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 99,
+    "nombre_producto": "Camaron Seco Chico",
+    "precio": null,
+    "categoria": "aceites",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 2309,
+    "nombre_producto": "Cepimex Clasico Chico",
+    "precio": null,
+    "categoria": "jarceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 8215,
+    "nombre_producto": "Cerillo Flama Chico",
+    "precio": null,
+    "categoria": "otros",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 6550,
+    "nombre_producto": "Chicharos Clemente 220g",
+    "precio": null,
+    "categoria": "enlatados",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 6228,
+    "nombre_producto": "Chicharos Clemente 420g",
+    "precio": null,
+    "categoria": "enlatados",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 6279,
+    "nombre_producto": "Chicharos Con Zanahoria 220g",
+    "precio": null,
+    "categoria": "enlatados",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 4444,
+    "nombre_producto": "Chicharos Herdez 215gr",
+    "precio": null,
+    "categoria": "enlatados",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 4574,
+    "nombre_producto": "Chicharos Herdez 400g",
+    "precio": null,
+    "categoria": "enlatados",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 4504,
+    "nombre_producto": "Chicharos y Zanah Del Monte 215g",
+    "precio": null,
+    "categoria": "enlatados",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 9209,
+    "nombre_producto": "CHICHARRON 70G",
+    "precio": null,
+    "categoria": "barcel",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 8602,
+    "nombre_producto": "Chicharrón Barcel 30g",
+    "precio": null,
+    "categoria": "barcel",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 1440,
+    "nombre_producto": "Chicharron Chico Master",
+    "precio": null,
+    "categoria": "botana",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 713,
+    "nombre_producto": "Chicharron El Alteñito",
+    "precio": null,
+    "categoria": "botanas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 1847,
+    "nombre_producto": "Chicharron Encanto 35g",
+    "precio": null,
+    "categoria": "encanto",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 1512,
+    "nombre_producto": "Chicharron Gde Master",
+    "precio": null,
+    "categoria": "botana",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 7269,
+    "nombre_producto": "Chicharron Los Coyotes 58gr",
+    "precio": null,
+    "categoria": "los coyotes",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 12475,
+    "nombre_producto": "Chicharron Natural",
+    "precio": null,
+    "categoria": "otros",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 4556,
+    "nombre_producto": "Chicharron Sabritas 70g",
+    "precio": null,
+    "categoria": "sabritas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 4447,
+    "nombre_producto": "Chicharron Sabritas Chico",
+    "precio": null,
+    "categoria": "sabritas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 7529,
+    "nombre_producto": "Chicharron Snacker 30g",
+    "precio": null,
+    "categoria": "botana",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 8788,
+    "nombre_producto": "Chicharron Snacker 400g",
+    "precio": null,
+    "categoria": "botana",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 7155,
+    "nombre_producto": "Chicharron Snacker Sal Y Vinagre 30g",
+    "precio": null,
+    "categoria": "botana",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 7496,
+    "nombre_producto": "Chicharron Snacker Salsa Negra 30g",
+    "precio": null,
+    "categoria": "botana",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 7499,
+    "nombre_producto": "Chicharrones Los Coyotes 100g",
+    "precio": null,
+    "categoria": "los coyotes",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 12453,
+    "nombre_producto": "Chichrrones Sardi",
+    "precio": null,
+    "categoria": "botana",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 12348,
+    "nombre_producto": "Chicken Breast 340g",
+    "precio": null,
+    "categoria": "enlatados",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 9238,
+    "nombre_producto": "Chiclets 2s Canela",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 7726,
+    "nombre_producto": "Chiclets 2s Frutas",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 7752,
+    "nombre_producto": "Chiclets 2s Menta",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 7581,
+    "nombre_producto": "Chiclets 2s Yerbabuena",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 12605,
+    "nombre_producto": "Chiclosos Coronado 250g",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 434,
+    "nombre_producto": "Chicolastic Classic Gde Et/4 40 Pñ",
+    "precio": null,
+    "categoria": "pañales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 443,
+    "nombre_producto": "Chicolastic Classic Med Et/3 40 Pñ",
+    "precio": null,
+    "categoria": "pañales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 8863,
+    "nombre_producto": "Chiles Rajas Carey 215g",
+    "precio": null,
+    "categoria": "enlatados",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 6141,
+    "nombre_producto": "Chipotles Clemente 220g",
+    "precio": null,
+    "categoria": "enlatados",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 671,
+    "nombre_producto": "Cuchara Chica Economica",
+    "precio": null,
+    "categoria": "desechables",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 471,
+    "nombre_producto": "Cuchara Chica Reyher",
+    "precio": null,
+    "categoria": "desechables",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 8284,
+    "nombre_producto": "Cuchara Max Chica 50pz",
+    "precio": null,
+    "categoria": "desechables",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 9568,
+    "nombre_producto": "Cuchara Mufrance Chica 50pz",
+    "precio": null,
+    "categoria": "desechables",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 2246,
+    "nombre_producto": "Cucharita De Tamarindo Chica 20pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 12924,
+    "nombre_producto": "Dulce Tipco Chico",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 8836,
+    "nombre_producto": "Dulces De Leche Yohari Chico",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 12598,
+    "nombre_producto": "Encendedor Neon Chico",
+    "precio": null,
+    "categoria": "jarceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 11080,
+    "nombre_producto": "Fibra Acero Chica Almet",
+    "precio": null,
+    "categoria": "jarceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 9333,
+    "nombre_producto": "Fibra Chica",
+    "precio": null,
+    "categoria": "otros",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 8840,
+    "nombre_producto": "Fibra Chica 5pz",
+    "precio": null,
+    "categoria": "jarceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 700,
+    "nombre_producto": "Fibra Chica Brillosa",
+    "precio": null,
+    "categoria": "jarceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 12673,
+    "nombre_producto": "Ganchos Chicos Chavez 10pz",
+    "precio": null,
+    "categoria": "jarceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 10861,
+    "nombre_producto": "Guante Sponya Chico",
+    "precio": null,
+    "categoria": "jarceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 605,
+    "nombre_producto": "Lenteja Chica",
+    "precio": null,
+    "categoria": "granos",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 2406,
+    "nombre_producto": "Mazapan Chico Cja60",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 2809,
+    "nombre_producto": "Pachicleta 20pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 2971,
+    "nombre_producto": "Pachicleta 20pzas",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 2599,
+    "nombre_producto": "Paleta Bachicleta Fuego 20pz",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 3897,
+    "nombre_producto": "Pan Bimbo Chico",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 3814,
+    "nombre_producto": "Pan Integral Chico Bimbo",
+    "precio": null,
+    "categoria": "bimbo",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 327,
+    "nombre_producto": "Pañal Chicolastic Et-6 44pz",
+    "precio": null,
+    "categoria": "pañales",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 4814,
+    "nombre_producto": "Pañuelos Kleenex Chico",
+    "precio": null,
+    "categoria": "higienicos",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 9465,
+    "nombre_producto": "Pica Fresa Chica",
+    "precio": null,
+    "categoria": "dulceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 9691,
+    "nombre_producto": "Polifibras Chica 2pz",
+    "precio": null,
+    "categoria": "jarceria",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 1150,
+    "nombre_producto": "Salsa 5 Chiles Las Cazuelas 250g",
+    "precio": null,
+    "categoria": "salsas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 450,
+    "nombre_producto": "Sangria Topo Chico 600ml",
+    "precio": null,
+    "categoria": "coca cola",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 10550,
+    "nombre_producto": "Sazonadores/Chiles Secos",
+    "precio": null,
+    "categoria": "especies",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 793,
+    "nombre_producto": "Tenedor Chico Economico",
+    "precio": null,
+    "categoria": "desechables",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 341,
+    "nombre_producto": "Tenedor Chico Reyher",
+    "precio": null,
+    "categoria": "desechables",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 426,
+    "nombre_producto": "Topo chico De 600Ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 432,
+    "nombre_producto": "Topo Chico Limon 600ml",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 6102,
+    "nombre_producto": "Topo-Chico Limon 1.5L",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 6573,
+    "nombre_producto": "Topo-Chico Toronja 1.5L",
+    "precio": null,
+    "categoria": "bebidas",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 7924,
+    "nombre_producto": "Veladora Chica",
+    "precio": null,
+    "categoria": "otros",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   },
+   {
+    "id": 8282,
+    "nombre_producto": "Yogurt Fres Y Chia Probiotico 240g",
+    "precio": null,
+    "categoria": "lacteos",
+    "marca": null,
+    "presentacion": null,
+    "alias": [],
+    "rank": 2
+   }
+  ]
+ }
+}
