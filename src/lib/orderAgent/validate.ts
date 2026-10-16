@@ -6,7 +6,16 @@ import {
   parseGroceryFreeText,
   sameGroceryLine,
 } from "@/lib/orderAgent/grocery";
-import type { AgentLine, AgentPending, AgentProduct, AgentStore, AgentUnit, PendingAxis, ToolCall } from "@/lib/orderAgent/types";
+import type {
+  AgentClarification,
+  AgentLine,
+  AgentPending,
+  AgentProduct,
+  AgentStore,
+  AgentUnit,
+  PendingAxis,
+  ToolCall,
+} from "@/lib/orderAgent/types";
 
 export type ToolVerdict =
   | { ok: true; line?: AgentLine; removedId?: string; question?: AgentPending; search?: AgentProduct[]; finished?: boolean }
@@ -183,6 +192,99 @@ function searchForText(searches: AgentSearchHit[], text: string): AgentSearchHit
   return null;
 }
 
+export function formatProductOptions(query: string, products: AgentProduct[]): string {
+  const rows = products.slice(0, 5);
+  const lines = rows.map((product, index) => {
+    const label = [product.brand, product.name, product.presentation].filter((part) => part && String(part).trim()).join(" ");
+    return `${index + 1}. ${label}`;
+  });
+  const title = query.trim() || rows[0]?.name || "este";
+  return `De ${title}, ¿cuál de estos?\n\n${lines.join("\n")}`;
+}
+
+function clarificationOf(
+  query: string,
+  products: AgentProduct[],
+  qty: number | null,
+  unit: AgentUnit | null,
+  axis: PendingAxis,
+): AgentClarification {
+  const sliced = products.slice(0, 5);
+  const brands = new Set(sliced.map((product) => foldAgent(product.brand ?? "")).filter(Boolean));
+  return {
+    question: formatProductOptions(query, sliced),
+    candidateIds: sliced.map((product) => product.id),
+    qty,
+    unit,
+    axis: axis ?? (brands.size > 1 ? "brand" : sliced.length > 1 ? "size" : null),
+    query,
+  };
+}
+
+function doubtParts(text: string): string[] {
+  return text
+    .split(/(?<=[?？])\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function queryMentioned(text: string, query: string): boolean {
+  const tokens = foldAgent(normalizeGroceryWords(query))
+    .split(" ")
+    .filter((token) => token.length >= 4);
+  if (!tokens.length) return false;
+  const folded = foldAgent(text);
+  return tokens.every((token) => folded.includes(token));
+}
+
+function choiceGroups(searches: AgentSearchHit[], ids: number[]): Array<{ query: string; products: AgentProduct[] }> {
+  const groups: Array<{ query: string; products: AgentProduct[] }> = [];
+  const seen = new Set<string>();
+  for (const hit of searches) {
+    const products = hit.products.filter((product) => ids.includes(product.id));
+    if (products.length < 2 || !optionsDiffer(products)) continue;
+    const key = products
+      .map((product) => product.id)
+      .sort((left, right) => left - right)
+      .join(",");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    groups.push({ query: hit.query, products });
+  }
+  return groups;
+}
+
+/** Varios productos en una sola pregunta. El primero se pregunta; el resto va a la cola. */
+function mixedAskGroups(text: string, ids: number[], searches: AgentSearchHit[]): Array<{ query: string; products: AgentProduct[] }> {
+  const byIds = ids.length ? choiceGroups(searches, ids) : [];
+  if (byIds.length > 1) return byIds;
+  const byText = searches
+    .filter((hit) => queryMentioned(text, hit.query) && optionsDiffer(hit.products.filter((product) => product.available)))
+    .map((hit) => ({ query: hit.query, products: hit.products.filter((product) => product.available) }));
+  if (byText.length > 1) return byText;
+  return byIds;
+}
+
+/** Búsquedas con varias opciones que todavía no están en el carrito. Máximo 5 por producto. */
+export function openClarifications(params: {
+  searches: AgentSearchHit[];
+  cart: AgentLine[];
+  coveredIds?: number[];
+}): AgentClarification[] {
+  const covered = new Set(params.coveredIds ?? []);
+  const items: AgentClarification[] = [];
+  for (const hit of params.searches) {
+    const options = hit.products.filter((product) => product.available);
+    if (!optionsDiffer(options)) continue;
+    if (options.some((product) => params.cart.some((line) => line.productId === product.id))) continue;
+    if (options.some((product) => covered.has(product.id))) continue;
+    const item = clarificationOf(hit.query, options, null, null, null);
+    items.push(item);
+    for (const id of item.candidateIds) covered.add(id);
+  }
+  return items;
+}
+
 function listedChoiceError(products: AgentProduct[]): string {
   const labels = products.slice(0, 5).map(optionLabel).filter(Boolean);
   const brands = new Set(products.map((product) => foldAgent(product.brand ?? "")).filter(Boolean));
@@ -293,13 +395,34 @@ export function validateToolCall(params: {
   }
 
   if (call.name === "ask_customer") {
-    const text = String(args.text ?? "").trim();
+    let text = String(args.text ?? "").trim();
     if (!text) return { ok: false, error: "La pregunta va con texto." };
     if (pending && sameQuestion(text, pending.question)) {
       return { ok: false, error: "Esa pregunta ya se hizo. Usa la respuesta del cliente, no la repitas." };
     }
-    const ids = Array.isArray(args.candidate_ids) ? args.candidate_ids.map((id) => Number(id)).filter((id) => Number.isFinite(id)) : [];
-    const axis = axisOf(text, args.axis);
+    let ids = Array.isArray(args.candidate_ids) ? args.candidate_ids.map((id) => Number(id)).filter((id) => Number.isFinite(id)) : [];
+    let axis = axisOf(text, args.axis);
+    const askedQty = Number(args.qty);
+    const askedUnit = asAgentUnit(args.unit);
+    const qty = Number.isFinite(askedQty) && askedQty > 0 ? askedQty : null;
+    let query: string | null = null;
+    let queue: AgentClarification[] | undefined;
+    const groups = store.hasProductList ? mixedAskGroups(text, ids, searches) : [];
+    const parts = doubtParts(text);
+    // En tienda con lista, varios productos en el mismo ask_customer no se muestran juntos.
+    // Se pregunta el primero, con sus opciones reales, y el resto espera.
+    if (store.hasProductList && groups.length > 1) {
+      const [first, ...rest] = groups;
+      const head = clarificationOf(first.query, first.products, qty, askedUnit, axis);
+      text = head.question;
+      ids = head.candidateIds;
+      axis = head.axis;
+      query = head.query ?? null;
+      queue = rest.map((group) => clarificationOf(group.query, group.products, null, null, null));
+    } else if (store.hasProductList && parts.length > 1) {
+      text = parts[0];
+      axis = axisOf(text, args.axis);
+    }
     if (axis && ids.length && !candidatesDiffer(products, ids, axis)) {
       return {
         ok: false,
@@ -312,16 +435,16 @@ export function validateToolCall(params: {
         return { ok: false, error: "No hay versión marinada y normal de ese corte. No preguntes eso." };
       }
     }
-    const askedQty = Number(args.qty);
-    const askedUnit = asAgentUnit(args.unit);
     return {
       ok: true,
       question: {
         question: text,
         candidateIds: ids,
-        qty: Number.isFinite(askedQty) && askedQty > 0 ? askedQty : null,
+        qty,
         unit: askedUnit,
         axis,
+        query,
+        queue,
       },
     };
   }

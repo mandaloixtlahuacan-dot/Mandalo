@@ -43,12 +43,20 @@ export type AgentStore = {
 
 export type PendingAxis = "number" | "size" | "flavor" | "marinade" | "brand" | null;
 
-export type AgentPending = {
+/** Una duda: un producto y sus opciones reales. */
+export type AgentClarification = {
   question: string;
   candidateIds: number[];
   qty: number | null;
   unit: AgentUnit | null;
   axis: PendingAxis;
+  /** Búsqueda que produjo estas opciones, para recargarlas sin volver al modelo. */
+  query?: string | null;
+};
+
+export type AgentPending = AgentClarification & {
+  /** Las siguientes dudas. Se preguntan de una en una, cuando esta se resuelve. */
+  queue?: AgentClarification[];
 };
 
 export type HistoryTurn = { role: "user" | "assistant"; text: string };

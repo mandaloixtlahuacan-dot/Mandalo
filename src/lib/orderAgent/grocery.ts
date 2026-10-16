@@ -296,7 +296,7 @@ export function groceryClarityError(line: Pick<AgentLine, "name" | "brand" | "pr
   if (!quoteItemNeedsDetail(item)) return null;
   const question = quoteQuestionForItems([item]);
   if (!question) return null;
-  return `Falta marca, tipo o tamaño. No lo anotes todavía. Pregúntalo en el mismo ask_customer, sin repetir lo que el cliente ya dijo: ${question}`;
+  return `Falta marca, tipo o tamaño. No lo anotes todavía. Pregúntalo en su propio ask_customer, sin juntarlo con otro producto y sin repetir lo que el cliente ya dijo: ${question}`;
 }
 
 export function sameGroceryLine(left: Pick<AgentLine, "name" | "freeText">, right: Pick<AgentLine, "name" | "freeText">): boolean {

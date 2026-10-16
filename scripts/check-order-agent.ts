@@ -2,12 +2,14 @@
  * Agente de pedido y los arreglos que van prendidos aunque ORDER_AGENT esté apagado.
  * No llama a OpenAI. Correr: npx tsx scripts/check-order-agent.ts
  */
+import { readFileSync } from "node:fs";
 import { checkAiOutput } from "../src/lib/catalogOrder/accept";
 import { buildCatalog } from "../src/lib/catalogOrder/catalog";
 import { runCatalogOrderTurn } from "../src/lib/catalogOrder/engine";
 import type { AiOutput, CatalogModel } from "../src/lib/catalogOrder/types";
 import { storeSwitchFromCapture, type UxStore } from "../src/lib/customerUx";
 import {
+  agentPendingFromStoredAsk,
   buildOrderAgentSystem,
   itemsFromAgentLines,
   orderAgentEnabled,
@@ -15,15 +17,17 @@ import {
   orderAgentModel,
   ORDER_AGENT_MAX_STEPS,
   runOrderAgentTurn,
+  snapshotFieldsFromAgentPending,
   validateToolCall,
   type AgentLine,
   type AgentModel,
+  type AgentPending,
   type AgentProduct,
   type AgentStore,
   type ToolCall,
 } from "../src/lib/orderAgent";
 import { searchAgentProducts } from "../src/lib/orderAgent/catalog";
-import { ADDRESS_ASK_MESSAGE } from "../src/lib/services/captureEngine";
+import { ADDRESS_ASK_MESSAGE, fixedCatalogStepAfterList, formatScheduledLocationAsk } from "../src/lib/services/captureEngine";
 import { validateCaptureForConfirmation } from "../src/lib/services/validationEngine";
 import { listaSearchTokens } from "../src/lib/storeProductSearch";
 
@@ -823,7 +827,8 @@ async function main(): Promise<void> {
   assert(!pekesFirst.cart.some((item) => item.productId === 101 || item.productId === 104 || item.productId === 107), "con varias marcas no se elige una sola");
   assert(pekesFirst.cart.some((item) => item.productId === 108 && item.unit === "kg"), "el queso Chelita de la lista sí se anota");
   assert(pekesFirst.cart.some((item) => item.productId === 109), "el vaso 16 de la lista sí se anota");
-  assert(pekesFirst.reply.includes("Lala") && pekesFirst.reply.includes("Tía Rosa"), "la pregunta usa opciones reales de la lista");
+  assert(pekesFirst.reply.includes("Lala") && !pekesFirst.reply.includes("Tía Rosa"), "la primera pregunta es solo la leche, con opciones reales");
+  assert((pekesFirst.pending?.queue?.length ?? 0) >= 2, "tortillas y queso crema esperan en la cola");
 
   async function pickListed(message: string, cart: AgentLine[], productId: number, qty: number, unit: string, query: string) {
     return runOrderAgentTurn({
@@ -896,6 +901,8 @@ async function main(): Promise<void> {
   const pekesPrompt = buildOrderAgentSystem(pekesListed, []);
   assert(aguaPrompt.includes("no tiene lista") && aguaPrompt.includes("La que sea"), "Agua Santa pregunta lo genérico y acepta la que sea");
   assert(pekesPrompt.includes("tiene lista") && pekesPrompt.includes("obligatorio"), "Peke's obliga a buscar antes de anotar");
+  assert(pekesPrompt.includes("una sola duda") && pekesPrompt.includes("Un producto por mensaje"), "se pregunta un producto por mensaje");
+  assert(!pekesPrompt.includes("todas las dudas juntas") && !pekesPrompt.includes("en un solo ask_customer"), "ya no se juntan las dudas");
 
   const orderText = "un kilo de queso Chelita, un Fuse ti morado, un Fabuloso, unos chicles, una lata de maíz y un pan bimbo";
   const nightProducts: AgentProduct[] = [
@@ -1061,6 +1068,230 @@ async function main(): Promise<void> {
   assert(priced.includes("*"), "el ticket usa negritas de WhatsApp");
   const unused: AiOutput = { cart: [], pending: [], not_on_menu: [], confirmed: false };
   assert(unused.confirmed === false, "el tipo del modelo viejo sigue compilando");
+
+  const groceryMenu: AgentProduct[] = [
+    product({ id: 301, name: "Jamón", brand: "FUD", presentation: "250 g", alias: ["jamon"] }),
+    product({ id: 302, name: "Jamón", brand: "Zwan", presentation: "250 g", alias: ["jamon"] }),
+    product({ id: 303, name: "Jamón", brand: "San Rafael", presentation: "250 g", alias: ["jamon"] }),
+    product({ id: 304, name: "Jamón", brand: "Chimex", presentation: "250 g", alias: ["jamon"] }),
+    product({ id: 305, name: "Jamón", brand: "Capistrano", presentation: "250 g", alias: ["jamon"] }),
+    product({ id: 306, name: "Jamón", brand: "Extra", presentation: "500 g", alias: ["jamon"] }),
+    product({ id: 311, name: "Leche", brand: "Lala", presentation: "1 L", alias: ["leche"] }),
+    product({ id: 312, name: "Leche", brand: "Alpura", presentation: "1 L", alias: ["leche"] }),
+    product({ id: 321, name: "Chicles", brand: "Trident", presentation: "caja", alias: ["chicle", "chicles"] }),
+    product({ id: 322, name: "Chicles", brand: "Clorets", presentation: "caja", alias: ["chicle", "chicles"] }),
+  ];
+  const searchGrocery = (query: string): AgentProduct[] => {
+    const folded = fold(query);
+    const tokens = folded.split(/\s+/).filter((token) => token.length >= 4);
+    return groceryMenu.filter((item) => {
+      const hay = fold(`${item.name} ${item.brand ?? ""} ${item.presentation ?? ""} ${(item.alias ?? []).join(" ")}`);
+      return tokens.some((token) => hay.includes(token));
+    });
+  };
+  let groceryModelCalls = 0;
+  const groceryModel: AgentModel = {
+    name: "falso-abarrotes",
+    async complete() {
+      groceryModelCalls += 1;
+      if (groceryModelCalls > 1) throw new Error("la cola no debía llamar al modelo otra vez");
+      return {
+        toolCalls: [
+          tool("search_products", { query: "jamón" }, "j"),
+          tool("search_products", { query: "leche" }, "l"),
+          tool("search_products", { query: "chicles" }, "c"),
+          tool(
+            "ask_customer",
+            {
+              text: "¿Qué jamón, qué leche y qué chicles quieres?",
+              candidate_ids: [301, 302, 303, 304, 305, 306, 311, 312, 321, 322],
+              axis: "brand",
+            },
+            "mix",
+          ),
+        ],
+        text: null,
+      };
+    },
+  };
+  const jamon = await runOrderAgentTurn({
+    message: "jamón, leche y chicles",
+    cart: [],
+    pending: null,
+    history: [],
+    store: pekesListed,
+    products: [],
+    search: searchGrocery,
+    model: groceryModel,
+    logEvent: () => {},
+  });
+  const jamonOptions = jamon.reply.split("\n").filter((line) => /^\d+\./.test(line.trim()));
+  assert(jamonOptions.length === 5, "el jamón pregunta máximo 5 opciones reales");
+  assert(jamon.reply.includes("FUD") && jamon.reply.includes("Capistrano") && !jamon.reply.includes("Extra"), "salen las primeras 5 marcas de jamón");
+  assert(!jamon.reply.includes("Lala") && !jamon.reply.includes("Trident"), "leche y chicles no van en el mismo mensaje");
+  assert(!jamon.reply.includes("¿Están bien estos productos?"), "con la cola llena no se muestra la lista");
+  assert(jamon.pending?.queue?.length === 2, "quedan dos productos en la cola");
+  const storedAsk = snapshotFieldsFromAgentPending(jamon.pending as AgentPending);
+  assert(storedAsk.count === 3, "pendingAsk.count cuenta la duda actual y la cola");
+  const restored = agentPendingFromStoredAsk({
+    itemKey: "agent",
+    slots: [],
+    question: storedAsk.question ?? "",
+    count: storedAsk.count ?? 1,
+    mode: "ask",
+    catalog: {
+      sourceText: storedAsk.question ?? "",
+      candidateIds: jamon.pending?.candidateIds ?? [],
+      qty: 1,
+      unit: "pz",
+      variant: null,
+      family: null,
+      question: storedAsk.question ?? "",
+      count: storedAsk.count ?? 1,
+    },
+    agentUnit: storedAsk.agentUnit,
+    agentQty: storedAsk.agentQty,
+    agentAxis: storedAsk.agentAxis,
+    agentQuery: storedAsk.agentQuery,
+    agentQueue: storedAsk.agentQueue,
+  });
+  assert(restored?.query === "jamón" && restored.queue?.length === 2, "la cola se lee otra vez desde pendingAsk");
+  const lecheTurn = await runOrderAgentTurn({
+    message: "1",
+    cart: jamon.cart,
+    pending: restored,
+    history: [],
+    store: pekesListed,
+    products: [],
+    search: searchGrocery,
+    model: groceryModel,
+    logEvent: () => {},
+  });
+  assert(lecheTurn.cart.some((item) => item.productId === 301), "el 1 se queda con el primer jamón");
+  assert(lecheTurn.reply.includes("Lala") && lecheTurn.reply.includes("Alpura"), "sigue la leche, con opciones de la búsqueda");
+  assert(!lecheTurn.reply.includes("¿Están bien estos productos?"), "todavía no se lista");
+  assert(lecheTurn.pending?.queue?.length === 1, "los chicles siguen en la cola");
+  const chiclesTurn = await runOrderAgentTurn({
+    message: "2",
+    cart: lecheTurn.cart,
+    pending: lecheTurn.pending,
+    history: [],
+    store: pekesListed,
+    products: [],
+    search: searchGrocery,
+    model: groceryModel,
+    logEvent: () => {},
+  });
+  assert(chiclesTurn.cart.some((item) => item.productId === 312), "el 2 se queda con Alpura");
+  assert(chiclesTurn.reply.includes("Trident") && chiclesTurn.reply.includes("Clorets"), "al final se preguntan los chicles");
+  assert(!chiclesTurn.reply.includes("¿Están bien estos productos?"), "la lista espera a que la cola se vacíe");
+  const listed = await runOrderAgentTurn({
+    message: "1",
+    cart: chiclesTurn.cart,
+    pending: chiclesTurn.pending,
+    history: [],
+    store: pekesListed,
+    products: [],
+    search: searchGrocery,
+    model: groceryModel,
+    logEvent: () => {},
+  });
+  assert(groceryModelCalls === 1, "resolver la cola no vuelve a llamar al modelo");
+  assert(listed.pending == null, "la cola quedó vacía");
+  assert(listed.cart.some((item) => item.productId === 321) && listed.cart.length === 3, "el pedido trae jamón, leche y chicles");
+  assert(listed.reply.includes("¿Están bien estos productos?"), "con la cola vacía sí se lista");
+
+  const dogos = await runOrderAgentTurn({
+    message: "dos dogos",
+    cart: [],
+    pending: null,
+    history: [],
+    store: georgeStore,
+    products: georgeProducts,
+    model: scripted(
+      "dogos",
+      [
+        {
+          toolCalls: [
+            tool("search_products", { query: "dogo" }, "d"),
+            tool("set_cart_line", { product_id: 6, qty: 2, unit: "pz" }, "set-dogo"),
+            tool("finish_cart", {}, "fin"),
+          ],
+        },
+      ],
+      [],
+    ),
+    logEvent: () => {},
+  });
+  assert(dogos.reply.includes("Dogo") && dogos.reply.includes("¿Están bien estos productos?"), "los dogos se listan");
+  const stale: AgentPending = {
+    question: "¿Cuál refresco, Pepsi o Coca?",
+    candidateIds: [5],
+    qty: 1,
+    unit: "pz",
+    axis: "flavor",
+  };
+  for (const message of ["sí", "así está bien", "1", "ok sí"]) {
+    const turn = await runOrderAgentTurn({
+      message,
+      cart: dogos.cart,
+      pending: stale,
+      history: [],
+      store: georgeStore,
+      products: georgeProducts,
+      awaitingList: true,
+      model: {
+        name: "no",
+        async complete() {
+          throw new Error("el sí de la lista no debía llamar al modelo");
+        },
+      },
+      logEvent: () => {},
+    });
+    assert(turn.confirmedList === true && turn.pending == null, `${message} confirma la lista aunque haya pending viejo`);
+    assert(turn.cart.length === 1 && turn.cart[0]?.productId === 6, `${message} no agrega el refresco del pending viejo`);
+  }
+  const closedAsk = formatScheduledLocationAsk(
+    "George está cerrada ahora. Tu pedido se programa y te lo mando en cuanto se pueda.",
+  );
+  assert(closedAsk.includes("se programa") && closedAsk.includes("ubicación por GPS"), "fuera de horario se avisa que se programa y se pide el pin");
+  assert(formatScheduledLocationAsk(null) === ADDRESS_ASK_MESSAGE, "en horario solo se pide la ubicación");
+  assert(fixedCatalogStepAfterList({ hasLocation: false, canDispatchNow: false }) === "ask_location", "sin pin se pide la ubicación");
+  assert(fixedCatalogStepAfterList({ hasLocation: true, canDispatchNow: false }) === "schedule", "con pin y cerrado se programa");
+  assert(fixedCatalogStepAfterList({ hasLocation: true, canDispatchNow: true }) === "dispatch", "con pin y en horario se manda");
+  const finishShown = await runOrderAgentTurn({
+    message: "xyzzy",
+    cart: dogos.cart,
+    pending: stale,
+    history: [],
+    store: georgeStore,
+    products: georgeProducts,
+    awaitingList: true,
+    model: scripted("fin-lista", [{ toolCalls: [tool("finish_cart", {}, "fin")] }], []),
+    logEvent: () => {},
+  });
+  assert(finishShown.confirmedList === true && finishShown.pending == null, "finish_cart con la lista ya mostrada confirma");
+  const vague = await runOrderAgentTurn({
+    message: "una hamburguesa",
+    cart: [],
+    pending: null,
+    history: [],
+    store: georgeStore,
+    products: georgeProducts,
+    model: scripted(
+      "vago",
+      [{ toolCalls: [tool("search_products", { query: "hamburguesa" }, "h")] }, { toolCalls: [], text: "¿Quieres algo más?" }],
+      [],
+    ),
+    logEvent: () => {},
+  });
+  assert(vague.pending == null, "una pregunta que no enumera las opciones no deja pending");
+
+  const archiveMigration = readFileSync(new URL("../supabase/migrations/20261016_conversaciones_archivo.sql", import.meta.url), "utf8");
+  assert(/create table if not exists public\.conversaciones_archivo/i.test(archiveMigration), "la migración crea conversaciones_archivo");
+  assert(/telefono/i.test(archiveMigration) && /pedido_id/i.test(archiveMigration) && /payload jsonb/i.test(archiveMigration), "el archivo guarda teléfono, pedido y payload");
+  assert(!/\b(drop|delete)\b/i.test(archiveMigration), "la migración no borra tablas ni filas");
+
   console.log("[order-agent] ok");
 }
 

@@ -564,6 +564,22 @@ export const ADDRESS_ASK_MESSAGE =
   "Si prefieres, también puedes escribirme tu dirección: calle y número, colonia o una referencia clara " +
   '(ej. "frente a la tortillería", "casa azul").';
 
+/** Fuera de horario el pedido se programa, y de todos modos se pide la ubicación. */
+export function formatScheduledLocationAsk(scheduleNote: string | null): string {
+  const note = scheduleNote?.trim();
+  if (!note) return ADDRESS_ASK_MESSAGE;
+  return `${note}\n\n${ADDRESS_ASK_MESSAGE}`;
+}
+
+/** Después del sí de la lista: sin pin se pide; con pin se programa o se manda. */
+export function fixedCatalogStepAfterList(params: {
+  hasLocation: boolean;
+  canDispatchNow: boolean;
+}): "ask_location" | "schedule" | "dispatch" {
+  if (!params.hasLocation) return "ask_location";
+  return params.canDispatchNow ? "dispatch" : "schedule";
+}
+
 export function formatProductListConfirm(items: PedidoItemInput[], kind: StoreKind = "abarrotes"): string {
   return `OK, pediste:\n\n🛒 *Tu pedido*\n\n${formatItems(items)}\n\n*¿Están bien estos productos?*\n\n*Si tu pedido está bien, responde sí.*\n\n${formatHowToEditList(kind)}`;
 }

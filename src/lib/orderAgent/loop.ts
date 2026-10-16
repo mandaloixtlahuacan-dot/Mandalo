@@ -4,9 +4,9 @@ import { createOpenAIOrderAgentModel } from "@/lib/orderAgent/model";
 import { resolveAgentPending } from "@/lib/orderAgent/pending";
 import { buildOrderAgentSystem } from "@/lib/orderAgent/prompt";
 import { renderAgentReply } from "@/lib/orderAgent/reply";
-import { upsertLine, validateToolCall, type AgentSearchHit } from "@/lib/orderAgent/validate";
+import { formatProductOptions, openClarifications, upsertLine, validateToolCall, type AgentSearchHit } from "@/lib/orderAgent/validate";
 import type {
-  AgentLine,
+  AgentClarification,
   AgentModel,
   AgentPending,
   AgentProduct,
@@ -17,20 +17,49 @@ import type {
   ToolTrace,
 } from "@/lib/orderAgent/types";
 import { foldAgent } from "@/lib/orderAgent/catalog";
-import { isProductListYes, isYesConfirmation } from "@/lib/messages";
+import { confirmsShownProductList, isProductListYes, isYesConfirmation } from "@/lib/messages";
 
+function optionNamed(question: string, product: AgentProduct): boolean {
+  const folded = foldAgent(question);
+  const parts = [product.brand, product.name, product.presentation]
+    .map((part) => foldAgent(part ?? ""))
+    .filter((part) => part.length >= 3);
+  return parts.some((part) => folded.includes(part));
+}
+
+/** Solo si la pregunta de verdad enumera opciones de una búsqueda. Un «¿algo más?» no deja pending. */
 function pendingFromListedOptions(question: string, searches: AgentSearchHit[]): AgentPending | null {
   const folded = foldAgent(question);
   if (!folded || folded.includes("estan bien estos productos")) return null;
-  if (!/[?¿]/.test(question) && !/\b1\b/.test(folded)) return null;
-  const last = [...searches].reverse().find((hit) => hit.products.length > 1);
-  if (!last) return null;
+  if (!/[?¿]/.test(question)) return null;
+  const hit = [...searches].reverse().find((item) => {
+    const options = item.products.slice(0, 5);
+    if (options.length < 2) return false;
+    const named = options.filter((product) => optionNamed(question, product)).length;
+    const numbered = (question.match(/(?:^|\n)\s*\d+[\.\)]/g) ?? []).length;
+    return named >= 2 || numbered >= 2;
+  });
+  if (!hit) return null;
+  const options = hit.products.slice(0, 5);
   return {
     question: question.trim(),
-    candidateIds: last.products.slice(0, 5).map((product) => product.id),
+    candidateIds: options.map((product) => product.id),
     qty: null,
     unit: null,
     axis: null,
+    query: hit.query,
+  };
+}
+
+function withQueue(current: AgentPending | null, extra: AgentClarification[]): { pending: AgentPending | null; question: string | null } {
+  if (!extra.length) return { pending: current, question: current?.question ?? null };
+  if (!current?.question) {
+    const [first, ...rest] = extra;
+    return { question: first.question, pending: { ...first, queue: [...(current?.queue ?? []), ...rest] } };
+  }
+  return {
+    question: current.question,
+    pending: { ...current, queue: [...(current.queue ?? []), ...extra] },
   };
 }
 
@@ -119,8 +148,13 @@ export async function runOrderAgentTurn(input: OrderAgentTurnInput): Promise<Ord
     return full;
   };
 
+  // La lista ya se mostró: sí, «así está bien», «ok sí» o «1» confirman
+  // aunque haya quedado una pregunta vieja. El «1» no elige esa opción.
+  if (input.awaitingList && cart.length > 0 && confirmsShownProductList(input.message)) {
+    return finish({ cart, pending: null, reply: "", confirmedList: true });
+  }
+
   if (!pending && broadYes(input.message) && cart.length > 0) {
-    if (input.awaitingList) return finish({ cart, pending: null, reply: "", confirmedList: true });
     return finish({
       cart,
       pending: null,
@@ -129,7 +163,27 @@ export async function runOrderAgentTurn(input: OrderAgentTurnInput): Promise<Ord
     });
   }
 
+  const rememberProducts = (found: AgentProduct[]): void => {
+    for (const product of found) {
+      if (known.has(product.id)) continue;
+      known.add(product.id);
+      products.push(product);
+    }
+  };
+
+  const searchQuery = async (query: string | null | undefined): Promise<AgentProduct[]> => {
+    if (!input.search || !query?.trim()) return [];
+    try {
+      return (await input.search(query)).filter((product) => product.available);
+    } catch {
+      return [];
+    }
+  };
+
   if (pending) {
+    if (pending.candidateIds.some((id) => !products.some((product) => product.id === id))) {
+      rememberProducts(await searchQuery(pending.query));
+    }
     seq += 1;
     const resolved = resolveAgentPending({
       pending,
@@ -139,6 +193,24 @@ export async function runOrderAgentTurn(input: OrderAgentTurnInput): Promise<Ord
       nextLineId: `l${seq}`,
     });
     if (resolved) {
+      const next = pending.queue?.[0];
+      if (next) {
+        const fresh = (await searchQuery(next.query)).slice(0, 5);
+        const spoken = fresh.length > 1
+          ? {
+              ...next,
+              question: formatProductOptions(next.query ?? "", fresh),
+              candidateIds: fresh.map((product) => product.id),
+            }
+          : next;
+        if (fresh.length) rememberProducts(fresh);
+        return finish({
+          cart: resolved.cart,
+          pending: { ...spoken, queue: pending.queue?.slice(1) ?? [] },
+          reply: renderAgentReply({ store: input.store, cart: resolved.cart, question: spoken.question, aside: null }),
+          confirmedList: false,
+        });
+      }
       return finish({
         cart: resolved.cart,
         pending: null,
@@ -250,17 +322,41 @@ export async function runOrderAgentTurn(input: OrderAgentTurnInput): Promise<Ord
         question = verdict.question.question;
         pending = verdict.question;
         askedThisTurn = true;
+        break;
       }
       if (verdict.finished) finished = true;
     }
     if (!stepFailed && (finished || question)) break;
   }
 
+  const covered = [
+    ...(pending?.candidateIds ?? []),
+    ...(pending?.queue ?? []).flatMap((item) => item.candidateIds),
+  ];
+  if (input.store.hasProductList) {
+    const extra = openClarifications({ searches, cart, coveredIds: covered });
+    if (extra.length && !input.pending) {
+      const attached = withQueue(question ? pending : null, extra);
+      if (attached.question) {
+        question = attached.question;
+        pending = attached.pending;
+      }
+    } else if (extra.length && pending && question) {
+      pending = { ...pending, queue: [...(pending.queue ?? []), ...extra] };
+    }
+  }
   if (question) finished = false;
+  if (input.store.hasProductList && pending && (pending.queue?.length ?? 0) > 0 && !question && !input.awaitingList) {
+    question = pending.question;
+    finished = false;
+  }
   if (changed && !question) pending = null;
   if (!pending && question) {
     const fromText = pendingFromListedOptions(question, searches);
     if (fromText) pending = fromText;
+  }
+  if (finished && input.awaitingList && cart.length > 0 && !question) {
+    return finish({ cart, pending: null, reply: "", confirmedList: true, model: modelName });
   }
   const reply = renderAgentReply({
     store: input.store,

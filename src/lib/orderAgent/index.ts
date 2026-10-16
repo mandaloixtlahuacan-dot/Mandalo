@@ -5,9 +5,11 @@ export {
   agentLinesFromCatalogCart,
   agentLinesFromItems,
   agentPendingFromCatalog,
+  agentPendingFromStoredAsk,
   agentProductsFromCatalog,
   catalogCartFromAgent,
   catalogPendingFromAgent,
+  snapshotFieldsFromAgentPending,
 } from "@/lib/orderAgent/map";
 export { createOpenAIOrderAgentModel } from "@/lib/orderAgent/model";
 export { itemsFromAgentLines, priceAgentCart } from "@/lib/orderAgent/reply";

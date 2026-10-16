@@ -21,17 +21,19 @@ import {
   agentLinesFromCatalogCart,
   agentLinesFromItems,
   agentPendingFromCatalog,
+  agentPendingFromStoredAsk,
   agentProductsFromCatalog,
   catalogCartFromAgent,
   catalogPendingFromAgent,
   itemsFromAgentLines,
   orderAgentEnabled,
   runOrderAgentTurn,
+  snapshotFieldsFromAgentPending,
 } from "@/lib/orderAgent";
 import { assembleCapturedItems } from "@/lib/orderGrounding";
 import { formatNameQtyLine, joinBlocks } from "@/lib/messageStyle";
 import { storeKindFromCategoria, type StoreKind } from "@/lib/customerUx";
-import { ADDRESS_ASK_MESSAGE, buildCustomerMessage, createCaptureEngine, dispatchItemAlreadyShowsQty, extractCandidateItems, formatProductListConfirm, isProductListConfirmMessage, type PedidoItemInput } from "@/lib/services/captureEngine";
+import { ADDRESS_ASK_MESSAGE, buildCustomerMessage, createCaptureEngine, dispatchItemAlreadyShowsQty, extractCandidateItems, fixedCatalogStepAfterList, formatProductListConfirm, formatScheduledLocationAsk, isProductListConfirmMessage, type PedidoItemInput } from "@/lib/services/captureEngine";
 import * as pedidoRepositoryV2 from "@/lib/repositories/pedidoRepositoryV2";
 import { getAdminPhone } from "@/lib/repositories/configRepository";
 import * as metricsRepository from "@/lib/repositories/metricsRepository";
@@ -99,6 +101,7 @@ import {
   containsFalseConfirmationClaim,
   isBareOrderRejection,
   classifyProductListReply,
+  confirmsShownProductList,
   isCancelIntent,
   shouldEscalateComplaint,
   isDropProductIntent,
@@ -2266,15 +2269,31 @@ async function completeFixedCatalogConfirmation(
     payload: { userMessage: mensaje, catalogoFijo: true },
   });
 
-  if (validation.readyForConfirmation) {
+  const tiendaSchedule = full?.tienda
+    ? checkTiendaSchedule({
+        horaApertura: full.tienda.horaApertura,
+        horaCierre: full.tienda.horaCierre,
+        diasCerrado: full.tienda.diasCerrado,
+        horarioPorDia: full.tienda.horarioPorDia,
+      })
+    : null;
+  const mandaloSchedule = checkMandaloSchedule();
+  const canDispatchNow = Boolean(tiendaSchedule?.withinSchedule && mandaloSchedule.withinSchedule);
+  const hasLocation = Boolean(validation.validatedAddress?.isValid);
+  const step = fixedCatalogStepAfterList({ hasLocation, canDispatchNow: full?.tienda ? canDispatchNow : hasLocation });
+  if (step !== "ask_location" && validation.readyForConfirmation && full?.tienda) {
     const fresh = await pedidoRepositoryV2.getPedidoById(pedido.id);
     if (fresh?.tienda) return commitCatalogDispatch(telefono, fresh);
   }
+  const scheduleNote =
+    full?.tienda && tiendaSchedule && !canDispatchNow
+      ? `⏰ ${describeWhyWaiting({ tiendaNombre: full.tienda.nombre ?? "la tienda", tiendaSchedule, mandaloSchedule })}. Tu pedido se programa y te lo mando en cuanto se pueda.`
+      : null;
   const pendingQuestion = validation.issues.find((issue) => issue.customerQuestion)?.customerQuestion ?? "";
   const msg =
     pendingQuestion && !isProductListConfirmMessage(pendingQuestion) && !pendingQuestion.includes("ubicación por GPS")
       ? pendingQuestion
-      : ADDRESS_ASK_MESSAGE;
+      : formatScheduledLocationAsk(scheduleNote);
   await sendWhatsApp(telefono, msg);
   await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
   return { ok: true, role: "cliente", accion: "productos_confirmados", stage: nextState, pedidoId: pedido.id };
@@ -2352,24 +2371,10 @@ async function handleOrderAgentQuoteTurn(
   const historial = await fetchHistorialReciente(telefono, 8).catch(() => []);
   const pendingAsk = pedido.snapshot_json.pendingAsk;
   const hasProductList = await pedidoRepositoryV2.tiendaUsaListaProductos(full.tienda.tiendaId).catch(() => false);
-  const pendingUnit = pendingAsk?.agentUnit;
   const agent = await runOrderAgentTurn({
     message: text,
     cart: agentLinesFromItems(pedido.snapshot_json.items ?? []),
-    pending: pendingAsk?.question
-      ? {
-          question: pendingAsk.question,
-          candidateIds: pendingAsk.catalog?.candidateIds ?? [],
-          qty: pendingAsk.agentQty ?? pendingAsk.catalog?.qty ?? null,
-          unit:
-            pendingUnit === "kg" || pendingUnit === "pesos" || pendingUnit === "g" || pendingUnit === "l" || pendingUnit === "pz"
-              ? pendingUnit
-              : pendingAsk.catalog?.unit === "kg" || pendingAsk.catalog?.unit === "pesos"
-                ? pendingAsk.catalog.unit
-                : "pz",
-          axis: pendingAsk.agentAxis ?? null,
-        }
-      : null,
+    pending: agentPendingFromStoredAsk(pendingAsk),
     history: historial
       .slice()
       .reverse()
@@ -2408,7 +2413,8 @@ async function handleOrderAgentQuoteTurn(
   const drafted = itemsFromAgentLines(agent.cart);
   const corrected = options?.fromSummary ? applySummaryNegation(drafted, text) : { items: drafted, changed: false };
   const items = corrected.items;
-  const showedList = !options?.fromSummary && agent.reply.includes("¿Están bien estos productos?");
+  const showedList = !options?.fromSummary && !agent.pending && agent.reply.includes("¿Están bien estos productos?");
+  const storedPending = agent.pending ? snapshotFieldsFromAgentPending(agent.pending) : null;
   const nextSnapshot = {
     ...pedido.snapshot_json,
     items,
@@ -2416,13 +2422,15 @@ async function handleOrderAgentQuoteTurn(
       ? {
           itemKey: "agent",
           slots: [],
-          question: agent.pending.question,
-          count: 1,
+          question: storedPending?.question ?? agent.pending.question,
+          count: storedPending?.count ?? 1,
           mode: "ask" as const,
           catalog: catalogPendingFromAgent(agent.pending),
-          agentUnit: agent.pending.unit,
-          agentQty: agent.pending.qty,
-          agentAxis: agent.pending.axis,
+          agentUnit: storedPending?.agentUnit,
+          agentQty: storedPending?.agentQty,
+          agentAxis: storedPending?.agentAxis,
+          agentQuery: storedPending?.agentQuery,
+          agentQueue: storedPending?.agentQueue,
         }
       : null,
     flags: {
@@ -2516,6 +2524,11 @@ async function handleFixedCatalogTurn(
     return { ok: true, role: "cliente", accion: "pin_antes_de_productos", pedidoId: pedido.id };
   }
   if (!text) return null;
+
+  if (flags?.awaitingProductConfirm === true && confirmsShownProductList(text)) {
+    await guardarMensajeChat({ telefono, texto: mensaje, estado: "cliente" }).catch(() => {});
+    return completeFixedCatalogConfirmation(telefono, mensaje, pedido, ubicacionCoords);
+  }
 
   if (!ubicacionCoords && !options?.skipDeterministicUx && !orderAgentEnabled()) {
     const early = await tryDeterministicCustomerUx({ telefono, mensaje, openPedido: pedido }).catch((e: unknown) => {

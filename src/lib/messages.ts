@@ -284,6 +284,21 @@ export type ProductListReplyKind = "confirm" | "cancel" | "revise" | "relist" | 
 // cancela, y un SÍ que agrega o corrige (faltó, agrega, añade, también
 // quiero, solamente te…) se aplica y se vuelve a listar. Pedir la lista
 // otra vez la reenvía. El GPS solo llega después del SÍ limpio.
+/**
+ * El cliente ya vio «¿Están bien estos productos?».
+ * Un sí, «así está bien», «ok sí» o un «1» confirman la lista.
+ * El «1» solo vale aquí: en una pregunta con opciones sigue eligiendo la primera.
+ */
+export function confirmsShownProductList(text: string): boolean {
+  if (classifyProductListReply(text) === "confirm") return true;
+  const core = normalizeMessageIntentText(String(text ?? ""))
+    .replace(/\p{Extended_Pictographic}/gu, " ")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return core === "1";
+}
+
 export function classifyProductListReply(text: string): ProductListReplyKind {
   if (isProductListRequest(text)) return "relist";
   if (isBareOrderRejection(text)) return "cancel";

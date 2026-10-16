@@ -37,6 +37,20 @@ export type PendingAsk = {
   agentUnit?: "pz" | "kg" | "pesos" | "g" | "l" | null;
   agentQty?: number | null;
   agentAxis?: "number" | "size" | "flavor" | "marinade" | "brand" | null;
+  /** Búsqueda de la duda actual, para recargar opciones sin el modelo. */
+  agentQuery?: string | null;
+  /**
+   * Dudas que siguen, un producto cada una. count es 1 + esta cola.
+   * La lista de «¿Están bien estos productos?» sale cuando la cola está vacía.
+   */
+  agentQueue?: Array<{
+    question: string;
+    candidateIds: number[];
+    qty: number | null;
+    unit: "pz" | "kg" | "pesos" | "g" | "l" | null;
+    axis: "number" | "size" | "flavor" | "marinade" | "brand" | null;
+    query?: string | null;
+  }> | null;
 };
 
 export type QuoteTurn = {
