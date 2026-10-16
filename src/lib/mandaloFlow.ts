@@ -796,15 +796,18 @@ async function catalogPriceLines(
 
 // --- Cliente ---
 
-// Estados donde la tienda ya tiene el pedido y espera algo (cotizar, decidir
-// un ajuste de producto, o ya cotizó y espera el SÍ final del cliente) —
-// cancelar sin avisarle aquí la deja esperando (o cobrando de más) un pedido
-// que ya no existe. En seleccion_productos/confirmacion_cliente la tienda
-// nunca se enteró del pedido, así que no hace falta avisar nada. La
-// cancelación gratuita llega hasta aquí, no más allá (CLAUDE.md Sección 5,
-// regla 7) — de dispatch_repartidor_pendiente en adelante, cancelOpenPedido
-// ya ni se llama (se escala al admin, ver PAST_FREE_CANCEL_WINDOW).
-const TIENDA_NOTIFIABLE_CANCEL_STATES: OrderState[] = ["pendiente_tiendas", "ajuste_producto", "confirmado_tiendas"];
+// La tienda ya vio el pedido a partir de pendiente_tiendas. El repartidor,
+// cuando ya está asignado. El aviso les llega directo por WhatsApp.
+const TIENDA_NOTIFIABLE_CANCEL_STATES: OrderState[] = [
+  "pendiente_tiendas",
+  "ajuste_producto",
+  "confirmado_tiendas",
+  "dispatch_repartidor_pendiente",
+  "repartidor_asignado",
+  "recogiendo",
+  "en_camino_cliente",
+];
+const REPARTIDOR_NOTIFIABLE_CANCEL_STATES: OrderState[] = ["repartidor_asignado", "recogiendo", "en_camino_cliente"];
 
 async function cancelOpenPedido(pedido: PedidoV2Record, telefono: string, reason: string): Promise<void> {
   await pedidoRepositoryV2.setPedidoEstado({ pedidoId: pedido.id, estado: "cancelado" });
@@ -817,35 +820,12 @@ async function cancelOpenPedido(pedido: PedidoV2Record, telefono: string, reason
     payload: { reason },
   });
 
-  // Aviso a la tienda (bug confirmado en producción agosto 2026): sin esto,
-  // la tienda se queda cotizando o esperando una decisión sobre un pedido
-  // que el cliente ya canceló, y podría responder #PRECIO para nada.
-  if (TIENDA_NOTIFIABLE_CANCEL_STATES.includes(pedido.estado)) {
-    const businessPhone = String(pedido.snapshot_json.businessPhone ?? "").trim();
-    if (businessPhone) {
-      const tiendaTelefono = ensureMxWhatsappIntl(businessPhone);
-      const businessId =
-        typeof pedido.snapshot_json.businessId === "number" ? pedido.snapshot_json.businessId : null;
-      await outboxRepository
-        .enqueueOutboundMessage({
-          pedidoId: pedido.id,
-          tipoMensaje: "cotizacion_tienda",
-          destinatarioTipo: "negocio",
-          destinatarioId: businessId,
-          telefonoDestino: tiendaTelefono,
-          payload: { body: `🏪 *Pedido #${pedido.id}*\n\nEl cliente lo canceló. Ya no hace falta que le des seguimiento.` },
-          idempotencyKey: `pedido:${pedido.id}:cliente_cancelo:aviso_tienda:v1`,
-        })
-        .catch((e: unknown) => {
-          console.error("[mandalo] no se pudo avisar a la tienda de la cancelación", { pedidoId: pedido.id, message: getErrorMessage(e) });
-        });
-    } else {
-      console.error("[mandalo] cancelación sin businessPhone en snapshot, no se pudo avisar a la tienda", {
-        pedidoId: pedido.id,
-        estado: pedido.estado,
-      });
-    }
-  }
+  await notifyCancelParties(pedido).catch((e: unknown) => {
+    console.error("[mandalo] no se pudo avisar la cancelación a tienda o repartidor", {
+      pedidoId: pedido.id,
+      message: getErrorMessage(e),
+    });
+  });
 
   // Reporte semanal (brief sección 5): contador agregado, no guarda nada del
   // pedido en sí. Best-effort — nunca debe tumbar el cierre real del pedido.
@@ -857,6 +837,32 @@ async function cancelOpenPedido(pedido: PedidoV2Record, telefono: string, reason
   // cliente. Va al final: nada más queda pendiente de encolar sobre este
   // pedidoId después de este punto en ninguno de los dos llamadores.
   await pedidoRepositoryV2.finalizePedidoRetention({ pedidoId: pedido.id, customerPhone: telefono });
+}
+
+async function notifyCancelParties(pedido: PedidoV2Record): Promise<void> {
+  const full = await pedidoRepositoryV2.getPedidoById(pedido.id).catch(() => null);
+  const storePhone = String(full?.tienda?.telefono ?? pedido.snapshot_json.businessPhone ?? "").trim();
+  if (TIENDA_NOTIFIABLE_CANCEL_STATES.includes(pedido.estado) && storePhone) {
+    await sendWhatsApp(
+      ensureMxWhatsappIntl(storePhone),
+      `🏪 *Pedido #${pedido.id}*\n\nEl cliente lo canceló. Ya no hace falta que le des seguimiento.`,
+    );
+  }
+  const courierId = full?.repartidorId ?? null;
+  if (courierId == null && !REPARTIDOR_NOTIFIABLE_CANCEL_STATES.includes(pedido.estado)) return;
+  const phone = courierId == null ? "" : await repartidorPhone(courierId);
+  if (!phone) return;
+  await sendWhatsApp(
+    ensureMxWhatsappIntl(phone),
+    `🛵 *Pedido #${pedido.id}*\n\nEl cliente lo canceló. Ya no hace falta entregarlo.`,
+  );
+}
+
+async function repartidorPhone(repartidorId: number): Promise<string> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase.from("repartidores").select("telefono").eq("id", repartidorId).maybeSingle();
+  if (error || !data?.telefono) return "";
+  return String(data.telefono).trim();
 }
 
 // Folio corto y visible (brief sección 3): el id numérico del pedido hace de
@@ -2865,23 +2871,6 @@ async function steerCustomerFlow(params: {
     if (saved) outgoing = saved;
   }
 
-  if (decision.action === "escalate_cancel" && params.openPedido) {
-    await outboxRepository
-      .enqueueAdminNotification({
-        pedidoId: params.openPedido.id,
-        tipo: "cancelacion_tardia",
-        contenido:
-          `Cliente pide cancelar un pedido ya avanzado\n\n` +
-          `Tel: ${params.telefono}\n` +
-          `Pedido: #${params.openPedido.id}\n` +
-          `Estado actual: ${params.openPedido.estado}\n` +
-          `Mensaje: ${params.mensaje}`,
-      })
-      .catch((e: unknown) => {
-        console.error("[mandalo] no se pudo escalar cancelación tardía al admin", { message: getErrorMessage(e) });
-      });
-  }
-
   if ((decision.action === "cancel" || decision.action === "restart") && params.openPedido && !isTerminalState(params.openPedido.estado)) {
     await cancelOpenPedido(params.openPedido, params.telefono, decision.action === "restart" ? "hard_reset" : "cliente_cancelo").catch(
       (e: unknown) => {
@@ -2972,23 +2961,13 @@ async function handleClienteMessage(
     (openPedido.estado === "seleccion_productos" || openPedido.estado === "confirmacion_cliente");
   if (shouldEscalateComplaint(mensaje, { editingOrder })) {
     await guardarMensajeChat({ telefono, texto: String(mensaje ?? ""), estado: "cliente" }).catch(() => {});
-    await outboxRepository
-      .enqueueAdminNotification({
-        pedidoId: openPedido?.id ?? null,
-        tipo: "queja_cliente",
-        contenido:
-          `Queja de cliente\n\n` +
-          `Tel: ${telefono}\n` +
-          `${openPedido ? `Pedido relacionado: #${openPedido.id}\n` : ""}` +
-          `Mensaje: ${mensaje}`,
-      })
-      .catch((e: unknown) => {
-        console.error("[mandalo] no se pudo escalar queja al admin", { message: getErrorMessage(e) });
-      });
-    const msg = "🙏 Ya avisé a nuestro equipo de lo que pasó.\n\nTe van a contactar directo para resolverlo.\n\nGracias por avisarnos.";
+    const msg =
+      "Cuéntame qué pasó y lo vemos.\n\n" +
+      "Puedo corregir el pedido, cancelarlo o armar uno nuevo. Dime cuál.\n\n" +
+      "Si vas a pedir, elige: *Abarrotes*, *Restaurantes* o *Carnicerías*.";
     await sendWhatsApp(telefono, msg);
     await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
-    return { ok: true, role: "cliente", accion: "queja_escalada" };
+    return { ok: true, role: "cliente", accion: "queja_atendida" };
   }
 
   // Un saludo sobre un pedido que lleva más de 2 horas sin moverse no reabre
@@ -3014,17 +2993,8 @@ async function handleClienteMessage(
     }
   }
 
-  // Cancelación / hard reset (prioridad absoluta): dispara igual sin importar
-  // si la frase fue el reset explícito ("pedido nuevo") o lenguaje natural de
-  // cancelación ("ya no lo quiero"). CLAUDE.md Sección 5 regla 7: la
-  // cancelación es gratuita mientras el CLIENTE no haya confirmado el precio
-  // final con SÍ — confirmado_tiendas (tienda ya cotizó, esperando ese SÍ)
-  // sigue siendo gratuita, corregido agosto 2026 (antes el corte se ponía en
-  // cuanto la tienda cotizaba, no en cuanto el cliente confirmaba). De
-  // dispatch_repartidor_pendiente en adelante ya no es autoservicio simple,
-  // así que en vez de cancelar y borrar solo, escalamos al admin (mismo
-  // mecanismo que isComplaintMessage) porque puede haber un repartidor ya en
-  // camino físico.
+  // "pedido nuevo" en captura reinicia de una vez. Cancelar, en cualquier
+  // fase, primero pregunta sí o no. Si el ruteo ya contestó, no llega aquí.
   const steered = await steerCustomerFlow({
     telefono,
     mensaje,
@@ -3050,29 +3020,12 @@ async function handleClienteMessage(
     const pastFreeCancelWindow =
       hasActivePedido && openPedido != null && PAST_FREE_CANCEL_WINDOW.includes(openPedido.estado);
 
-    if (pastFreeCancelWindow && openPedido) {
+    if (wantsCancel || (pastFreeCancelWindow && wantsNewOrder)) {
       await guardarMensajeChat({ telefono, texto: String(mensaje ?? ""), estado: "cliente" }).catch(() => {});
-      await outboxRepository
-        .enqueueAdminNotification({
-          pedidoId: openPedido.id,
-          tipo: "cancelacion_tardia",
-          contenido:
-            `Cliente pide cancelar un pedido ya avanzado\n\n` +
-            `Tel: ${telefono}\n` +
-            `Pedido: #${openPedido.id}\n` +
-            `Estado actual: ${openPedido.estado}\n` +
-            `Mensaje: ${mensaje}`,
-        })
-        .catch((e: unknown) => {
-          console.error("[mandalo] no se pudo escalar cancelación tardía al admin", { message: getErrorMessage(e) });
-        });
-      const msg =
-        `🧾 *Pedido #${openPedido.id}*\n\n` +
-        `Ya está en proceso avanzado, así que no puedo cancelarlo yo solo.\n\n` +
-        `Ya avisé a nuestro equipo. Te van a contactar directo.`;
+      const msg = "¿Quieres cancelar el pedido? Sí o No";
       await sendWhatsApp(telefono, msg);
       await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
-      return { ok: true, role: "cliente", accion: "cancelacion_escalada", pedidoId: openPedido.id };
+      return { ok: true, role: "cliente", accion: "confirmar_cancelacion", pedidoId: openPedido?.id ?? null };
     }
 
     if (hasActivePedido && openPedido) {

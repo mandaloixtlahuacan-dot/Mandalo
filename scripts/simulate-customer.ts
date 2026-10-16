@@ -382,7 +382,164 @@ async function main(): Promise<void> {
         };
       },
     },
+    {
+      id: "queja-pedido",
+      title: "Queja: está mal mi pedido",
+      run: async () => {
+        const phone = "5213310001011";
+        const turns = [await say(phone, "hola"), await say(phone, "está mal mi pedido")];
+        return complaintVerdict(turns);
+      },
+    },
+    {
+      id: "hablar-con-alguien",
+      title: "Quiere hablar con alguien",
+      run: async () => {
+        const phone = "5213310001012";
+        const turns = [await say(phone, "hola"), await say(phone, "quiero hablar con alguien")];
+        return complaintVerdict(turns);
+      },
+    },
+    {
+      id: "cancelar-antes-despacho",
+      title: "Cancelación antes de despacho",
+      run: async () => {
+        const phone = "5213310001013";
+        const turns = [...(await shop(phone, "abarrotes", "Peke's")), await say(phone, "leche"), await say(phone, "cancela"), await say(phone, "sí")];
+        return cancelVerdict(turns, { greeting: true, store: false, courier: false });
+      },
+    },
+    {
+      id: "cancelar-tienda",
+      title: "Cancelación después de mandar a la tienda",
+      run: async () => {
+        const phone = "5213310001014";
+        await seedLiveOrder(phone, "pendiente_tiendas", null);
+        const turns = [await say(phone, "cancela"), await say(phone, "sí")];
+        const verdict = cancelVerdict(turns, { greeting: true, store: true, courier: false });
+        verdict.verdict.detail = `Pedido sembrado en pendiente_tiendas (no es un despacho en vivo). ${verdict.verdict.detail}`;
+        return verdict;
+      },
+    },
+    {
+      id: "cancelar-repartidor",
+      title: "Cancelación con repartidor asignado",
+      run: async () => {
+        const phone = "5213310001015";
+        await seedLiveOrder(phone, "repartidor_asignado", 1);
+        const turns = [await say(phone, "cancela"), await say(phone, "sí")];
+        const verdict = cancelVerdict(turns, { greeting: true, store: true, courier: true });
+        verdict.verdict.detail = `Pedido sembrado en repartidor_asignado (no es un despacho en vivo). ${verdict.verdict.detail}`;
+        return verdict;
+      },
+    },
+    {
+      id: "cancelar-no",
+      title: "No a la pregunta de cancelar",
+      run: async () => {
+        const phone = "5213310001016";
+        const turns = [...(await shop(phone, "abarrotes", "Peke's")), await say(phone, "leche"), await say(phone, "cancela"), await say(phone, "no")];
+        const reply = customerText(turns.slice(-1));
+        const stayed = /seguimos con tu pedido/i.test(reply);
+        const stillOpen = db.rows("pedidos").some((row) => String(row.cliente_telefono) === phone && row.estado === "seleccion_productos");
+        const admins = db.rows("admin_notificaciones").length;
+        const problems: string[] = [];
+        if (!stayed) problems.push('con no no dijo "Va, seguimos con tu pedido."');
+        if (!stillOpen) problems.push("el pedido no siguió abierto");
+        if (admins) problems.push(`${admins} admin_notificaciones`);
+        return {
+          turns,
+          verdict: {
+            status: problems.length ? "FALLA" : "PASA",
+            detail: problems.length ? problems.join(". ") : "Con no siguió el pedido y no avisó al admin.",
+          },
+        };
+      },
+    },
   ];
+
+  function complaintVerdict(turns: TurnRecord[]): { turns: TurnRecord[]; verdict: Verdict } {
+    const reply = customerText(turns.slice(-1));
+    const offers = /corregir/i.test(reply) && /abarrotes/i.test(reply);
+    const promisesContact = /contact|avis[eé] a nuestro equipo|te van a/i.test(reply);
+    const admins = db.rows("admin_notificaciones").length;
+    const problems: string[] = [];
+    if (!offers) problems.push("no ofreció ayuda ni las opciones de pedido");
+    if (promisesContact) problems.push("dijo que alguien lo va a contactar");
+    if (admins) problems.push(`${admins} admin_notificaciones`);
+    return {
+      turns,
+      verdict: {
+        status: problems.length ? "FALLA" : "PASA",
+        detail: problems.length ? problems.join(". ") : "Ofreció ayuda y opciones, sin avisar al admin.",
+      },
+    };
+  }
+
+  function cancelVerdict(
+    turns: TurnRecord[],
+    expect: { greeting: boolean; store: boolean; courier: boolean },
+  ): { turns: TurnRecord[]; verdict: Verdict } {
+    const asked = turns.length >= 2 ? customerText([turns[turns.length - 2]]) : "";
+    const after = customerText(turns.slice(-1));
+    const question = /quieres cancelar el pedido/i.test(asked) && /s[ií] o no/i.test(asked);
+    const greeting = /de d[oó]nde quieres/i.test(after);
+    const store = turns.some((turn) => turn.replies.some((row) => row.role === "tienda" && /cancel/i.test(row.body)));
+    const courier = turns.some((turn) => turn.replies.some((row) => row.role === "repartidor" && /cancel/i.test(row.body)));
+    const admins = db.rows("admin_notificaciones").length;
+    const problems: string[] = [];
+    if (!question) problems.push('no preguntó "¿Quieres cancelar el pedido? Sí o No"');
+    if (expect.greeting && !greeting) problems.push("con sí no volvió al saludo");
+    if (store !== expect.store) problems.push(expect.store ? "no avisó a la tienda" : "avisó a la tienda sin haberle mandado el pedido");
+    if (courier !== expect.courier) problems.push(expect.courier ? "no avisó al repartidor" : "avisó a un repartidor que no tenía el pedido");
+    if (admins) problems.push(`${admins} admin_notificaciones`);
+    return {
+      turns,
+      verdict: {
+        status: problems.length ? "FALLA" : "PASA",
+        detail: problems.length ? problems.join(". ") : "Preguntó, canceló con sí, avisó solo a quien ya tenía el pedido y no escribió admin_notificaciones.",
+      },
+    };
+  }
+
+  async function seedLiveOrder(phone: string, estado: string, repartidorId: number | null): Promise<void> {
+    await db.client().from("clientes").upsert({ telefono: phone, nombre: "Cliente sim", metadata_json: {} }, { onConflict: "telefono" });
+    const pedido = await db
+      .client()
+      .from("pedidos")
+      .insert({
+        cliente_telefono: phone,
+        estado,
+        repartidor_id: repartidorId,
+        servicio_mandalo: 0,
+        servicio_repartidor: 35,
+        metadata_json: {
+          capture_snapshot: {
+            businessId: 5,
+            businessPhone: PHONES.george,
+            businessName: "Hamburguesas Hotdogs George",
+            items: [{ nombre_producto: "Dogo Clásico", cantidad: 1 }],
+          },
+        },
+      })
+      .select("id")
+      .maybeSingle();
+    if (pedido.error || !pedido.data) throw new Error(pedido.error?.message ?? "no se sembró el pedido");
+    const pedidoId = Number((pedido.data as { id: number }).id);
+    const tienda = await db
+      .client()
+      .from("pedido_tiendas")
+      .insert({ pedido_id: pedidoId, tienda_id: 5, subtotal_tienda: 35, estado_tienda: "confirmado" })
+      .select("id")
+      .maybeSingle();
+    if (tienda.error || !tienda.data) throw new Error(tienda.error?.message ?? "no se sembró la tienda del pedido");
+    await db.client().from("pedido_items").insert({
+      pedido_tienda_id: Number((tienda.data as { id: number }).id),
+      nombre_producto: "Dogo Clásico",
+      cantidad: 1,
+      disponible: true,
+    });
+  }
 
   const written: string[] = [];
   const summary: Array<{ id: string; status: string; detail: string }> = [];

@@ -220,13 +220,13 @@ for (const phase of phases) {
     ? { action: "greeting", phase: "categoria", includes: ["Abarrotes"] }
     : { action: "greeting", phase });
   add("pedido nuevo", phase, "pedido nuevo", phase === "esperando_repartidor"
-    ? { action: "escalate_cancel", phase, includes: ["no puedo cancelarlo"] }
+    ? { action: "confirm_cancel", phase, includes: ["¿Quieres cancelar el pedido?"], clearCart: false }
     : { action: "restart", phase: "categoria", includes: ["Pedido anterior cancelado", "¿De dónde quieres?"] });
   add("empezar de nuevo", phase, "empezar de nuevo", phase === "esperando_repartidor"
-    ? { action: "escalate_cancel", phase }
+    ? { action: "confirm_cancel", phase, includes: ["¿Quieres cancelar el pedido?"], clearCart: false }
     : { action: "restart", phase: "categoria", includes: ["¿De dónde quieres?"] });
   add("inicio", phase, "inicio", phase === "esperando_repartidor"
-    ? { action: "escalate_cancel", phase }
+    ? { action: "confirm_cancel", phase, includes: ["¿Quieres cancelar el pedido?"], clearCart: false }
     : { action: "restart", phase: "categoria", includes: ["¿De dónde quieres?"] });
   add("menú", phase, "menú", locked
     ? { action: "tracking", phase }
@@ -249,18 +249,10 @@ for (const phase of phases) {
     : phase === "entregado"
       ? { action: "greeting", phase: "categoria" }
       : { action: phase === "categoria" || phase === "tienda" ? "back" : phase === "ejemplo" ? "show_niche" : "back", phase: phase === "categoria" || phase === "tienda" ? "categoria" : phase === "ejemplo" ? "tienda" : itemsFor(phase).length ? "pedido" : "ejemplo" });
-  add("cancela", phase, "cancela", phase === "esperando_repartidor"
-    ? { action: "escalate_cancel", phase }
-    : { action: "cancel", phase: "categoria", includes: ["cancelé", "¿De dónde quieres?"] });
-  add("ya no", phase, "ya no", phase === "esperando_repartidor"
-    ? { action: "escalate_cancel", phase }
-    : { action: "cancel", phase: "categoria", includes: ["cancelé"] });
-  add("olvídalo", phase, "olvídalo", phase === "esperando_repartidor"
-    ? { action: "escalate_cancel", phase }
-    : { action: "cancel", phase: "categoria" });
-  add("no quiero nada", phase, "no quiero nada", phase === "esperando_repartidor"
-    ? { action: "escalate_cancel", phase }
-    : { action: "cancel", phase: "categoria" });
+  add("cancela", phase, "cancela", { action: "confirm_cancel", phase, includes: ["¿Quieres cancelar el pedido?"], clearCart: false });
+  add("ya no", phase, "ya no", { action: "confirm_cancel", phase, includes: ["¿Quieres cancelar el pedido?"], clearCart: false });
+  add("olvídalo", phase, "olvídalo", { action: "confirm_cancel", phase, includes: ["¿Quieres cancelar el pedido?"], clearCart: false });
+  add("no quiero nada", phase, "no quiero nada", { action: "confirm_cancel", phase, includes: ["¿Quieres cancelar el pedido?"], clearCart: false });
   add("cuánto cuesta el envío", phase, "cuánto cuesta el envío", {
     action: "answer",
     phase: phase === "entregado" ? "categoria" : phase,

@@ -2,7 +2,14 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 16 de octubre de 2026. Las pruebas de pareo usan
+> Última actualización: 16 de octubre de 2026. Una queja o «quiero hablar
+> con alguien» se atiende en el chat, sin avisar al admin y sin prometer
+> que alguien va a llamar. Cancelar, en cualquier fase, pregunta «¿Quieres
+> cancelar el pedido? Sí o No»: el sí borra el pedido y vuelve al saludo;
+> el no sigue donde iba. Si la tienda o el repartidor ya tenían el pedido,
+> el aviso les llega directo por WhatsApp. Timeouts, alerta operativa y
+> sin repartidor no cambian. No está mergeado ni desplegado.
+> Actualización anterior: 16 de octubre de 2026. Las pruebas de pareo usan
 > el export real: George 56, La Central 19 y 1,278 filas de Peke's
 > (`scripts/fixtures/george-catalogo.json`, `lacentral-catalogo.json`,
 > `pekes-real.json`), con marca, presentación y alias vacíos. Ya no hay

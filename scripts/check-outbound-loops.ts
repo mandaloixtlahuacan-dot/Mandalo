@@ -294,7 +294,7 @@ assert(pinFallback != null && pinFallback !== ADDRESS_ASK_MESSAGE && pinFallback
 const phases: CustomerFlowPhase[] = ["categoria", "tienda", "ejemplo", "pedido", "ubicacion", "resumen", "esperando_tienda", "esperando_repartidor", "precio"];
 for (const phase of phases) {
   const cancel = customerDecision("ya no", phase, { store: phase === "categoria" || phase === "tienda" ? null : pekes });
-  assert(cancel.action === "cancel" || cancel.action === "escalate_cancel", `${phase}: ya no cancela o escala`);
+  assert(cancel.action === "confirm_cancel" && cancel.text.includes("¿Quieres cancelar el pedido?"), `${phase}: ya no pregunta si quiere cancelar`);
   assert(!cancel.text.includes("undefined") && !cancel.text.includes("NaN") && !cancel.text.includes("[object Object]"), `${phase}: el aviso de cancelar no trae basura`);
 }
 const switchAsk = cartSwitchQuestion(pekes.nombre, [{ nombre_producto: "Coca-Cola 600 ml", cantidad: 2 }], george.nombre);

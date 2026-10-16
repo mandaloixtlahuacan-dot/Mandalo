@@ -13,4 +13,10 @@ Peke's: 1278/1278 precios null.
 | george-completo | FALLA. Pidió el pin, pero al recibirlo lo rechazó (location_early): la fase guardada sigue en pedido, así que el GPS no cuenta todavía. |
 | sin-sentido | PASA. Contestó sin armar un pedido inventado. |
 | recomendacion | PASA. Contestó sin inventar un pedido. |
-| cancelar-a-medias | FALLA. no preguntó "¿Quieres cancelar el pedido? Sí o No" |
+| cancelar-a-medias | PASA. Preguntó, con sí volvió al saludo y no avisó al admin. |
+| queja-pedido | PASA. Ofreció ayuda y opciones, sin avisar al admin. |
+| hablar-con-alguien | PASA. Ofreció ayuda y opciones, sin avisar al admin. |
+| cancelar-antes-despacho | PASA. Preguntó, canceló con sí, avisó solo a quien ya tenía el pedido y no escribió admin_notificaciones. |
+| cancelar-tienda | PASA. Pedido sembrado en pendiente_tiendas (no es un despacho en vivo). Preguntó, canceló con sí, avisó solo a quien ya tenía el pedido y no escribió admin_notificaciones. |
+| cancelar-repartidor | PASA. Pedido sembrado en repartidor_asignado (no es un despacho en vivo). Preguntó, canceló con sí, avisó solo a quien ya tenía el pedido y no escribió admin_notificaciones. |
+| cancelar-no | PASA. Con no siguió el pedido y no avisó al admin. |

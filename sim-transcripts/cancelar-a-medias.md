@@ -1,8 +1,8 @@
 # Cancelación a media orden
 
-Veredicto: **FALLA**
+Veredicto: **PASA**
 
-no preguntó "¿Quieres cancelar el pedido? Sí o No"
+Preguntó, con sí volvió al saludo y no avisó al admin.
 
 Simulación en memoria. `ORDER_AGENT=on` solo en este proceso. El modelo es un `AgentModel` mock inyectado en `createOpenAIOrderAgentModel` (lo usa `runOrderAgentTurn`). No hubo llamada de red a OpenAI, Whapi ni Supabase.
 
@@ -90,6 +90,16 @@ Acción interna: `order_agent`
 
 **Mándalo → cliente:**
 
+¿Quieres cancelar el pedido? Sí o No
+
+Acción interna: `flow_confirm_cancel`
+
+### Turno 6
+
+**Cliente:** sí
+
+**Mándalo → cliente:**
+
 ✅ *Listo, cancelé tu pedido.*
 
 Cuando quieras hacer uno nuevo, aquí estoy.
@@ -107,23 +117,3 @@ Con gusto pido en la tienda, el restaurante o la carnicería que me digas y te l
 3. *Carnicerías*
 
 Acción interna: `flow_cancel`
-
-### Turno 6
-
-**Cliente:** sí
-
-**Mándalo → cliente:**
-
-👋 *¡Hola! Soy Mándalo, tu mandadero en Ixtlahuacán del Río.*
-
-Con gusto pido en la tienda, el restaurante o la carnicería que me digas y te lo llevo a la puerta.
-
-*¿De dónde quieres?*
-
-1. *Abarrotes*
-
-2. *Restaurantes*
-
-3. *Carnicerías*
-
-Acción interna: `flow_reprompt`

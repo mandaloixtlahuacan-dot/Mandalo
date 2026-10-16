@@ -66,6 +66,8 @@ export type FlowAction =
   | "show_niche"
   | "restart"
   | "cancel"
+  | "confirm_cancel"
+  | "decline_cancel"
   | "escalate_cancel"
   | "media"
   | "ignore"
@@ -196,6 +198,27 @@ function looksLikeStreetAddress(message: string): boolean {
   if (!text || text.length > 180) return false;
   if (/\b(calle|avenida|av|colonia|col|frente a|esquina|domicilio|entre la|numero|num|#|mz|manzana|lote|casa)\b/.test(text)) return true;
   return /\b\d{1,5}\b/.test(text) && /\b(hidalgo|juarez|morelos|allende|reforma|centro|ixtlahuacan)\b/.test(text);
+}
+
+const CANCEL_CONFIRM_QUESTION = "¿Quieres cancelar el pedido? Sí o No";
+
+function asksToConfirmCancel(text: string): boolean {
+  return /quieres cancelar el pedido/i.test(text);
+}
+
+function declinesCancel(message: string): boolean {
+  const text = whole(message);
+  return text === "no" || text === "no gracias" || text === "mejor no";
+}
+
+function confirmCancel(input: FlowRouteInput): FlowDecision {
+  return decision({
+    effect: "handled",
+    action: "confirm_cancel",
+    phase: input.phase,
+    nicheId: input.nicheId,
+    text: CANCEL_CONFIRM_QUESTION,
+  });
 }
 
 function isProductEdit(message: string): boolean {
@@ -579,6 +602,29 @@ export function routeCustomerFlow(input: FlowRouteInput): FlowDecision {
     return withReprompt(input, "", "reprompt");
   }
 
+  if (asksToConfirmCancel(input.lastBotText)) {
+    if (isYesConfirmation(message)) {
+      return decision({
+        effect: "handled",
+        action: "cancel",
+        phase: "categoria",
+        nicheId: null,
+        text: `✅ *Listo, cancelé tu pedido.*\n\nCuando quieras hacer uno nuevo, aquí estoy.\n\n${buildGreeting()}`,
+        clearStore: true,
+        clearCart: true,
+      });
+    }
+    if (declinesCancel(message)) {
+      return decision({
+        effect: "handled",
+        action: "decline_cancel",
+        phase: input.phase,
+        nicheId: input.nicheId,
+        text: "Va, seguimos con tu pedido.",
+      });
+    }
+  }
+
   const pendingTarget = pendingSwitchTarget(input.lastBotText);
   if (pendingTarget && (isYesConfirmation(message) || isSwitchNo(message))) {
     if (isSwitchNo(message)) return withReprompt(input, "", "reprompt");
@@ -597,15 +643,7 @@ export function routeCustomerFlow(input: FlowRouteInput): FlowDecision {
 
   const pastFree = input.phase === "esperando_repartidor";
   if (isNewOrderIntent(message) || text === "menu principal") {
-    if (pastFree) {
-      return withReprompt(
-        input,
-        input.orderId
-          ? `🧾 *Pedido #${input.orderId}*\n\nYa está en proceso avanzado, así que no puedo cancelarlo yo solo.\n\nYa avisé a nuestro equipo.`
-          : "Ese pedido ya va. Ya avisé a nuestro equipo.",
-        "escalate_cancel",
-      );
-    }
+    if (pastFree) return confirmCancel(input);
     const lead = isNewOrderIntent(message)
       ? `✅ *Pedido anterior cancelado.*\n\n${buildGreeting()}`
       : `✅ *Pedido anterior cancelado.*\n\n${buildGreeting()}`;
@@ -620,28 +658,7 @@ export function routeCustomerFlow(input: FlowRouteInput): FlowDecision {
     });
   }
 
-  if (isCancelIntent(message) && !isProductEdit(message)) {
-    if (pastFree) {
-      return decision({
-        effect: "handled",
-        action: "escalate_cancel",
-        phase: input.phase,
-        nicheId: input.nicheId,
-        text: input.orderId
-          ? `🧾 *Pedido #${input.orderId}*\n\nYa está en proceso avanzado, así que no puedo cancelarlo yo solo.\n\nYa avisé a nuestro equipo. Te van a contactar directo.`
-          : "Ese pedido ya va. Ya avisé a nuestro equipo.",
-      });
-    }
-    return decision({
-      effect: "handled",
-      action: "cancel",
-      phase: "categoria",
-      nicheId: null,
-      text: `✅ *Listo, cancelé tu pedido.*\n\nCuando quieras hacer uno nuevo, aquí estoy.\n\n${buildGreeting()}`,
-      clearStore: true,
-      clearCart: true,
-    });
-  }
+  if (isCancelIntent(message) && !isProductEdit(message)) return confirmCancel(input);
 
   if (isEmojiOnly(message)) {
     return withReprompt(input, "Con un emoji no alcanzo a anotar el pedido.", "reprompt");
