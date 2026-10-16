@@ -60,9 +60,13 @@ function buildStaleOrderMessage(pedidoId: number, currentEstado: OrderState | nu
     return `⚠️ El pedido ${pedidoId} ya está marcado como recogido.`;
   }
   if (currentEstado) {
-    return `⚠️ El pedido ${pedidoId} ya no está en el paso esperado para ese comando (estado actual: ${currentEstado}). Si tienes dudas, contacta al administrador.`;
+    return (
+      `⚠️ El pedido ${pedidoId} no está en el paso de *#${requestedAction}*.\n\n` +
+      `Estado actual: *${currentEstado}*.\n\n` +
+      COURIER_COMMAND_HELP
+    );
   }
-  return `⚠️ No pude confirmar el estado actual del pedido ${pedidoId}. Contacta al administrador antes de continuar.`;
+  return `⚠️ No pude leer el paso del pedido ${pedidoId}.\n\n${COURIER_COMMAND_HELP}`;
 }
 
 function toNullableNumber(value: unknown): number | null {
@@ -80,7 +84,11 @@ function cleanText(value: unknown): string | null {
 }
 
 export const COURIER_COMMAND_HELP =
-  "🛵 *Comando inválido.*\n\nUsa uno de estos formatos:\n\n#CONFIRMO 123\n\n#RECOGI 123\n\n#ENTREGADO 123";
+  "🛵 *Así se registra el paso.*\n\n" +
+  "Mayúsculas, con # y el número del pedido:\n\n" +
+  "#CONFIRMO 123\n\n" +
+  "#RECOGI 123\n\n" +
+  "#ENTREGADO 123";
 
 export function isExactCourierCommand(text: string): boolean {
   return parseStrictCourierCommand(text) != null;
@@ -152,10 +160,11 @@ export function createCourierCommandParser() {
     }): Promise<CourierCommandParseResult> {
       const parsed = parseStrictCourierCommand(params.text);
       if (!parsed) {
+        const shown = String(params.text ?? "").trim().slice(0, 80) || "(vacío)";
         return {
           ok: false,
           action: "invalid",
-          courierMessage: COURIER_COMMAND_HELP,
+          courierMessage: `🛵 No entendí «${shown}».\n\n${COURIER_COMMAND_HELP}`,
         };
       }
 
@@ -165,7 +174,9 @@ export function createCourierCommandParser() {
           ok: false,
           action: "invalid",
           courierMessage:
-            "🛵 No pude validar tu número como repartidor activo.\n\nUsa tu número registrado o contacta al administrador.",
+            "🛵 Este número no está registrado como repartidor activo.\n\n" +
+            "Usa el número con el que te diste de alta.\n\n" +
+            COURIER_COMMAND_HELP,
         };
       }
 
@@ -179,11 +190,20 @@ export function createCourierCommandParser() {
       }
 
       if (!validateCourierAssignment({ pedido, courier })) {
+        if (parsed.type === "CONFIRMO" && pedido.repartidorId != null && pedido.estado !== "dispatch_repartidor_pendiente") {
+          return {
+            ok: false,
+            action: "already_taken",
+            pedidoId: pedido.id,
+            courierMessage: COURIER_ORDER_TAKEN_MESSAGE,
+          };
+        }
         return {
           ok: false,
           action: "invalid",
           pedidoId: pedido.id,
-          courierMessage: "⚠️ Ese pedido no está asignado a tu número. Verifica el comando o contacta al administrador.",
+          courierMessage:
+            "⚠️ Ese pedido no está asignado a tu número.\n\nRevisa el número del pedido.\n\n" + COURIER_COMMAND_HELP,
         };
       }
 

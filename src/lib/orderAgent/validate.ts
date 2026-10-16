@@ -1,3 +1,4 @@
+import { formatMoney } from "@/lib/ordenes";
 import { closestAgentProducts, foldAgent, genericDogoProduct, isGenericDogoText, isOrderVerbOnly, stripOrderVerbs } from "@/lib/orderAgent/catalog";
 import {
   groceryClarityError,
@@ -208,14 +209,27 @@ function searchForText(searches: AgentSearchHit[], text: string): AgentSearchHit
   return null;
 }
 
+function optionPrice(product: AgentProduct): string | null {
+  if (product.price == null || !Number.isFinite(Number(product.price))) return null;
+  return formatMoney(Number(product.price));
+}
+
 export function formatProductOptions(query: string, products: AgentProduct[]): string {
   const rows = products.slice(0, 5);
   const lines = rows.map((product, index) => {
     const label = [product.brand, product.name, product.presentation].filter((part) => part && String(part).trim()).join(" ");
-    return `${index + 1}. ${label}`;
+    const price = optionPrice(product);
+    return price ? `${index + 1}. ${label} — ${price}` : `${index + 1}. ${label}`;
   });
   const title = query.trim() || rows[0]?.name || "este";
-  return `De ${title}, ¿cuál de estos?\n\n${lines.join("\n")}`;
+  const priced = rows.filter((product) => optionPrice(product));
+  const note =
+    rows.length > 0 && priced.length === 0
+      ? "\n\nLa tienda confirma el precio. Todavía no es un total cerrado."
+      : priced.length < rows.length
+        ? "\n\nDonde no hay monto, la tienda confirma el precio."
+        : "";
+  return `De ${title}, ¿cuál de estos?\n\n${lines.join("\n")}${note}`;
 }
 
 function marinadePrompt(products: AgentProduct[], query = ""): string | null {

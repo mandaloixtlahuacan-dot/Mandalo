@@ -12,6 +12,7 @@ import { formatNoCourierAdmin, formatNoCourierCustomer, formatNoCourierStore } f
 import { formatMoney } from "@/lib/ordenes";
 import { formatNameQtyLine, joinBlocks } from "@/lib/messageStyle";
 import { dispatchItemAlreadyShowsQty } from "@/lib/services/captureEngine";
+import { mandaloNow } from "@/lib/services/businessHours";
 import { buildOrderTimeoutMetadata } from "@/lib/services/orderTimeouts";
 import { resolveMapsLink } from "@/lib/services/geo";
 import { saveChatMessage } from "@/lib/messages";
@@ -62,7 +63,8 @@ function toCourierId(value: unknown): number | null {
  * Repartidores activos, disponibles y dentro de su horario semanal ahora.
  * Puede ser más de uno: el pedido se les ofrece a todos.
  */
-export async function findAvailableCouriers(now: Date = new Date()): Promise<ActiveCourier[]> {
+export async function findAvailableCouriers(now?: Date): Promise<ActiveCourier[]> {
+  const clock = now ?? mandaloNow();
   const supabase = getSupabaseAdmin();
   try {
     const { data, error } = await supabase
@@ -86,7 +88,7 @@ export async function findAvailableCouriers(now: Date = new Date()): Promise<Act
         horarioJson: record.horario_json,
       };
     });
-    return selectAvailableCouriers(rows, now).map((courier) => ({
+    return selectAvailableCouriers(rows, clock).map((courier) => ({
       id: courier.id,
       nombre: courier.nombre,
       telefono: courier.telefono,

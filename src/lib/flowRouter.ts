@@ -36,6 +36,7 @@ import {
 import { isOrderingSmallTalk, reaskForPhase, type OrderPhase } from "@/lib/orderSession";
 import { LIVE_LOCATION_REPLY, TEXT_ONLY_REPLY } from "@/lib/inboundMessage";
 import { ADDRESS_ASK_MESSAGE } from "@/lib/services/captureEngine";
+import { COVERAGE_REJECT_MESSAGE } from "@/lib/services/geo";
 import { formatHour12, MANDALO_HORA_APERTURA, MANDALO_HORA_CIERRE } from "@/lib/services/businessHours";
 import { formatMoney } from "@/lib/ordenes";
 
@@ -66,6 +67,8 @@ export type FlowAction =
   | "show_niche"
   | "restart"
   | "cancel"
+  | "confirm_cancel"
+  | "decline_cancel"
   | "escalate_cancel"
   | "media"
   | "ignore"
@@ -196,6 +199,27 @@ function looksLikeStreetAddress(message: string): boolean {
   if (!text || text.length > 180) return false;
   if (/\b(calle|avenida|av|colonia|col|frente a|esquina|domicilio|entre la|numero|num|#|mz|manzana|lote|casa)\b/.test(text)) return true;
   return /\b\d{1,5}\b/.test(text) && /\b(hidalgo|juarez|morelos|allende|reforma|centro|ixtlahuacan)\b/.test(text);
+}
+
+const CANCEL_CONFIRM_QUESTION = "¿Quieres cancelar el pedido? Sí o No";
+
+function asksToConfirmCancel(text: string): boolean {
+  return /quieres cancelar el pedido/i.test(text);
+}
+
+function declinesCancel(message: string): boolean {
+  const text = whole(message);
+  return text === "no" || text === "no gracias" || text === "mejor no";
+}
+
+function confirmCancel(input: FlowRouteInput): FlowDecision {
+  return decision({
+    effect: "handled",
+    action: "confirm_cancel",
+    phase: input.phase,
+    nicheId: input.nicheId,
+    text: CANCEL_CONFIRM_QUESTION,
+  });
 }
 
 function isProductEdit(message: string): boolean {
@@ -346,7 +370,13 @@ function repromptText(input: FlowRouteInput): { phase: CustomerFlowPhase; nicheI
 
 function withReprompt(input: FlowRouteInput, lead: string, action: FlowAction): FlowDecision {
   const again = repromptText(input);
-  const text = lead ? `${lead}\n\n${again.text}` : again.text;
+  let text = lead ? `${lead}\n\n${again.text}` : again.text;
+  const previous = String(input.lastBotText ?? "").trim();
+  if (previous && text.trim() === previous) {
+    const heard = String(input.message ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
+    const note = heard ? `No entendí «${heard}».` : "No te entendí.";
+    text = `${note}\n\n${again.text}`;
+  }
   return decision({
     effect: "handled",
     action,
@@ -405,11 +435,12 @@ function handledSwitch(input: FlowRouteInput, store: UxStore): FlowDecision {
   if (isLockedPhase(input.phase)) {
     return withReprompt(input, "Ese pedido ya salió de la tienda que elegiste. Para otro, escribe *pedido nuevo*.", "tracking");
   }
-  if (input.store && input.store.id !== store.id && input.items.length > 0) return askToReplaceCart(input, store.nombre);
+  if (input.store && input.store.id !== store.id && input.items.length > 0) return confirmCancel(input);
   return directSwitch(store, false);
 }
 
 function oneOrderAtATime(input: FlowRouteInput, otra: string): FlowDecision {
+  if (input.store && input.items.length > 0) return confirmCancel(input);
   const tienda = input.store?.nombre ?? "esta tienda";
   return withReprompt(
     input,
@@ -535,14 +566,13 @@ export function routeCustomerFlow(input: FlowRouteInput): FlowDecision {
   const text = whole(message);
 
   if (input.media === "location" && input.locationHasCoords !== false && input.locationInsideCoverage === false) {
+    const ordering = Boolean(input.store) || input.items.length > 0;
     return decision({
       effect: "handled",
       action: "location_reject",
-      phase: input.phase,
+      phase: ordering ? "ubicacion" : input.phase,
       nicheId: input.nicheId,
-      text:
-        "📍 *Por ahora Mándalo solo cubre entregas dentro de Ixtlahuacán del Río.*\n\n" +
-        "Tu ubicación quedó fuera de esa zona.\n\nEn cuanto ampliemos la cobertura te avisamos. ¡Gracias por tu interés!",
+      text: COVERAGE_REJECT_MESSAGE,
     });
   }
 
@@ -579,6 +609,29 @@ export function routeCustomerFlow(input: FlowRouteInput): FlowDecision {
     return withReprompt(input, "", "reprompt");
   }
 
+  if (asksToConfirmCancel(input.lastBotText)) {
+    if (isYesConfirmation(message)) {
+      return decision({
+        effect: "handled",
+        action: "cancel",
+        phase: "categoria",
+        nicheId: null,
+        text: `✅ *Listo, cancelé tu pedido.*\n\nCuando quieras hacer uno nuevo, aquí estoy.\n\n${buildGreeting()}`,
+        clearStore: true,
+        clearCart: true,
+      });
+    }
+    if (declinesCancel(message)) {
+      return decision({
+        effect: "handled",
+        action: "decline_cancel",
+        phase: input.phase,
+        nicheId: input.nicheId,
+        text: "Va, seguimos con tu pedido.",
+      });
+    }
+  }
+
   const pendingTarget = pendingSwitchTarget(input.lastBotText);
   if (pendingTarget && (isYesConfirmation(message) || isSwitchNo(message))) {
     if (isSwitchNo(message)) return withReprompt(input, "", "reprompt");
@@ -597,15 +650,7 @@ export function routeCustomerFlow(input: FlowRouteInput): FlowDecision {
 
   const pastFree = input.phase === "esperando_repartidor";
   if (isNewOrderIntent(message) || text === "menu principal") {
-    if (pastFree) {
-      return withReprompt(
-        input,
-        input.orderId
-          ? `🧾 *Pedido #${input.orderId}*\n\nYa está en proceso avanzado, así que no puedo cancelarlo yo solo.\n\nYa avisé a nuestro equipo.`
-          : "Ese pedido ya va. Ya avisé a nuestro equipo.",
-        "escalate_cancel",
-      );
-    }
+    if (pastFree) return confirmCancel(input);
     const lead = isNewOrderIntent(message)
       ? `✅ *Pedido anterior cancelado.*\n\n${buildGreeting()}`
       : `✅ *Pedido anterior cancelado.*\n\n${buildGreeting()}`;
@@ -620,28 +665,7 @@ export function routeCustomerFlow(input: FlowRouteInput): FlowDecision {
     });
   }
 
-  if (isCancelIntent(message) && !isProductEdit(message)) {
-    if (pastFree) {
-      return decision({
-        effect: "handled",
-        action: "escalate_cancel",
-        phase: input.phase,
-        nicheId: input.nicheId,
-        text: input.orderId
-          ? `🧾 *Pedido #${input.orderId}*\n\nYa está en proceso avanzado, así que no puedo cancelarlo yo solo.\n\nYa avisé a nuestro equipo. Te van a contactar directo.`
-          : "Ese pedido ya va. Ya avisé a nuestro equipo.",
-      });
-    }
-    return decision({
-      effect: "handled",
-      action: "cancel",
-      phase: "categoria",
-      nicheId: null,
-      text: `✅ *Listo, cancelé tu pedido.*\n\nCuando quieras hacer uno nuevo, aquí estoy.\n\n${buildGreeting()}`,
-      clearStore: true,
-      clearCart: true,
-    });
-  }
+  if (isCancelIntent(message) && !isProductEdit(message)) return confirmCancel(input);
 
   if (isEmojiOnly(message)) {
     return withReprompt(input, "Con un emoji no alcanzo a anotar el pedido.", "reprompt");
@@ -699,7 +723,7 @@ export function routeCustomerFlow(input: FlowRouteInput): FlowDecision {
     if (isLockedPhase(input.phase)) {
       return withReprompt(input, "Ese pedido ya va con la tienda elegida.", "tracking");
     }
-    if (input.store && input.items.length > 0) return askToReplaceCart(input, "otra tienda");
+    if (input.store && input.items.length > 0) return confirmCancel(input);
     if (!nicheId) return withReprompt(input, "Va, elige de nuevo.", "reprompt");
     const had = input.store != null;
     return showNiche(input, nicheId, had);
