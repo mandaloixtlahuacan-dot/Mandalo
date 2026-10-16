@@ -285,7 +285,9 @@ for (const phase of phases) {
     ? { action: "reprompt", phase: "categoria", includes: ["no está"] }
     : phase === "tienda"
       ? { action: "reprompt", phase: "tienda", includes: ["no está"] }
-      : { action: "reprompt", phase, includes: ["número"] });
+      : hasOpenCart(phase) && (phase === "pedido" || phase === "ubicacion")
+        ? { action: "agent", phase: "pedido" }
+        : { action: "reprompt", phase, includes: ["número"] });
   const visualMid =
     (phase === "ejemplo" || phase === "pedido" || phase === "ubicacion" || phase === "resumen") && Boolean(storeFor(phase));
   add("sticker", phase, "", visualMid
@@ -768,9 +770,23 @@ async function main(): Promise<void> {
     locationInsideCoverage: null,
     orderId: null,
   });
+  assert(bareStill.action === "agent" && !bareStill.text.includes("El número solo"), "un número con carrito se lo queda el agente");
+  const bareEmpty = routeCustomerFlow({
+    message: "4",
+    phase: "ejemplo",
+    nicheId: "abarrotes",
+    store: pekes,
+    stores,
+    items: [],
+    lastBotText: "",
+    awaitingProductConfirm: false,
+    media: "text",
+    locationInsideCoverage: null,
+    orderId: null,
+  });
   assert(
-    bareStill.action === "reprompt" && bareStill.text.includes("El número solo no me dice el producto"),
-    "sin pregunta pendiente el número solo sigue sin ser un producto",
+    bareEmpty.action === "reprompt" && bareEmpty.text.includes("El número solo no me dice el producto"),
+    "sin carrito y sin opciones el número solo sigue sin ser un producto",
   );
 
   const yesCart = routeCustomerFlow({

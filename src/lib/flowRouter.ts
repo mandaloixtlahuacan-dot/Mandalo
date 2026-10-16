@@ -729,7 +729,7 @@ export function routeCustomerFlow(input: FlowRouteInput): FlowDecision {
       return withReprompt(input, "Ese número no está en la lista.", "reprompt");
     }
     if (!input.awaitingProductConfirm) {
-      if (optionsOpen && ordering) return fallthrough({ ...input, phase: "pedido" }, "agent");
+      if (ordering && (optionsOpen || input.items.length > 0)) return fallthrough({ ...input, phase: "pedido" }, "agent");
       return withReprompt(input, "El número solo no me dice el producto.", "reprompt");
     }
   }
