@@ -111,6 +111,8 @@ function diminutiveFamily(token: string): string[] {
       stem = token.slice(0, -3);
       gender = "a";
     }
+    // Tronco de 4 («torrito» → «torro», «caeritos» → «caero»).
+    // El parecido de una letra no usa ese tronco: solo la palabra exacta.
     if (stem.length >= 4) bases.push(`${stem}${gender}`);
   }
   const forms: string[] = [];
@@ -392,13 +394,39 @@ function typoHit(field: string, token: string): boolean {
   return false;
 }
 
+/** Abreviaturas de empaque y etapa. No son productos: ET/etapa, CJ/caja, PZ/pieza. */
+const ABBREV_FORMS: Record<string, string[]> = {
+  et: ["etapa"],
+  etapa: ["et"],
+  cj: ["caja", "cajas"],
+  caja: ["cj"],
+  cajas: ["cj"],
+  pz: ["pieza", "piezas", "pza", "pzas"],
+  pza: ["pieza", "piezas", "pz"],
+  pzas: ["piezas", "pz"],
+  pieza: ["pz", "pza"],
+  piezas: ["pz", "pzas"],
+  paq: ["paquete", "paquetes"],
+  paquete: ["paq"],
+  paquetes: ["paq"],
+};
+
+function abbrevEqual(word: string, token: string): boolean {
+  if (!word || !token || word === token) return word === token && word.length > 0;
+  return (ABBREV_FORMS[token] ?? []).includes(word) || (ABBREV_FORMS[word] ?? []).includes(token);
+}
+
 /** Palabra completa, plural, sinónimo o falta de ortografía. No subcadena. */
 export function listaWordHit(word: string, token: string): boolean {
   if (!word || !token) return false;
+  if (abbrevEqual(word, token)) return true;
   for (const form of synonymForms(token)) {
     if (pluralEqual(word, form)) return true;
     if (sameNamePrefix(word, form)) return true;
     if (meaningSplit(word, form)) continue;
+    // El tronco de un diminutivo solo vale si es la palabra exacta.
+    // «caero» no se come «carro» por una letra.
+    if (form.length + 1 < token.length) continue;
     if (form.length >= 4 && word.length === form.length && word[0] === form[0] && editDistance(word, form) <= 1) return true;
     if (form.length >= 5 && Math.abs(word.length - form.length) <= 1 && word[0] === form[0] && editDistance(word, form) <= 1) return true;
     if (form.length >= 6 && word.length === form.length && commonPrefixLength(word, form) >= 4 && editDistance(word, form) <= 2) return true;
@@ -406,30 +434,31 @@ export function listaWordHit(word: string, token: string): boolean {
   return false;
 }
 
-function fieldHit(field: string, token: string): "includes" | "prefix" | "similar" | null {
+function fieldHit(field: string, token: string, exactOnly = false): "includes" | "prefix" | "similar" | null {
   if (!field || !token) return null;
   const words = field.split(" ").filter(Boolean);
   let similar = false;
   for (const form of synonymForms(token)) {
     if (words.some((word) => pluralEqual(word, form) || sameNamePrefix(word, form))) return "includes";
   }
+  if (exactOnly) return null;
   for (const word of words) {
     if (listaWordHit(word, token) || isSimilar(word, token) || typoHit(word, token)) similar = true;
   }
   return similar ? "similar" : null;
 }
 
-function bestHit(field: string, token: string): "includes" | "prefix" | "similar" | null {
+function bestHit(field: string, token: string, exactOnly = false): "includes" | "prefix" | "similar" | null {
   let best: "includes" | "prefix" | "similar" | null = null;
   const rank = { includes: 3, prefix: 2, similar: 1 };
   for (const form of synonymForms(token)) {
-    const hit = fieldHit(field, form);
+    const hit = fieldHit(field, form, exactOnly);
     if (hit && (!best || rank[hit] > rank[best])) best = hit;
   }
   return best;
 }
 
-function scoreToken(row: ListaProducto, token: string): number {
+function scoreToken(row: ListaProducto, token: string, exactOnly = false): number {
   const nombre = foldListaText(row.nombre);
   const marca = foldListaText(row.marca ?? "");
   const presentacion = foldListaText(row.presentacion ?? "");
@@ -437,35 +466,58 @@ function scoreToken(row: ListaProducto, token: string): number {
   const aliasText = aliases.join(" ");
   const weak = WEAK_TOKENS.has(token) ? 0.25 : 1;
   let score = 0;
-  const nombreHit = bestHit(nombre, token);
+  const nombreHit = bestHit(nombre, token, exactOnly);
   if (nombreHit === "includes" || nombreHit === "prefix") score += SCORE.nombreIncludes;
   else if (nombreHit === "similar") score += SCORE.nombreSimilar;
-  const marcaHit = bestHit(marca, token);
+  const marcaHit = bestHit(marca, token, exactOnly);
   if (marcaHit === "includes" || marcaHit === "prefix") score += SCORE.marcaIncludes;
   else if (marcaHit === "similar") score += SCORE.marcaSimilar;
-  const aliasHit = bestHit(aliasText, token);
+  const aliasHit = bestHit(aliasText, token, exactOnly);
   if (aliasHit === "includes" || aliasHit === "prefix") score += SCORE.aliasIncludes;
   else if (aliasHit === "similar") score += SCORE.aliasSimilar;
-  if (bestHit(presentacion, token) === "includes" || bestHit(presentacion, token) === "prefix") score += SCORE.presentacionIncludes;
+  if (bestHit(presentacion, token, exactOnly) === "includes" || bestHit(presentacion, token, exactOnly) === "prefix") score += SCORE.presentacionIncludes;
   // Una falta de una letra, o el diminutivo, gana al parecido suelto de trigramas.
   // Si no, «nepoli» se pierde entre docenas de palabras que solo se parecen.
-  if (token.length >= 4 && nombre.split(" ").some((word) => listaWordHit(word, token))) score += 14;
+  // El tronco corto («caero») solo cuenta si la palabra es esa, no «carro».
+  const named = nombre.split(" ").some((word) => exactOnly
+    ? synonymForms(token).some((form) => pluralEqual(word, form))
+    : listaWordHit(word, token));
+  if (token.length >= 4 && named) score += 14;
   // Palabra completa o el nombre que empieza con ella gana al pedazo
   // ("nito" dentro de cariñitos o gusanito).
-  return score * weak + exactNameBonus(nombre, token);
+  return score * weak + exactNameBonus(nombre, token, exactOnly);
 }
 
-function exactNameBonus(nombre: string, token: string): number {
+/** El tronco de un diminutivo más largo de la misma frase. Solo vale la palabra exacta. */
+function strictDiminutiveStem(token: string, tokens: string[]): boolean {
+  return tokens.some((other) => other !== token && other.length > token.length && diminutiveFamily(other).includes(token));
+}
+
+function exactNameBonus(nombre: string, token: string, exactOnly = false): number {
   if (!nombre || !token) return 0;
   let best = 0;
   const words = nombre.split(" ").filter(Boolean);
+  const first = words[0] ?? "";
   for (const form of synonymForms(token)) {
     if (!words.some((word) => pluralEqual(word, form))) continue;
-    const first = words[0] ?? "";
     if (pluralEqual(first, form) || nombre === form) best = Math.max(best, 28);
     else best = Math.max(best, 20);
   }
+  // «vove» es Vive, no Elvive: la primera palabra pesa más que una letra adentro.
+  if (!exactOnly && best < 22 && first && listaWordHit(first, token)) best = Math.max(best, 22);
   return best;
+}
+
+/** Palabras del nombre que el cliente no dijo. La variante más corta y cercana sube. */
+function unexplainedContent(nombre: string, tokens: string[]): number {
+  const words = nombre.split(" ").filter((word) => word.length >= 4 && !STOP.has(word));
+  if (!words.length || !tokens.length) return 0;
+  let extra = 0;
+  for (const word of words) {
+    if (tokens.some((token) => listaWordHit(word, token))) continue;
+    extra += 1;
+  }
+  return extra;
 }
 
 /**
@@ -528,16 +580,17 @@ export function rankListaByTokens(
   const cap = Math.max(1, Math.min(limit, LISTA_SEARCH_LIMIT));
   const required = (must ?? []).filter((token) => !isColorToken(token) && !WEAK_TOKENS.has(token));
   const colors = tokens.filter((token) => isColorToken(token));
-  const scored: Array<{ row: ListaProducto; score: number; index: number; mustHits: number }> = [];
+  const scored: Array<{ row: ListaProducto; score: number; index: number; mustHits: number; extra: number }> = [];
   rows.forEach((row, index) => {
     let score = 0;
     let distinctive = 0;
     for (const token of tokens) {
-      const part = scoreToken(row, token);
+      const part = scoreToken(row, token, strictDiminutiveStem(token, tokens));
       if (part <= 0) continue;
       score += part;
       if (!WEAK_TOKENS.has(token) && !isColorToken(token)) distinctive += 1;
     }
+    const extra = unexplainedContent(foldListaText(row.nombre), tokens);
     let mustHits = 0;
     for (const token of required) {
       if (scoreToken(row, token) > 0) mustHits += 1;
@@ -549,7 +602,7 @@ export function rankListaByTokens(
       const got = rowPackageKey(row);
       if (got && samePackage(packageKey, got)) score += 50;
     }
-    if (score >= LISTA_MIN_SCORE) scored.push({ row, score, index, mustHits });
+    if (score >= LISTA_MIN_SCORE) scored.push({ row, score, index, mustHits, extra });
   });
   let chosen = scored;
   if (required.length >= 2) {
@@ -560,7 +613,7 @@ export function rankListaByTokens(
     const painted = chosen.filter((entry) => colors.every((color) => rowText(entry.row).includes(color)));
     if (painted.length) chosen = painted;
   }
-  chosen.sort((a, b) => b.score - a.score || a.row.nombre.localeCompare(b.row.nombre) || a.index - b.index);
+  chosen.sort((a, b) => b.score - a.score || a.extra - b.extra || a.row.nombre.localeCompare(b.row.nombre) || a.index - b.index);
   return chosen.slice(0, cap).map((entry) => entry.row);
 }
 

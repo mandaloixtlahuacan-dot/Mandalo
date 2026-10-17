@@ -19,13 +19,19 @@
 > entra Kellogg's. La migración
 > `20261017_lista_diminutivos_tamanos.sql` NO está aplicada: reemplaza
 > la función amplia, conserva la palabra completa y agrega esos
-> diminutivos y tamaños. `scripts/check-pekes-broad.ts` (semilla
-> 20261017, 300 productos, las 97 categorías, tres formas de pedirlo)
-> quedó en 869 de 900 (96.6%). Lo que más falla es una falta de
-> ortografía cuya familia tiene más de 5 presentaciones y el tope de
-> opciones no alcanza esa fila. George y La Central siguen
-> igual. No está mergeado. No se llamó a OpenAI, no se mandó WhatsApp
-> y no se escribió en Supabase.
+> diminutivos y tamaños. El tope sigue en 5 opciones. Una falta no
+> anota sola: pregunta, y si la familia es grande dice que se puede
+> escribir otro tamaño o sabor. Abreviaturas ET/CJ/PZ, mayúsculas y
+> el número del nombre («7 Up», «ET 4») no parten el producto ni se
+> vuelven cantidad. `scripts/check-pekes-broad.ts` (300 productos,
+> las 97 categorías, tres formas de pedirlo) quedó en 894 de 900
+> (99.3%) con la semilla 20261017 y en 893 de 900 (99.2%) con la
+> semilla 20261018. No hubo productos de otro tipo en el carrito ni
+> preguntas sin opciones. Lo que queda son genéricos de una sola
+> palabra compartida («naranja», «marlboro») que anotan una fila, y
+> alguna falta que no encuentra la variante («chinita», «stcke»).
+> George y La Central siguen igual. No está mergeado. No se llamó a
+> OpenAI, no se mandó WhatsApp y no se escribió en Supabase.
 > Actualización anterior del mismo día: la búsqueda de Peke's
 > se prueba contra el catálogo completo (12,865 filas,
 > `scripts/fixtures/pekes-catalogo-completo.json.gz`). Si el cliente

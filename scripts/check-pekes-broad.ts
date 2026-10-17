@@ -1,10 +1,11 @@
 /**
  * Pedidos como los escribiría un cliente, sobre una muestra fija del
- * catálogo completo de Peke's. Semilla 20261017. Cubre todas las
- * categorías cuando la muestra es de al menos una fila por categoría.
+ * catálogo completo de Peke's. Semilla 20261017, o la que se pase.
+ * Cubre todas las categorías cuando la muestra es de al menos una fila
+ * por categoría.
  *
  *   npx tsx scripts/check-pekes-broad.ts
- *   npx tsx scripts/check-pekes-broad.ts 40
+ *   npx tsx scripts/check-pekes-broad.ts 300 20261018
  *
  * No llama a OpenAI, no manda WhatsApp y no escribe en Supabase.
  */
@@ -17,8 +18,8 @@ import { sharesProductType } from "../src/lib/orderAgent/match";
 import { listaWordHit } from "../src/lib/storeProductSearch";
 import { createSimAgentModel } from "./sim/agent-model";
 
-const SEED = 20261017;
-const TARGET = 0.95;
+const SEED = Number(process.argv[3] ?? 20261017);
+const TARGET = 0.98;
 
 type Fixture = {
   id: number;
@@ -165,8 +166,8 @@ function rareToken(name: string): string | null {
   return ranked[0]?.token ?? null;
 }
 
-function sampleProducts(size: number): Sample[] {
-  const rng = mulberry32(SEED);
+function sampleProducts(size: number, seed: number): Sample[] {
+  const rng = mulberry32(seed);
   const groups = new Map<string, AgentProduct[]>();
   for (const product of products) {
     const category = product.category?.trim() || "(sin categoría)";
@@ -248,12 +249,17 @@ function judgeGeneric(sample: Sample, cart: AgentLine[], reply: string): string 
 function judgeTypo(sample: Sample, message: string, cart: AgentLine[], reply: string): string | null {
   if (bareQuestion(reply)) return "pregunta sin opciones";
   if (otherType(message, cart, sample.id)) return "otro tipo en el carrito";
-  const foreign = cart.filter((line) => line.productId !== sample.id);
-  if (foreign.length) return `anotó otro producto (${foreign.map((line) => line.name).slice(0, 2).join(", ")})`;
-  if (cart.some((line) => line.productId === sample.id)) return null;
+  if (cart.length) return `anotó directo con falta (${cart.map((line) => line.name).slice(0, 2).join(", ")})`;
   const options = optionNames(reply);
+  if (!options.length || !/1\. \*/.test(reply)) {
+    if (/no contamos con/i.test(reply)) return "dijo que no hay";
+    return "pregunta sin opciones";
+  }
+  const asked = tokensOf(message);
+  const mixed = options.filter((name) => asked.some((part) => !wordHit(name, part)));
+  if (mixed.length) return `opción de otro tipo (${mixed[0]})`;
   if (options.some((name) => fold(name).includes(fold(sample.name)))) return null;
-  if (/no contamos con/i.test(reply)) return "dijo que no hay";
+  if (/tamañ|sabor|escríbelo/i.test(reply)) return null;
   return "las opciones no incluyen el producto";
 }
 
@@ -261,7 +267,8 @@ async function main(): Promise<void> {
   const requested = Number(process.argv[2] ?? 300);
   const size = Number.isFinite(requested) && requested >= 300 ? requested : Math.max(requested, 1);
   if (rows.length !== 12865) throw new Error(`el catálogo trae ${rows.length}, se esperaban 12865`);
-  const sample = size >= 300 ? sampleProducts(size) : sampleProducts(Math.max(size, 1)).slice(0, size);
+  if (!Number.isFinite(SEED)) throw new Error("la semilla no es un número");
+  const sample = size >= 300 ? sampleProducts(size, SEED) : sampleProducts(Math.max(size, 1), SEED).slice(0, size);
   const categories = new Set(products.map((product) => product.category?.trim() || "(sin categoría)"));
   if (size >= 300 && new Set(sample.map((item) => item.category)).size < categories.size) {
     throw new Error("la muestra no cubre todas las categorías");
@@ -319,7 +326,7 @@ async function main(): Promise<void> {
     console.log(`${count}\t${reason}`);
   }
   console.log("\nejemplos");
-  for (const failure of failures.slice(0, 15)) {
+  for (const failure of failures) {
     console.log(`${failure.kind}\t${failure.category}\t${failure.name}\t«${failure.message}»\t${failure.reason}`);
   }
   console.log(`\n[pekes-broad] ${passed}/${total} (${(100 * rate).toFixed(1)}%). Meta ${TARGET * 100}%.`);

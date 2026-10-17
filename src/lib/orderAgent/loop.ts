@@ -167,13 +167,13 @@ function questionsWithOptions(pending: AgentPending, products: AgentProduct[], l
       .map((id) => products.find((product) => product.id === id))
       .filter((row): row is AgentProduct => Boolean(row));
     if (rows.length) {
-      blocks.push(formatProductOptions(item.query || rows[0].name, rows));
+      blocks.push(formatProductOptions(item.query || rows[0].name, rows, true));
       continue;
     }
     if (/1\. \*/.test(item.question)) blocks.push(item.question);
   }
   // La nota de precio y el «responde con el número» van una sola vez.
-  const shared = /\n\n_(?:La tienda confirma el precio|Donde no hay monto|Responde con el número)\.[^_]*_/g;
+  const shared = /\n\n_(?:La tienda confirma el precio|Donde no hay monto|Responde con el número|Si es otro tamaño)[^_]*_/g;
   return blocks
     .map((block, index) => (index === blocks.length - 1 ? block : block.replace(shared, "").trim()))
     .filter(Boolean)

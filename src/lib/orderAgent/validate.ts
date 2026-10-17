@@ -18,6 +18,8 @@ import {
   optionsLookDifferent,
   orderClauses,
   presentationFromName,
+  catalogAsk,
+  foldCatalogName,
   productClause,
   productMentionedStrict,
   productTypeTokens,
@@ -271,7 +273,7 @@ function narrowAskedProducts(query: string, products: AgentProduct[]): AgentProd
   return unique;
 }
 
-export function formatProductOptions(query: string, products: AgentProduct[]): string {
+export function formatProductOptions(query: string, products: AgentProduct[], invite = false): string {
   const rows = narrowAskedProducts(query, products).slice(0, 5);
   const lines = rows.map((product, index) => {
     const price = optionPrice(product);
@@ -287,7 +289,8 @@ export function formatProductOptions(query: string, products: AgentProduct[]): s
       : priced.length < rows.length
         ? "\n\n_Donde no hay monto, la tienda confirma el precio._"
         : "";
-  return `❓ *De ${title}, ¿cuál de estos?*\n\n${lines.join("\n")}${note}\n\n_Responde con el número. Si no es, corrige el producto o escribe cancelar._`;
+  const more = invite && rows.length > 0 ? "\n\n_Si es otro tamaño o sabor, escríbelo._" : "";
+  return `❓ *De ${title}, ¿cuál de estos?*\n\n${lines.join("\n")}${note}${more}\n\n_Responde con el número. Si no es, corrige el producto o escribe cancelar._`;
 }
 
 function marinadePrompt(products: AgentProduct[], query = ""): string | null {
@@ -682,6 +685,14 @@ export function validateToolCall(params: {
     if (!product || !product.available) {
       return { ok: false, error: `El producto ${productId} no está en esta tienda.` };
     }
+    if (
+      store.category === "abarrotes"
+      && params.customerMessage
+      && foldCatalogName(product.name) === foldCatalogName(params.customerMessage)
+    ) {
+      qty = 1;
+      unit = "pz";
+    }
     const spoken = params.customerMessage ? spokenMeasure(params.customerMessage, product.name) : null;
     const namedSize = presentationFromName(product.name)?.key ?? "";
     const sizeAlreadyNamed = Boolean(
@@ -748,7 +759,12 @@ export function validateToolCall(params: {
       const piece = Boolean(params.customerMessage && isPieceCorrection(params.customerMessage));
       const clause = params.customerMessage ? foldAgent(productClause(params.customerMessage, product.name)) : "";
       const saidPack = !piece && /\b(cajas?|paquetes?)\b/.test(clause);
-      if (!already && packInName(product) && !saidPack) {
+      const exactName = Boolean(
+        params.customerMessage
+        && (foldCatalogName(product.name) === catalogAsk(params.customerMessage)
+          || foldCatalogName(product.name) === foldCatalogName(params.customerMessage)),
+      );
+      if (!already && packInName(product) && !saidPack && !exactName) {
         return { ok: false, error: "Es caja o paquete. Pregunta si la quiere así o en pieza." };
       }
       const wanted = clause ? spokenPackageSize(clause) : null;
