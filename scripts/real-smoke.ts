@@ -20,9 +20,9 @@ import {
   type AgentProduct,
   type AgentStore,
   type ToolCall,
-  type ToolName,
 } from "../src/lib/orderAgent";
 import { searchAgentProducts } from "../src/lib/orderAgent/catalog";
+import type { ToolName } from "../src/lib/orderAgent/types";
 import { orderAgentModel } from "../src/lib/orderAgent/env";
 import { orderAgentToolSchema } from "../src/lib/orderAgent/tools";
 

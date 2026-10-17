@@ -9,6 +9,7 @@ import { presentationFromName, productClause, spokenMeasure, spokenPackageSize, 
 import { formatProductOptions, openClarifications, upsertLine, validateToolCall, type AgentSearchHit } from "@/lib/orderAgent/validate";
 import type {
   AgentClarification,
+  AgentLine,
   AgentModel,
   AgentPending,
   AgentProduct,

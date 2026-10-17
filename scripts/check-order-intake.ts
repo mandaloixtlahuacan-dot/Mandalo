@@ -24,6 +24,7 @@ import {
 import type { AgentModelRequest } from "../src/lib/orderAgent/types";
 import { searchAgentProducts } from "../src/lib/orderAgent/catalog";
 import { rankListaCandidates } from "../src/lib/storeProductSearch";
+import type { ListaProducto } from "../src/lib/storeProductList";
 import { createSimAgentModel } from "./sim/agent-model";
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -109,8 +110,15 @@ const pekesProducts = asLista([...load("scripts/fixtures/pekes-real.json"), ...e
 const georgeProducts = agentProductsFromCatalog(buildCatalog(asRaw(load("scripts/fixtures/george-catalogo.json")), "restaurante"));
 const centralProducts = agentProductsFromCatalog(buildCatalog(asRaw(load("scripts/fixtures/lacentral-catalogo.json")), "carniceria"));
 
-function row(id: number, nombre: string, marca: string | null = null) {
+function row(id: number, nombre: string, marca: string | null = null): ListaProducto & { id: number } {
   return { id, nombre, marca, presentacion: null, categoria: null, alias: [], precio: null };
+}
+
+/** El ranking devuelve la misma fila. El id no está en el tipo ListaProducto. */
+function rankedId(item: ListaProducto | undefined): number | null {
+  if (!item) return null;
+  const id = (item as ListaProducto & { id?: number }).id;
+  return typeof id === "number" ? id : null;
 }
 
 function searchRank(): void {
@@ -124,11 +132,14 @@ function searchRank(): void {
   ];
   const pawer = rankListaCandidates(drinks, "pawer rojo", 8);
   assert(pawer.length > 0 && pawer.every((item) => /powerade/i.test(item.nombre)), `pawer rojo no cayó en Powerade: ${pawer.map((item) => item.nombre).join(", ")}`);
-  assert(pawer.some((item) => item.id >= 6088 && item.id <= 6485), "pawer no usa los Powerade 6088-6485");
+  assert(pawer.some((item) => {
+    const id = rankedId(item);
+    return id != null && id >= 6088 && id <= 6485;
+  }), "pawer no usa los Powerade 6088-6485");
   const halls = rankListaCandidates(drinks, "unas mentas halls", 5);
-  assert(halls[0]?.id === 7102, `Halls Menta no ganó: ${halls.map((item) => item.nombre).join(", ")}`);
+  assert(rankedId(halls[0]) === 7102, `Halls Menta no ganó: ${halls.map((item) => item.nombre).join(", ")}`);
   const pepsi = rankListaCandidates([row(30, "Refresco (Pepsi, Seven, Coca, Mirinda o Manzana)")], "Pepe si", 4);
-  assert(pepsi[0]?.id === 30, "Pepe si no encuentra el Refresco");
+  assert(rankedId(pepsi[0]) === 30, "Pepe si no encuentra el Refresco");
 }
 
 function contextReachesModel(): Promise<void> {
