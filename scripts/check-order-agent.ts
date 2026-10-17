@@ -830,7 +830,8 @@ async function main(): Promise<void> {
   assert(!pekesFirst.cart.some((item) => item.productId === 101 || item.productId === 104 || item.productId === 107), "con varias marcas no se elige una sola");
   assert(pekesFirst.cart.some((item) => item.productId === 108 && item.unit === "kg"), "el queso Chelita de la lista sí se anota");
   assert(pekesFirst.cart.some((item) => item.productId === 109), "el vaso 16 de la lista sí se anota");
-  assert(pekesFirst.reply.includes("Lala") && !pekesFirst.reply.includes("Tía Rosa"), "la primera pregunta es solo la leche, con opciones reales");
+  assert(pekesFirst.reply.includes("Lala") && pekesFirst.reply.includes("Tía Rosa"), "las dudas pendientes salen juntas, cada una con opciones");
+  assert(/1\. \*/.test(pekesFirst.reply), "la pregunta de la leche trae opciones numeradas");
   assert((pekesFirst.pending?.queue?.length ?? 0) >= 2, "tortillas y queso crema esperan en la cola");
 
   async function pickListed(message: string, cart: AgentLine[], productId: number, qty: number, unit: string, query: string) {
@@ -1130,9 +1131,9 @@ async function main(): Promise<void> {
     logEvent: () => {},
   });
   const jamonOptions = jamon.reply.split("\n").filter((line) => /^\d+\./.test(line.trim()));
-  assert(jamonOptions.length === 5, "el jamón pregunta máximo 5 opciones reales");
-  assert(jamon.reply.includes("FUD") && jamon.reply.includes("Capistrano") && !jamon.reply.includes("Extra"), "salen las primeras 5 marcas de jamón");
-  assert(!jamon.reply.includes("Lala") && !jamon.reply.includes("Trident"), "leche y chicles no van en el mismo mensaje");
+  assert(jamonOptions.length >= 5, "cada duda sale con opciones numeradas");
+  assert(jamon.reply.includes("FUD") && jamon.reply.includes("Capistrano") && !jamon.reply.includes("Extra"), "el jamón lista hasta 5 marcas");
+  assert(jamon.reply.includes("Lala") && jamon.reply.includes("Trident"), "leche y chicles también salen, con sus opciones");
   assert(!jamon.reply.includes("¿Están bien estos productos?"), "con la cola llena no se muestra la lista");
   assert(jamon.pending?.queue?.length === 2, "quedan dos productos en la cola");
   const storedAsk = snapshotFieldsFromAgentPending(jamon.pending as AgentPending);

@@ -20,6 +20,8 @@ import {
   presentationFromName,
   productClause,
   productMentionedStrict,
+  productTypeTokens,
+  sharesProductType,
   replacementLineId,
   uniqueHitMentioned,
   uncoveredClauses,
@@ -539,6 +541,12 @@ export function validateToolCall(params: {
     const parts = doubtParts(text);
     // En tienda con lista, varios productos en el mismo ask_customer no se muestran juntos.
     // Se pregunta el primero, con sus opciones reales, y el resto espera.
+    if (store.hasProductList && !ids.length && !/\bmarinad/.test(foldAgent(text))) {
+      return {
+        ok: false,
+        error: "No hay opciones reales. No preguntes sin lista. Si no está, di que no contamos con eso.",
+      };
+    }
     if (store.hasProductList && groups.length > 1) {
       const [first, ...rest] = groups;
       const head = clarificationOf(first.query, first.products, qty, askedUnit, axis);
@@ -562,6 +570,19 @@ export function validateToolCall(params: {
       if (named.length && !candidatesDiffer(products, named.map((product) => product.id), "marinade")) {
         return { ok: false, error: "No hay versión marinada y normal de ese corte. No preguntes eso." };
       }
+    }
+    if (store.hasProductList && ids.length) {
+      const rows = ids
+        .map((id) => products.find((item) => item.id === id))
+        .filter((row): row is AgentProduct => Boolean(row && row.available));
+      if (!rows.length) {
+        return { ok: false, error: "Esas opciones no están en la lista. No preguntes sin productos reales." };
+      }
+      const head = clarificationOf(query ?? text, rows, qty, askedUnit, axis);
+      text = head.question;
+      ids = head.candidateIds;
+      axis = head.axis;
+      query = head.query ?? query;
     }
     return {
       ok: true,
@@ -683,6 +704,17 @@ export function validateToolCall(params: {
       params.customerMessage && clauseResolvesTo(params.customerMessage, product, products, store),
     );
     const trusted = already || pendingAnswer || resolved;
+    const askedType = params.customerMessage ? productTypeTokens(params.customerMessage) : [];
+    if (
+      store.hasProductList
+      && params.customerMessage
+      && !already
+      && !pendingAnswer
+      && askedType.length > 0
+      && !sharesProductType(params.customerMessage, product)
+    ) {
+      return { ok: false, error: `El cliente no pidió ${optionLabel(product)}. No comparte el tipo de producto.` };
+    }
     const stretched = Boolean(
       params.customerMessage
       && !resolved

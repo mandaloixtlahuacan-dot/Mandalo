@@ -1,5 +1,5 @@
 import { foldAgent } from "@/lib/orderAgent/catalog";
-import { synonymForms } from "@/lib/storeProductSearch";
+import { listaWordHit, normalizeMeasureWords, synonymForms } from "@/lib/storeProductSearch";
 import type { AgentLine, AgentProduct, AgentUnit } from "@/lib/orderAgent/types";
 
 /**
@@ -20,12 +20,35 @@ const STOP = new Set([
   "paq", "botella", "botellas", "lata", "latas", "bolsa", "bolsas", "medio",
   "media", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve",
   "diez", "quiero", "quisiera", "dame", "das", "deme", "traeme", "tambien", "despues", "luego",
+  "cajita", "cajitas", "latita", "latitas", "bolsita", "bolsitas",
+  "paquetito", "paquetitos", "botellita", "botellitas",
   "perdon", "disculpa", "agrega", "agregame", "anota", "anotame", "porfa", "porfavor", "favor",
   "entonces", "recia", "reciona", "solo", "esta", "mala", "mal", "mas", "muy", "bien", "the",
 ]);
 
 function wordsOf(value: string): string[] {
   return foldAgent(value).split(" ").filter(Boolean);
+}
+
+const SIZE_TOKEN = new Set(["cuarto", "cuartos", "8oz", "250ml", "500ml", "litro", "litros"]);
+
+/** Cómo viene el producto. No es otro producto: «Lala entera» sigue siendo Lala. */
+const VARIANT_WORD = new Set([
+  "entera", "enteras", "entero", "enteros", "deslactosada", "deslactosado",
+  "light", "diet", "semidescremada", "descremada", "natural", "original",
+  "clasica", "clasico", "adobada", "adobado",
+]);
+
+/** El sustantivo del producto. Empaque, cantidad y «con tapa» no cuentan. */
+export function productTypeTokens(clause: string): string[] {
+  const folded = foldAgent(normalizeMeasureWords(clause))
+    .replace(/\bsin sabor\b/g, " ")
+    .replace(/\bcon\s+(?:tapitas?|tapas?|popotes?)\b/g, " ");
+  const tokens = contentTokens(folded).filter((token) => !SIZE_TOKEN.has(token));
+  const withoutVariant = tokens.filter((token) => !VARIANT_WORD.has(token));
+  const base = withoutVariant.length ? withoutVariant : tokens;
+  const specific = base.filter((token) => !CATEGORY_WORD.has(token));
+  return specific.length ? specific : base;
 }
 
 export function contentTokens(value: string): string[] {
@@ -119,7 +142,15 @@ function tokenIn(text: string, token: string): boolean {
   if (token === "coca" && /\bcolas?\b/.test(text)) return true;
   const stem = token.endsWith("s") && token.length > 4 ? token.slice(0, -1) : token;
   if (new RegExp(`\\b${stem}s?\\b`).test(text)) return true;
-  return text.split(" ").some((word) => word.length >= 4 && (token.startsWith(word) || word.startsWith(token)));
+  // «lecheras» no está cubierto por «leche»: el pedazo corto no cuenta.
+  // Sí cuenta el diminutivo (vasitos / vaso) o un plural de hasta 3 letras.
+  return text.split(" ").some((word) => {
+    if (word.length < 4 || token.length < 4) return false;
+    if (word.startsWith(token) && word.length - token.length <= 3) return true;
+    if (!token.startsWith(word)) return false;
+    const rest = token.slice(word.length);
+    return rest.length > 0 && rest.length <= 4 && /^(?:s|es|ito|ita|itos|itas)$/.test(rest);
+  });
 }
 
 function requiredTokens(name: string, message: string): string[] {
@@ -231,9 +262,13 @@ function spokenKilo(text: string): boolean {
 
 const SIZE_WORD = new Set(["lts", "lt", "ltr", "ltrs", "gr", "grs", "mls", "kgs"]);
 
-/** Tamaño de empaque dicho por el cliente: «2 litros», «2 l», «62 g». El kilo suelto es cantidad. */
+/** Tamaño de empaque dicho por el cliente: «2 litros», «2 l», «62 g», «cuarto». El kilo suelto es cantidad. */
 export function spokenPackageSize(text: string): string | null {
-  const folded = foldAgent(text);
+  const folded = foldAgent(normalizeMeasureWords(text));
+  const household = !/\b(?:jamon|kilo|kilos|kg|gramo|gramos)\b/.test(folded);
+  if (household && /\b(?:cuartos?|8oz|250ml)\b/.test(folded)) return "250ml";
+  if (/\bmedio\b/.test(folded) && /\blitros?\b/.test(folded)) return "500ml";
+  if (/\b500ml\b/.test(folded)) return "500ml";
   const ml = folded.match(/\b(\d+(?:[.,]\d+)?)\s*ml\b/);
   if (ml) return `${ml[1].replace(",", ".")}ml`;
   const liters = folded.match(/\b(\d+(?:[.,]\d+)?)\s*(?:l|lt|lts|litros?)\b/);
@@ -272,6 +307,12 @@ function mostSpecific(hits: AgentProduct[], message: string): AgentProduct[] {
  * salvo que el cliente haya dicho caja o paquete.
  */
 export function messageSelectsProduct(product: AgentProduct, siblings: AgentProduct[], message: string): boolean {
+  const said = normalizedAsk(productClause(message, product.name));
+  if (said && foldAgent(product.name) === said) {
+    const same = siblings.filter((row) => foldAgent(row.name) === said);
+    const longer = siblings.some((row) => row.id !== product.id && foldAgent(row.name).startsWith(`${said} `));
+    if (!longer && same.length === 1) return same[0].id === product.id;
+  }
   const clause = productClause(message, product.name);
   const text = foldAgent(clause);
   const piece = isPieceCorrection(message);
@@ -422,7 +463,9 @@ const CLAUSE_SPLIT = new RegExp(
   "i",
 );
 
-export function orderClauses(message: string): string[] {
+const QTY_ONLY = /^(?:un|una|uno|unos|unas|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|medio|media|\d+)\.?$/;
+
+function splitOneLine(message: string): string[] {
   const parts = String(message ?? "")
     .split(CLAUSE_SPLIT)
     .map((part) => part.trim())
@@ -436,6 +479,47 @@ export function orderClauses(message: string): string[] {
     else merged.push(part);
   }
   return merged;
+}
+
+/** Un renglón es un producto. «Dos.» suelto se pega al siguiente o se ignora. */
+export function orderClauses(message: string): string[] {
+  const lines = String(message ?? "").split(/\n+/);
+  const clauses: string[] = [];
+  let carry = "";
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (QTY_ONLY.test(foldAgent(line))) {
+      carry = line.replace(/\.+$/g, "").trim();
+      continue;
+    }
+    const text = carry ? `${carry} ${line}` : line;
+    carry = "";
+    clauses.push(...splitOneLine(text));
+  }
+  return clauses;
+}
+
+/** Lo que el cliente dijo, sin la cantidad del principio. Sirve para el nombre exacto. */
+export function normalizedAsk(clause: string): string {
+  return foldAgent(normalizeMeasureWords(clause))
+    .replace(/^(?:un|una|uno|unos|unas|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|\d+)\s+/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function sharesProductType(
+  message: string,
+  product: { name: string; brand?: string | null; presentation?: string | null; alias?: string[] | null },
+): boolean {
+  const clauses = orderClauses(message);
+  const pieces = clauses.length ? clauses : [message];
+  const blob = foldAgent([product.name, product.brand ?? "", product.presentation ?? "", ...(product.alias ?? [])].join(" "));
+  return pieces.some((clause) => {
+    const tokens = productTypeTokens(clause);
+    if (!tokens.length) return false;
+    return tokens.every((token) => tokenInLoose(blob, token));
+  });
 }
 
 /** Palabras de categoría. «galletas marías» ya está cubierto si el carrito trae marías. */
@@ -463,8 +547,10 @@ function tokensCovered(tokens: string[], blob: string): boolean {
 
 function tokenInLoose(text: string, token: string): boolean {
   if (tokenIn(text, token)) return true;
+  const words = text.split(" ").filter(Boolean);
   for (const form of synonymForms(token)) {
     if (form !== token && tokenIn(text, form)) return true;
+    if (words.some((word) => listaWordHit(word, form))) return true;
   }
   return false;
 }

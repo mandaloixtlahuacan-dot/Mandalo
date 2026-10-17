@@ -2,7 +2,31 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 17 de octubre de 2026. La búsqueda de Peke's
+> Última actualización: 17 de octubre de 2026. En Peke's un pedido
+> de varios renglones ya no junta pedazos ni anota lo que sobró.
+> «Dos.» suelto se pega al renglón de abajo. Cada cosa que entra al
+> carrito pasa por el validador y tiene que ser del mismo tipo que
+> pidió el cliente: «cajitas» no es Kellogg's. Si hay duda, salen
+> todas las preguntas juntas, cada una con opciones numeradas; si no
+> hay opciones, se dice que no contamos con eso. «Cuáles tienes?»
+> vuelve a listar las opciones sin llamar al modelo. La búsqueda
+> entiende diminutivos y tamaños en general (vasitos → vaso, cuarto
+> = 1/4 = 250 ml = 8 oz, medio litro = 500 ml) y no recorta troncos
+> cortos («sanitas» no es «sana»). No hay sinónimos por producto.
+> El pedido real (grenetina, lechera, Clavel, queso crema, vasitos de
+> cuarto) pregunta grenetina y lechera con opciones, anota Clavel y
+> el queso crema de 190 g, y dice que no hay vasitos de cuarto. No
+> entra Kellogg's. La migración
+> `20261017_lista_diminutivos_tamanos.sql` NO está aplicada: reemplaza
+> la función amplia, conserva la palabra completa y agrega esos
+> diminutivos y tamaños. `scripts/check-pekes-broad.ts` (semilla
+> 20261017, 300 productos, las 97 categorías, tres formas de pedirlo)
+> quedó en 869 de 900 (96.6%). Lo que más falla es una falta de
+> ortografía cuya familia tiene más de 5 presentaciones y el tope de
+> opciones no alcanza esa fila. George y La Central siguen
+> igual. No está mergeado. No se llamó a OpenAI, no se mandó WhatsApp
+> y no se escribió en Supabase.
+> Actualización anterior del mismo día: la búsqueda de Peke's
 > se prueba contra el catálogo completo (12,865 filas,
 > `scripts/fixtures/pekes-catalogo-completo.json.gz`). Si el cliente
 > escribe nombre y presentación de un solo producto, se anota:

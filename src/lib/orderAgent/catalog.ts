@@ -40,14 +40,24 @@ export function searchAgentProducts(products: AgentProduct[], query: string, lim
   const cleaned = stripOrderVerbs(query);
   if (!cleaned) return [];
   const byId = new Map(products.map((product) => [product.id, product]));
+  const said = foldAgent(cleaned);
+  const exact = products.filter((product) => product.available && said.length >= 3 && foldAgent(product.name) === said);
   const ranked = rankListaCandidates(products.map(asLista), cleaned, limit);
   const found: AgentProduct[] = [];
+  const seen = new Set<number>();
+  for (const product of exact) {
+    if (seen.has(product.id)) continue;
+    seen.add(product.id);
+    found.push(product);
+  }
   for (const row of ranked) {
     const id = (row as ListaProducto & { id?: number }).id;
     const product = id != null ? byId.get(id) : undefined;
-    if (product && product.available) found.push(product);
+    if (!product || !product.available || seen.has(product.id)) continue;
+    seen.add(product.id);
+    found.push(product);
   }
-  return found;
+  return found.slice(0, Math.max(limit, exact.length));
 }
 
 export function closestAgentProducts(products: AgentProduct[], query: string, limit = 2): AgentProduct[] {

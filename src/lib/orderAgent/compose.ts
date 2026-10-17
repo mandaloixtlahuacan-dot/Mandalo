@@ -4,13 +4,15 @@
  * No inventa productos ni deja una línea en silencio.
  */
 import { foldAgent, genericDogoProduct, isGenericDogoText, searchAgentProducts } from "@/lib/orderAgent/catalog";
-import { isVagueListaQuery, listaRankTokens, listaWordHit, synonymForms } from "@/lib/storeProductSearch";
+import { isVagueListaQuery, listaRankTokens, listaWordHit, normalizeMeasureWords, synonymForms } from "@/lib/storeProductSearch";
 import {
   contentTokens,
   isPackProduct,
+  normalizedAsk,
   packInName,
   orderClauses,
   presentationFromName,
+  productTypeTokens,
   spokenMeasure,
   spokenPackageSize,
   variantFromMessage,
@@ -130,7 +132,7 @@ function brandSibling(token: string): string | null {
 }
 
 function clauseTokens(clause: string): string[] {
-  return contentTokens(clause).filter((token) => !SIZE_WORD.test(token) && token !== "litro" && token !== "litros");
+  return productTypeTokens(clause).filter((token) => !SIZE_WORD.test(token));
 }
 
 function coverage(product: AgentProduct, tokens: string[]): number {
@@ -158,6 +160,9 @@ function hasKilo(product: AgentProduct): boolean {
 
 function matchesPackage(product: AgentProduct, wanted: string | null): boolean {
   if (!wanted) return true;
+  const blob = foldAgent(normalizeMeasureWords(`${product.name} ${product.presentation ?? ""}`));
+  if (wanted === "250ml") return /\b(?:250ml|8oz|cuartos?)\b/.test(blob);
+  if (wanted === "500ml") return /\b500ml\b/.test(blob) || /\bmedio litro\b/.test(blob);
   const key = presentationFromName(`${product.name} ${product.presentation ?? ""}`)?.key ?? "";
   if (!key) return false;
   if (wanted.endsWith("l")) {
@@ -165,6 +170,50 @@ function matchesPackage(product: AgentProduct, wanted: string | null): boolean {
     return key === wanted || key === `${Number(n) * 1000}ml`;
   }
   return key === wanted;
+}
+
+function householdSize(clause: string): boolean {
+  const folded = foldAgent(normalizeMeasureWords(clause));
+  if (/\b(?:jamon|kilo|kilos|kg|gramo|gramos)\b/.test(folded)) return false;
+  return /\b(?:cuartos?|8oz|250ml|500ml)\b/.test(folded) || (/\bmedio\b/.test(folded) && /\blitros?\b/.test(folded));
+}
+
+/** Nombre completo de un solo producto: se anota. Si ese nombre es el principio de otro, se pregunta. */
+function exactNameDecision(clause: string, pool: AgentProduct[], store: AgentStore): ClauseDecision | null {
+  const said = normalizedAsk(clause);
+  if (!said || said.length < 3) return null;
+  const available = pool.filter((product) => product.available);
+  const same = available.filter((product) => foldAgent(product.name) === said);
+  if (!same.length) return null;
+  const longer = available.filter((product) => foldAgent(product.name).startsWith(`${said} `) && !same.some((row) => row.id === product.id));
+  if (longer.length) {
+    const options = [...same, ...longer].slice(0, 5);
+    const measure = lineQty(clause, options[0], store);
+    return {
+      kind: "ask",
+      clause,
+      query: said,
+      products: options,
+      qty: measure.qty,
+      unit: measure.unit,
+      marinade: false,
+    };
+  }
+  if (same.length > 1) {
+    const measure = lineQty(clause, same[0], store);
+    return {
+      kind: "ask",
+      clause,
+      query: said,
+      products: same.slice(0, 5),
+      qty: measure.qty,
+      unit: measure.unit,
+      marinade: false,
+    };
+  }
+  const product = same[0];
+  const qty = lineQty(clause, product, store);
+  return { kind: "add", clause, product, qty: qty.qty, unit: qty.unit, variant: null };
 }
 
 function lineQty(clause: string, product: AgentProduct, store: AgentStore): { qty: number; unit: AgentUnit } {
@@ -184,8 +233,10 @@ function lineQty(clause: string, product: AgentProduct, store: AgentStore): { qt
 }
 
 function labelOf(clause: string): string {
-  const tokens = clauseTokens(clause);
-  const name = tokens.slice(0, 4).join(" ");
+  const text = normalizedAsk(clause)
+    .replace(/^(?:latas?|latitas?|cajitas?|cajas?|paquetes?|paquetitos?|bolsas?|bolsitas?|piezas?|botellas?)\s+de\s+/, "")
+    .trim();
+  const name = text || clauseTokens(clause).slice(0, 4).join(" ");
   if (wantsKilo(clause) && name) return `${name} por kilo`;
   return name || cleanClause(clause);
 }
@@ -454,6 +505,24 @@ function modifierVariant(product: AgentProduct, clause: string): boolean {
   return extra.length > 0 && extra.every((word) => MODIFIER_WORD.test(word));
 }
 
+/** El cliente no escribió la palabra completa: hay falta o diminutivo. Se pregunta, no se adivina el tamaño. */
+function spelledClose(clause: string, products: AgentProduct[]): AgentProduct[] | null {
+  const tokens = clauseTokens(clause).filter((token) => token.length >= 4);
+  if (tokens.length === 0 || products.length < 2) return null;
+  const written = (token: string) => products.some((product) => {
+    const words = productBlob(product).split(" ").filter(Boolean);
+    const forms = [token];
+    for (const form of synonymForms(token)) {
+      if (form === token) continue;
+      const diminutive = /it[oa]s?$/.test(token) && form.length < token.length;
+      if (!diminutive) forms.push(form);
+    }
+    return words.some((word) => forms.some((form) => word === form || word === `${form}s` || form === `${word}s` || form === `${word}es` || word === `${form}es`));
+  });
+  if (tokens.every(written)) return null;
+  return closestOptions(clause, products);
+}
+
 function closestOptions(clause: string, products: AgentProduct[]): AgentProduct[] {
   const text = foldAgent(clause);
   let rows = products;
@@ -487,6 +556,9 @@ function chooseAbarrotes(clause: string, products: AgentProduct[]): AgentProduct
       return closestOptions(clause, [plain[0], ...extensions]);
     }
     if (others.every((product) => modifierVariant(product, clause))) return plain;
+    // «cigarro» no se queda en una marca. «olé capuchino» sí: es la pieza sin tamaño.
+    const siblings = others.filter((product) => !modifierVariant(product, clause));
+    if (siblings.length && !unsizedNamedLine(clause, plain[0])) return closestOptions(clause, [plain[0], ...siblings]);
   }
   const sized = standardPresentation(clause, products);
   const keys = new Set(products.map((product) => sizeKeyOf(product)));
@@ -523,6 +595,9 @@ export function decideClause(clause: string, pool: AgentProduct[], store: AgentS
   const tokens = clauseTokens(text);
   if (!tokens.length) return { kind: "skip", clause: text };
 
+  const exact = exactNameDecision(text, pool, store);
+  if (exact) return exact;
+
   if (store.category !== "abarrotes" && isGenericDogoText(text)) {
     const clasico = genericDogoProduct(pool) ?? genericDogoProduct(searchAgentProducts(pool, "dogo clasico", 8));
     if (clasico) {
@@ -537,10 +612,16 @@ export function decideClause(clause: string, pool: AgentProduct[], store: AgentS
   let hits = best > 0 ? ranked.filter((product) => coverage(product, tokens) === best) : [];
   if (!hits.length && isVagueListaQuery(text)) hits = ranked.slice(0, 5);
 
+  if (!isVagueListaQuery(text) && tokens.length) {
+    const typed = hits.filter((product) => tokens.every((token) => tokenInBlob(productBlob(product), token)));
+    if (!typed.length) return { kind: "missing", clause: text, label: labelOf(text) };
+    hits = typed;
+  }
   const wanted = spokenPackageSize(text);
   if (wanted) {
     const sized = hits.filter((product) => matchesPackage(product, wanted));
     if (sized.length) hits = sized;
+    else if (householdSize(text)) return { kind: "missing", clause: text, label: labelOf(text) };
   }
   if (saidPack(text)) {
     const packs = hits.filter((product) => isPackProduct(product) && coverage(product, tokens) > 0);
@@ -601,7 +682,7 @@ export function decideClause(clause: string, pool: AgentProduct[], store: AgentS
     const withoutWholesale = (namedAll ?? []).filter((product) => !wholesalePack(product));
     const namedPieces = withoutWholesale.length ? withoutWholesale : namedAll;
     if (namedPieces?.length) {
-      hits = chooseAbarrotes(text, namedPieces);
+      hits = spelledClose(text, namedPieces) ?? chooseAbarrotes(text, namedPieces);
     } else if (isVagueListaQuery(text) && hits.length) {
       hits = hits.slice(0, 5);
     } else if (!focus.length && hits.length) {

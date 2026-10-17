@@ -48,7 +48,79 @@ const STOP = new Set([
   "pza", "pzas", "paquete", "paquetes", "caja", "cajas", "botella", "botellas",
   "bolsa", "bolsas", "lata", "latas", "rollo", "rollos", "garrafon", "garrafones",
   "docena", "docenas", "six",
+  "cajita", "cajitas", "latita", "latitas", "bolsita", "bolsitas",
+  "paquetito", "paquetitos", "botellita", "botellitas",
 ]);
+
+/**
+ * 1/4, 8 oz y 250 ml se escriben igual antes de quitar signos.
+ * «cuarto» de jamón o de kilo no es un vaso de 250 ml.
+ */
+export function normalizeMeasureWords(value: string): string {
+  return String(value ?? "")
+    .replace(/¼/g, " cuarto ")
+    .replace(/½/g, " medio ")
+    .replace(/\b1\s*\/\s*4\b/gi, " cuarto ")
+    .replace(/\b1\s*\/\s*2\b/gi, " medio ")
+    .replace(/\b8\s*(?:onzas?|oz)\b/gi, " 8oz ")
+    .replace(/\b250\s*ml\b/gi, " 250ml ")
+    .replace(/\b500\s*ml\b/gi, " 500ml ");
+}
+
+/**
+ * Empaque en diminutivo. Es la clase de la palabra (vaso, tapa, caja),
+ * no un producto. «nito» no entra: tiene menos de 6 letras y es nombre.
+ */
+const PACKAGING_DIMINUTIVE: Record<string, string> = {
+  vasito: "vaso",
+  vasitos: "vaso",
+  tapita: "tapa",
+  tapitas: "tapa",
+  cajita: "caja",
+  cajitas: "caja",
+  bolsita: "bolsa",
+  bolsitas: "bolsa",
+  latita: "lata",
+  latitas: "lata",
+  paquetito: "paquete",
+  paquetitos: "paquete",
+  botellita: "botella",
+  botellitas: "botella",
+  piecita: "pieza",
+  piecitas: "pieza",
+};
+
+/** vasitos → vaso, galletita → galleta. El tronco corto no se recorta: «sanitas» no es «sana». */
+function diminutiveFamily(token: string): string[] {
+  const packed = PACKAGING_DIMINUTIVE[token];
+  const bases: string[] = [];
+  if (packed) bases.push(packed);
+  else if (token.length >= 7) {
+    let stem = "";
+    let gender = "";
+    if (token.endsWith("itos")) {
+      stem = token.slice(0, -4);
+      gender = "o";
+    } else if (token.endsWith("itas")) {
+      stem = token.slice(0, -4);
+      gender = "a";
+    } else if (token.endsWith("ito")) {
+      stem = token.slice(0, -3);
+      gender = "o";
+    } else if (token.endsWith("ita")) {
+      stem = token.slice(0, -3);
+      gender = "a";
+    }
+    if (stem.length >= 4) bases.push(`${stem}${gender}`);
+  }
+  const forms: string[] = [];
+  for (const base of bases) {
+    if (base.length < 3 || base === token || forms.includes(base)) continue;
+    forms.push(base);
+    if (!base.endsWith("s")) forms.push(`${base}s`);
+  }
+  return forms;
+}
 
 export function foldListaText(value: string): string {
   return String(value ?? "")
@@ -73,7 +145,8 @@ export function listaSearchTokens(text: string): string[] {
     seen.add(token);
     tokens.push(token);
   };
-  for (const token of foldListaText(text).split(" ")) {
+  const prepared = normalizeMeasureWords(text).replace(/\bsin\s+sabor\b/gi, " ");
+  for (const token of foldListaText(prepared).split(" ")) {
     if (token.length < 3 || token.length > 40) continue;
     if (STOP.has(token) || isQuantity(token)) continue;
     push(token);
@@ -121,6 +194,7 @@ export function synonymForms(token: string): string[] {
       if (alias.length >= 3) forms.add(alias);
     }
   }
+  for (const extra of diminutiveFamily(token)) forms.add(extra);
   if (token === "ti" || token === "tea" || token === "te") forms.add("tea");
   return [...forms];
 }
@@ -176,6 +250,12 @@ export function listaSqlTokens(text: string): string[] {
   // «algo de limpieza» no dice Fabuloso, pero el SQL tiene que traerlo:
   // si el token es solo «limpieza», Fabuloso se queda fuera del tope.
   for (const extra of vagueFamilyTokens(text)) push(extra);
+  const folded = foldListaText(normalizeMeasureWords(text));
+  if (!/\b(?:jamon|kilo|kilos|kg|gramo|gramos)\b/.test(folded) && /\b(?:cuartos?|8oz|250ml)\b/.test(folded)) {
+    for (const extra of ["cuarto", "250ml", "8oz"]) push(extra);
+  }
+  if (/\bmedio\b/.test(folded) && /\blitros?\b/.test(folded)) push("500ml");
+  if (/\blitros?\b/.test(folded)) push("litro");
   return tokens;
 }
 
@@ -319,6 +399,7 @@ export function listaWordHit(word: string, token: string): boolean {
     if (pluralEqual(word, form)) return true;
     if (sameNamePrefix(word, form)) return true;
     if (meaningSplit(word, form)) continue;
+    if (form.length >= 4 && word.length === form.length && word[0] === form[0] && editDistance(word, form) <= 1) return true;
     if (form.length >= 5 && Math.abs(word.length - form.length) <= 1 && word[0] === form[0] && editDistance(word, form) <= 1) return true;
     if (form.length >= 6 && word.length === form.length && commonPrefixLength(word, form) >= 4 && editDistance(word, form) <= 2) return true;
   }
@@ -366,6 +447,9 @@ function scoreToken(row: ListaProducto, token: string): number {
   if (aliasHit === "includes" || aliasHit === "prefix") score += SCORE.aliasIncludes;
   else if (aliasHit === "similar") score += SCORE.aliasSimilar;
   if (bestHit(presentacion, token) === "includes" || bestHit(presentacion, token) === "prefix") score += SCORE.presentacionIncludes;
+  // Una falta de una letra, o el diminutivo, gana al parecido suelto de trigramas.
+  // Si no, «nepoli» se pierde entre docenas de palabras que solo se parecen.
+  if (token.length >= 4 && nombre.split(" ").some((word) => listaWordHit(word, token))) score += 14;
   // Palabra completa o el nombre que empieza con ella gana al pedazo
   // ("nito" dentro de cariñitos o gusanito).
   return score * weak + exactNameBonus(nombre, token);
@@ -390,8 +474,13 @@ function exactNameBonus(nombre: string, token: string): number {
  */
 /** «coca de 600», «2 litros», «62 g». El número suelto de 3–4 cifras es mililitros, salvo que diga pesos. */
 export function listaPackageKey(text: string): string | null {
-  const folded = foldListaText(text);
+  const folded = foldListaText(normalizeMeasureWords(text));
   const amount = (raw: string) => raw.replace(",", ".");
+  if (!/\b(?:jamon|kilo|kilos|kg|gramo|gramos)\b/.test(folded) && /\b(?:cuartos?|8oz|250ml)\b/.test(folded)) {
+    return "250ml";
+  }
+  if (/\bmedio\b/.test(folded) && /\blitros?\b/.test(folded)) return "500ml";
+  if (/\b500ml\b/.test(folded)) return "500ml";
   const ml = folded.match(/\b(\d+(?:[.,]\d+)?)\s*ml\b/);
   if (ml) return `${amount(ml[1])}ml`;
   const liters = folded.match(/\b(\d+(?:[.,]\d+)?)\s*(?:l|lt|lts|litros?)\b/);
@@ -410,6 +499,8 @@ function rowPackageKey(row: ListaProducto): string | null {
 
 function samePackage(wanted: string, got: string): boolean {
   if (wanted === got) return true;
+  if ((wanted === "250ml" && (got === "8oz" || got === "cuarto")) || (got === "250ml" && (wanted === "8oz" || wanted === "cuarto"))) return true;
+  if ((wanted === "500ml" && got === "0.5l") || (got === "500ml" && wanted === "0.5l")) return true;
   const litersOf = (key: string) => (key.endsWith("ml") ? null : key.endsWith("l") ? Number(key.slice(0, -1)) : null);
   const wantedLiters = litersOf(wanted);
   const gotLiters = litersOf(got);

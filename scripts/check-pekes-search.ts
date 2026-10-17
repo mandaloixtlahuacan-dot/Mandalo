@@ -311,6 +311,9 @@ async function main(): Promise<void> {
     { query: "una caja de nito", need: /Caja Nito/ },
     { query: "algo de limpieza", need: /Fabuloso/ },
     { query: "refresco", need: /Coca/ },
+    { query: "vasitos de cuarto con tapa", need: /Vaso/ },
+    { query: "vasos con tapita de 1/4", need: /Vaso/ },
+    { query: "cajitas de grenetina sin sabor", need: /Grenetina/ },
   ];
   for (const check of windowChecks) {
     const window = sqlWindow(check.query);
@@ -364,6 +367,71 @@ async function main(): Promise<void> {
       console.error(`FALLA ${item.input}: ${message}`);
     }
   }
+  const incident = [
+    "Dos. Cajitas de grenetina sin sabor.",
+    "Dos latas de Lecheras.",
+    "Dos latas de Leche clavel.",
+    "2 queso crema",
+    "Vasitos de cuarto con tapa",
+  ].join("\n");
+  const incidentTurn = await runOrderAgentTurn({
+    message: incident,
+    cart: [],
+    pending: null,
+    history: [],
+    store,
+    products: [],
+    search: async (query) => searchAgentProducts(products, query, 24),
+    model: createSimAgentModel(incident),
+    escalationModel: null,
+    logEvent: () => {},
+  });
+  const incidentBlob = fold(`${incidentTurn.reply}\n${incidentTurn.cart.map((line) => line.name).join(" ")}`);
+  const incidentNames = incidentTurn.cart.map((line) => line.name).join(" | ");
+  try {
+    assert(incidentTurn.reply.includes("Grenetina") && /1\. \*/.test(incidentTurn.reply), "la grenetina no salió con opciones");
+    assert(incidentBlob.includes("lechera") && (incidentTurn.reply.match(/1\. \*/g) ?? []).length >= 2, "la lechera no salió con opciones");
+    assert(incidentNames.includes("Clavel"), `Clavel no se anotó: ${incidentNames}`);
+    assert(/Queso Crema/i.test(incidentNames) || /queso crema/i.test(incidentTurn.reply), "el queso crema no se anotó ni se preguntó");
+    assert(/no contamos con vasitos/i.test(incidentTurn.reply), `los vasitos no dijeron que no hay: ${incidentTurn.reply.slice(0, 240)}`);
+    assert(!/kellogg/i.test(incidentBlob), "entró Kellogg's");
+    assert(!/queso crema vasitos/i.test(incidentBlob), "se juntaron renglones distintos");
+    assert(!/tapa #/i.test(incidentTurn.reply), "los vasitos se volvieron puras tapas");
+    const clavel = incidentTurn.cart.find((line) => /clavel/i.test(line.name));
+    assert(clavel?.qty === 2, "las dos latas de Clavel no quedaron en 2");
+    const follow = await runOrderAgentTurn({
+      message: "Cuáles tienes?",
+      cart: incidentTurn.cart,
+      pending: incidentTurn.pending,
+      history: [
+        { role: "user", text: incident },
+        { role: "assistant", text: incidentTurn.reply },
+      ],
+      store,
+      products: [],
+      search: async (query) => searchAgentProducts(products, query, 24),
+      model: createSimAgentModel("Cuáles tienes?"),
+      escalationModel: null,
+      logEvent: () => {},
+    });
+    assert(follow.toolCalls.length === 0, "«Cuáles tienes?» volvió a llamar al modelo");
+    assert(/1\. \*/.test(follow.reply) && /Grenetina|Lechera/i.test(follow.reply), "«Cuáles tienes?» no relistó las opciones");
+    const cups = await ask("vasos con tapita de 1/4");
+    assert(/no contamos con/i.test(cups.reply), "los vasos de 1/4 no dijeron que no hay esa presentación");
+    assert(!/kellogg|tapa #/i.test(cups.reply), "los vasos de 1/4 ofrecieron otra cosa");
+    assert(cups.cart.length === 0, "los vasos de 1/4 se anotaron");
+    table.push(`PASA\tpedido real\t${preview(incidentTurn.reply, incidentTurn.cart)}`);
+    table.push(`PASA\tCuáles tienes?\t${preview(follow.reply, follow.cart)}`);
+    console.log("PASA  pedido real");
+    console.log("PASA  Cuáles tienes?");
+    console.log("PASA  vasos con tapita de 1/4");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    failed.push(`pedido real: ${message}`);
+    console.error(`FALLA pedido real: ${message}`);
+    console.error(incidentTurn.reply);
+  }
+
   console.log("\ninput\tbot\tresultado");
   for (const line of table) {
     const [status, input, detail] = line.split("\t");
@@ -373,7 +441,7 @@ async function main(): Promise<void> {
     console.error(`\n${failed.length} casos fallaron`);
     process.exit(1);
   }
-  console.log(`\n[pekes-search] ${cases.length} casos sobre ${rows.length} productos. Umbral LISTA_MIN_SCORE=${LISTA_MIN_SCORE}.`);
+  console.log(`\n[pekes-search] ${cases.length} casos + el pedido real, sobre ${rows.length} productos. Umbral LISTA_MIN_SCORE=${LISTA_MIN_SCORE}.`);
 }
 
 main().catch((error: unknown) => {
