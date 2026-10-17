@@ -75,7 +75,10 @@ function gramsOf(clause: string): number | null {
 }
 
 function saidPack(clause: string): boolean {
-  return /\b(cajas?|paquetes?)\b/.test(foldAgent(clause));
+  if (!/\b(cajas?|paquetes?)\b/.test(foldAgent(clause))) return false;
+  // «caja» sola es el producto. «caja de nito» sí pide la caja.
+  const rest = clauseTokens(clause).filter((token) => !/^(?:cajas?|paquetes?)$/.test(token));
+  return rest.length > 0;
 }
 
 function saidSize(clause: string): "chica" | "grande" | null {
@@ -383,13 +386,14 @@ function hasFocusRank(product: AgentProduct, token: string): number {
     const word = words[index];
     for (const form of forms) {
       // «maria» no cuenta como «marias»: si no, el mole gana a las galletas.
-      if (form !== token && token.startsWith(form) && token.length - form.length <= 2) continue;
+      // «chinita» sí cuenta como «china»: el tronco no es un plural.
+      if (form !== token && token.startsWith(form) && /^(?:s|es)$/.test(token.slice(form.length))) continue;
       if (word === form) best = Math.max(best, 2);
       else if (word === `${form}s` || form === `${word}s` || word === `${form}es` || form === `${word}es`) {
         // «chicles» es la misma familia que «Chicle …» al inicio del nombre.
         // Más adentro («Mole María») sigue siendo otra cosa.
         best = Math.max(best, index === 0 ? 2 : 1);
-      } else if (word.length >= form.length && Math.abs(word.length - form.length) <= 1 && listaWordHit(word, form)) best = Math.max(best, 1);
+      } else if (Math.abs(word.length - form.length) <= 1 && word[0] === form[0] && listaWordHit(word, form)) best = Math.max(best, 1);
     }
   }
   return best;
@@ -611,11 +615,54 @@ function closestOptions(clause: string, products: AgentProduct[]): AgentProduct[
 function tokenWrittenWord(word: string, token: string): boolean {
   const forms = [token];
   for (const form of synonymForms(token)) {
-    if (form === token) continue;
-    if (/it[oa]s?$/.test(token) && form.length < token.length) continue;
-    forms.push(form);
+    if (form !== token) forms.push(form);
   }
   return forms.some((form) => word === form || word === `${form}s` || form === `${word}s` || form === `${word}es` || word === `${form}es`);
+}
+
+/**
+ * «para» en «jugo cosecha para» es «pura», no la preposición.
+ * Si esa falta cabe en unos productos y en otros no, se quedan los que sí.
+ * «jugo» no entra: es el tipo, y Jumex Bida sigue siendo el mismo sabor.
+ */
+function typoConstrained(clause: string, products: AgentProduct[]): AgentProduct[] {
+  const kept = new Set(clauseTokens(clause));
+  const extra = foldAgent(clause).split(" ").filter((word) => word.length >= 4 && !kept.has(word) && !CATEGORY_TOKENS.has(word));
+  let rows = products;
+  for (const token of extra) {
+    const hits = rows.filter((product) => foldAgent(product.name).split(" ").some((word) => listaWordHit(word, token)));
+    const exact = rows.some((product) => foldAgent(product.name).split(" ").includes(token));
+    if (!exact && hits.length > 0 && hits.length < rows.length) rows = hits;
+  }
+  return rows;
+}
+
+/** Una palabra suelta en varias categorías: una opción por tipo, el más común primero. */
+function categorySpread(products: AgentProduct[]): AgentProduct[] | null {
+  const groups = new Map<string, AgentProduct[]>();
+  for (const product of products) {
+    const key = foldAgent(product.category ?? "") || "otros";
+    const list = groups.get(key) ?? [];
+    list.push(product);
+    groups.set(key, list);
+  }
+  if (groups.size < 2) return null;
+  const ordered = [...groups.values()].sort((left, right) => right.length - left.length);
+  const out = ordered.map((list) => list[0]).slice(0, 5);
+  return out.length >= 2 ? out : null;
+}
+
+function looseSingleToken(clause: string): boolean {
+  const tokens = clauseTokens(clause).filter((token) => !CATEGORY_TOKENS.has(token));
+  return tokens.length === 1;
+}
+
+/** La palabra está escrita en algún producto. «pawer» no: es falta de «powerade». */
+function writtenAsSaid(clause: string, products: AgentProduct[]): boolean {
+  const tokens = clauseTokens(clause).filter((token) => !CATEGORY_TOKENS.has(token));
+  if (tokens.length !== 1) return false;
+  const token = tokens[0];
+  return products.some((product) => foldAgent(product.name).split(" ").some((word) => word === token || word === `${token}s` || token === `${word}s`));
 }
 
 /** Si la palabra sí está escrita en la familia, la falta de una letra no mete otro producto. */
@@ -772,9 +819,13 @@ export function decideClause(clause: string, pool: AgentProduct[], store: AgentS
     // Con una falta se preguntan la caja y la pieza. No se adivina cuál.
     const keepPacks = Boolean(namedAll?.length && clauseMisspelled(text, namedAll));
     const withoutWholesale = (namedAll ?? []).filter((product) => !wholesalePack(product));
-    const namedPieces = keepPacks ? namedAll : withoutWholesale.length ? withoutWholesale : namedAll;
+    const namedBase = keepPacks ? namedAll : withoutWholesale.length ? withoutWholesale : namedAll;
+    const namedPieces = namedBase?.length ? typoConstrained(text, namedBase) : namedBase;
     if (namedPieces?.length) {
-      hits = spelledClose(text, namedPieces) ?? chooseAbarrotes(text, namedPieces);
+      const spread = store.hasProductList && looseSingleToken(text) && writtenAsSaid(text, namedPieces)
+        ? categorySpread(namedPieces)
+        : null;
+      hits = spread ?? spelledClose(text, namedPieces) ?? chooseAbarrotes(text, namedPieces);
     } else if (isVagueListaQuery(text) && hits.length) {
       hits = hits.slice(0, 5);
     } else if (!focus.length && hits.length) {

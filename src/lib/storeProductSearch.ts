@@ -157,6 +157,17 @@ export function listaSearchTokens(text: string): string[] {
       if (stem.length >= 4 && !STOP.has(stem) && !isQuantity(stem)) push(stem);
     }
   }
+  // «para», «caja», «bolsa» o «paquete» solas sí se buscan. «quiero» no.
+  // Una frase más larga que solo deja esa palabra de paso («no es una caja») no.
+  if (!tokens.length) {
+    const filler = new Set([
+      "de", "del", "la", "las", "el", "los", "un", "una", "uno", "unos", "unas",
+      "quiero", "quisiera", "dame", "deme", "traeme", "porfa", "porfavor", "favor", "por",
+      "me", "te", "se",
+    ]);
+    const rest = foldListaText(prepared).split(" ").filter((token) => token && !filler.has(token));
+    if (rest.length === 1 && /^(?:cajas?|bolsas?|paquetes?|para)$/.test(rest[0])) push(rest[0]);
+  }
   return tokens;
 }
 
@@ -614,7 +625,49 @@ export function rankListaByTokens(
     if (painted.length) chosen = painted;
   }
   chosen.sort((a, b) => b.score - a.score || a.extra - b.extra || a.row.nombre.localeCompare(b.row.nombre) || a.index - b.index);
-  return chosen.slice(0, cap).map((entry) => entry.row);
+  return diversifyLooseToken(chosen, tokens, cap).map((entry) => entry.row);
+}
+
+/**
+ * Una sola palabra en varias categorías no puede llenar la ventana de un solo tipo.
+ * Entra primero el mejor de cada categoría (el tipo más común adelante) y después el resto.
+ */
+function diversifyLooseToken(
+  chosen: Array<{ row: ListaProducto; score: number; index: number; mustHits: number; extra: number }>,
+  tokens: string[],
+  cap: number,
+): Array<{ row: ListaProducto; score: number; index: number; mustHits: number; extra: number }> {
+  const root = tokens[0] ?? "";
+  if (root.length < 4 || !tokens.every((token) => token === root || synonymForms(root).includes(token))) {
+    return chosen.slice(0, cap);
+  }
+  const exact = chosen.filter((entry) => foldListaText(entry.row.nombre).split(" ").some((word) => pluralEqual(word, root)));
+  const groups = new Map<string, typeof chosen>();
+  for (const entry of exact) {
+    const key = foldListaText(entry.row.categoria ?? "") || "otros";
+    const list = groups.get(key) ?? [];
+    list.push(entry);
+    groups.set(key, list);
+  }
+  if (groups.size < 2) return chosen.slice(0, cap);
+  const ordered = [...groups.values()].sort((left, right) => right.length - left.length);
+  const picked: typeof chosen = [];
+  const seen = new Set<number>();
+  const take = (entry: (typeof chosen)[number]) => {
+    const id = (entry.row as ListaProducto & { id?: number }).id;
+    if (id != null && seen.has(id)) return;
+    if (id != null) seen.add(id);
+    picked.push(entry);
+  };
+  for (const group of ordered) {
+    if (picked.length >= cap) break;
+    take(group[0]);
+  }
+  for (const entry of chosen) {
+    if (picked.length >= cap) break;
+    take(entry);
+  }
+  return picked;
 }
 
 const VAGUE_WORDS = new Set([

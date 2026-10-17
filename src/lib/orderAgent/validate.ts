@@ -206,7 +206,7 @@ function presentationKg(value: string): { kg: boolean; amount: string | null } {
   return { kg, amount: amount ? amount[1].replace(",", ".") : null };
 }
 
-function messageSelects(product: AgentProduct, siblings: AgentProduct[], message: string): boolean {
+function messageSelects(product: AgentProduct, siblings: AgentProduct[], message: string, loose = false): boolean {
   const text = foldAgent(productClause(message, product.name)).replace(/\b(un|una|uno)\b/g, "1");
   const wantsKg = spokenKilo(text);
   const narrowed = siblings.filter((row) => {
@@ -218,7 +218,7 @@ function messageSelects(product: AgentProduct, siblings: AgentProduct[], message
     if (!wantsKg && size && !textHasSize(text, size)) return false;
     return true;
   });
-  return messageSelectsProduct(product, narrowed.length ? narrowed : siblings, message);
+  return messageSelectsProduct(product, narrowed.length ? narrowed : siblings, message, loose);
 }
 
 function optionsDiffer(products: AgentProduct[]): boolean {
@@ -753,7 +753,7 @@ export function validateToolCall(params: {
       if (!already && params.customerMessage && marinadeUnresolved(product, products, params.customerMessage)) {
         return { ok: false, error: "Hay versión marinada y normal. Pregunta con ask_customer (axis marinade). No elijas una tú." };
       }
-      if (!already && optionsDiffer(siblings) && !messageSelects(product, siblings, params.customerMessage ?? "")) {
+      if (!already && optionsDiffer(siblings) && !messageSelects(product, siblings, params.customerMessage ?? "", store.hasProductList)) {
         return { ok: false, error: listedChoiceError(siblings) };
       }
       const piece = Boolean(params.customerMessage && isPieceCorrection(params.customerMessage));

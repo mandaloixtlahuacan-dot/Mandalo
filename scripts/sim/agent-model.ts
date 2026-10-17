@@ -122,7 +122,7 @@ export function createSimAgentModel(name: string): AgentModel {
       for (const entry of searched) {
         const products = asProducts(entry.result);
         const query = String(entry.call.arguments?.query ?? "");
-        const picked = products.filter((product) => messageSelectsProduct(product, products, query));
+        const picked = products.filter((product) => messageSelectsProduct(product, products, query, request.store.hasProductList));
         if (picked.length !== 1) continue;
         const product = picked[0];
         if (request.store.hasProductList && clauseMisspelled(query, products)) continue;

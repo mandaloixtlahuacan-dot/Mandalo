@@ -246,6 +246,11 @@ function judgeGeneric(sample: Sample, cart: AgentLine[], reply: string): string 
   return null;
 }
 
+const TYPE_WORD = new Set([
+  "jugo", "jugos", "leche", "leches", "papel", "galleta", "galletas", "agua", "aguas",
+  "jabon", "jabones", "refresco", "refrescos", "pan", "panes", "tortilla", "tortillas",
+]);
+
 function judgeTypo(sample: Sample, message: string, cart: AgentLine[], reply: string): string | null {
   if (bareQuestion(reply)) return "pregunta sin opciones";
   if (otherType(message, cart, sample.id)) return "otro tipo en el carrito";
@@ -255,8 +260,10 @@ function judgeTypo(sample: Sample, message: string, cart: AgentLine[], reply: st
     if (/no contamos con/i.test(reply)) return "dijo que no hay";
     return "pregunta sin opciones";
   }
-  const asked = tokensOf(message);
-  const mixed = options.filter((name) => asked.some((part) => !wordHit(name, part)));
+  // «jugo» es el tipo. Jumex Bida no lo trae en el nombre y sigue siendo el sabor.
+  const asked = tokensOf(message).filter((token) => !TYPE_WORD.has(token));
+  const needed = asked.length ? asked : tokensOf(message);
+  const mixed = options.filter((name) => needed.some((part) => !wordHit(name, part)));
   if (mixed.length) return `opción de otro tipo (${mixed[0]})`;
   if (options.some((name) => fold(name).includes(fold(sample.name)))) return null;
   if (/tamañ|sabor|escríbelo/i.test(reply)) return null;

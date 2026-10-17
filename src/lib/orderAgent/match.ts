@@ -64,6 +64,17 @@ export function contentTokens(value: string): string[] {
     seen.add(token);
     tokens.push(token);
   }
+  // «caja» o «para» solas sí nombran producto. «quiero» no. En «caja de nito» siguen siendo empaque.
+  // «no es una caja, solo una pieza» no: ahí caja es la corrección, no el pedido.
+  if (!tokens.length) {
+    const filler = new Set([
+      "de", "del", "la", "las", "el", "los", "un", "una", "uno", "unos", "unas",
+      "quiero", "quisiera", "dame", "deme", "traeme", "porfa", "porfavor", "favor", "por",
+      "me", "te", "se",
+    ]);
+    const rest = wordsOf(head).filter((token) => !filler.has(token));
+    if (rest.length === 1 && /^(?:cajas?|bolsas?|paquetes?|para)$/.test(rest[0])) tokens.push(rest[0]);
+  }
   return tokens;
 }
 
@@ -214,9 +225,13 @@ export function marinadeUnresolved(product: Pick<AgentProduct, "name">, pool: Ar
   return seasoned && plain;
 }
 
-function sharesMessageToken(product: { name: string; brand?: string | null }, message: string): boolean {
+function sharesMessageToken(product: { name: string; brand?: string | null }, message: string, loose = false): boolean {
   const text = foldAgent(message);
   if (contentTokens(product.name).some((token) => tokenIn(text, token))) return true;
+  // «naranja» también está en «naranjada». Si no, la familia se queda en un solo nombre.
+  const said = contentTokens(text).filter((token) => token.length >= 6);
+  const words = foldAgent(product.name).split(" ").filter(Boolean);
+  if (loose && said.some((token) => words.some((word) => word.startsWith(token) && word.length - token.length <= 3))) return true;
   const brand = foldAgent(product.brand ?? "");
   return Boolean(brand) && (text.includes(brand) || contentTokens(brand).some((token) => tokenIn(text, token)));
 }
@@ -247,8 +262,8 @@ function distinctiveHit(product: AgentProduct, family: AgentProduct[], message: 
     return !family.some((other) => {
       if (other.id === product.id) return false;
       const words = contentTokens(other.name);
-      return words.includes(token) || words.includes(stem);
-    });
+    return words.includes(token) || words.includes(stem) || words.some((word) => word.startsWith(token) && word.length - token.length <= 3 && token.length >= 6);
+  });
   });
   if (onlyMine.some((token) => tokenIn(text, token))) return true;
   const parsed = presentationFromName(product.name);
@@ -314,7 +329,7 @@ function mostSpecific(hits: AgentProduct[], message: string): AgentProduct[] {
  * Una sola fila del resultado. Caja contra pieza siempre pregunta,
  * salvo que el cliente haya dicho caja o paquete.
  */
-export function messageSelectsProduct(product: AgentProduct, siblings: AgentProduct[], message: string): boolean {
+export function messageSelectsProduct(product: AgentProduct, siblings: AgentProduct[], message: string, loose = false): boolean {
   const wholeName = foldCatalogName(message);
   const whole = foldCatalogName(product.name) === wholeName ? wholeName : catalogAsk(message);
   if (whole && foldCatalogName(product.name) === whole) {
@@ -338,7 +353,7 @@ export function messageSelectsProduct(product: AgentProduct, siblings: AgentProd
   const text = foldAgent(clause);
   const piece = isPieceCorrection(message);
   const saidPack = !piece && /\b(cajas?|paquetes?)\b/.test(text);
-  const family = siblings.filter((row) => sharesMessageToken(row, message) || row.id === product.id);
+  const family = siblings.filter((row) => sharesMessageToken(row, message, loose) || row.id === product.id);
   if (genericDogoMessage(message) && isClasicoDogo(product)) return true;
   if (saidPack) {
     const packs = family.filter((row) => isPackProduct(row));
@@ -400,6 +415,13 @@ export function messageSelectsProduct(product: AgentProduct, siblings: AgentProd
     const extras = words.filter((token) => !asked.some((word) => token === word || token === `${word}s` || word === `${token}s`));
     const crowd = family.filter((row) => asked.length > 0 && asked.every((token) => tokenIn(foldAgent(row.name), token)));
     if (pluralOnly.length > 0 && extras.length === 0 && crowd.length > 1) return false;
+  }
+  // «marlboro» no se queda en Marlboro 100 porque los demás traen un sabor de más.
+  // «coca 600» ya se resolvió arriba, con el tamaño.
+  if (loose && hits.length === 1) {
+    const asked = contentTokens(clause).filter((token) => token.length >= 4);
+    const crowd = family.filter((row) => asked.length === 1 && asked.every((token) => tokenIn(foldAgent(row.name), token)));
+    if (crowd.length > 1) return false;
   }
   return hits.length === 1 && hits[0].id === product.id;
 }
