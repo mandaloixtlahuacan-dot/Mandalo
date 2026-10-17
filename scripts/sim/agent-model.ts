@@ -16,9 +16,11 @@ function qtyFromMessage(message: string): number {
   const folded = message
     .toLowerCase()
     .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "");
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/\b\d+(?:\.\d+)?\s*(?:ml|l|lt|lts|litros?|g|gr|gramos?|kg|kilos?|toallas?|servilletas?|hojas?|rollos?|pz|pzas?|piezas?|paq|paquetes?)\b/g, " ");
   const digit = folded.match(/\b(\d+(?:\.\d+)?)\b/);
-  if (digit) return Number(digit[1]);
+  // «coca 600» y «100 toallas» son presentación, no cantidad.
+  if (digit && Number(digit[1]) > 0 && Number(digit[1]) <= 40) return Number(digit[1]);
   const words: Array<[RegExp, number]> = [
     [/\bmedio\b|\bmedia\b/, 0.5],
     [/\bun\b|\buna\b/, 1],

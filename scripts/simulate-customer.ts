@@ -228,11 +228,13 @@ async function main(): Promise<void> {
         const reply = customerText(turns.slice(-1));
         const hasCoca = /coca/i.test(reply);
         const productPrice = reply.replace(/\$35/g, "").match(/\$\s*\d/);
+        const asked = /cu[aá]l de estos/i.test(reply);
         const closed = /est[aá]n bien estos productos/i.test(reply);
         const quotes = /cotiza|confirma el precio/i.test(reply);
         const problems: string[] = [];
         if (!hasCoca) problems.push("la respuesta no muestra Coca");
-        if (!closed) problems.push("no anotó la Coca estándar");
+        if (!asked) problems.push("no preguntó la presentación de la Coca");
+        if (closed) problems.push("anotó una Coca sin que el cliente eligiera presentación");
         if (productPrice) problems.push("mostró un monto de producto; Peke's cotiza");
         if (!quotes) problems.push("no dijo que la tienda cotiza");
         return {
@@ -241,7 +243,7 @@ async function main(): Promise<void> {
             status: problems.length ? "FALLA" : "PASA",
             detail: problems.length
               ? problems.join(". ")
-              : `Anotó la Coca estándar, sin precio de producto. ${prices.pekesNullPrice} de ${prices.pekesRows} filas de Peke's traen precio null.`,
+              : `Preguntó la presentación de la Coca, sin precio de producto. ${prices.pekesNullPrice} de ${prices.pekesRows} filas de Peke's traen precio null.`,
           },
         };
       },

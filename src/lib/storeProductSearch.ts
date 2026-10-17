@@ -8,6 +8,13 @@ export const LISTA_TOKEN_LIMIT = 16;
 
 const SIMILARITY_MIN = 0.4;
 
+/**
+ * Umbral para ofrecer un producto. Una falta de una letra sobre la palabra
+ * vale 2 (nombreSimilar). La subcadena y el fuzzy que cambia el significado
+ * (sanitas dentro de sanitario) valen 0 y no pasan.
+ */
+export const LISTA_MIN_SCORE = 2;
+
 const SCORE = {
   nombreIncludes: 4,
   nombreSimilar: 2,
@@ -34,6 +41,7 @@ const STOP = new Set([
   "gracias", "serian", "seria", "seran", "hola", "buenas", "bueno", "entonces",
   "nomas", "solo", "pura", "puro", "ejemplo", "esta", "este", "eso", "esa",
   "mas", "muy", "bien", "ok", "va", "dale", "sale", "necesito", "ocupo", "ocupa",
+  "algo", "alguna", "algun", "algunos", "algunas",
   "pedi", "pediste", "pedimos", "pedido",
   "hay", "tienes", "tiene", "kilo", "kilos", "kg", "gramo", "gramos", "litro",
   "litros", "ml", "lt", "lts", "mililitro", "mililitros", "pieza", "piezas",
@@ -94,6 +102,7 @@ const SYNONYM_GROUPS: string[][] = [
   ["pepsi", "pepsis", "pepe", "pepesi"],
   ["powerade", "pawer", "pauer", "power"],
   ["halls", "hall"],
+  ["higienico", "higienicos", "hig"],
   ["lata", "latas"],
   ["capuchino", "capuccino", "cappuccino", "cappuchino"],
 ];
@@ -156,8 +165,17 @@ export function listaSqlTokens(text: string): string[] {
     tokens.push(token);
   };
   for (const token of source) {
-    for (const form of synonymForms(token)) push(form);
+    const forms = synonymForms(token);
+    for (const form of forms) {
+      // «hig» es abreviatura de higiénico en el catálogo. No se manda al SQL:
+      // un LIKE de 3 letras se come productos que no son y puede sacar a Pétalo del tope.
+      if (form.length < 4 && forms.some((other) => other.length > form.length && other.startsWith(form))) continue;
+      push(form);
+    }
   }
+  // «algo de limpieza» no dice Fabuloso, pero el SQL tiene que traerlo:
+  // si el token es solo «limpieza», Fabuloso se queda fuera del tope.
+  for (const extra of vagueFamilyTokens(text)) push(extra);
   return tokens;
 }
 
@@ -212,13 +230,52 @@ function wordSimilarity(token: string, field: string): number {
   return best;
 }
 
+function commonPrefixLength(left: string, right: string): number {
+  const limit = Math.min(left.length, right.length);
+  let index = 0;
+  while (index < limit && left[index] === right[index]) index += 1;
+  return index;
+}
+
+function pluralEqual(word: string, token: string): boolean {
+  if (!word || !token) return false;
+  if (word === token) return true;
+  if (word.length < 4 || token.length < 4) return false;
+  return word === `${token}s` || token === `${word}s` || word === `${token}es` || token === `${word}es`;
+}
+
+/**
+ * Recorte del mismo nombre: «chamber» es chamberete.
+ * Hace falta un token largo. «sanita» no se come «sanitario», ni «ole» se come «oleo».
+ */
+function sameNamePrefix(word: string, token: string): boolean {
+  if (token.length < 7 || word.length <= token.length || word.length - token.length > 4) return false;
+  return word.startsWith(token);
+}
+
+/** «sanitas» no es «sanitario»: comparten el principio y el resto es otro producto. */
+function meaningSplit(word: string, token: string): boolean {
+  if (!word || !token || pluralEqual(word, token)) return false;
+  if (word.startsWith(token) && word.length - token.length >= 2) return true;
+  if (token.startsWith(word) && word.length >= 4 && token.length - word.length >= 2) return true;
+  const prefix = commonPrefixLength(word, token);
+  const gap = Math.abs(word.length - token.length);
+  return prefix >= Math.min(word.length, token.length) - 1 && gap >= 2 && editDistance(word, token) > 2;
+}
+
 function isSimilar(field: string, token: string): boolean {
   // Igual que el RPC: el parecido solo entra en palabras de 6+, y solo si ya
   // comparten las primeras 3 letras. Así un typo ("sabritsa") sí entra y no
-  // se compara cada fila del catálogo.
-  if (!field || token.length < 6 || field.includes(token)) return false;
+  // se compara cada fila del catálogo. La palabra tiene que medir casi lo
+  // mismo: «sanitas» no se parece a «sanitario».
+  if (!field || token.length < 6) return false;
   if (!field.includes(token.slice(0, 3))) return false;
-  return wordSimilarity(token, field) >= SIMILARITY_MIN;
+  for (const word of field.split(" ")) {
+    if (!word || meaningSplit(word, token)) continue;
+    if (Math.abs(word.length - token.length) > 1) continue;
+    if (wordSimilarity(token, word) >= SIMILARITY_MIN) return true;
+  }
+  return false;
 }
 
 function editDistance(left: string, right: string): number {
@@ -238,29 +295,47 @@ function editDistance(left: string, right: string): number {
   return row[right.length];
 }
 
-/** «pawer» entra en «powerade»: una letra de diferencia contra la palabra o su inicio. */
+/** «pawer» entra en «powerade». No entra si el final ya es otra palabra («sanitas» / «sanitario»). */
 function typoHit(field: string, token: string): boolean {
   if (token.length < 5) return false;
   for (const word of field.split(" ")) {
-    if (word.length < 4 || word[0] !== token[0]) continue;
+    if (sameNamePrefix(word, token)) return true;
+    if (word.length < 4 || word[0] !== token[0] || meaningSplit(word, token)) continue;
     if (Math.abs(word.length - token.length) <= 1 && editDistance(word, token) <= 1) return true;
+    if (word.length === token.length && token.length >= 6 && commonPrefixLength(word, token) >= 4 && editDistance(word, token) <= 2) return true;
     if (word.length > token.length && word.length - token.length <= 5) {
       const head = word.slice(0, token.length);
-      if (head[0] === token[0] && editDistance(head, token) <= 1) return true;
+      const prefix = commonPrefixLength(head, token);
+      if (head[0] === token[0] && editDistance(head, token) <= 1 && prefix < token.length - 1) return true;
     }
+  }
+  return false;
+}
+
+/** Palabra completa, plural, sinónimo o falta de ortografía. No subcadena. */
+export function listaWordHit(word: string, token: string): boolean {
+  if (!word || !token) return false;
+  for (const form of synonymForms(token)) {
+    if (pluralEqual(word, form)) return true;
+    if (sameNamePrefix(word, form)) return true;
+    if (meaningSplit(word, form)) continue;
+    if (form.length >= 5 && Math.abs(word.length - form.length) <= 1 && word[0] === form[0] && editDistance(word, form) <= 1) return true;
+    if (form.length >= 6 && word.length === form.length && commonPrefixLength(word, form) >= 4 && editDistance(word, form) <= 2) return true;
   }
   return false;
 }
 
 function fieldHit(field: string, token: string): "includes" | "prefix" | "similar" | null {
   if (!field || !token) return null;
-  if (field.includes(token)) return "includes";
-  if (token.length >= 3) {
-    const words = field.split(" ");
-    if (words.some((word) => word.startsWith(token) || (token.startsWith(word) && word.length >= 4))) return "prefix";
+  const words = field.split(" ").filter(Boolean);
+  let similar = false;
+  for (const form of synonymForms(token)) {
+    if (words.some((word) => pluralEqual(word, form) || sameNamePrefix(word, form))) return "includes";
   }
-  if (isSimilar(field, token) || typoHit(field, token)) return "similar";
-  return null;
+  for (const word of words) {
+    if (listaWordHit(word, token) || isSimilar(word, token) || typoHit(word, token)) similar = true;
+  }
+  return similar ? "similar" : null;
 }
 
 function bestHit(field: string, token: string): "includes" | "prefix" | "similar" | null {
@@ -301,8 +376,9 @@ function exactNameBonus(nombre: string, token: string): number {
   let best = 0;
   const words = nombre.split(" ").filter(Boolean);
   for (const form of synonymForms(token)) {
-    if (!words.some((word) => word === form)) continue;
-    if (words[0] === form || nombre === form) best = Math.max(best, 28);
+    if (!words.some((word) => pluralEqual(word, form))) continue;
+    const first = words[0] ?? "";
+    if (pluralEqual(first, form) || nombre === form) best = Math.max(best, 28);
     else best = Math.max(best, 20);
   }
   return best;
@@ -382,7 +458,7 @@ export function rankListaByTokens(
       const got = rowPackageKey(row);
       if (got && samePackage(packageKey, got)) score += 50;
     }
-    if (score > 0) scored.push({ row, score, index, mustHits });
+    if (score >= LISTA_MIN_SCORE) scored.push({ row, score, index, mustHits });
   });
   let chosen = scored;
   if (required.length >= 2) {
@@ -397,7 +473,94 @@ export function rankListaByTokens(
   return chosen.slice(0, cap).map((entry) => entry.row);
 }
 
+const VAGUE_WORDS = new Set([
+  "limpieza", "limpiar", "limpiador", "limpiadores",
+  "refresco", "refrescos", "soda", "sodas",
+]);
+
+/** «algo de limpieza» o «refresco»: no nombran un producto, nombran el tipo. */
+export function isVagueListaQuery(text: string): boolean {
+  const words = foldListaText(text).split(" ").filter((word) => word.length >= 3 && !STOP.has(word));
+  return words.length > 0 && words.every((word) => VAGUE_WORDS.has(word));
+}
+
+const VAGUE_FAMILY: Record<string, string[]> = {
+  limpieza: ["fabuloso", "pinol", "cloro", "limpiador"],
+  limpiar: ["fabuloso", "pinol", "cloro", "limpiador"],
+  limpiador: ["fabuloso", "pinol", "cloro"],
+  limpiadores: ["fabuloso", "pinol", "cloro"],
+  refresco: ["coca", "sprite", "pepsi", "mirinda"],
+  refrescos: ["coca", "sprite", "pepsi", "mirinda"],
+  soda: ["coca", "sprite", "pepsi", "mirinda"],
+  sodas: ["coca", "sprite", "pepsi", "mirinda"],
+};
+
+/** Marcas que el SQL debe alcanzar cuando el cliente solo dijo el tipo. */
+function vagueFamilyTokens(text: string): string[] {
+  if (!isVagueListaQuery(text)) return [];
+  const words = foldListaText(text).split(" ").filter((word) => VAGUE_WORDS.has(word));
+  const out: string[] = [];
+  for (const word of words) {
+    for (const token of VAGUE_FAMILY[word] ?? []) {
+      if (!out.includes(token)) out.push(token);
+    }
+  }
+  return out;
+}
+
+function vagueFamily(name: string): string {
+  const words = foldListaText(name).split(" ").filter(Boolean);
+  const known = ["coca", "sprite", "pepsi", "mirinda", "seven", "sidral", "manzanita", "fabuloso", "pinol", "cloro", "limpiador", "limpiadora"];
+  return words.find((word) => known.includes(word)) ?? words[0] ?? name;
+}
+
+function vagueRows(rows: ListaProducto[], text: string): ListaProducto[] {
+  if (!isVagueListaQuery(text)) return [];
+  const folded = foldListaText(text);
+  const cleaning = /\blimpieza|\blimpiar|\blimpiador/.test(folded);
+  const soda = /\brefresco|\bsoda/.test(folded);
+  return rows.filter((row) => {
+    const name = foldListaText(row.nombre);
+    // La categoría «limpiadores de piso» junta trapeadores y Cloralex.
+    // El pedido vago se queda en las marcas de limpieza, no en todo el pasillo.
+    if (cleaning) return /\b(?:fabuloso|pinol|cloro|limpiadores?|limpiadoras?)\b/.test(name);
+    if (soda) return /\b(coca|sprite|pepsi|mirinda|seven|sidral|manzanita)\b/.test(name);
+    return false;
+  });
+}
+
+function pickVague(rows: ListaProducto[], limit: number): ListaProducto[] {
+  const groups = new Map<string, ListaProducto[]>();
+  for (const row of rows) {
+    const key = vagueFamily(row.nombre);
+    const list = groups.get(key) ?? [];
+    list.push(row);
+    groups.set(key, list);
+  }
+  const cap = Math.max(1, Math.min(limit, 8));
+  const lists = [...groups.keys()].sort().map((key) => groups.get(key) ?? []);
+  if (lists.length >= 2) {
+    const picked: ListaProducto[] = [];
+    for (const list of lists) {
+      list.sort((a, b) => a.nombre.length - b.nombre.length || a.nombre.localeCompare(b.nombre));
+      const piece = list.find((row) => !/\b(cj|caja|cajas|paquete|paquetes|paq)\b/.test(foldListaText(row.nombre)));
+      picked.push(piece ?? list[0]);
+      if (picked.length >= cap) break;
+    }
+    return picked;
+  }
+  const only = lists[0] ?? [];
+  return only.slice(0, Math.min(cap, 5));
+}
+
 export function rankListaCandidates(rows: ListaProducto[], text: string, limit = LISTA_SEARCH_LIMIT): ListaProducto[] {
+  // «refresco» también es el nombre de 7up. La familia (Coca, Pepsi) va primero.
+  if (isVagueListaQuery(text)) {
+    const vague = pickVague(vagueRows(rows, text), limit);
+    if (vague.length) return vague;
+  }
   const must = listaSearchTokens(text);
-  return rankListaByTokens(rows, listaRankTokens(text), limit, listaPackageKey(text), must);
+  const ranked = rankListaByTokens(rows, listaRankTokens(text), limit, listaPackageKey(text), must);
+  if (ranked.length) return ranked;
+  return pickVague(vagueRows(rows, text), limit);
 }

@@ -2,7 +2,31 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 16 de octubre de 2026. La toma del pedido
+> Última actualización: 17 de octubre de 2026. La búsqueda de Peke's
+> se prueba contra el catálogo completo (12,865 filas,
+> `scripts/fixtures/pekes-catalogo-completo.json.gz`). Si el cliente
+> escribe nombre y presentación de un solo producto, se anota:
+> «Sanitas 100 Toallas» y «coca 600». Si es vago o viene mal escrito
+> y hay varias opciones reales, se numeran: «sanitas» ofrece Sanitas
+> y Sanitas 100 Toallas; «cocacola», «jabon zote», «servilletas» y
+> «papel petalo» preguntan. «un nito» sigue en Nito 62g y «una caja
+> de nito» en la caja. Servilletas y papel Pétalo sí están (Petalo,
+> Lys, Hig Petalo). «algo de limpieza» ofrece Fabuloso, Pinol y cloro;
+> «refresco» ofrece Coca y las otras marcas. Lo que no existe
+> (kombucha) dice «no contamos con X. ¿Deseas quitarlo de la lista?».
+> La ventana de 200 prioriza la palabra completa. Con 12,865 productos
+> no hace falta un índice nuevo: ya están `productos_tienda_tienda_idx`
+> y, si se corrió `20261015`, el GIN de `mandalo_fold`. La migración
+> `20261017_lista_palabra_completa.sql` queda en el PR y NO está
+> aplicada: puntúa 8 la palabra exacta y 2 el pedazo, pega «600 ml»
+> con «600ml», y ordena la exacta primero. Si más de 200 filas traen
+> la misma palabra (fresa), el tope se llena con esas. «algo de
+> limpieza» y «refresco» mandan también fabuloso/pinol/cloro y
+> coca/sprite/pepsi/mirinda para que no se queden fuera del tope.
+> Prueba: `scripts/check-pekes-search.ts`. George y La Central siguen
+> igual. No se tocó nada después del sí. No está mergeado. No se
+> llamó a OpenAI, no se mandó WhatsApp y no se escribió en Supabase.
+> Actualización anterior: 16 de octubre de 2026. La toma del pedido
 > (antes del sí) tiene una sola salida: el modelo busca y arma el
 > carrito con ids reales, y el código valida y pinta las plantillas.
 > Ya no se borra lo que el modelo anotó para rehacer la pregunta.

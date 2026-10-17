@@ -1,0 +1,101 @@
+[
+ {
+  "id": 5092,
+  "tienda_id": 7,
+  "nombre_producto": "Jb Zote Azul De 400g",
+  "precio": null,
+  "disponible": true,
+  "categoria": "jabon de barra y bañ",
+  "marca": null,
+  "presentacion": null,
+  "alias": []
+ },
+ {
+  "id": 5228,
+  "tienda_id": 7,
+  "nombre_producto": "Pastilla Cloralex Azul 2pz",
+  "precio": null,
+  "disponible": true,
+  "categoria": "baño",
+  "marca": null,
+  "presentacion": null,
+  "alias": []
+ },
+ {
+  "id": 5248,
+  "tienda_id": 7,
+  "nombre_producto": "Pastilla Cloralex Frescura Azul 2pz",
+  "precio": null,
+  "disponible": true,
+  "categoria": "baño",
+  "marca": null,
+  "presentacion": null,
+  "alias": []
+ },
+ {
+  "id": 5321,
+  "tienda_id": 7,
+  "nombre_producto": "Det Liquido Zote Azul 1L",
+  "precio": null,
+  "disponible": true,
+  "categoria": "javon en polvo y liq",
+  "marca": null,
+  "presentacion": null,
+  "alias": []
+ },
+ {
+  "id": 5533,
+  "tienda_id": 7,
+  "nombre_producto": "Pastilla Cloralex Azul 40g",
+  "precio": null,
+  "disponible": true,
+  "categoria": "baño",
+  "marca": null,
+  "presentacion": null,
+  "alias": []
+ },
+ {
+  "id": 5569,
+  "tienda_id": 7,
+  "nombre_producto": "Pastlla Cloralex Frescura Azul 40g",
+  "precio": null,
+  "disponible": true,
+  "categoria": "baño",
+  "marca": null,
+  "presentacion": null,
+  "alias": []
+ },
+ {
+  "id": 7783,
+  "tienda_id": 7,
+  "nombre_producto": "Sanitas",
+  "precio": null,
+  "disponible": true,
+  "categoria": "desechables",
+  "marca": null,
+  "presentacion": null,
+  "alias": []
+ },
+ {
+  "id": 11671,
+  "tienda_id": 7,
+  "nombre_producto": "Pastilla Azul Sanitario Konnig 4pz",
+  "precio": null,
+  "disponible": true,
+  "categoria": "baño",
+  "marca": null,
+  "presentacion": null,
+  "alias": []
+ },
+ {
+  "id": 12913,
+  "tienda_id": 7,
+  "nombre_producto": "Sanitas 100 Toallas",
+  "precio": null,
+  "disponible": true,
+  "categoria": "desechables",
+  "marca": null,
+  "presentacion": null,
+  "alias": []
+ }
+]

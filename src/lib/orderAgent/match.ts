@@ -240,7 +240,8 @@ export function spokenPackageSize(text: string): string | null {
   if (liters) return `${liters[1].replace(",", ".")}l`;
   const grams = folded.match(/\b(\d+(?:[.,]\d+)?)\s*(?:g|gr|gramos?)\b/);
   if (grams) return `${grams[1].replace(",", ".")}g`;
-  const bare = folded.match(/\b(?:de\s+)?(\d{3,4})\b/);
+  // «coca 600» es 600 ml. «100 toallas» no: el número es la presentación, no mililitros.
+  const bare = folded.match(/\b(?:de\s+)?(\d{3,4})\b(?!\s*(?:toallas?|servilletas?|hojas?|rollos?|pz|pzas?|piezas?|paq|paquetes?))/);
   if (bare && Number(bare[1]) >= 100) return `${bare[1]}ml`;
   return null;
 }
@@ -326,8 +327,26 @@ export function messageSelectsProduct(product: AgentProduct, siblings: AgentProd
     return true;
   });
   hits = mostSpecific(hits, clause);
+  // «sanitas» no se queda en Sanitas si también existe «Sanitas 100 Toallas».
+  // Nito 62g sí: lo que sobra es el tamaño, no otra presentación.
+  if (hits.length === 1 && longerRealName(hits[0], family)) return false;
   return hits.length === 1 && hits[0].id === product.id;
 }
+
+/** El nombre es el principio de otro producto real («Sanitas» → «Sanitas 100 Toallas»). */
+function longerRealName(product: AgentProduct, family: AgentProduct[]): boolean {
+  const name = foldAgent(product.name);
+  if (!name) return false;
+  return family.some((other) => {
+    if (other.id === product.id) return false;
+    const extra = foldAgent(other.name);
+    if (!extra.startsWith(`${name} `)) return false;
+    const rest = extra.slice(name.length).trim().split(/\s+/).filter(Boolean);
+    return rest.some((word) => word.length >= 3 && !SIZE_OR_MODIFIER.test(word));
+  });
+}
+
+const SIZE_OR_MODIFIER = /^(?:\d+(?:[.,]\d+)?(?:ml|l|lt|lts|g|gr|kg|pz|paq)?|funk|duo|hotkis|cherry|zero|light|diet|retornable|retornble|malteada|marinad[oa]s?)$/;
 
 export function optionsLookDifferent(products: AgentProduct[]): boolean {
   if (products.length <= 1) return false;
@@ -411,7 +430,8 @@ export function orderClauses(message: string): string[] {
   const merged: string[] = [];
   for (const part of parts) {
     const text = foldAgent(part);
-    const continues = /^(?:de\b|recia\b|reciona\b|grande\b|chica\b|chico\b|marinad|una recia|un recio|una grande|una chica)/.test(text);
+    // «Sanitas 100 Toallas» es una presentación, no un segundo producto.
+    const continues = /^(?:de\b|recia\b|reciona\b|grande\b|chica\b|chico\b|marinad|una recia|un recio|una grande|una chica|\d+\s+(?:toallas?|servilletas?|hojas?|rollos?)\b)/.test(text);
     if (merged.length && continues) merged[merged.length - 1] = `${merged[merged.length - 1]} ${part}`;
     else merged.push(part);
   }

@@ -263,7 +263,7 @@ async function main(): Promise<void> {
     ).map((item) => item.nombre);
     const nitoAt = ranked.findIndex((name) => name.startsWith("Nito 62g"));
     const cariAt = ranked.findIndex((name) => /carinitos/i.test(foldAgent(name)));
-    assert(nitoAt >= 0 && nitoAt < cariAt, "aunque el SQL traiga cariñitos primero, el ranking TS sube Nito 62g");
+    assert(nitoAt === 0 && (cariAt < 0 || nitoAt < cariAt), "aunque el SQL traiga cariñitos primero, el ranking TS sube Nito 62g");
   });
 
   await check("la migración solo ordena y no borra", () => {
@@ -626,7 +626,8 @@ async function main(): Promise<void> {
       }],
     });
     assert(seisTurn.cart.some((item) => /nito 62g/i.test(item.name)), "el Nito queda en la pieza de 62g");
-    assert(seisTurn.cart.some((item) => /coca/i.test(item.name)) && !seisTurn.cart.some((item) => item.productId === 6392), "la Coca queda en la pieza estándar");
+    assert(!seisTurn.cart.some((item) => item.productId === 6392), "la Coca de 2.5 no entra");
+    assert(/coca/i.test(bundle(seisTurn)), "la Coca se pregunta: hay varias presentaciones");
     assert(asks(seisTurn.reply) && !seisTurn.reply.includes("¿Están bien estos productos?"), "lo que cambia de sabor se pregunta");
     assert(/pringles/i.test(bundle(seisTurn)), "las Pringles se preguntan");
     assert(seisTurn.cart.some((item) => /capp?uccino|capuch/i.test(item.name)), "el olé capuchino queda en la presentación estándar");
@@ -692,6 +693,7 @@ async function main(): Promise<void> {
     pekesSqlQueue = (sqlTurn.pending?.queue ?? []).map((item) => item.question).join("\n---\n");
     assert(sqlTurn.cart.every((item) => item.productId !== 6392 && item.productId !== 5378 && item.productId !== pekesSearch.search_results.nito[0].id), "el orden SQL no mete cariñitos, la caja ni la Coca de 2.5");
     assert(!sqlTurn.reply.includes("¿Están bien estos productos?"), "sin la migración tampoco cierra");
+    assert(!/elvive/i.test(bundle(sqlTurn)), "ole no ofrece Elvive: oleo no es la palabra ole");
   });
 
   await check("Peke's: solo una pieza cambia la caja", async () => {

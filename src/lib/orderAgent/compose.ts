@@ -4,7 +4,7 @@
  * No inventa productos ni deja una línea en silencio.
  */
 import { foldAgent, genericDogoProduct, isGenericDogoText, searchAgentProducts } from "@/lib/orderAgent/catalog";
-import { listaRankTokens } from "@/lib/storeProductSearch";
+import { isVagueListaQuery, listaRankTokens, listaWordHit, synonymForms } from "@/lib/storeProductSearch";
 import {
   contentTokens,
   isPackProduct,
@@ -104,12 +104,7 @@ function prefixLimit(token: string): number {
 }
 
 function wordMatches(word: string, token: string): boolean {
-  if (!word || !token) return false;
-  if (word === token) return true;
-  const gap = Math.abs(word.length - token.length);
-  if (gap > prefixLimit(token)) return false;
-  if (word.startsWith(token) || token.startsWith(word)) return true;
-  return false;
+  return listaWordHit(word, token);
 }
 
 function tokenInBlob(blob: string, token: string): boolean {
@@ -313,6 +308,7 @@ function hasFocusRank(product: AgentProduct, token: string): number {
       if (form !== token && token.startsWith(form) && token.length - form.length <= 2) continue;
       if (word === form) best = Math.max(best, 2);
       else if (word === `${form}s` || form === `${word}s` || word === `${form}es` || form === `${word}es`) best = Math.max(best, 1);
+      else if (word.length >= form.length && Math.abs(word.length - form.length) <= 1 && listaWordHit(word, form)) best = Math.max(best, 1);
     }
   }
   return best;
@@ -446,6 +442,82 @@ function customerSaidMarinade(clause: string): boolean {
   return /\bmarinad/.test(text) || /\b(normal|natural|sin marinar)\b/.test(text);
 }
 
+const MODIFIER_WORD = /^(?:funk|duo|hotkis|cherry|zero|light|diet|retornable|retornble|malteada|marinad[oa]s?)$/;
+
+/** Caja, paquete o «15paq». «100pz» de una servilleta no es caja. */
+function wholesalePack(product: AgentProduct): boolean {
+  return /\b(cajas?|paquetes?|cj|paq)\b/.test(foldAgent(product.name));
+}
+
+function modifierVariant(product: AgentProduct, clause: string): boolean {
+  const extra = unexplainedWords(product, clause);
+  return extra.length > 0 && extra.every((word) => MODIFIER_WORD.test(word));
+}
+
+function closestOptions(clause: string, products: AgentProduct[]): AgentProduct[] {
+  const text = foldAgent(clause);
+  let rows = products;
+  // En este catálogo el papel Pétalo se llama «Hig Petalo», no «Papel Petalo».
+  if (/\bpapel\b/.test(text) && /\bpetalo\b/.test(text) && !/\bservillet/.test(text)) {
+    const hig = products.filter((product) => /\bhig\b/.test(foldAgent(product.name)));
+    if (hig.length) rows = hig;
+  }
+  const ranked = searchAgentProducts(rows, clause, 5);
+  return (ranked.length ? ranked : rows).slice(0, 5);
+}
+
+/**
+ * Nombre exacto con una sola presentación: se anota.
+ * «sanitas» no es exacto: existe «Sanitas 100 Toallas», así que se preguntan las dos.
+ * Varias presentaciones (coca, zote, servilletas) se preguntan.
+ * La pieza estándar que ya existía se queda: «un nito» es Nito 62g.
+ */
+function chooseAbarrotes(clause: string, products: AgentProduct[]): AgentProduct[] {
+  const plain = products.filter((product) => unexplainedWords(product, clause).length === 0);
+  if (plain.length === 1) {
+    const name = foldAgent(plain[0].name);
+    const others = products.filter((product) => product.id !== plain[0].id);
+    const extensions = others.filter((product) => {
+      if (!foldAgent(product.name).startsWith(`${name} `)) return false;
+      return unexplainedWords(product, clause).some((word) => !MODIFIER_WORD.test(word));
+    });
+    if (extensions.length) {
+      // «lata de maíz» nombra la lata. «Maíz Morado» es bolsa y no se pregunta.
+      if (saidOnlyOn(clause, plain[0], extensions)) return plain;
+      return closestOptions(clause, [plain[0], ...extensions]);
+    }
+    if (others.every((product) => modifierVariant(product, clause))) return plain;
+  }
+  const sized = standardPresentation(clause, products);
+  const keys = new Set(products.map((product) => sizeKeyOf(product)));
+  // «cocacola» y «zote» traen tamaño y hay varias: se pregunta.
+  // «olé capuchino» nombra la línea y la pieza sin tamaño se queda.
+  if (sized.length === 1 && keys.size >= 3 && !unsizedNamedLine(clause, sized[0])) {
+    return closestOptions(clause, products);
+  }
+  return sized;
+}
+
+/** Una palabra del cliente está en este producto y en ninguno de los otros. */
+function saidOnlyOn(clause: string, product: AgentProduct, others: AgentProduct[]): boolean {
+  const said = foldAgent(clause).split(" ").filter((word) => word.length >= 4);
+  const blob = (row: AgentProduct) => foldAgent(`${row.presentation ?? ""} ${row.name}`);
+  const mine = blob(product);
+  return said.some((word) => mine.includes(word) && others.every((other) => !blob(other).includes(word)));
+}
+
+/** «ole capuchino» → Ole Cappuccino, que no trae mililitros. «coca» no: todas traen tamaño. */
+function unsizedNamedLine(clause: string, product: AgentProduct): boolean {
+  if (sizeKeyOf(product)) return false;
+  const words = new Set(foldAgent(product.name).split(" ").filter(Boolean));
+  const tokens = foldAgent(clause).split(" ").filter((token) => token.length >= 3 && !CATEGORY_TOKENS.has(token));
+  const hits = tokens.filter((token) => {
+    const forms = new Set([token, ...synonymForms(token)]);
+    return [...forms].some((form) => words.has(form));
+  });
+  return hits.length >= 2;
+}
+
 export function decideClause(clause: string, pool: AgentProduct[], store: AgentStore): ClauseDecision {
   const text = cleanClause(clause);
   const tokens = clauseTokens(text);
@@ -463,6 +535,7 @@ export function decideClause(clause: string, pool: AgentProduct[], store: AgentS
   const ranked = typeFilter(text, found);
   const best = ranked.length ? Math.max(...ranked.map((product) => coverage(product, tokens))) : 0;
   let hits = best > 0 ? ranked.filter((product) => coverage(product, tokens) === best) : [];
+  if (!hits.length && isVagueListaQuery(text)) hits = ranked.slice(0, 5);
 
   const wanted = spokenPackageSize(text);
   if (wanted) {
@@ -470,7 +543,7 @@ export function decideClause(clause: string, pool: AgentProduct[], store: AgentS
     if (sized.length) hits = sized;
   }
   if (saidPack(text)) {
-    const packs = hits.filter((product) => isPackProduct(product));
+    const packs = hits.filter((product) => isPackProduct(product) && coverage(product, tokens) > 0);
     if (packs.length) hits = packs;
   } else if (hits.some((product) => isPackProduct(product)) && hits.some((product) => !isPackProduct(product))) {
     const pieces = hits.filter((product) => !isPackProduct(product));
@@ -479,7 +552,9 @@ export function decideClause(clause: string, pool: AgentProduct[], store: AgentS
   hits = uniqueProducts(hits);
   const named = hits.filter((product) => !falseFriend(text, product));
   if (!named.length) return { kind: "missing", clause: text, label: labelOf(text) };
-  hits = preferBareName(withoutFlavors(text, named));
+  // «una caja de sanitas» no se queda en el nombre pelón: la caja no existe y se ofrecen las presentaciones.
+  const flavored = isVagueListaQuery(text) ? named : withoutFlavors(text, named);
+  hits = saidPack(text) ? flavored : preferBareName(flavored);
   if (spokenPackageSize(text) && hits.length > 1) {
     const clean = hits.filter((product) => unexplainedWords(product, text).length === 0);
     if (clean.length === 1) hits = clean;
@@ -518,13 +593,25 @@ export function decideClause(clause: string, pool: AgentProduct[], store: AgentS
   if (standard) hits = [standard];
   if (store.category === "abarrotes" && !spokenPackageSize(text) && !saidPack(text)) {
     const available = pool.filter((product) => product.available);
-    const pieces = available.filter((product) => !packInName(product));
-    const namedPieces = narrowToNamedProduct(text, pieces);
+    // «ole» tiene 3 letras. Sin esto, narrow devolvía toda la ventana de SQL
+    // y «Oleo» (Elvive) ganaba al arroz Olé, que sí es la palabra completa.
+    const focus = namedTokens(text);
+    // «100pz» es la presentación de la servilleta, no una caja. La caja sí se quita si no la pidieron.
+    const namedAll = focus.length ? narrowToNamedProduct(text, available) : null;
+    const withoutWholesale = (namedAll ?? []).filter((product) => !wholesalePack(product));
+    const namedPieces = withoutWholesale.length ? withoutWholesale : namedAll;
     if (namedPieces?.length) {
-      hits = standardPresentation(text, namedPieces);
+      hits = chooseAbarrotes(text, namedPieces);
+    } else if (isVagueListaQuery(text) && hits.length) {
+      hits = hits.slice(0, 5);
+    } else if (!focus.length && hits.length) {
+      const pieceHits = hits.filter((product) => !packInName(product));
+      hits = pieceHits.length ? pieceHits : hits;
     } else {
       // En la ventana cruda de SQL a veces solo cabe la caja. Se pregunta, no se anota.
-      const namedPacks = narrowToNamedProduct(text, available.filter((product) => packInName(product)));
+      const namedPacks = focus.length
+        ? narrowToNamedProduct(text, available.filter((product) => packInName(product)))
+        : null;
       if (!namedPacks?.length) return { kind: "missing", clause: text, label: labelOf(text) };
       hits = namedPacks;
     }

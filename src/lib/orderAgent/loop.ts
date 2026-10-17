@@ -1,5 +1,5 @@
 import { searchAgentProducts, stripOrderVerbs } from "@/lib/orderAgent/catalog";
-import { composeMessage, decideClause, lineFromDecision, messageIsNotAnOrder } from "@/lib/orderAgent/compose";
+import { composeMessage, decideClause, lineFromDecision, messageIsNotAnOrder, type ClauseDecision } from "@/lib/orderAgent/compose";
 import { ORDER_AGENT_ESCALATE_AFTER, ORDER_AGENT_MAX_STEPS, orderAgentEscalationModel, orderAgentModel } from "@/lib/orderAgent/env";
 import { createOpenAIOrderAgentModel } from "@/lib/orderAgent/model";
 import { resolveAgentPending } from "@/lib/orderAgent/pending";
@@ -21,6 +21,19 @@ import type {
 } from "@/lib/orderAgent/types";
 import { foldAgent } from "@/lib/orderAgent/catalog";
 import { confirmsShownProductList, isProductListYes, isYesConfirmation } from "@/lib/messages";
+
+/** «ete» pegado a chamberete. No es un producto que falte. */
+function gluedToAddedName(label: string, decisions: ClauseDecision[]): boolean {
+  const piece = foldAgent(label);
+  if (!piece || piece.includes(" ") || piece.length > 4) return false;
+  return decisions.some((decision) => {
+    if (decision.kind !== "add" && decision.kind !== "ask") return false;
+    const last = foldAgent(decision.clause).split(" ").filter(Boolean).at(-1) ?? "";
+    if (last.length < 5) return false;
+    const names = decision.kind === "add" ? [decision.product.name] : decision.products.map((product) => product.name);
+    return names.some((name) => foldAgent(name).includes(`${last}${piece}`));
+  });
+}
 
 function optionNamed(question: string, product: AgentProduct): boolean {
   const folded = foldAgent(question);
@@ -557,7 +570,8 @@ export async function runOrderAgentTurn(input: OrderAgentTurnInput): Promise<Ord
     for (const decision of decisions) {
       if (decision.kind === "skip") continue;
       if (decision.kind === "missing") {
-        missing.push(decision.label);
+        // «Chamber, ETE» parte el nombre. El pedazo corto no es otro producto.
+        if (!gluedToAddedName(decision.label, decisions)) missing.push(decision.label);
         continue;
       }
       if (decision.kind === "add") {
@@ -590,7 +604,7 @@ export async function runOrderAgentTurn(input: OrderAgentTurnInput): Promise<Ord
     }
     composedReply = decisions.some((decision) => decision.kind !== "skip");
     if (missing.length) {
-      const note = missing.map((label) => formatMissingProduct(label, false)).join("\n\n");
+      const note = missing.map((label) => formatMissingProduct(label, true)).join("\n\n");
       aside = aside ? `${aside}\n\n${note}` : note;
     }
     // Lo que el modelo ya preguntó se queda. Aquí solo entra lo que dejó suelto.
