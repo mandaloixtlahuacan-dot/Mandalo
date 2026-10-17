@@ -626,7 +626,8 @@ async function main(): Promise<void> {
       }],
     });
     assert(seisTurn.cart.some((item) => /nito 62g/i.test(item.name)), "el Nito queda en la pieza de 62g");
-    assert(seisTurn.cart.some((item) => /coca/i.test(item.name)) && !seisTurn.cart.some((item) => item.productId === 6392), "la Coca queda en la pieza estándar");
+    assert(!seisTurn.cart.some((item) => item.productId === 6392), "la Coca de 2.5 no entra");
+    assert(/coca/i.test(bundle(seisTurn)), "la Coca se pregunta: hay varias presentaciones");
     assert(asks(seisTurn.reply) && !seisTurn.reply.includes("¿Están bien estos productos?"), "lo que cambia de sabor se pregunta");
     assert(/pringles/i.test(bundle(seisTurn)), "las Pringles se preguntan");
     assert(seisTurn.cart.some((item) => /capp?uccino|capuch/i.test(item.name)), "el olé capuchino queda en la presentación estándar");

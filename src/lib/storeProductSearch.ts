@@ -102,6 +102,7 @@ const SYNONYM_GROUPS: string[][] = [
   ["pepsi", "pepsis", "pepe", "pepesi"],
   ["powerade", "pawer", "pauer", "power"],
   ["halls", "hall"],
+  ["higienico", "higienicos", "hig"],
   ["lata", "latas"],
   ["capuchino", "capuccino", "cappuccino", "cappuchino"],
 ];
@@ -164,8 +165,17 @@ export function listaSqlTokens(text: string): string[] {
     tokens.push(token);
   };
   for (const token of source) {
-    for (const form of synonymForms(token)) push(form);
+    const forms = synonymForms(token);
+    for (const form of forms) {
+      // «hig» es abreviatura de higiénico en el catálogo. No se manda al SQL:
+      // un LIKE de 3 letras se come productos que no son y puede sacar a Pétalo del tope.
+      if (form.length < 4 && forms.some((other) => other.length > form.length && other.startsWith(form))) continue;
+      push(form);
+    }
   }
+  // «algo de limpieza» no dice Fabuloso, pero el SQL tiene que traerlo:
+  // si el token es solo «limpieza», Fabuloso se queda fuera del tope.
+  for (const extra of vagueFamilyTokens(text)) push(extra);
   return tokens;
 }
 
@@ -474,6 +484,30 @@ export function isVagueListaQuery(text: string): boolean {
   return words.length > 0 && words.every((word) => VAGUE_WORDS.has(word));
 }
 
+const VAGUE_FAMILY: Record<string, string[]> = {
+  limpieza: ["fabuloso", "pinol", "cloro", "limpiador"],
+  limpiar: ["fabuloso", "pinol", "cloro", "limpiador"],
+  limpiador: ["fabuloso", "pinol", "cloro"],
+  limpiadores: ["fabuloso", "pinol", "cloro"],
+  refresco: ["coca", "sprite", "pepsi", "mirinda"],
+  refrescos: ["coca", "sprite", "pepsi", "mirinda"],
+  soda: ["coca", "sprite", "pepsi", "mirinda"],
+  sodas: ["coca", "sprite", "pepsi", "mirinda"],
+};
+
+/** Marcas que el SQL debe alcanzar cuando el cliente solo dijo el tipo. */
+function vagueFamilyTokens(text: string): string[] {
+  if (!isVagueListaQuery(text)) return [];
+  const words = foldListaText(text).split(" ").filter((word) => VAGUE_WORDS.has(word));
+  const out: string[] = [];
+  for (const word of words) {
+    for (const token of VAGUE_FAMILY[word] ?? []) {
+      if (!out.includes(token)) out.push(token);
+    }
+  }
+  return out;
+}
+
 function vagueFamily(name: string): string {
   const words = foldListaText(name).split(" ").filter(Boolean);
   const known = ["coca", "sprite", "pepsi", "mirinda", "seven", "sidral", "manzanita", "fabuloso", "pinol", "cloro", "limpiador", "limpiadora"];
@@ -486,9 +520,11 @@ function vagueRows(rows: ListaProducto[], text: string): ListaProducto[] {
   const cleaning = /\blimpieza|\blimpiar|\blimpiador/.test(folded);
   const soda = /\brefresco|\bsoda/.test(folded);
   return rows.filter((row) => {
-    const blob = foldListaText(`${row.nombre} ${row.categoria ?? ""}`);
-    if (cleaning) return /\blimpiador|\blimpiadora|\bfabuloso|\bpinol|\bcloro\b/.test(blob);
-    if (soda) return /\b(coca|sprite|pepsi|mirinda|seven|sidral|manzanita)\b/.test(foldListaText(row.nombre));
+    const name = foldListaText(row.nombre);
+    // La categoría «limpiadores de piso» junta trapeadores y Cloralex.
+    // El pedido vago se queda en las marcas de limpieza, no en todo el pasillo.
+    if (cleaning) return /\b(?:fabuloso|pinol|cloro|limpiadores?|limpiadoras?)\b/.test(name);
+    if (soda) return /\b(coca|sprite|pepsi|mirinda|seven|sidral|manzanita)\b/.test(name);
     return false;
   });
 }
@@ -518,6 +554,11 @@ function pickVague(rows: ListaProducto[], limit: number): ListaProducto[] {
 }
 
 export function rankListaCandidates(rows: ListaProducto[], text: string, limit = LISTA_SEARCH_LIMIT): ListaProducto[] {
+  // «refresco» también es el nombre de 7up. La familia (Coca, Pepsi) va primero.
+  if (isVagueListaQuery(text)) {
+    const vague = pickVague(vagueRows(rows, text), limit);
+    if (vague.length) return vague;
+  }
   const must = listaSearchTokens(text);
   const ranked = rankListaByTokens(rows, listaRankTokens(text), limit, listaPackageKey(text), must);
   if (ranked.length) return ranked;

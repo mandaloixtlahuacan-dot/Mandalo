@@ -2,23 +2,30 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 17 de octubre de 2026. En Peke's, «sanitas»
-> ya no cae en sanitario ni en Cloralex. Gana la palabra completa o
-> la marca exacta; la subcadena y el fuzzy que cambia el significado
-> valen 0. El umbral es `LISTA_MIN_SCORE = 2` (una letra mal). Por
-> debajo, el bot dice «Perdón, no contamos con X. ¿Deseas quitarlo de
-> la lista?» y sigue. «sanitas» anota Sanitas (id 7783). «una caja de
-> sanitas» pregunta Sanitas y Sanitas 100 Toallas, sin inventar la
-> caja. «cocacola», «sabritas» y «fabulozo» entran. Pétalo y
-> servilletas no están en las 1,278 filas ni en `pekes-search.json`,
-> así que se dicen como faltantes. Sanitas, Zote, Cloralex y sanitario
-> están en `scripts/fixtures/pekes-gap.json`. Prueba:
-> `scripts/check-pekes-search.ts`. George y La Central siguen igual.
-> «chamber» sigue siendo chamberete; «ole» ya no ofrece Elvive. No se
-> tocó nada después del sí. No está mergeado ni desplegado. No se
+> Última actualización: 17 de octubre de 2026. La búsqueda de Peke's
+> se prueba contra el catálogo completo (12,865 filas,
+> `scripts/fixtures/pekes-catalogo-completo.json.gz`). Si el cliente
+> escribe nombre y presentación de un solo producto, se anota:
+> «Sanitas 100 Toallas» y «coca 600». Si es vago o viene mal escrito
+> y hay varias opciones reales, se numeran: «sanitas» ofrece Sanitas
+> y Sanitas 100 Toallas; «cocacola», «jabon zote», «servilletas» y
+> «papel petalo» preguntan. «un nito» sigue en Nito 62g y «una caja
+> de nito» en la caja. Servilletas y papel Pétalo sí están (Petalo,
+> Lys, Hig Petalo). «algo de limpieza» ofrece Fabuloso, Pinol y cloro;
+> «refresco» ofrece Coca y las otras marcas. Lo que no existe
+> (kombucha) dice «no contamos con X. ¿Deseas quitarlo de la lista?».
+> La ventana de 200 prioriza la palabra completa. Con 12,865 productos
+> no hace falta un índice nuevo: ya están `productos_tienda_tienda_idx`
+> y, si se corrió `20261015`, el GIN de `mandalo_fold`. La migración
+> `20261017_lista_palabra_completa.sql` queda en el PR y NO está
+> aplicada: puntúa 8 la palabra exacta y 2 el pedazo, pega «600 ml»
+> con «600ml», y ordena la exacta primero. Si más de 200 filas traen
+> la misma palabra (fresa), el tope se llena con esas. «algo de
+> limpieza» y «refresco» mandan también fabuloso/pinol/cloro y
+> coca/sprite/pepsi/mirinda para que no se queden fuera del tope.
+> Prueba: `scripts/check-pekes-search.ts`. George y La Central siguen
+> igual. No se tocó nada después del sí. No está mergeado. No se
 > llamó a OpenAI, no se mandó WhatsApp y no se escribió en Supabase.
-> Si la ventana SQL de 200 no trae Sanitas, TypeScript no puede
-> inventarla: las migraciones de orden y sinónimos siguen sin aplicar.
 > Actualización anterior: 16 de octubre de 2026. La toma del pedido
 > (antes del sí) tiene una sola salida: el modelo busca y arma el
 > carrito con ids reales, y el código valida y pinta las plantillas.

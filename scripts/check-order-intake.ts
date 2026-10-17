@@ -305,7 +305,7 @@ async function play(item: Play): Promise<{ cart: AgentLine[]; replies: string[];
 
 const pekesOrders: Play[] = [
   { id: "p-victor-1545", store: pekesStore, products: pekesProducts, messages: ["Quiero 2 fuste de frutos rojos también 1 kilo de frijol 1 litro de fabuloso y un nito", "Cuáles tienes?", "1"], cartIncludes: ["Fuzetea", "Nito"], cartExcludes: ["frijol"] },
-  { id: "p-victor-1730", store: pekesStore, products: pekesProducts, messages: ["Quiero un kilo de tortillas también un pawer rojo también unos takis y unas mentas halls", "No es ninguno de los que me mostraste", "Creo que las mentas que dices no son los correctas de cuales tienes?", "Del 5", "Ninguna de las mostradas", "Seguimos"], cartIncludes: ["Tortilla", "Takis"], cartExcludes: ["Sello Rojo", "Mentas Menta"] },
+  { id: "p-victor-1730", store: pekesStore, products: pekesProducts, messages: ["Quiero un kilo de tortillas también un pawer rojo también unos takis y unas mentas halls", "No es ninguno de los que me mostraste", "Creo que las mentas que dices no son los correctas de cuales tienes?", "Del 5", "Ninguna de las mostradas", "Seguimos"], cartIncludes: ["Tortilla", "Takis"], cartExcludes: ["Sello Rojo", "Mentas Menta"], maxQuestions: 3 },
   { id: "p-coca", store: pekesStore, products: pekesProducts, messages: ["una coca de 600 y un sabritas", "1"], cartIncludes: ["600"] },
   { id: "p-nito", store: pekesStore, products: pekesProducts, messages: ["un nito"], cartIncludes: ["Nito"] },
   { id: "p-bonafont", store: pekesStore, products: pekesProducts, messages: ["un agua donado de litro"], cartIncludes: ["Bonafont"] },
