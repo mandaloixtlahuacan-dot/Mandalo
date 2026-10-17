@@ -1,6 +1,6 @@
 import { formatMoney } from "@/lib/ordenes";
 import { closestAgentProducts, foldAgent, genericDogoProduct, isGenericDogoText, isOrderVerbOnly, stripOrderVerbs } from "@/lib/orderAgent/catalog";
-import { clauseResolvesTo } from "@/lib/orderAgent/compose";
+import { clauseResolvesTo, decideClause } from "@/lib/orderAgent/compose";
 import {
   groceryClarityError,
   groceryFamily,
@@ -16,11 +16,13 @@ import {
   marinadeUnresolved,
   messageSelectsProduct,
   optionsLookDifferent,
+  orderClauses,
   presentationFromName,
   productClause,
   productMentionedStrict,
   replacementLineId,
   uniqueHitMentioned,
+  uncoveredClauses,
   spokenMeasure,
   spokenPackageSize,
   variantFromMessage,
@@ -130,13 +132,15 @@ function optionLabel(product: AgentProduct): string {
   const foldedName = foldAgent(name);
   const foldedPresentation = foldAgent(presentation);
   const showPresentation = Boolean(foldedPresentation) && !foldedName.includes(foldedPresentation);
-  return [product.brand, name, showPresentation ? presentation : ""].filter((part) => part && String(part).trim()).join(" ");
+  const brand = String(product.brand ?? "").trim();
+  const showBrand = Boolean(brand) && !foldedName.includes(foldAgent(brand));
+  return [showBrand ? brand : "", name, showPresentation ? presentation : ""].filter((part) => part && String(part).trim()).join(" ");
 }
 
 function answersPending(message: string | undefined, pending: AgentPending | null, product: AgentProduct, products: AgentProduct[]): boolean {
   if (!message || !pending?.candidateIds.includes(product.id)) return false;
   const text = foldAgent(message);
-  const number = text.match(/^(?:(?:la|el|opcion|numero|pues|es)\s+)?(\d+)$/);
+  const number = text.match(/^(?:(?:la|el|del|opcion|numero|pues|es|de)\s+)?(\d+)$/);
   if (number) return pending.candidateIds[Number(number[1]) - 1] === product.id;
   if (/^(?:pues\s+|es\s+)?(?:ese|esa|eso|ese mismo|esa misma|el primero|la primera|el de arriba)$/.test(text)) {
     return pending.candidateIds[0] === product.id;
@@ -268,19 +272,20 @@ function narrowAskedProducts(query: string, products: AgentProduct[]): AgentProd
 export function formatProductOptions(query: string, products: AgentProduct[]): string {
   const rows = narrowAskedProducts(query, products).slice(0, 5);
   const lines = rows.map((product, index) => {
-    const label = [product.brand, product.name, product.presentation].filter((part) => part && String(part).trim()).join(" ");
     const price = optionPrice(product);
-    return price ? `${index + 1}. ${label} — ${price}` : `${index + 1}. ${label}`;
+    const label = optionLabel(product);
+    const body = price ? `${label} — ${price}` : label;
+    return `${index + 1}. *${body}*`;
   });
   const title = query.trim() || rows[0]?.name || "este";
   const priced = rows.filter((product) => optionPrice(product));
   const note =
     rows.length > 0 && priced.length === 0
-      ? "\n\nLa tienda confirma el precio. Todavía no es un total cerrado."
+      ? "\n\n_La tienda confirma el precio. Todavía no es un total cerrado._"
       : priced.length < rows.length
-        ? "\n\nDonde no hay monto, la tienda confirma el precio."
+        ? "\n\n_Donde no hay monto, la tienda confirma el precio._"
         : "";
-  return `De ${title}, ¿cuál de estos?\n\n${lines.join("\n")}${note}`;
+  return `❓ *De ${title}, ¿cuál de estos?*\n\n${lines.join("\n")}${note}\n\n_Responde con el número. Si no es, corrige el producto o escribe cancelar._`;
 }
 
 function marinadePrompt(products: AgentProduct[], query = ""): string | null {
@@ -375,11 +380,17 @@ export function openClarifications(params: {
   searches: AgentSearchHit[];
   cart: AgentLine[];
   coveredIds?: number[];
+  store?: AgentStore;
 }): AgentClarification[] {
   const covered = new Set(params.coveredIds ?? []);
   const items: AgentClarification[] = [];
   for (const hit of params.searches) {
-    const options = hit.products.filter((product) => product.available);
+    if (orderClauses(hit.query).length > 1) continue;
+    if (uncoveredClauses(hit.query, params.cart, "").length === 0) continue;
+    const found = hit.products.filter((product) => product.available);
+    const decision = params.store ? decideClause(hit.query, found, params.store) : null;
+    if (decision && decision.kind !== "ask") continue;
+    const options = decision && decision.kind === "ask" ? decision.products : found;
     if (!optionsDiffer(options)) continue;
     if (options.some((product) => params.cart.some((line) => line.productId === product.id))) continue;
     if (options.some((product) => covered.has(product.id))) continue;
@@ -478,6 +489,7 @@ export function validateToolCall(params: {
   searches?: AgentSearchHit[];
   customerMessage?: string;
   askedThisTurn?: boolean;
+  awaitingList?: boolean;
 }): ToolVerdict {
   const { call, store, products, cart, pending } = params;
   const searches = params.searches ?? [];
@@ -566,6 +578,13 @@ export function validateToolCall(params: {
   }
 
   if (call.name === "finish_cart") {
+    const movedOn = foldAgent(params.customerMessage ?? "").split(" ").filter(Boolean).length > 3;
+    if (pending?.question && !params.awaitingList && !movedOn) {
+      return {
+        ok: false,
+        error: "Hay una pregunta abierta. Espera la respuesta o reemplázala con ask_customer. No llames finish_cart.",
+      };
+    }
     const missingVariant = cart.find((line) => {
       if (line.productId == null) return false;
       const product = products.find((item) => item.id === line.productId);
@@ -664,9 +683,24 @@ export function validateToolCall(params: {
       params.customerMessage && clauseResolvesTo(params.customerMessage, product, products, store),
     );
     const trusted = already || pendingAnswer || resolved;
+    const stretched = Boolean(
+      params.customerMessage
+      && !resolved
+      && !pendingAnswer
+      && foldAgent(product.name).split(" ").some((word) =>
+        foldAgent(params.customerMessage ?? "").split(" ").some((token) =>
+          token.length >= 4 && word.startsWith(token) && word.length - token.length > 2,
+        ),
+      ),
+    );
+    if (stretched) {
+      return { ok: false, error: `El cliente no pidió ${optionLabel(product)}. No lo anotes por un nombre parecido.` };
+    }
     let siblings: AgentProduct[] = [];
+    let fromSearch = false;
     if (mustSearch && !trusted) {
       const hit = searchContaining(searches, productId);
+      fromSearch = Boolean(hit);
       siblings = hit?.products ?? [];
       if (!siblings.length) {
         const name = foldAgent(product.name);
@@ -703,7 +737,7 @@ export function validateToolCall(params: {
     );
     const lineReplace = replaceId || (params.customerMessage ? replacementLineId(cart, product, params.customerMessage) : null);
     const pieceSwap = Boolean(lineReplace && params.customerMessage && isPieceCorrection(params.customerMessage));
-    const onlyHit = siblings.length === 1 && siblings[0].id === product.id;
+    const onlyHit = fromSearch && siblings.length === 1 && siblings[0].id === product.id;
     if (
       params.customerMessage
       && !trusted
@@ -798,6 +832,13 @@ export function validateToolCall(params: {
   return { ok: true, line: draft };
 }
 
+function nameWithVariant(name: string, variant: string | null): string {
+  if (!variant) return name;
+  const base = name.replace(/\s*\([^)]*\)\s*$/, "").trim();
+  if (foldAgent(base).includes(foldAgent(variant))) return base;
+  return `${base} ${variant}`;
+}
+
 function lineFromProduct(
   lineId: string,
   product: AgentProduct,
@@ -811,7 +852,7 @@ function lineFromProduct(
     lineId: replaceId || lineId,
     productId: product.id,
     freeText: null,
-    name: variant ? `${product.name} ${variant}` : product.name,
+    name: nameWithVariant(product.name, variant),
     qty,
     unit,
     variant,

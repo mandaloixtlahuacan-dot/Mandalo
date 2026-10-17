@@ -54,7 +54,7 @@ Acción interna: `flow_show_niche`
 
 🏪 *Va, de Mini Super Peke's.*
 
-Mándame cada producto por separado, con marca, tamaño y cuántos.
+Mándame lo que se te antoje, todo en un mensaje: marca, tamaño y cuántos.
 
 _Solo es un ejemplo, no está en tu pedido:_
 

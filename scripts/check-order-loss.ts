@@ -229,7 +229,7 @@ async function main(): Promise<void> {
         assert(Math.abs(line.qty - piece.qty) < 0.001, `${item.id}: ${piece.name} quedó en ${line.qty}, se pidió ${piece.qty}`);
       }
       for (const piece of item.missing ?? []) {
-        assert(new RegExp(`${piece}.*no (?:lo )?tenemos|no (?:lo )?tenemos.*${piece}`, "i").test(said), `${item.id}: no dijo que no tiene ${piece}. ${said.slice(0, 400)}`);
+        assert(new RegExp(`${piece}.*no (?:lo )?(?:tenemos|contamos)|no (?:lo )?(?:tenemos|contamos).*${piece}`, "i").test(said), `${item.id}: no dijo que no tiene ${piece}. ${said.slice(0, 400)}`);
       }
       assert(result.questions <= 2, `${item.id}: ${result.questions} preguntas, el tope es 2`);
       if (item.priced) {

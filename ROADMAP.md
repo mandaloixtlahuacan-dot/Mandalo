@@ -2,7 +2,19 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 16 de octubre de 2026. Si el cliente no dice
+> Última actualización: 16 de octubre de 2026. La toma del pedido
+> (antes del sí) tiene una sola salida: el modelo busca y arma el
+> carrito con ids reales, y el código valida y pinta las plantillas.
+> Ya no se borra lo que el modelo anotó para rehacer la pregunta.
+> `finish_cart` no es el sí: el resumen se vuelve a mostrar y la
+> ubicación espera a que el cliente confirme. «pawer» cae en Powerade,
+> «Pepe si» en Pepsi y Halls Menta gana a Mentas Menta. Un kilo que no
+> existe (frijol) se dice y no se cambia por lata. El carrito guarda
+> `producto_id` y el modelo recibe búsqueda, carrito, pregunta pendiente
+> e historial (`scripts/check-order-intake.ts`). `scripts/real-smoke.ts`
+> queda listo para una conversación por tienda con OpenAI real; no se
+> corrió. Sigue en draft, sin merge ni deploy, sin WhatsApp ni Supabase.
+> Actualización anterior: 16 de octubre de 2026. Si el cliente no dice
 > tamaño ni caja, el abarrotes anota la pieza estándar: nombre base,
 > sin caja ni modificadores, en el tamaño que más se repite. Pregunta
 > solo cuando en ese mismo tamaño hay varios sabores, aromas o

@@ -56,9 +56,12 @@ function messagesOf(request: AgentModelRequest): Array<Record<string, unknown>> 
   for (const turn of request.history) {
     messages.push({ role: turn.role === "assistant" ? "assistant" : "user", content: turn.text });
   }
+  const pending = request.pending?.question
+    ? `\n\nPregunta pendiente:\n${request.pending.question}\nOpciones mostradas, ids: ${(request.pending.candidateIds ?? []).join(", ") || "ninguna"}`
+    : "";
   messages.push({
     role: "user",
-    content: `Cliente: ${request.message}\n\nCarrito:\n${JSON.stringify(request.cart)}\n\nTienda: ${request.store.name} (id ${request.store.id}).`,
+    content: `Cliente: ${request.message}\n\nCarrito con ids:\n${JSON.stringify(request.cart)}\n\nTienda: ${request.store.name} (id ${request.store.id}).${pending}`,
   });
   if (request.toolTrace.length) {
     messages.push({

@@ -4,7 +4,7 @@
  * Si hay varias, no escoge: el loop del agente pregunta.
  */
 import { stripOrderVerbs, isOrderVerbOnly } from "../../src/lib/orderAgent/catalog";
-import { messageSelectsProduct } from "../../src/lib/orderAgent/match";
+import { messageSelectsProduct, orderClauses } from "../../src/lib/orderAgent/match";
 import type { AgentModel, AgentProduct } from "../../src/lib/orderAgent/types";
 
 function asProducts(value: unknown): AgentProduct[] {
@@ -51,11 +51,9 @@ function fold(value: string): string {
 }
 
 function clausesOf(message: string): string[] {
-  const text = message.replace(/\s+y\s+/gi, ", ");
-  const parts = text
-    .split(",")
-    .map((part) => part.trim())
-    .filter((part) => part.length > 1);
+  const parts = orderClauses(message)
+    .map((clause) => stripOrderVerbs(clause).trim())
+    .filter((clause) => clause.length > 1);
   return parts.length ? parts : [message.trim()].filter(Boolean);
 }
 

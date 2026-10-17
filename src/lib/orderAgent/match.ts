@@ -1,4 +1,5 @@
 import { foldAgent } from "@/lib/orderAgent/catalog";
+import { synonymForms } from "@/lib/storeProductSearch";
 import type { AgentLine, AgentProduct, AgentUnit } from "@/lib/orderAgent/types";
 
 /**
@@ -19,6 +20,7 @@ const STOP = new Set([
   "paq", "botella", "botellas", "lata", "latas", "bolsa", "bolsas", "medio",
   "media", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve",
   "diez", "quiero", "quisiera", "dame", "das", "deme", "traeme", "tambien", "despues", "luego",
+  "perdon", "disculpa", "agrega", "agregame", "anota", "anotame", "porfa", "porfavor", "favor",
   "entonces", "recia", "reciona", "solo", "esta", "mala", "mal", "mas", "muy", "bien", "the",
 ]);
 
@@ -342,11 +344,17 @@ export function optionsLookDifferent(products: AgentProduct[]): boolean {
 
 export function variantFromMessage(variants: string[], message: string): string | null {
   const text = foldAgent(message);
+  const forms = new Set<string>();
+  for (const token of text.split(" ")) {
+    forms.add(token);
+    for (const form of synonymForms(token)) forms.add(form);
+  }
   for (const variant of variants) {
     const key = foldAgent(variant);
     if (!key) continue;
     if (key === "manzana" && /\bmanzanitas?\b/.test(text)) return variant;
     if (new RegExp(`\\b${key}s?\\b`).test(text)) return variant;
+    if (forms.has(key)) return variant;
   }
   return null;
 }
@@ -410,6 +418,44 @@ export function orderClauses(message: string): string[] {
   return merged;
 }
 
+/** Palabras de categoría. «galletas marías» ya está cubierto si el carrito trae marías. */
+const CATEGORY_WORD = new Set([
+  "galleta", "galletas", "pan", "panes", "agua", "aguas", "leche", "leches",
+  "jabon", "jabones", "refresco", "refrescos", "jugo", "jugos", "papel",
+  "carne", "huevo", "huevos", "arroz", "botella", "bolsa", "menta", "mentas",
+  "dulce", "dulces", "botana", "botanas",
+]);
+
+function subjectTokens(clause: string): string[] {
+  const tokens = contentTokens(clause);
+  const specific = tokens.filter((token) => !CATEGORY_WORD.has(token));
+  return specific.length ? specific : tokens;
+}
+
+function tokensCovered(tokens: string[], blob: string): boolean {
+  if (!tokens.length) return true;
+  const short = tokens.every((token) => token.length < 4);
+  if (short) {
+    return tokens.every((token) => blob.split(" ").some((word) => word.endsWith(token) || word.startsWith(token)));
+  }
+  return tokens.filter((token) => token.length >= 4).every((token) => tokenInLoose(blob, token));
+}
+
+function tokenInLoose(text: string, token: string): boolean {
+  if (tokenIn(text, token)) return true;
+  for (const form of synonymForms(token)) {
+    if (form !== token && tokenIn(text, form)) return true;
+  }
+  return false;
+}
+
+/** La línea responde a esta búsqueda. Un Fuzetea no se borra por una pregunta de frijol. */
+export function lineMatchesQuery(name: string, query: string): boolean {
+  const tokens = subjectTokens(query);
+  if (!tokens.length) return true;
+  return tokensCovered(tokens, foldAgent(name));
+}
+
 function clauseCovered(clause: string, blob: string): boolean {
   const text = foldAgent(clause);
   if (/\b(dogos?|hotdogs?|jochos?|hot\s+dogs?)\b/.test(text) && /\bdogo\b/.test(blob)) {
@@ -418,19 +464,13 @@ function clauseCovered(clause: string, blob: string): boolean {
     const stem = type[1].replace(/s$/, "").replace(/es$/, "");
     return blob.includes(stem);
   }
-  const flavor = text.match(/\b(pepsis?|cocas?|seven|mirinda|manzanitas?|manzanas?)\b/);
+  const flavor = text.match(/\b(pepesi|pepe|pepsis?|cocas?|seven|mirinda|manzanitas?|manzanas?)\b/);
   if (flavor && /\b(refresco|pepsi|coca|seven|mirinda|manzana)\b/.test(blob)) {
     const stem = flavor[1].replace(/itas?$/, "a").replace(/s$/, "");
     const key = stem.startsWith("manzan") ? "manzana" : stem;
     return blob.includes(key);
   }
-  const tokens = contentTokens(clause);
-  if (!tokens.length) return true;
-  const short = tokens.every((token) => token.length < 4);
-  if (short) {
-    return tokens.every((token) => blob.split(" ").some((word) => word.endsWith(token) || word.startsWith(token)));
-  }
-  return tokens.filter((token) => token.length >= 4).every((token) => tokenIn(blob, token));
+  return tokensCovered(subjectTokens(clause), blob);
 }
 
 /** Lo que el cliente pidió y no está en el carrito ni en la pregunta. */
