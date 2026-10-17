@@ -2,7 +2,24 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 16 de octubre de 2026. La toma del pedido
+> Última actualización: 17 de octubre de 2026. En Peke's, «sanitas»
+> ya no cae en sanitario ni en Cloralex. Gana la palabra completa o
+> la marca exacta; la subcadena y el fuzzy que cambia el significado
+> valen 0. El umbral es `LISTA_MIN_SCORE = 2` (una letra mal). Por
+> debajo, el bot dice «Perdón, no contamos con X. ¿Deseas quitarlo de
+> la lista?» y sigue. «sanitas» anota Sanitas (id 7783). «una caja de
+> sanitas» pregunta Sanitas y Sanitas 100 Toallas, sin inventar la
+> caja. «cocacola», «sabritas» y «fabulozo» entran. Pétalo y
+> servilletas no están en las 1,278 filas ni en `pekes-search.json`,
+> así que se dicen como faltantes. Sanitas, Zote, Cloralex y sanitario
+> están en `scripts/fixtures/pekes-gap.json`. Prueba:
+> `scripts/check-pekes-search.ts`. George y La Central siguen igual.
+> «chamber» sigue siendo chamberete; «ole» ya no ofrece Elvive. No se
+> tocó nada después del sí. No está mergeado ni desplegado. No se
+> llamó a OpenAI, no se mandó WhatsApp y no se escribió en Supabase.
+> Si la ventana SQL de 200 no trae Sanitas, TypeScript no puede
+> inventarla: las migraciones de orden y sinónimos siguen sin aplicar.
+> Actualización anterior: 16 de octubre de 2026. La toma del pedido
 > (antes del sí) tiene una sola salida: el modelo busca y arma el
 > carrito con ids reales, y el código valida y pinta las plantillas.
 > Ya no se borra lo que el modelo anotó para rehacer la pregunta.

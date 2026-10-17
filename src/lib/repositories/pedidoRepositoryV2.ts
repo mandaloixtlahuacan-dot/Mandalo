@@ -593,7 +593,7 @@ function rerankListaRows(rows: ListaProductoRow[], queryText: string): ListaProd
     const source = id == null ? undefined : byId.get(id);
     if (source) next.push(source);
   }
-  return next.length ? next : rows;
+  return next;
 }
 
 export async function getListaProductosTienda(tiendaId: number, queryText?: string | null): Promise<ListaProductoRow[]> {
