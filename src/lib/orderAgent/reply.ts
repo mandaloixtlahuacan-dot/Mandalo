@@ -1,5 +1,6 @@
 import type { StoreKind } from "@/lib/categoryCopy";
 import { formatCatalogFinalTicket, formatPreConfirmFeeNote } from "@/lib/customerUx";
+import { formatCheckedLine, joinBlocks } from "@/lib/messageStyle";
 import { formatProductListConfirm, formatSpecificItemLine, type PedidoItemInput } from "@/lib/services/captureEngine";
 import { formatMoney } from "@/lib/ordenes";
 import { foldAgent } from "@/lib/orderAgent/catalog";
@@ -59,8 +60,31 @@ export function itemsFromAgentLines(lines: AgentLine[]): PedidoItemInput[] {
       cantidad: line.qty,
       unidad,
       notas: line.note,
+      producto_id: line.productId,
     };
   });
+}
+
+/** Cuando el producto no está en esa tienda. Una sola salida, sin repetir «Ya anoté». */
+export function formatMissingProduct(label: string, askToRemove: boolean): string {
+  const name = String(label ?? "").replace(/\s+/g, " ").trim() || "eso";
+  const head = `😔 *Perdón, no contamos con ${name}.*`;
+  if (!askToRemove) return head;
+  return `${head}\n\n*¿Deseas quitarlo de la lista?*\n\n_Si lo quitamos, seguimos con lo demás. También puedes escribir cancelar._`;
+}
+
+function styleQuestion(question: string): string {
+  const text = question.trim();
+  if (!text) return "";
+  if (text.includes("*") && /[?¿]/.test(text)) return text;
+  const exit = "_Responde con el número o el nombre. Si no es, corrige el producto o escribe cancelar._";
+  if (text.includes(exit)) return `❓ *${text}*`;
+  return `❓ *${text}*\n\n${exit}`;
+}
+
+function heldCart(cart: AgentLine[]): string {
+  if (!cart.length) return "";
+  return `🛒 *Tu pedido*\n\n${joinBlocks(cart.map((line) => formatCheckedLine(agentLineLabel(line))))}`;
 }
 
 /** El total sale del precio del catálogo. El modelo no lo calcula. */
@@ -93,14 +117,14 @@ export function renderAgentReply(params: {
 }): string {
   const question = params.question?.trim() || "";
   const aside = params.aside?.trim() || "";
-  if (!params.cart.length && question) return [aside, question].filter(Boolean).join("\n\n");
+  if (!params.cart.length && question) return [aside, styleQuestion(question)].filter(Boolean).join("\n\n");
   if (!params.cart.length) {
     const invite = params.store.category === "carniceria"
-      ? "Dime el corte y los kilos, o cuántos pesos."
+      ? "🥩 *Dime el corte y los kilos, o cuántos pesos.*"
       : params.store.category === "restaurante"
-        ? "Dime qué se te antoja del menú y cuántos."
-        : "Dime qué se te antoja, con marca y tamaño si lo tienes.";
-    return [aside, question, invite].filter(Boolean).join("\n\n");
+        ? "🍔 *Dime qué se te antoja del menú y cuántos.*"
+        : "🛒 *Dime qué se te antoja, con marca y tamaño si lo tienes.*";
+    return [aside, question ? styleQuestion(question) : "", invite].filter(Boolean).join("\n\n");
   }
   const priced = priceAgentCart(params.cart);
   const kind = kindOf(params.store.category);
@@ -118,9 +142,7 @@ export function renderAgentReply(params: {
       })
     : `${formatProductListConfirm(itemsFromAgentLines(params.cart), kind)}\n\n${formatPreConfirmFeeNote("cotiza_tienda")}`;
   if (question) {
-    const noted = params.cart.map((line) => agentLineLabel(line)).filter(Boolean).join(", ");
-    const held = noted ? `Ya anoté: ${noted}.` : "";
-    return [aside, held, question].filter(Boolean).join("\n\n");
+    return [aside, heldCart(params.cart), styleQuestion(question)].filter(Boolean).join("\n\n");
   }
   return [aside, list].filter(Boolean).join("\n\n");
 }

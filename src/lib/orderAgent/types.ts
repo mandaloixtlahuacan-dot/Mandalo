@@ -83,6 +83,8 @@ export type AgentModelRequest = {
   message: string;
   toolTrace: ToolTrace[];
   repairErrors: string[];
+  /** Pregunta abierta y las opciones que el cliente está viendo. */
+  pending?: AgentPending | null;
 };
 
 export type AgentModelStep = {

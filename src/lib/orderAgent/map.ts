@@ -167,7 +167,7 @@ export function agentPendingFromStoredAsk(stored: PendingAsk | null | undefined)
 export function agentLinesFromItems(items: PedidoItemInput[]): AgentLine[] {
   return items.map((item, index) => ({
     lineId: `l${index + 1}`,
-    productId: null,
+    productId: typeof item.producto_id === "number" && Number.isFinite(item.producto_id) ? item.producto_id : null,
     freeText: item.nombre_producto,
     name: [item.nombre_producto, item.marca, item.presentacion].filter((part) => part && String(part).trim()).join(" "),
     qty: item.cantidad && item.cantidad > 0 ? item.cantidad : 1,

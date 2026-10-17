@@ -1,11 +1,11 @@
 import { searchAgentProducts, stripOrderVerbs } from "@/lib/orderAgent/catalog";
-import { composeMessage, lineFromDecision, messageIsNotAnOrder } from "@/lib/orderAgent/compose";
+import { composeMessage, decideClause, lineFromDecision, messageIsNotAnOrder } from "@/lib/orderAgent/compose";
 import { ORDER_AGENT_ESCALATE_AFTER, ORDER_AGENT_MAX_STEPS, orderAgentEscalationModel, orderAgentModel } from "@/lib/orderAgent/env";
 import { createOpenAIOrderAgentModel } from "@/lib/orderAgent/model";
 import { resolveAgentPending } from "@/lib/orderAgent/pending";
 import { buildOrderAgentSystem } from "@/lib/orderAgent/prompt";
-import { renderAgentReply } from "@/lib/orderAgent/reply";
-import { contentTokens, presentationFromName, productClause, spokenMeasure, spokenPackageSize, uncoveredClauses } from "@/lib/orderAgent/match";
+import { formatMissingProduct, renderAgentReply } from "@/lib/orderAgent/reply";
+import { presentationFromName, productClause, spokenMeasure, spokenPackageSize, uncoveredClauses } from "@/lib/orderAgent/match";
 import { formatProductOptions, openClarifications, upsertLine, validateToolCall, type AgentSearchHit } from "@/lib/orderAgent/validate";
 import type {
   AgentClarification,
@@ -66,14 +66,6 @@ function preferSpokenSize(message: string, query: string, products: AgentProduct
   return front.length ? [...front, ...rest] : products;
 }
 
-function unavailableHit(products: AgentProduct[], clause: string): boolean {
-  const text = foldAgent(clause);
-  return products.some((product) => {
-    if (product.available) return false;
-    return contentTokens(product.name).some((token) => token.length >= 5 && text.includes(token));
-  });
-}
-
 function rememberSpoken<T extends AgentPending>(message: string, pending: T): T {
   const apply = <I extends { query?: string | null; unit: AgentPending["unit"]; qty: number | null }>(item: I): I => {
     if (item.unit) return item;
@@ -85,21 +77,75 @@ function rememberSpoken<T extends AgentPending>(message: string, pending: T): T 
   return { ...next, queue: (next.queue ?? []).map((item) => apply(item)) };
 }
 
+function dropCoveredQuestions(current: AgentPending | null, lines: AgentLine[]): AgentPending | null {
+  const openQueue = (item: AgentPending): AgentClarification[] =>
+    (item.queue ?? []).filter((entry) => !entry.query || uncoveredClauses(entry.query, lines, "").length > 0);
+  let cursor = current;
+  while (cursor?.query && uncoveredClauses(cursor.query, lines, "").length === 0) {
+    const [next, ...rest] = openQueue(cursor);
+    cursor = next ? { ...next, queue: rest } : null;
+  }
+  if (!cursor) return null;
+  return { ...cursor, queue: openQueue(cursor) };
+}
+
+function dedupedQueue(current: AgentPending, extra: AgentClarification[]): AgentClarification[] {
+  const seen = new Set<string>();
+  const take = (query: string | null | undefined, question: string): boolean => {
+    const key = foldAgent(query || question);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  };
+  take(current.query, current.question);
+  const kept: AgentClarification[] = [];
+  for (const item of [...(current.queue ?? []), ...extra]) {
+    if (take(item.query, item.question)) kept.push(item);
+  }
+  return kept;
+}
+
 function withQueue(current: AgentPending | null, extra: AgentClarification[]): { pending: AgentPending | null; question: string | null } {
   if (!extra.length) return { pending: current, question: current?.question ?? null };
   if (!current?.question) {
     const [first, ...rest] = extra;
-    return { question: first.question, pending: { ...first, queue: [...(current?.queue ?? []), ...rest] } };
+    return { question: first.question, pending: { ...first, queue: dedupedQueue({ ...first, queue: current?.queue ?? [] }, rest) } };
   }
   return {
     question: current.question,
-    pending: { ...current, queue: [...(current.queue ?? []), ...extra] },
+    pending: { ...current, queue: dedupedQueue(current, extra) },
   };
 }
 
 function broadYes(message: string): boolean {
   if (isYesConfirmation(message) || isProductListYes(message)) return true;
   return /^(asi esta bien|todo bien|correcto|esta bien)$/.test(foldAgent(message));
+}
+
+/** «Ninguno» o «seguimos» sueltan la pregunta. No se vuelve a hacer igual. */
+function dropsOpenQuestion(message: string): "reject" | "continue" | null {
+  const text = foldAgent(message);
+  if (!text) return null;
+  if (/\b(ninguno|ninguna|ningunos|ningunas)\b/.test(text) || /\bno es ninguno\b/.test(text) || /\bno son esas\b/.test(text)) {
+    return "reject";
+  }
+  if (/\bno son\b/.test(text) && /\b(correct\w*|mostrad\w*)\b/.test(text)) return "reject";
+  if (/^(seguimos|sigue|continua|continuemos|es todo|nada mas|ya estaria|listo)$/.test(text)) return "continue";
+  return null;
+}
+
+function looksLikeChoice(message: string): boolean {
+  const text = foldAgent(message);
+  return /^(?:(?:la|el|del|de|opcion|numero|pues|es)\s+)?(?:ese|esa|eso|ese mismo|esa misma|el primero|la primera|\d+)$/.test(text);
+}
+
+/** El cliente no está pidiendo productos: señala una opción, pregunta cuáles hay, o rechaza lo mostrado. */
+function customerNotOrdering(message: string): boolean {
+  if (messageIsNotAnOrder(message)) return true;
+  const text = foldAgent(message);
+  if (/\bno son\b/.test(text) && /\b(correct\w*|mostrad\w*)\b/.test(text)) return true;
+  if (/\b(cuales tienes|que tienes|cuales hay)\b/.test(text)) return true;
+  return false;
 }
 
 function resolveAgentModels(input: OrderAgentTurnInput): { primary: AgentModel | null; escalation: AgentModel | null } {
@@ -252,12 +298,71 @@ export async function runOrderAgentTurn(input: OrderAgentTurnInput): Promise<Ord
         confirmedList: false,
       });
     }
-    // «2», «está bien» o «de harina» contestan la pregunta. No se repite:
-    // el tope de 60 s tiraba el duplicado y el cliente se quedaba en silencio.
+    const drop = dropsOpenQuestion(input.message);
+    if (drop) {
+      if (drop === "reject") {
+        const banned = new Set(pending.candidateIds);
+        cart = cart.filter((line) => line.productId == null || !banned.has(line.productId));
+      }
+      const next = pending.queue?.[0];
+      const shortQuery = pending.query && foldAgent(pending.query).split(" ").length <= 4 ? pending.query : "eso";
+      const label = shortQuery;
+      if (next) {
+        return finish({
+          cart,
+          pending: { ...next, queue: pending.queue?.slice(1) ?? [] },
+          reply: renderAgentReply({
+            store: input.store,
+            cart,
+            question: next.question,
+            aside: drop === "reject" ? formatMissingProduct(label, false) : null,
+          }),
+          confirmedList: false,
+        });
+      }
+      return finish({
+        cart,
+        pending: null,
+        reply: renderAgentReply({
+          store: input.store,
+          cart,
+          question: null,
+          aside: drop === "reject" ? formatMissingProduct(label, cart.length > 0) : null,
+        }),
+        confirmedList: false,
+      });
+    }
+    // «5» o «del 5» que no está en la lista: no se vuelve a preguntar lo mismo.
+    if (looksLikeChoice(input.message)) {
+      return finish({
+        cart,
+        pending: null,
+        reply: renderAgentReply({ store: input.store, cart, question: null, aside: null }),
+        confirmedList: false,
+      });
+    }
+    // «Cuáles tienes?» vuelve a mostrar la lista. No se busca de nuevo.
+    if (customerNotOrdering(input.message) && foldAgent(input.message).split(" ").length <= 6) {
+      return finish({
+        cart,
+        pending,
+        reply: renderAgentReply({ store: input.store, cart, question: pending.question, aside: null }),
+        confirmedList: false,
+      });
+    }
   }
 
-  const resolved = resolveAgentModels(input);
-  const primary = resolved.primary;
+  if (!pending && cart.length > 0 && (dropsOpenQuestion(input.message) || customerNotOrdering(input.message))) {
+    return finish({
+      cart,
+      pending: null,
+      reply: renderAgentReply({ store: input.store, cart, question: null, aside: null }),
+      confirmedList: false,
+    });
+  }
+
+  const resolvedModels = resolveAgentModels(input);
+  const primary = resolvedModels.primary;
   if (!primary) {
     return finish({
       cart,
@@ -270,7 +375,7 @@ export async function runOrderAgentTurn(input: OrderAgentTurnInput): Promise<Ord
 
   let model: AgentModel = primary;
   modelName = primary.name;
-  const escalationModel = resolved.escalation;
+  const escalationModel = resolvedModels.escalation;
   let escalated = false;
   let question: string | null = null;
   let aside: string | null = null;
@@ -307,21 +412,19 @@ export async function runOrderAgentTurn(input: OrderAgentTurnInput): Promise<Ord
     let stepResult: { toolCalls: ToolCall[]; text: string | null };
     try {
       stepResult = await model.complete({
-        system: buildOrderAgentSystem(input.store, cart, products),
+        system: buildOrderAgentSystem(input.store, cart, products, pending),
         history: input.history,
         cart,
         store: input.store,
         message: input.message,
         toolTrace: trace,
         repairErrors: repairErrors.slice(),
+        pending,
       });
     } catch {
       break;
     }
-    if (!stepResult.toolCalls.length) {
-      if (stepResult.text && !question) question = stepResult.text;
-      break;
-    }
+    if (!stepResult.toolCalls.length) break;
     let stepFailed = false;
     for (const call of stepResult.toolCalls) {
       seq += 1;
@@ -335,6 +438,7 @@ export async function runOrderAgentTurn(input: OrderAgentTurnInput): Promise<Ord
         searches,
         customerMessage: input.message,
         askedThisTurn,
+        awaitingList: input.awaitingList,
       });
       if (!verdict.ok) {
         failures += 1;
@@ -385,7 +489,7 @@ export async function runOrderAgentTurn(input: OrderAgentTurnInput): Promise<Ord
     ...(pending?.queue ?? []).flatMap((item) => item.candidateIds),
   ];
   if (input.store.hasProductList || input.store.catalogMode === "fixed") {
-    const extra = openClarifications({ searches, cart, coveredIds: covered });
+    const extra = openClarifications({ searches, cart, coveredIds: covered, store: input.store });
     if (extra.length && !input.pending) {
       const attached = withQueue(question ? pending : null, extra);
       if (attached.question) {
@@ -400,20 +504,22 @@ export async function runOrderAgentTurn(input: OrderAgentTurnInput): Promise<Ord
       const missing = uncoveredClauses(input.message, cart, coveredText);
       const asks: AgentClarification[] = [];
       for (const clause of missing) {
-        const found = (await find(clause)).slice(0, 5);
-        const lines = found.map((product, index) => `${index + 1}. ${product.name}`);
-        const text = found.length
-          ? `No encontré ${clause}, ¿cuál de estos?\n\n${lines.join("\n")}`
-          : unavailableHit(products, clause)
-            ? `Ahorita no tenemos ${clause}. ¿Quieres otra cosa del menú?`
-            : `No encontré ${clause}. ¿Me dices la marca o el tamaño?`;
+        const found = await find(clause);
+        const decision = decideClause(clause, found.length ? found : products, input.store);
+        if (decision.kind !== "ask") continue;
+        if (decision.products.some((product) => cart.some((line) => line.productId === product.id))) continue;
+        const options = decision.products.slice(0, 5);
+        if (options.length < 2 && !decision.marinade) continue;
+        const text = decision.marinade
+          ? `❓ *¿${options[0]?.name.replace(/\s+marinad[oa]s?\b/i, "").trim() || clause} marinada o normal?*\n\n_Responde marinada o normal. Si no, corrige o escribe cancelar._`
+          : formatProductOptions(decision.query, options);
         asks.push({
           question: text,
-          candidateIds: found.map((product) => product.id),
-          qty: null,
-          unit: null,
-          axis: found.length > 1 ? "size" : null,
-          query: clause,
+          candidateIds: options.map((product) => product.id),
+          qty: decision.qty,
+          unit: decision.unit,
+          axis: decision.marinade ? "marinade" : options.length > 1 ? "size" : null,
+          query: decision.clause,
         });
       }
       if (asks.length) {
@@ -443,11 +549,10 @@ export async function runOrderAgentTurn(input: OrderAgentTurnInput): Promise<Ord
     });
     const missing: string[] = [];
     const asks: AgentClarification[] = [];
-    const fresh = cart.filter((line) => !input.cart.some((prior) => prior.lineId === line.lineId));
-    if (decisions.some((decision) => decision.kind !== "skip")) {
-      const priorIds = new Set(input.cart.map((line) => line.lineId));
-      cart = cart.filter((line) => priorIds.has(line.lineId));
-    }
+    const coveredIds = new Set<number>([
+      ...cart.map((line) => line.productId).filter((id): id is number => id != null),
+      ...(pending?.candidateIds ?? []),
+    ]);
     for (const decision of decisions) {
       if (decision.kind === "skip") continue;
       if (decision.kind === "missing") {
@@ -455,44 +560,52 @@ export async function runOrderAgentTurn(input: OrderAgentTurnInput): Promise<Ord
         continue;
       }
       if (decision.kind === "add") {
+        const same = cart.some((line) =>
+          line.productId === decision.product.id && (line.variant ?? null) === (decision.variant ?? null),
+        );
+        if (same) continue;
         seq += 1;
-        const line = lineFromDecision(`l${seq}`, decision);
-        const previous = fresh.find((item) => item.productId === line.productId);
-        if (previous && line.qty === 1 && previous.qty !== 1) {
-          line.qty = previous.qty;
-          line.unit = previous.unit;
-        }
-        cart = upsertLine(cart, line);
+        cart = upsertLine(cart, lineFromDecision(`l${seq}`, decision));
+        coveredIds.add(decision.product.id);
         changed = true;
         continue;
       }
+      if (uncoveredClauses(decision.clause, cart, "").length === 0) continue;
+      if (decision.products.some((product) => coveredIds.has(product.id))) continue;
       const cut = decision.products[0]?.name.replace(/\s+marinad[oa]s?\b/i, "").trim() || decision.query;
       const questionText = decision.marinade
-        ? `¿${cut} marinada o normal?`
+        ? `❓ *¿${cut} marinada o normal?*\n\n_Responde marinada o normal. Si no, corrige o escribe cancelar._`
         : formatProductOptions(decision.query, decision.products);
-      asks.push({
+      const ask: AgentClarification = {
         question: questionText,
         candidateIds: decision.products.slice(0, 5).map((product) => product.id),
         qty: decision.qty,
         unit: decision.unit,
         axis: decision.marinade ? "marinade" : decision.products.length > 1 ? "size" : null,
         query: decision.clause,
-      });
+      };
+      for (const id of ask.candidateIds) coveredIds.add(id);
+      asks.push(ask);
     }
     composedReply = decisions.some((decision) => decision.kind !== "skip");
     if (missing.length) {
-      const note = missing.map((label) => `No tenemos *${label}*.`).join(" ");
+      const note = missing.map((label) => formatMissingProduct(label, false)).join("\n\n");
       aside = aside ? `${aside}\n\n${note}` : note;
     }
-    if (asks.length) {
+    // Lo que el modelo ya preguntó se queda. Aquí solo entra lo que dejó suelto.
+    if (asks.length && !question) {
       const [first, ...rest] = asks;
       question = first.question;
-      pending = { ...first, queue: rest };
+      pending = { ...first, queue: [...(pending?.queue ?? []), ...rest] };
       finished = false;
-    } else if (changed || missing.length) {
-      question = null;
-      pending = null;
+    } else if (asks.length && pending) {
+      pending = { ...pending, queue: dedupedQueue(pending, asks) };
+      finished = false;
     }
+  }
+  if (!input.pending && pending) {
+    pending = dropCoveredQuestions(pending, cart);
+    question = pending?.question ?? null;
   }
   if (stalled && !question && !composedReply) {
     question = "No me quedó claro. Dime un producto, con marca o tamaño.";
@@ -505,19 +618,34 @@ export async function runOrderAgentTurn(input: OrderAgentTurnInput): Promise<Ord
     finished = false;
   }
   if (changed && !question) pending = null;
-  if (!pending && question) {
+  if (question) {
     const fromText = pendingFromListedOptions(question, searches);
-    if (fromText) pending = fromText;
+    if (fromText && (!pending || foldAgent(pending.question) !== foldAgent(question))) {
+      pending = { ...fromText, queue: pending?.queue ?? [] };
+    }
   }
-  if (finished && input.awaitingList && cart.length > 0 && !question) {
-    return finish({ cart, pending: null, reply: "", confirmedList: true, model: modelName });
-  }
-  const reply = renderAgentReply({
+  if (finished && !question) pending = null;
+  const lastBot = [...input.history].reverse().find((turn) => turn.role === "assistant")?.text?.trim() ?? "";
+  let reply = renderAgentReply({
     store: input.store,
     cart,
     question: question ?? (finished ? null : pending?.question ?? null),
     aside,
   });
+  if (lastBot && foldAgent(reply) === foldAgent(lastBot)) {
+    const next = pending?.queue?.[0];
+    if (next && foldAgent(next.question) !== foldAgent(lastBot)) {
+      pending = { ...next, queue: pending?.queue?.slice(1) ?? [] };
+      question = next.question;
+    } else {
+      question = null;
+      pending = null;
+    }
+    reply = renderAgentReply({ store: input.store, cart, question, aside });
+    if (foldAgent(reply) === foldAgent(lastBot)) {
+      reply = `${reply}\n\n_Si ya está bien, responde sí. Si no, dime qué le cambio o escribe cancelar._`;
+    }
+  }
   return finish({
     cart,
     pending: finished ? null : pending,

@@ -1,9 +1,9 @@
 import { foldAgent } from "@/lib/orderAgent/catalog";
-import { answerMatchesPresentation } from "@/lib/orderAgent/match";
+import { answerMatchesPresentation, lineMatchesQuery } from "@/lib/orderAgent/match";
 import type { AgentLine, AgentPending, AgentProduct, AgentUnit } from "@/lib/orderAgent/types";
 
 function asNumber(text: string): number | null {
-  const match = foldAgent(text).match(/^(?:(?:la|el|opcion|numero|pues|es)\s+)?(\d+)$/);
+  const match = foldAgent(text).match(/^(?:(?:la|el|del|opcion|numero|pues|es|de)\s+)?(\d+)$/);
   if (!match) return null;
   const value = Number(match[1]);
   return Number.isInteger(value) && value > 0 ? value : null;
@@ -29,12 +29,19 @@ function wantsMarinade(text: string): boolean {
   return /\bmarinad|\badobad/.test(foldAgent(text));
 }
 
+function shownProductName(name: string, variant: string | null): string {
+  if (!variant) return name;
+  const base = name.replace(/\s*\([^)]*\)\s*$/, "").trim();
+  if (foldAgent(base).includes(foldAgent(variant))) return base;
+  return `${base} ${variant}`;
+}
+
 function lineFor(product: AgentProduct, qty: number, unit: AgentUnit, variant: string | null, lineId: string): AgentLine {
   return {
     lineId,
     productId: product.id,
     freeText: null,
-    name: variant ? `${product.name} ${variant}` : product.name,
+    name: shownProductName(product.name, variant),
     qty,
     unit,
     variant,
@@ -108,7 +115,14 @@ export function resolveAgentPending(params: {
   }
   if (!chosen) return null;
 
-  const drop = new Set(pending.candidateIds);
+  const query = pending.query ?? "";
+  const drop = new Set(
+    pending.candidateIds.filter((id) => {
+      const line = params.cart.find((item) => item.productId === id);
+      if (!line || !query) return true;
+      return lineMatchesQuery(line.name, query);
+    }),
+  );
   const cart = params.cart.filter((line) => line.productId == null || !drop.has(line.productId));
   cart.push(lineFor(chosen, qty, unit, variant, params.nextLineId));
   return { cart, pending: null };

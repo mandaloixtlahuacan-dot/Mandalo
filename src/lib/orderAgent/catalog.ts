@@ -31,7 +31,7 @@ function asLista(product: AgentProduct): ListaProducto & { id: number } {
     marca: product.brand,
     presentacion: product.presentation,
     categoria: product.category,
-    alias: product.alias,
+    alias: [...(product.alias ?? []), ...(product.variants ?? [])],
     precio: product.price,
   };
 }

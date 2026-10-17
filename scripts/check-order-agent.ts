@@ -550,7 +550,7 @@ async function main(): Promise<void> {
 
   const steps: string[] = [];
   const capped = await runOrderAgentTurn({
-    message: "sigue",
+    message: "xyzzy",
     cart: held,
     pending: null,
     history: [],
@@ -1274,7 +1274,9 @@ async function main(): Promise<void> {
     model: scripted("fin-lista", [{ toolCalls: [tool("finish_cart", {}, "fin")] }], []),
     logEvent: () => {},
   });
-  assert(finishShown.confirmedList === true && finishShown.pending == null, "finish_cart con la lista ya mostrada confirma");
+  assert(finishShown.confirmedList === false && finishShown.pending == null, "finish_cart no es el sí del cliente");
+  assert(finishShown.reply.includes("¿Están bien estos productos?"), "finish_cart vuelve a mostrar el resumen");
+  assert(!/ubicaci[oó]n por gps/i.test(finishShown.reply), "finish_cart no pide la ubicación");
   const vague = await runOrderAgentTurn({
     message: "una hamburguesa",
     cart: [],

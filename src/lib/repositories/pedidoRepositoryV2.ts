@@ -6,7 +6,7 @@ import { resetChatHistory } from "@/lib/messages";
 import { parseDiasCerrado } from "@/lib/services/businessHours";
 import type { OrderState } from "@/lib/orderStateMachine";
 import { formatSpecificItemLine, type PedidoItemInput, type PedidoSnapshot, type PedidoV2Record } from "@/lib/services/captureEngine";
-import { listaFetchMode, listaPackageKey, listaRankTokens, listaSqlTokens, LISTA_SEARCH_LIMIT, rankListaByTokens } from "@/lib/storeProductSearch";
+import { listaFetchMode, listaSqlTokens, LISTA_SEARCH_LIMIT, rankListaCandidates } from "@/lib/storeProductSearch";
 
 type UnknownRow = Record<string, unknown>;
 
@@ -535,7 +535,6 @@ export async function queryListaProductos(
   queryText?: string | null,
 ): Promise<ListaProductoRow[]> {
   const sqlTokens = listaSqlTokens(queryText ?? "");
-  const rankTokens = listaRankTokens(queryText ?? "");
   const count = await countListaDisponible(supabase, tiendaId);
   const mode = listaFetchMode(count, sqlTokens);
   const cacheKey =
@@ -572,11 +571,11 @@ export async function queryListaProductos(
     if (searched.error) throw new Error(searched.error.message);
     rows = mapListaRows(searched.data);
   }
-  return rememberLista(cacheKey, rerankListaRows(rows, rankTokens, listaPackageKey(queryText ?? "")));
+  return rememberLista(cacheKey, rerankListaRows(rows, queryText ?? ""));
 }
 
-function rerankListaRows(rows: ListaProductoRow[], tokens: string[], packageKey: string | null = null): ListaProductoRow[] {
-  if (!tokens.length || rows.length <= 1) return rows;
+function rerankListaRows(rows: ListaProductoRow[], queryText: string): ListaProductoRow[] {
+  if (!queryText.trim() || rows.length <= 1) return rows;
   const tagged = rows.map((row) => ({
     id: row.id,
     nombre: row.nombreProducto,
@@ -586,7 +585,7 @@ function rerankListaRows(rows: ListaProductoRow[], tokens: string[], packageKey:
     alias: row.alias,
     precio: row.precio,
   }));
-  const ranked = rankListaByTokens(tagged, tokens, LISTA_SEARCH_LIMIT, packageKey);
+  const ranked = rankListaCandidates(tagged, queryText, LISTA_SEARCH_LIMIT);
   const byId = new Map(rows.map((row) => [row.id, row]));
   const next: ListaProductoRow[] = [];
   for (const row of ranked) {

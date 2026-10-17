@@ -20,6 +20,8 @@ export type PedidoItemInput = {
   cantidad?: number | null;
   unidad?: string | null;
   notas?: string | null;
+  /** Id real de productos_tienda o del menú. Se guarda en el snapshot, no en una columna nueva. */
+  producto_id?: number | null;
 };
 
 export type PedidoSnapshot = {

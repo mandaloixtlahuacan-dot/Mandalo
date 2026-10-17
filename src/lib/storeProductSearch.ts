@@ -80,11 +80,20 @@ export function listaSearchTokens(text: string): string[] {
 /** Palabras de presentación o categoría. No deben tapar la marca. */
 const WEAK_TOKENS = new Set(["pan", "lata", "latas", "refresco", "jugo", "botella", "paquete", "bolsa", "caja"]);
 
+/** Color o sabor genérico: desempata, no alcanza para elegir otro producto. */
+const COLOR_TOKENS = new Set([
+  "rojo", "roja", "rojos", "rojas", "azul", "azules", "verde", "verdes",
+  "morado", "morada", "negro", "negra", "blanco", "blanca", "rosa",
+  "amarillo", "amarilla", "menta", "naranja",
+]);
+
 const SYNONYM_GROUPS: string[][] = [
   ["fuse", "fuze", "fusi", "fuste", "fuzet", "fuzete", "fuzetea"],
   ["coca", "cocacola"],
   ["bonafont", "bonafon", "donado", "donafon", "donafont", "fonafont", "vonafont"],
-  ["pepsi", "pepsis"],
+  ["pepsi", "pepsis", "pepe", "pepesi"],
+  ["powerade", "pawer", "pauer", "power"],
+  ["halls", "hall"],
   ["lata", "latas"],
   ["capuchino", "capuccino", "cappuccino", "cappuchino"],
 ];
@@ -95,7 +104,7 @@ const DRINK_HINTS = new Set([
   "bonafont", "bonafon", "donado", "fonafont",
 ]);
 
-function synonymForms(token: string): string[] {
+export function synonymForms(token: string): string[] {
   const forms = new Set<string>([token]);
   for (const group of SYNONYM_GROUPS) {
     if (!group.includes(token)) continue;
@@ -212,6 +221,37 @@ function isSimilar(field: string, token: string): boolean {
   return wordSimilarity(token, field) >= SIMILARITY_MIN;
 }
 
+function editDistance(left: string, right: string): number {
+  if (left === right) return 0;
+  if (Math.abs(left.length - right.length) > 2) return 3;
+  const row = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= left.length; i += 1) {
+    let prev = i - 1;
+    row[0] = i;
+    for (let j = 1; j <= right.length; j += 1) {
+      const saved = row[j];
+      const cost = left[i - 1] === right[j - 1] ? 0 : 1;
+      row[j] = Math.min(row[j] + 1, row[j - 1] + 1, prev + cost);
+      prev = saved;
+    }
+  }
+  return row[right.length];
+}
+
+/** «pawer» entra en «powerade»: una letra de diferencia contra la palabra o su inicio. */
+function typoHit(field: string, token: string): boolean {
+  if (token.length < 5) return false;
+  for (const word of field.split(" ")) {
+    if (word.length < 4 || word[0] !== token[0]) continue;
+    if (Math.abs(word.length - token.length) <= 1 && editDistance(word, token) <= 1) return true;
+    if (word.length > token.length && word.length - token.length <= 5) {
+      const head = word.slice(0, token.length);
+      if (head[0] === token[0] && editDistance(head, token) <= 1) return true;
+    }
+  }
+  return false;
+}
+
 function fieldHit(field: string, token: string): "includes" | "prefix" | "similar" | null {
   if (!field || !token) return null;
   if (field.includes(token)) return "includes";
@@ -219,7 +259,7 @@ function fieldHit(field: string, token: string): "includes" | "prefix" | "simila
     const words = field.split(" ");
     if (words.some((word) => word.startsWith(token) || (token.startsWith(word) && word.length >= 4))) return "prefix";
   }
-  if (isSimilar(field, token)) return "similar";
+  if (isSimilar(field, token) || typoHit(field, token)) return "similar";
   return null;
 }
 
@@ -302,15 +342,26 @@ function samePackage(wanted: string, got: string): boolean {
   return false;
 }
 
+function isColorToken(token: string): boolean {
+  return COLOR_TOKENS.has(token);
+}
+
+function rowText(row: ListaProducto): string {
+  return foldListaText(`${row.nombre} ${row.marca ?? ""} ${row.presentacion ?? ""} ${(row.alias ?? []).join(" ")}`);
+}
+
 export function rankListaByTokens(
   rows: ListaProducto[],
   tokens: string[],
   limit = LISTA_SEARCH_LIMIT,
   packageKey: string | null = null,
+  must: string[] | null = null,
 ): ListaProducto[] {
   if (!tokens.length || !rows.length) return [];
   const cap = Math.max(1, Math.min(limit, LISTA_SEARCH_LIMIT));
-  const scored: Array<{ row: ListaProducto; score: number; index: number }> = [];
+  const required = (must ?? []).filter((token) => !isColorToken(token) && !WEAK_TOKENS.has(token));
+  const colors = tokens.filter((token) => isColorToken(token));
+  const scored: Array<{ row: ListaProducto; score: number; index: number; mustHits: number }> = [];
   rows.forEach((row, index) => {
     let score = 0;
     let distinctive = 0;
@@ -318,19 +369,35 @@ export function rankListaByTokens(
       const part = scoreToken(row, token);
       if (part <= 0) continue;
       score += part;
-      if (!WEAK_TOKENS.has(token)) distinctive += 1;
+      if (!WEAK_TOKENS.has(token) && !isColorToken(token)) distinctive += 1;
     }
+    let mustHits = 0;
+    for (const token of required) {
+      if (scoreToken(row, token) > 0) mustHits += 1;
+    }
+    if (required.length > 0 && mustHits === 0) return;
     if (distinctive > 1) score += distinctive * 3;
+    if (required.length >= 2 && mustHits === required.length) score += 30;
     if (packageKey) {
       const got = rowPackageKey(row);
       if (got && samePackage(packageKey, got)) score += 50;
     }
-    if (score > 0) scored.push({ row, score, index });
+    if (score > 0) scored.push({ row, score, index, mustHits });
   });
-  scored.sort((a, b) => b.score - a.score || a.row.nombre.localeCompare(b.row.nombre) || a.index - b.index);
-  return scored.slice(0, cap).map((entry) => entry.row);
+  let chosen = scored;
+  if (required.length >= 2) {
+    const complete = scored.filter((entry) => entry.mustHits === required.length);
+    if (complete.length) chosen = complete;
+  }
+  if (colors.length) {
+    const painted = chosen.filter((entry) => colors.every((color) => rowText(entry.row).includes(color)));
+    if (painted.length) chosen = painted;
+  }
+  chosen.sort((a, b) => b.score - a.score || a.row.nombre.localeCompare(b.row.nombre) || a.index - b.index);
+  return chosen.slice(0, cap).map((entry) => entry.row);
 }
 
 export function rankListaCandidates(rows: ListaProducto[], text: string, limit = LISTA_SEARCH_LIMIT): ListaProducto[] {
-  return rankListaByTokens(rows, listaRankTokens(text), limit, listaPackageKey(text));
+  const must = listaSearchTokens(text);
+  return rankListaByTokens(rows, listaRankTokens(text), limit, listaPackageKey(text), must);
 }

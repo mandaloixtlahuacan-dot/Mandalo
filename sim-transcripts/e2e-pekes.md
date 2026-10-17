@@ -54,7 +54,7 @@ Acción interna: `flow_show_niche`
 
 🏪 *Va, de Mini Super Peke's.*
 
-Mándame cada producto por separado, con marca, tamaño y cuántos.
+Mándame lo que se te antoje, todo en un mensaje: marca, tamaño y cuántos.
 
 _Solo es un ejemplo, no está en tu pedido:_
 
@@ -180,7 +180,7 @@ Ya le avisé al cliente el total del pedido *#17*.
 
 ✅ *Pedido #17 confirmado*
 
-Llegará aproximadamente a las 5:25 p.m..
+Llegará aproximadamente a las 6:52 p.m..
 
 🛵 Estamos coordinando tu entrega.
 
@@ -326,7 +326,7 @@ Pedido *#17*.
 Pedido entregado
 
 Total: $83
-Hora: 2026-10-16T23:05:58.818Z
+Hora: 2026-10-17T00:32:08.277Z
 Repartidor: Roberto
 
 - cliente / notificacion_cliente / 5213310001203

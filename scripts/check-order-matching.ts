@@ -382,7 +382,7 @@ async function main(): Promise<void> {
       products: georgeProducts,
       steps: [{ toolCalls: [tool("search_products", { query: "torta" }, "s"), tool("set_cart_line", { product_id: 31, qty: 1, unit: "pz" }, "t"), tool("finish_cart", {}, "f")] }],
     });
-    assert(torta.cart.length === 0 && /no tenemos/i.test(torta.reply) && /torta/i.test(torta.reply), "la torta apagada no se anota");
+    assert(torta.cart.length === 0 && /no tenemos|no contamos/i.test(torta.reply) && /torta/i.test(torta.reply), "la torta apagada no se anota");
     assert(!torta.reply.includes("Torta de Pierna"), "no lista tortas apagadas como opción");
     const boneless = await play({
       message: "unas boneless",
@@ -411,7 +411,7 @@ async function main(): Promise<void> {
       products: georgeProducts,
       steps: [{ toolCalls: [tool("search_products", { query: "alitas" }, "s"), tool("set_cart_line", { product_id: 52, qty: 1, unit: "pz" }, "a"), tool("finish_cart", {}, "f")] }],
     });
-    assert(alitas.cart.length === 0 && /no tenemos/i.test(alitas.reply) && /alitas/i.test(alitas.reply), "las alitas apagadas no se venden");
+    assert(alitas.cart.length === 0 && /no tenemos|no contamos/i.test(alitas.reply) && /alitas/i.test(alitas.reply), "las alitas apagadas no se venden");
     const pepsi = await play({
       message: "una pepsi",
       store: georgeStore,

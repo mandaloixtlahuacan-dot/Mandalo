@@ -54,7 +54,7 @@ Acción interna: `flow_show_niche`
 
 🏪 *Va, de Mini Super Peke's.*
 
-Mándame cada producto por separado, con marca, tamaño y cuántos.
+Mándame lo que se te antoje, todo en un mensaje: marca, tamaño y cuántos.
 
 _Solo es un ejemplo, no está en tu pedido:_
 
@@ -74,15 +74,14 @@ Acción interna: `flow_switch_store`
 
 **Mándalo → cliente:**
 
-De leche, ¿cuál de estos?
+❓ *De leche, ¿cuál de estos?*
 
-1. Leche 19 Hnos 1lt
-2. Leche 19hns 1lt
-3. Leche Alpura Selecta 1L
-4. Leche Alpura Semi 1L
-5. Leche Amanecer 1 Lt
+1. *Leche 19 Hnos 1lt*
+2. *Leche 19hns 1lt*
 
-La tienda confirma el precio. Todavía no es un total cerrado.
+_La tienda confirma el precio. Todavía no es un total cerrado._
+
+_Responde con el número. Si no es, corrige el producto o escribe cancelar._
 
 Acción interna: `order_agent`
 

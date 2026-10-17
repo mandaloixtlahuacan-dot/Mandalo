@@ -1,4 +1,4 @@
-import type { AgentLine, AgentProduct, AgentStore, OrderCategory } from "@/lib/orderAgent/types";
+import type { AgentLine, AgentPending, AgentProduct, AgentStore, OrderCategory } from "@/lib/orderAgent/types";
 
 const SHARED = [
   "Eres quien anota el pedido de Mándalo por WhatsApp. Hablas como chavo del pueblo: corto, claro, cálido. Máximo 3 o 4 emojis en todo el mensaje.",
@@ -6,7 +6,8 @@ const SHARED = [
   "Nunca muestres errores de herramientas, ids, JSON, ni hables del cliente en tercera persona.",
   "No inventes productos, marcas, tamaños, precios ni opciones. El precio lo pone el código.",
   "«pedí», «quiero», «dame», «tráeme», «anota» y «agrega» no son productos ni marcas. No los busques ni los anotes.",
-  "Usa las herramientas. No confirmes el pedido tú: cuando el carrito ya esté claro, llama finish_cart.",
+  "Usa las herramientas. No confirmes el pedido tú: cuando el carrito ya esté claro, llama finish_cart. El código arma el mensaje. No escribas tú la lista ni el total.",
+  "No llames finish_cart si hay una pregunta abierta. Si vas a preguntar otra cosa, esa pregunta reemplaza a la anterior.",
   "Lee el mensaje completo de una vez y anota cada producto real del catálogo en el mismo turno.",
   "Si no dicen cantidad, es 1. Si no dicen el tamaño ni caja, anota la pieza estándar: el nombre base, sin caja ni modificadores, en el tamaño que más se repite. Pregunta solo si en ese mismo tamaño hay varios sabores, aromas o variantes. Una duda a la vez, con opciones reales y sin repetir.",
   "Si no está en el catálogo, no lo ofrezcas ni lo inventes: di que no lo tienen y sigue con lo demás.",
@@ -52,21 +53,46 @@ export function categoryRules(category: OrderCategory, hasProductList = false): 
   return `${SHARED}\n${rules}`;
 }
 
-function compactMenu(products: AgentProduct[]): string {
-  return products
-    .filter((product) => product.available && typeof product.price === "number" && product.price > 0)
-    .map((product) => `${product.id} | ${product.name} | ${product.price}`)
+function compactKnown(products: AgentProduct[], fixed: boolean): string {
+  const rows = products.filter((product) => product.available && (!fixed || (typeof product.price === "number" && product.price > 0)));
+  const shown = fixed ? rows : rows.slice(0, 40);
+  return shown
+    .map((product) => {
+      if (fixed) return `${product.id} | ${product.name} | ${product.price}`;
+      const bits = [String(product.id), product.name];
+      if (product.brand) bits.push(product.brand);
+      if (product.presentation) bits.push(product.presentation);
+      return bits.join(" | ");
+    })
     .join("\n");
 }
 
-export function buildOrderAgentSystem(store: AgentStore, cart: AgentLine[], products: AgentProduct[] = []): string {
-  const menu = store.catalogMode === "fixed" ? compactMenu(products) : "";
+export function buildOrderAgentSystem(
+  store: AgentStore,
+  cart: AgentLine[],
+  products: AgentProduct[] = [],
+  pending: AgentPending | null = null,
+): string {
+  const fixed = store.catalogMode === "fixed";
+  const menu = compactKnown(products, fixed);
+  const pendingLines = pending?.question
+    ? [
+        "Pregunta pendiente. El cliente la está contestando. Si preguntas otra, reemplaza esta. No la repitas igual:",
+        pending.question,
+        pending.candidateIds.length ? `Opciones mostradas, ids reales: ${pending.candidateIds.join(", ")}` : "",
+      ].filter(Boolean)
+    : [];
   return [
     categoryRules(store.category, store.hasProductList === true),
     "",
     `Tienda: ${store.name} (id ${store.id}, ${store.category}, ${store.catalogMode === "fixed" ? "menú con precio" : store.hasProductList ? "lista de productos" : "sin lista de productos"}).`,
-    menu ? `Menú real, id | nombre | precio. No inventes otro id:\n${menu}` : "",
-    "Carrito actual, en JSON. Si el cliente no quitó una línea, sigue aquí:",
+    menu
+      ? fixed
+        ? `Menú real, id | nombre | precio. No inventes otro id:\n${menu}`
+        : `Productos de esta tienda, id | nombre | marca | presentación. No inventes otro id:\n${menu}`
+      : "Todavía no hay productos cargados en este turno. Busca con search_products antes de anotar un id.",
+    ...pendingLines,
+    "Carrito actual, en JSON, con productId. Si el cliente no quitó una línea, sigue aquí:",
     JSON.stringify(cart),
   ].filter((part) => part !== "").join("\n");
 }

@@ -576,12 +576,14 @@ export function clauseResolvesTo(message: string, product: AgentProduct, product
 }
 
 const META = /^(?:si|no|ok|va|sale|esta bien|asi esta bien|correcto|todo bien|sigue)$/;
-const POINTER = /^(?:pues\s+|es\s+)?(?:ese|esa|eso|ese mismo|esa misma|el primero|la primera|\d+)$/;
+const POINTER = /^(?:(?:la|el|del|de|opcion|numero|pues|es)\s+)?(?:ese|esa|eso|ese mismo|esa misma|el primero|la primera|\d+)$/;
 
 export function messageIsNotAnOrder(message: string): boolean {
   const text = foldAgent(message);
   if (!text || META.test(text) || POINTER.test(text)) return true;
   if (/^(?:cual|cuales|que)\b/.test(text) && text.split(" ").length <= 6) return true;
+  if (/\b(ninguno|ninguna|ningunos|ningunas)\b/.test(text)) return true;
+  if (/^(?:seguimos|sigue|continua|continuemos|es todo|nada mas)$/.test(text)) return true;
   if (/\b(quita|quiteme|borra|elimina|cancela|ya no)\b/.test(text)) return true;
   return false;
 }
