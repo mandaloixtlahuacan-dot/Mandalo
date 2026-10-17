@@ -1,5 +1,5 @@
 import { foldAgent } from "@/lib/orderAgent/catalog";
-import { synonymForms } from "@/lib/storeProductSearch";
+import { listaWordHit, normalizeMeasureWords, synonymForms } from "@/lib/storeProductSearch";
 import type { AgentLine, AgentProduct, AgentUnit } from "@/lib/orderAgent/types";
 
 /**
@@ -20,12 +20,35 @@ const STOP = new Set([
   "paq", "botella", "botellas", "lata", "latas", "bolsa", "bolsas", "medio",
   "media", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve",
   "diez", "quiero", "quisiera", "dame", "das", "deme", "traeme", "tambien", "despues", "luego",
+  "cajita", "cajitas", "latita", "latitas", "bolsita", "bolsitas",
+  "paquetito", "paquetitos", "botellita", "botellitas",
   "perdon", "disculpa", "agrega", "agregame", "anota", "anotame", "porfa", "porfavor", "favor",
   "entonces", "recia", "reciona", "solo", "esta", "mala", "mal", "mas", "muy", "bien", "the",
 ]);
 
 function wordsOf(value: string): string[] {
   return foldAgent(value).split(" ").filter(Boolean);
+}
+
+const SIZE_TOKEN = new Set(["cuarto", "cuartos", "8oz", "250ml", "500ml", "litro", "litros"]);
+
+/** Cómo viene el producto. No es otro producto: «Lala entera» sigue siendo Lala. */
+const VARIANT_WORD = new Set([
+  "entera", "enteras", "entero", "enteros", "deslactosada", "deslactosado",
+  "light", "diet", "semidescremada", "descremada", "natural", "original",
+  "clasica", "clasico", "adobada", "adobado",
+]);
+
+/** El sustantivo del producto. Empaque, cantidad y «con tapa» no cuentan. */
+export function productTypeTokens(clause: string): string[] {
+  const folded = foldAgent(normalizeMeasureWords(clause))
+    .replace(/\bsin sabor\b/g, " ")
+    .replace(/\bcon\s+(?:tapitas?|tapas?|popotes?)\b/g, " ");
+  const tokens = contentTokens(folded).filter((token) => !SIZE_TOKEN.has(token));
+  const withoutVariant = tokens.filter((token) => !VARIANT_WORD.has(token));
+  const base = withoutVariant.length ? withoutVariant : tokens;
+  const specific = base.filter((token) => !CATEGORY_WORD.has(token));
+  return specific.length ? specific : base;
 }
 
 export function contentTokens(value: string): string[] {
@@ -40,6 +63,17 @@ export function contentTokens(value: string): string[] {
     if (seen.has(token)) continue;
     seen.add(token);
     tokens.push(token);
+  }
+  // «caja» o «para» solas sí nombran producto. «quiero» no. En «caja de nito» siguen siendo empaque.
+  // «no es una caja, solo una pieza» no: ahí caja es la corrección, no el pedido.
+  if (!tokens.length) {
+    const filler = new Set([
+      "de", "del", "la", "las", "el", "los", "un", "una", "uno", "unos", "unas",
+      "quiero", "quisiera", "dame", "deme", "traeme", "porfa", "porfavor", "favor", "por",
+      "me", "te", "se",
+    ]);
+    const rest = wordsOf(head).filter((token) => !filler.has(token));
+    if (rest.length === 1 && /^(?:cajas?|bolsas?|paquetes?|para)$/.test(rest[0])) tokens.push(rest[0]);
   }
   return tokens;
 }
@@ -119,7 +153,15 @@ function tokenIn(text: string, token: string): boolean {
   if (token === "coca" && /\bcolas?\b/.test(text)) return true;
   const stem = token.endsWith("s") && token.length > 4 ? token.slice(0, -1) : token;
   if (new RegExp(`\\b${stem}s?\\b`).test(text)) return true;
-  return text.split(" ").some((word) => word.length >= 4 && (token.startsWith(word) || word.startsWith(token)));
+  // «lecheras» no está cubierto por «leche»: el pedazo corto no cuenta.
+  // Sí cuenta el diminutivo (vasitos / vaso) o un plural de hasta 3 letras.
+  return text.split(" ").some((word) => {
+    if (word.length < 4 || token.length < 4) return false;
+    if (word.startsWith(token) && word.length - token.length <= 3) return true;
+    if (!token.startsWith(word)) return false;
+    const rest = token.slice(word.length);
+    return rest.length > 0 && rest.length <= 4 && /^(?:s|es|ito|ita|itos|itas)$/.test(rest);
+  });
 }
 
 function requiredTokens(name: string, message: string): string[] {
@@ -153,6 +195,7 @@ export function uniqueHitMentioned(product: AgentProduct, message: string): bool
 /** Todas las palabras que distinguen el producto, o un sinónimo. No basta una. */
 export function productMentionedStrict(message: string, product: AgentProduct): boolean {
   if (!message.trim()) return false;
+  if (foldCatalogName(product.name) === catalogAsk(message) || foldCatalogName(product.name) === foldCatalogName(message)) return true;
   const clause = productClause(message, product.name);
   if (genericDogoMessage(clause) && isClasicoDogo(product)) return true;
   if (allTokensIn(product.name, clause) && !messageHasExtraType(clause, product)) return true;
@@ -182,9 +225,13 @@ export function marinadeUnresolved(product: Pick<AgentProduct, "name">, pool: Ar
   return seasoned && plain;
 }
 
-function sharesMessageToken(product: { name: string; brand?: string | null }, message: string): boolean {
+function sharesMessageToken(product: { name: string; brand?: string | null }, message: string, loose = false): boolean {
   const text = foldAgent(message);
   if (contentTokens(product.name).some((token) => tokenIn(text, token))) return true;
+  // «naranja» también está en «naranjada». Si no, la familia se queda en un solo nombre.
+  const said = contentTokens(text).filter((token) => token.length >= 6);
+  const words = foldAgent(product.name).split(" ").filter(Boolean);
+  if (loose && said.some((token) => words.some((word) => word.startsWith(token) && word.length - token.length <= 3))) return true;
   const brand = foldAgent(product.brand ?? "");
   return Boolean(brand) && (text.includes(brand) || contentTokens(brand).some((token) => tokenIn(text, token)));
 }
@@ -210,7 +257,14 @@ export function productClause(message: string, productName: string): string {
 function distinctiveHit(product: AgentProduct, family: AgentProduct[], message: string): boolean {
   const text = foldAgent(message);
   const mine = contentTokens(product.name);
-  const onlyMine = mine.filter((token) => family.some((other) => other.id !== product.id && !contentTokens(other.name).includes(token)));
+  const onlyMine = mine.filter((token) => {
+    const stem = token.endsWith("s") && token.length > 4 ? token.slice(0, -1) : token;
+    return !family.some((other) => {
+      if (other.id === product.id) return false;
+      const words = contentTokens(other.name);
+    return words.includes(token) || words.includes(stem) || words.some((word) => word.startsWith(token) && word.length - token.length <= 3 && token.length >= 6);
+  });
+  });
   if (onlyMine.some((token) => tokenIn(text, token))) return true;
   const parsed = presentationFromName(product.name);
   if (!parsed) return false;
@@ -231,9 +285,13 @@ function spokenKilo(text: string): boolean {
 
 const SIZE_WORD = new Set(["lts", "lt", "ltr", "ltrs", "gr", "grs", "mls", "kgs"]);
 
-/** Tamaño de empaque dicho por el cliente: «2 litros», «2 l», «62 g». El kilo suelto es cantidad. */
+/** Tamaño de empaque dicho por el cliente: «2 litros», «2 l», «62 g», «cuarto». El kilo suelto es cantidad. */
 export function spokenPackageSize(text: string): string | null {
-  const folded = foldAgent(text);
+  const folded = foldAgent(normalizeMeasureWords(text));
+  const household = !/\b(?:jamon|kilo|kilos|kg|gramo|gramos)\b/.test(folded);
+  if (household && /\b(?:cuartos?|8oz|250ml)\b/.test(folded)) return "250ml";
+  if (/\bmedio\b/.test(folded) && /\blitros?\b/.test(folded)) return "500ml";
+  if (/\b500ml\b/.test(folded)) return "500ml";
   const ml = folded.match(/\b(\d+(?:[.,]\d+)?)\s*ml\b/);
   if (ml) return `${ml[1].replace(",", ".")}ml`;
   const liters = folded.match(/\b(\d+(?:[.,]\d+)?)\s*(?:l|lt|lts|litros?)\b/);
@@ -271,12 +329,31 @@ function mostSpecific(hits: AgentProduct[], message: string): AgentProduct[] {
  * Una sola fila del resultado. Caja contra pieza siempre pregunta,
  * salvo que el cliente haya dicho caja o paquete.
  */
-export function messageSelectsProduct(product: AgentProduct, siblings: AgentProduct[], message: string): boolean {
+export function messageSelectsProduct(product: AgentProduct, siblings: AgentProduct[], message: string, loose = false): boolean {
+  const wholeName = foldCatalogName(message);
+  const whole = foldCatalogName(product.name) === wholeName ? wholeName : catalogAsk(message);
+  if (whole && foldCatalogName(product.name) === whole) {
+    const same = siblings.filter((row) => foldCatalogName(row.name) === whole);
+    const longer = siblings.some((row) => row.id !== product.id && foldCatalogName(row.name).startsWith(`${whole} `));
+    if (longer || same.length !== 1) return false;
+    // «aguacate» es el nombre exacto y también está en cremas y aceites. Se pregunta.
+    if (!whole.includes(" ")) {
+      const cousins = siblings.filter((row) => row.id !== product.id && foldAgent(row.name).split(" ").includes(whole));
+      if (cousins.length >= 2) return false;
+    }
+    return same[0].id === product.id;
+  }
+  const said = catalogAsk(productClause(message, product.name));
+  if (said && foldCatalogName(product.name) === said) {
+    const same = siblings.filter((row) => foldCatalogName(row.name) === said);
+    const longer = siblings.some((row) => row.id !== product.id && foldCatalogName(row.name).startsWith(`${said} `));
+    if (!longer && same.length === 1) return same[0].id === product.id;
+  }
   const clause = productClause(message, product.name);
   const text = foldAgent(clause);
   const piece = isPieceCorrection(message);
   const saidPack = !piece && /\b(cajas?|paquetes?)\b/.test(text);
-  const family = siblings.filter((row) => sharesMessageToken(row, message) || row.id === product.id);
+  const family = siblings.filter((row) => sharesMessageToken(row, message, loose) || row.id === product.id);
   if (genericDogoMessage(message) && isClasicoDogo(product)) return true;
   if (saidPack) {
     const packs = family.filter((row) => isPackProduct(row));
@@ -330,6 +407,22 @@ export function messageSelectsProduct(product: AgentProduct, siblings: AgentProd
   // «sanitas» no se queda en Sanitas si también existe «Sanitas 100 Toallas».
   // Nito 62g sí: lo que sobra es el tamaño, no otra presentación.
   if (hits.length === 1 && longerRealName(hits[0], family)) return false;
+  // «menta» no se queda en «Mentas Menta» solo porque el plural cabe en la frase.
+  if (hits.length === 1) {
+    const asked = contentTokens(clause).filter((token) => token.length >= 4);
+    const words = contentTokens(hits[0].name);
+    const pluralOnly = words.filter((token) => asked.some((word) => token === `${word}s` && token !== word));
+    const extras = words.filter((token) => !asked.some((word) => token === word || token === `${word}s` || word === `${token}s`));
+    const crowd = family.filter((row) => asked.length > 0 && asked.every((token) => tokenIn(foldAgent(row.name), token)));
+    if (pluralOnly.length > 0 && extras.length === 0 && crowd.length > 1) return false;
+  }
+  // «marlboro» no se queda en Marlboro 100 porque los demás traen un sabor de más.
+  // «coca 600» ya se resolvió arriba, con el tamaño.
+  if (loose && hits.length === 1) {
+    const asked = contentTokens(clause).filter((token) => token.length >= 4);
+    const crowd = family.filter((row) => asked.length === 1 && asked.every((token) => tokenIn(foldAgent(row.name), token)));
+    if (crowd.length > 1) return false;
+  }
   return hits.length === 1 && hits[0].id === product.id;
 }
 
@@ -416,13 +509,16 @@ export function replacementLineId(cart: AgentLine[], product: AgentProduct, mess
 const CLAUSE_SPLIT = new RegExp(
   [
     "\\s*(?:,|;|\\btambi[eé]n\\b|\\bdespu[eé]s\\b|\\bluego\\b|\\by\\b|\\be\\b)\\s*",
-    "\\s+(?=\\d+(?:[.,]\\d+)?\\s+(?:(?:kg|kilos?|l|lt|lts|litros?|g|gr|gramos?)\\s+de\\s+[a-zñ]|(?!(?:ml|l|lt|lts|litros?|g|gr|gramos?|kg|kilos?)\\b)[a-zñ]{3,}))",
+    // «4 caja» y «24 pzas» son presentación, no otro producto.
+    "\\s+(?=\\d+(?:[.,]\\d+)?\\s+(?:(?:kg|kilos?|l|lt|lts|litros?|g|gr|gramos?)\\s+de\\s+[a-zñ]|(?!(?:ml|l|lt|lts|litros?|g|gr|gramos?|kg|kilos?|cajas?|pzas?|piezas?|paquetes?|paq|packs?|cj|rollos?|latas?|bolsas?|botellas?|sobres?)\\b)[a-zñ]{3,}))",
     "\\s+(?=(?:un|una|uno|unos|unas|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|medio|media)\\b)",
   ].join("|"),
   "i",
 );
 
-export function orderClauses(message: string): string[] {
+const QTY_ONLY = /^(?:un|una|uno|unos|unas|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|medio|media|\d+)\.?$/;
+
+function splitOneLine(message: string): string[] {
   const parts = String(message ?? "")
     .split(CLAUSE_SPLIT)
     .map((part) => part.trim())
@@ -436,6 +532,110 @@ export function orderClauses(message: string): string[] {
     else merged.push(part);
   }
   return merged;
+}
+
+/** Un renglón es un producto. «Dos.» suelto se pega al siguiente o se ignora. */
+export function orderClauses(message: string): string[] {
+  const lines = String(message ?? "").split(/\n+/);
+  const clauses: string[] = [];
+  let carry = "";
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (QTY_ONLY.test(foldAgent(line))) {
+      carry = line.replace(/\.+$/g, "").trim();
+      continue;
+    }
+    const text = carry ? `${carry} ${line}` : line;
+    carry = "";
+    clauses.push(...splitOneLine(text));
+  }
+  return clauses;
+}
+
+/**
+ * Cada renglón. Si el renglón completo es un nombre del catálogo, no se parte:
+ * «Lirio Coco Y Almendras» es un producto, no coco y almendras.
+ */
+export function listClauses(message: string, isExactLine: (line: string) => boolean): string[] {
+  const lines = String(message ?? "").split(/\n+/);
+  const clauses: string[] = [];
+  let carry = "";
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (QTY_ONLY.test(foldAgent(line))) {
+      carry = line.replace(/\.+$/g, "").trim();
+      continue;
+    }
+    const text = carry ? `${carry} ${line}` : line;
+    carry = "";
+    if (isExactLine(text)) clauses.push(text);
+    else clauses.push(...splitOneLine(text));
+  }
+  return clauses;
+}
+
+/** Lo que el cliente dijo, sin la cantidad del principio. Sirve para el nombre exacto. */
+export function normalizedAsk(clause: string): string {
+  return foldAgent(normalizeMeasureWords(clause))
+    .replace(/^(?:un|una|uno|unos|unas|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|\d+)\s+/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Nombre de catálogo comparable.
+ * «Et-4» no es «ET 4»: el guión entre letra y número no abre otra palabra.
+ * Caja, pieza y etapa se escriben igual que CJ, PZ y ET.
+ */
+export function foldCatalogName(value: string): string {
+  const glued = String(value ?? "")
+    .replace(/([A-Za-zÁÉÍÓÚÜÑáéíóúüñ])-(?=\d)/g, "$1")
+    .replace(/(\d)-(?=[A-Za-zÁÉÍÓÚÜÑáéíóúüñ])/g, "$1");
+  return foldAgent(glued)
+    .replace(/\betapas?\b/g, "et")
+    .replace(/\bcajas?\b/g, "cj")
+    .replace(/\b(?:piezas?|pzas?)\b/g, "pz")
+    .replace(/\bpaquetes?\b/g, "paq");
+}
+
+/** El nombre que dijo, sin la cantidad del principio, con abreviaturas juntas. */
+export function catalogAsk(clause: string): string {
+  return foldCatalogName(clause).replace(/^(?:un|una|uno|unos|unas|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|\d+)\s+/, "").replace(/\s+/g, " ").trim();
+}
+
+/** Una palabra de 4+ letras que el cliente no escribió completa: falta o diminutivo. */
+export function clauseMisspelled(clause: string, products: Array<Pick<AgentProduct, "name" | "brand" | "presentation">>): boolean {
+  const tokens = productTypeTokens(clause).filter((token) => token.length >= 4);
+  if (!tokens.length || !products.length) return false;
+  const written = (token: string) => {
+    const forms = [token];
+    for (const form of synonymForms(token)) {
+      if (form === token) continue;
+      const diminutive = /it[oa]s?$/.test(token) && form.length < token.length;
+      if (!diminutive) forms.push(form);
+    }
+    return products.some((product) => {
+      const words = foldAgent([product.name, product.brand ?? "", product.presentation ?? ""].join(" ")).split(" ").filter(Boolean);
+      return words.some((word) => forms.some((form) => word === form || word === `${form}s` || form === `${word}s` || form === `${word}es` || word === `${form}es`));
+    });
+  };
+  return tokens.some((token) => !written(token));
+}
+
+export function sharesProductType(
+  message: string,
+  product: { name: string; brand?: string | null; presentation?: string | null; alias?: string[] | null },
+): boolean {
+  const clauses = orderClauses(message);
+  const pieces = clauses.length ? clauses : [message];
+  const blob = foldAgent([product.name, product.brand ?? "", product.presentation ?? "", ...(product.alias ?? [])].join(" "));
+  return pieces.some((clause) => {
+    const tokens = productTypeTokens(clause);
+    if (!tokens.length) return false;
+    return tokens.every((token) => tokenInLoose(blob, token));
+  });
 }
 
 /** Palabras de categoría. «galletas marías» ya está cubierto si el carrito trae marías. */
@@ -463,8 +663,10 @@ function tokensCovered(tokens: string[], blob: string): boolean {
 
 function tokenInLoose(text: string, token: string): boolean {
   if (tokenIn(text, token)) return true;
+  const words = text.split(" ").filter(Boolean);
   for (const form of synonymForms(token)) {
     if (form !== token && tokenIn(text, form)) return true;
+    if (words.some((word) => listaWordHit(word, form))) return true;
   }
   return false;
 }
@@ -494,12 +696,12 @@ function clauseCovered(clause: string, blob: string): boolean {
 }
 
 /** Lo que el cliente pidió y no está en el carrito ni en la pregunta. */
-export function uncoveredClauses(message: string, cart: AgentLine[], coveredText: string): string[] {
+export function uncoveredClauses(message: string, cart: AgentLine[], coveredText: string, clauses?: string[]): string[] {
   const blob = foldAgent([
     coveredText,
     ...cart.map((line) => `${line.name} ${line.variant ?? ""} ${line.brand ?? ""} ${line.freeText ?? ""}`),
   ].join(" "));
-  return orderClauses(message).filter((clause) => !clauseCovered(clause, blob));
+  return (clauses ?? orderClauses(message)).filter((clause) => !clauseCovered(clause, blob));
 }
 
 export function answerMatchesPresentation(message: string, product: Pick<AgentProduct, "name" | "presentation">): boolean {

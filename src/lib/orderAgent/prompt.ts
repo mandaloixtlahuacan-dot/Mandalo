@@ -22,7 +22,7 @@ function abarrotesRules(hasProductList: boolean): string {
       ? "Esta tienda tiene lista. Es obligatorio usar search_products antes de preguntar. El id tiene que existir en esa lista y estar disponible. Si no está, di que no lo tienen y sigue; no lo anotes con texto libre ni inventes un id."
       : "Esta tienda no tiene lista. Leche, tortillas, queso, refresco, aceite, jabón y papel: pregunta la marca, el tipo o el tamaño si el cliente no lo dijo. No repitas lo que ya dijo. «La que sea» y «cualquiera» se anotan. Un abarrotes que no es genérico se anota como lo dijo.",
     "Si hay una sola opción clara, anótala con set_cart_line.",
-    "Si hay varias opciones de un mismo producto y no se puede decidir, ofrece hasta 5 de verdad, sin duplicados y solo de ese tipo, en un ask_customer. una sola duda. Un producto por mensaje; los demás esperan.",
+    "Si hay varias opciones de un mismo producto y no se puede decidir, ofrece hasta 5 de verdad, sin duplicados y solo de ese tipo, en un ask_customer. una sola duda. Un producto por mensaje; los demás esperan. Cada pregunta lleva sus opciones numeradas, con nombre y presentación. Si no hay opciones, di que no contamos con eso.",
     "No agregues un producto que el cliente no dijo. No quites una línea si no te lo pidió. Si no está, dilo y sigue con el resto.",
     "La cantidad no va en el nombre. Los litros van con unit l. Guarda brand y presentation.",
     "Si el cliente aclara una línea (de harina, la marca, el tamaño), actualiza esa línea. No abras otra.",

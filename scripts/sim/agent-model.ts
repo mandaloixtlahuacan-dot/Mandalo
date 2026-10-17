@@ -3,8 +3,8 @@
  * Busca y, si el código real ya elige una sola fila, la anota.
  * Si hay varias, no escoge: el loop del agente pregunta.
  */
-import { stripOrderVerbs, isOrderVerbOnly } from "../../src/lib/orderAgent/catalog";
-import { messageSelectsProduct, orderClauses } from "../../src/lib/orderAgent/match";
+import { foldAgent, stripOrderVerbs, isOrderVerbOnly } from "../../src/lib/orderAgent/catalog";
+import { clauseMisspelled, messageSelectsProduct, orderClauses } from "../../src/lib/orderAgent/match";
 import type { AgentModel, AgentProduct } from "../../src/lib/orderAgent/types";
 
 function asProducts(value: unknown): AgentProduct[] {
@@ -52,11 +52,28 @@ function fold(value: string): string {
     .replace(/\p{Diacritic}/gu, "");
 }
 
-function clausesOf(message: string): string[] {
-  const parts = orderClauses(message)
-    .map((clause) => stripOrderVerbs(clause).trim())
-    .filter((clause) => clause.length > 1);
-  return parts.length ? parts : [message.trim()].filter(Boolean);
+const QTY_ONLY = /^(?:un|una|uno|unos|unas|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|medio|media|\d+)\.?$/;
+
+function physicalLines(message: string): string[] {
+  const lines = String(message ?? "").split(/\n+/);
+  const out: string[] = [];
+  let carry = "";
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (QTY_ONLY.test(foldAgent(line))) {
+      carry = line.replace(/\.+$/g, "").trim();
+      continue;
+    }
+    out.push(carry ? `${carry} ${line}` : line);
+    carry = "";
+  }
+  return out;
+}
+
+function isExactLine(line: string, products: AgentProduct[]): boolean {
+  const said = foldAgent(line);
+  return said.length >= 3 && products.some((product) => foldAgent(product.name) === said);
 }
 
 export function createSimAgentModel(name: string): AgentModel {
@@ -64,25 +81,40 @@ export function createSimAgentModel(name: string): AgentModel {
     name: `sim-${name}`,
     async complete(request) {
       if (request.repairErrors.length) return { toolCalls: [], text: null };
-      const clauses = clausesOf(request.message)
-        .map((clause) => stripOrderVerbs(clause).trim())
-        .filter((clause) => clause && !isOrderVerbOnly(clause));
+      const lines = physicalLines(request.message)
+        .map((line) => stripOrderVerbs(line).trim())
+        .filter((line) => line && !isOrderVerbOnly(line));
       const searched = request.toolTrace.filter((entry) => entry.ok && entry.call.name === "search_products");
       const searchedQueries = new Set(searched.map((entry) => fold(String(entry.call.arguments?.query ?? ""))));
-      const pending = clauses.filter((clause) => !searchedQueries.has(fold(clause)));
-      if (pending.length && searched.length === 0) {
+      const pendingLines = lines.filter((line) => !searchedQueries.has(fold(line)));
+      if (pendingLines.length) {
         return {
-          toolCalls: pending.map((clause, index) => ({
+          toolCalls: pendingLines.map((line, index) => ({
             id: `sim-search-${index}`,
             name: "search_products" as const,
-            arguments: { query: clause },
+            arguments: { query: line },
           })),
           text: null,
         };
       }
-      if (pending.length) {
+      const pendingClauses: string[] = [];
+      for (const line of lines) {
+        const entry = searched.find((item) => fold(String(item.call.arguments?.query ?? "")) === fold(line));
+        const found = entry ? asProducts(entry.result) : [];
+        if (isExactLine(line, found)) continue;
+        for (const clause of orderClauses(line)) {
+          const cleaned = stripOrderVerbs(clause).trim();
+          if (!cleaned || isOrderVerbOnly(cleaned) || searchedQueries.has(fold(cleaned))) continue;
+          pendingClauses.push(cleaned);
+        }
+      }
+      if (pendingClauses.length) {
         return {
-          toolCalls: [{ id: "sim-search-next", name: "search_products", arguments: { query: pending[0] } }],
+          toolCalls: pendingClauses.map((clause, index) => ({
+            id: `sim-search-part-${index}`,
+            name: "search_products" as const,
+            arguments: { query: clause },
+          })),
           text: null,
         };
       }
@@ -90,9 +122,10 @@ export function createSimAgentModel(name: string): AgentModel {
       for (const entry of searched) {
         const products = asProducts(entry.result);
         const query = String(entry.call.arguments?.query ?? "");
-        const picked = products.filter((product) => messageSelectsProduct(product, products, query));
+        const picked = products.filter((product) => messageSelectsProduct(product, products, query, request.store.hasProductList));
         if (picked.length !== 1) continue;
         const product = picked[0];
+        if (request.store.hasProductList && clauseMisspelled(query, products)) continue;
         const inCart = request.cart.some((line) => line.productId === product.id);
         const alreadySet = request.toolTrace.some(
           (item) => item.call.name === "set_cart_line" && Number(item.call.arguments?.product_id) === product.id,

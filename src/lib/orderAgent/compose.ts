@@ -4,13 +4,19 @@
  * No inventa productos ni deja una línea en silencio.
  */
 import { foldAgent, genericDogoProduct, isGenericDogoText, searchAgentProducts } from "@/lib/orderAgent/catalog";
-import { isVagueListaQuery, listaRankTokens, listaWordHit, synonymForms } from "@/lib/storeProductSearch";
+import { isVagueListaQuery, listaRankTokens, listaWordHit, normalizeMeasureWords, synonymForms } from "@/lib/storeProductSearch";
 import {
+  catalogAsk,
+  clauseMisspelled,
   contentTokens,
+  foldCatalogName,
   isPackProduct,
+  listClauses,
+  normalizedAsk,
   packInName,
   orderClauses,
   presentationFromName,
+  productTypeTokens,
   spokenMeasure,
   spokenPackageSize,
   variantFromMessage,
@@ -69,7 +75,10 @@ function gramsOf(clause: string): number | null {
 }
 
 function saidPack(clause: string): boolean {
-  return /\b(cajas?|paquetes?)\b/.test(foldAgent(clause));
+  if (!/\b(cajas?|paquetes?)\b/.test(foldAgent(clause))) return false;
+  // «caja» sola es el producto. «caja de nito» sí pide la caja.
+  const rest = clauseTokens(clause).filter((token) => !/^(?:cajas?|paquetes?)$/.test(token));
+  return rest.length > 0;
 }
 
 function saidSize(clause: string): "chica" | "grande" | null {
@@ -130,7 +139,7 @@ function brandSibling(token: string): string | null {
 }
 
 function clauseTokens(clause: string): string[] {
-  return contentTokens(clause).filter((token) => !SIZE_WORD.test(token) && token !== "litro" && token !== "litros");
+  return productTypeTokens(clause).filter((token) => !SIZE_WORD.test(token));
 }
 
 function coverage(product: AgentProduct, tokens: string[]): number {
@@ -158,6 +167,9 @@ function hasKilo(product: AgentProduct): boolean {
 
 function matchesPackage(product: AgentProduct, wanted: string | null): boolean {
   if (!wanted) return true;
+  const blob = foldAgent(normalizeMeasureWords(`${product.name} ${product.presentation ?? ""}`));
+  if (wanted === "250ml") return /\b(?:250ml|8oz|cuartos?)\b/.test(blob);
+  if (wanted === "500ml") return /\b500ml\b/.test(blob) || /\bmedio litro\b/.test(blob);
   const key = presentationFromName(`${product.name} ${product.presentation ?? ""}`)?.key ?? "";
   if (!key) return false;
   if (wanted.endsWith("l")) {
@@ -167,7 +179,73 @@ function matchesPackage(product: AgentProduct, wanted: string | null): boolean {
   return key === wanted;
 }
 
+function householdSize(clause: string): boolean {
+  const folded = foldAgent(normalizeMeasureWords(clause));
+  if (/\b(?:jamon|kilo|kilos|kg|gramo|gramos)\b/.test(folded)) return false;
+  return /\b(?:cuartos?|8oz|250ml|500ml)\b/.test(folded) || (/\bmedio\b/.test(folded) && /\blitros?\b/.test(folded));
+}
+
+/** Nombre completo de un solo producto: se anota. Si ese nombre es el principio de otro, se pregunta. */
+function exactNameDecision(clause: string, pool: AgentProduct[], store: AgentStore): ClauseDecision | null {
+  const full = foldCatalogName(clause);
+  const stripped = catalogAsk(clause);
+  const available = pool.filter((product) => product.available);
+  const said = full.length >= 3 && available.some((product) => foldCatalogName(product.name) === full) ? full : stripped;
+  if (!said || said.length < 3) return null;
+  const same = available.filter((product) => foldCatalogName(product.name) === said);
+  if (!same.length) return null;
+  const longer = available.filter((product) => foldCatalogName(product.name).startsWith(`${said} `) && !same.some((row) => row.id === product.id));
+  if (longer.length) {
+    const options = [...same, ...longer].slice(0, 5);
+    const measure = lineQty(clause, options[0], store);
+    return {
+      kind: "ask",
+      clause,
+      query: said,
+      products: options,
+      qty: measure.qty,
+      unit: measure.unit,
+      marinade: false,
+    };
+  }
+  if (same.length > 1) {
+    const measure = lineQty(clause, same[0], store);
+    return {
+      kind: "ask",
+      clause,
+      query: said,
+      products: same.slice(0, 5),
+      qty: measure.qty,
+      unit: measure.unit,
+      marinade: false,
+    };
+  }
+  // «aguacate» es el nombre exacto y también está en muchos productos. Se pregunta.
+  if (store.hasProductList && !said.includes(" ")) {
+    const cousins = available.filter((product) => product.id !== same[0].id && foldAgent(product.name).split(" ").includes(said));
+    if (cousins.length >= 2) {
+      const measure = lineQty(clause, same[0], store);
+      return {
+        kind: "ask",
+        clause,
+        query: said,
+        products: [same[0], ...cousins].slice(0, 5),
+        qty: measure.qty,
+        unit: measure.unit,
+        marinade: false,
+      };
+    }
+  }
+  const product = same[0];
+  const qty = lineQty(clause, product, store);
+  return { kind: "add", clause, product, qty: qty.qty, unit: qty.unit, variant: null };
+}
+
 function lineQty(clause: string, product: AgentProduct, store: AgentStore): { qty: number; unit: AgentUnit } {
+  // «7 Up 1.5 Lt» y «ET 4» traen el número en el nombre. No es la cantidad.
+  if (store.category === "abarrotes" && foldCatalogName(clause) === foldCatalogName(product.name)) {
+    return { qty: 1, unit: "pz" };
+  }
   const grams = gramsOf(clause);
   if (grams != null && (store.category === "carniceria" || product.unit === "kg")) {
     return { qty: grams, unit: "g" };
@@ -184,8 +262,10 @@ function lineQty(clause: string, product: AgentProduct, store: AgentStore): { qt
 }
 
 function labelOf(clause: string): string {
-  const tokens = clauseTokens(clause);
-  const name = tokens.slice(0, 4).join(" ");
+  const text = normalizedAsk(clause)
+    .replace(/^(?:latas?|latitas?|cajitas?|cajas?|paquetes?|paquetitos?|bolsas?|bolsitas?|piezas?|botellas?)\s+de\s+/, "")
+    .trim();
+  const name = text || clauseTokens(clause).slice(0, 4).join(" ");
   if (wantsKilo(clause) && name) return `${name} por kilo`;
   return name || cleanClause(clause);
 }
@@ -302,13 +382,18 @@ function hasFocusRank(product: AgentProduct, token: string): number {
   for (const form of listaRankTokens(token)) forms.add(form);
   const words = productBlob(product).split(" ").filter(Boolean);
   let best = 0;
-  for (const word of words) {
+  for (let index = 0; index < words.length; index += 1) {
+    const word = words[index];
     for (const form of forms) {
       // «maria» no cuenta como «marias»: si no, el mole gana a las galletas.
-      if (form !== token && token.startsWith(form) && token.length - form.length <= 2) continue;
+      // «chinita» sí cuenta como «china»: el tronco no es un plural.
+      if (form !== token && token.startsWith(form) && /^(?:s|es)$/.test(token.slice(form.length))) continue;
       if (word === form) best = Math.max(best, 2);
-      else if (word === `${form}s` || form === `${word}s` || word === `${form}es` || form === `${word}es`) best = Math.max(best, 1);
-      else if (word.length >= form.length && Math.abs(word.length - form.length) <= 1 && listaWordHit(word, form)) best = Math.max(best, 1);
+      else if (word === `${form}s` || form === `${word}s` || word === `${form}es` || form === `${word}es`) {
+        // «chicles» es la misma familia que «Chicle …» al inicio del nombre.
+        // Más adentro («Mole María») sigue siendo otra cosa.
+        best = Math.max(best, index === 0 ? 2 : 1);
+      } else if (Math.abs(word.length - form.length) <= 1 && word[0] === form[0] && listaWordHit(word, form)) best = Math.max(best, 1);
     }
   }
   return best;
@@ -325,6 +410,10 @@ function bestNamed(products: AgentProduct[], token: string): AgentProduct[] {
   if (!scored.length) return [];
   const best = Math.max(...scored.map((row) => row.rank));
   return scored.filter((row) => row.rank === best).map((row) => row.product);
+}
+
+function anyNamed(products: AgentProduct[], token: string): AgentProduct[] {
+  return products.filter((product) => hasFocusRank(product, token) > 0);
 }
 
 /** Palabras de categoría. No sustituyen al producto que el cliente nombró al final. */
@@ -346,6 +435,23 @@ function narrowToNamedProduct(clause: string, products: AgentProduct[]): AgentPr
   const specific = tokens.filter((token) => !CATEGORY_TOKENS.has(token));
   const wanted = specific.length ? specific : tokens;
   const groups = wanted.map((token) => ({ token, hits: bestNamed(products, token) }));
+  const loose = wanted.map((token) => ({ token, hits: anyNamed(products, token) }));
+  const looseScore = new Map<number, number>();
+  for (const group of loose) {
+    for (const product of group.hits) looseScore.set(product.id, (looseScore.get(product.id) ?? 0) + 1);
+  }
+  const looseMax = Math.max(0, ...looseScore.values());
+  const exactScore = new Map<number, number>();
+  for (const group of groups) {
+    for (const product of group.hits) exactScore.set(product.id, (exactScore.get(product.id) ?? 0) + 1);
+  }
+  const exactMax = Math.max(0, ...exactScore.values());
+  // «lubu babu»: Bubu Lubu cubre las dos, aunque «babu» no esté escrito igual.
+  // «un nito» no: ahí la palabra exacta sigue ganando.
+  if (looseMax >= 2 && looseMax > exactMax) {
+    const both = products.filter((product) => looseScore.get(product.id) === looseMax);
+    if (both.length) return both;
+  }
   if (!groups[groups.length - 1]?.hits.length) return null;
   const known = groups.filter((group) => group.hits.length > 0);
   const score = new Map<number, number>();
@@ -454,6 +560,40 @@ function modifierVariant(product: AgentProduct, clause: string): boolean {
   return extra.length > 0 && extra.every((word) => MODIFIER_WORD.test(word));
 }
 
+/** Una sola vocal distinta: «caeritos» es cueritos, no carritos. */
+function vowelSlip(word: string, token: string): boolean {
+  if (word.length !== token.length || !word || word[0] !== token[0]) return false;
+  let diffs = 0;
+  for (let index = 0; index < word.length; index += 1) {
+    if (word[index] === token[index]) continue;
+    if (!"aeiou".includes(word[index]) || !"aeiou".includes(token[index])) return false;
+    diffs += 1;
+  }
+  return diffs === 1;
+}
+
+function preferVowelSlip(clause: string, products: AgentProduct[]): AgentProduct[] {
+  const tokens = clauseTokens(clause).filter((token) => token.length >= 4);
+  if (!tokens.length) return products;
+  const tight = products.filter((product) => {
+    const words = foldAgent(product.name).split(" ").filter(Boolean);
+    return tokens.every((token) => words.some((word) => {
+      if (word === token || word === `${token}s` || token === `${word}s` || word === `${token}es` || token === `${word}es`) return true;
+      for (const form of synonymForms(token)) {
+        if (form !== token && (word === form || word === `${form}s` || form === `${word}s`)) return true;
+      }
+      return vowelSlip(word, token);
+    }));
+  });
+  return tight.length ? tight : products;
+}
+
+/** El cliente no escribió la palabra completa: hay falta o diminutivo. Se pregunta, no se anota. */
+function spelledClose(clause: string, products: AgentProduct[]): AgentProduct[] | null {
+  if (!products.length || !clauseMisspelled(clause, products)) return null;
+  return closestOptions(clause, products);
+}
+
 function closestOptions(clause: string, products: AgentProduct[]): AgentProduct[] {
   const text = foldAgent(clause);
   let rows = products;
@@ -472,7 +612,74 @@ function closestOptions(clause: string, products: AgentProduct[]): AgentProduct[
  * Varias presentaciones (coca, zote, servilletas) se preguntan.
  * La pieza estándar que ya existía se queda: «un nito» es Nito 62g.
  */
+function tokenWrittenWord(word: string, token: string): boolean {
+  const forms = [token];
+  for (const form of synonymForms(token)) {
+    if (form !== token) forms.push(form);
+  }
+  return forms.some((form) => word === form || word === `${form}s` || form === `${word}s` || form === `${word}es` || word === `${form}es`);
+}
+
+/**
+ * «para» en «jugo cosecha para» es «pura», no la preposición.
+ * Si esa falta cabe en unos productos y en otros no, se quedan los que sí.
+ * «jugo» no entra: es el tipo, y Jumex Bida sigue siendo el mismo sabor.
+ */
+function typoConstrained(clause: string, products: AgentProduct[]): AgentProduct[] {
+  const kept = new Set(clauseTokens(clause));
+  const extra = foldAgent(clause).split(" ").filter((word) => word.length >= 4 && !kept.has(word) && !CATEGORY_TOKENS.has(word));
+  let rows = products;
+  for (const token of extra) {
+    const hits = rows.filter((product) => foldAgent(product.name).split(" ").some((word) => listaWordHit(word, token)));
+    const exact = rows.some((product) => foldAgent(product.name).split(" ").includes(token));
+    if (!exact && hits.length > 0 && hits.length < rows.length) rows = hits;
+  }
+  return rows;
+}
+
+/** Una palabra suelta en varias categorías: una opción por tipo, el más común primero. */
+function categorySpread(products: AgentProduct[]): AgentProduct[] | null {
+  const groups = new Map<string, AgentProduct[]>();
+  for (const product of products) {
+    const key = foldAgent(product.category ?? "") || "otros";
+    const list = groups.get(key) ?? [];
+    list.push(product);
+    groups.set(key, list);
+  }
+  if (groups.size < 2) return null;
+  const ordered = [...groups.values()].sort((left, right) => right.length - left.length);
+  const out = ordered.map((list) => list[0]).slice(0, 5);
+  return out.length >= 2 ? out : null;
+}
+
+function looseSingleToken(clause: string): boolean {
+  const tokens = clauseTokens(clause).filter((token) => !CATEGORY_TOKENS.has(token));
+  return tokens.length === 1;
+}
+
+/** La palabra está escrita en algún producto. «pawer» no: es falta de «powerade». */
+function writtenAsSaid(clause: string, products: AgentProduct[]): boolean {
+  const tokens = clauseTokens(clause).filter((token) => !CATEGORY_TOKENS.has(token));
+  if (tokens.length !== 1) return false;
+  const token = tokens[0];
+  return products.some((product) => foldAgent(product.name).split(" ").some((word) => word === token || word === `${token}s` || token === `${word}s`));
+}
+
+/** Si la palabra sí está escrita en la familia, la falta de una letra no mete otro producto. */
+function dropLooseWhenWritten(clause: string, products: AgentProduct[]): AgentProduct[] {
+  const tokens = clauseTokens(clause).filter((token) => token.length >= 4);
+  const wordsOf = (product: AgentProduct) => foldAgent(product.name).split(" ").filter(Boolean);
+  const spelled = tokens.filter((token) => products.some((product) => wordsOf(product).some((word) => tokenWrittenWord(word, token))));
+  if (!spelled.length) return products;
+  const tight = products.filter((product) => spelled.every((token) => wordsOf(product).some((word) => tokenWrittenWord(word, token))));
+  return tight.length ? tight : products;
+}
+
 function chooseAbarrotes(clause: string, products: AgentProduct[]): AgentProduct[] {
+  if (!clauseMisspelled(clause, products)) {
+    const namedLine = products.filter((product) => unsizedNamedLine(clause, product));
+    if (namedLine.length === 1) return namedLine;
+  }
   const plain = products.filter((product) => unexplainedWords(product, clause).length === 0);
   if (plain.length === 1) {
     const name = foldAgent(plain[0].name);
@@ -487,6 +694,9 @@ function chooseAbarrotes(clause: string, products: AgentProduct[]): AgentProduct
       return closestOptions(clause, [plain[0], ...extensions]);
     }
     if (others.every((product) => modifierVariant(product, clause))) return plain;
+    // «cigarro» no se queda en una marca. «olé capuchino» sí: es la pieza sin tamaño.
+    const siblings = others.filter((product) => !modifierVariant(product, clause));
+    if (siblings.length && !unsizedNamedLine(clause, plain[0])) return closestOptions(clause, [plain[0], ...siblings]);
   }
   const sized = standardPresentation(clause, products);
   const keys = new Set(products.map((product) => sizeKeyOf(product)));
@@ -520,6 +730,8 @@ function unsizedNamedLine(clause: string, product: AgentProduct): boolean {
 
 export function decideClause(clause: string, pool: AgentProduct[], store: AgentStore): ClauseDecision {
   const text = cleanClause(clause);
+  const exact = exactNameDecision(text, pool, store);
+  if (exact) return exact;
   const tokens = clauseTokens(text);
   if (!tokens.length) return { kind: "skip", clause: text };
 
@@ -537,10 +749,16 @@ export function decideClause(clause: string, pool: AgentProduct[], store: AgentS
   let hits = best > 0 ? ranked.filter((product) => coverage(product, tokens) === best) : [];
   if (!hits.length && isVagueListaQuery(text)) hits = ranked.slice(0, 5);
 
+  if (!isVagueListaQuery(text) && tokens.length) {
+    const typed = hits.filter((product) => tokens.every((token) => tokenInBlob(productBlob(product), token)));
+    if (!typed.length) return { kind: "missing", clause: text, label: labelOf(text) };
+    hits = typed;
+  }
   const wanted = spokenPackageSize(text);
   if (wanted) {
     const sized = hits.filter((product) => matchesPackage(product, wanted));
     if (sized.length) hits = sized;
+    else if (householdSize(text)) return { kind: "missing", clause: text, label: labelOf(text) };
   }
   if (saidPack(text)) {
     const packs = hits.filter((product) => isPackProduct(product) && coverage(product, tokens) > 0);
@@ -598,10 +816,16 @@ export function decideClause(clause: string, pool: AgentProduct[], store: AgentS
     const focus = namedTokens(text);
     // «100pz» es la presentación de la servilleta, no una caja. La caja sí se quita si no la pidieron.
     const namedAll = focus.length ? narrowToNamedProduct(text, available) : null;
+    // Con una falta se preguntan la caja y la pieza. No se adivina cuál.
+    const keepPacks = Boolean(namedAll?.length && clauseMisspelled(text, namedAll));
     const withoutWholesale = (namedAll ?? []).filter((product) => !wholesalePack(product));
-    const namedPieces = withoutWholesale.length ? withoutWholesale : namedAll;
+    const namedBase = keepPacks ? namedAll : withoutWholesale.length ? withoutWholesale : namedAll;
+    const namedPieces = namedBase?.length ? typoConstrained(text, namedBase) : namedBase;
     if (namedPieces?.length) {
-      hits = chooseAbarrotes(text, namedPieces);
+      const spread = store.hasProductList && looseSingleToken(text) && writtenAsSaid(text, namedPieces)
+        ? categorySpread(namedPieces)
+        : null;
+      hits = spread ?? spelledClose(text, namedPieces) ?? chooseAbarrotes(text, namedPieces);
     } else if (isVagueListaQuery(text) && hits.length) {
       hits = hits.slice(0, 5);
     } else if (!focus.length && hits.length) {
@@ -625,6 +849,22 @@ export function decideClause(clause: string, pool: AgentProduct[], store: AgentS
       kind: "ask",
       clause: text,
       query: tokens.slice(0, 4).join(" ") || text,
+      products: hits,
+      qty: measure.qty,
+      unit: measure.unit,
+      marinade: false,
+    };
+  }
+
+  if (store.hasProductList && hits.length) hits = dropLooseWhenWritten(text, hits);
+  if (store.hasProductList && clauseMisspelled(text, hits)) hits = preferVowelSlip(text, hits);
+
+  if (hits.length === 1 && store.hasProductList && clauseMisspelled(text, hits)) {
+    const measure = lineQty(text, hits[0], store);
+    return {
+      kind: "ask",
+      clause: text,
+      query: clauseTokens(text).slice(0, 4).join(" ") || text,
       products: hits,
       qty: measure.qty,
       unit: measure.unit,
@@ -682,11 +922,32 @@ export async function composeMessage(params: {
   search?: (query: string) => Promise<AgentProduct[]> | AgentProduct[];
 }): Promise<ClauseDecision[]> {
   if (messageIsNotAnOrder(params.message)) return [];
+  const seenSearch = new Map<string, AgentProduct[]>();
+  const searchClause = async (query: string): Promise<AgentProduct[]> => {
+    if (!params.search) return [];
+    const key = foldAgent(query);
+    const cached = seenSearch.get(key);
+    if (cached) return cached;
+    const found = (await params.search(query)).filter((product) => product.available);
+    seenSearch.set(key, found);
+    return found;
+  };
+  if (params.store.hasProductList && params.search) {
+    const lines = params.message.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+    for (const line of lines) await searchClause(line);
+  }
+  const resolved = params.store.hasProductList && params.search
+    ? listClauses(params.message, (line) => {
+        const key = foldAgent(line);
+        const found = seenSearch.get(key) ?? [];
+        return found.some((product) => foldAgent(product.name) === key);
+      })
+    : orderClauses(params.message);
   const out: ClauseDecision[] = [];
-  for (const clause of orderClauses(params.message)) {
+  for (const clause of resolved) {
     let pool = params.pool;
     if (params.search) {
-      const found = (await params.search(clause)).filter((product) => product.available);
+      const found = await searchClause(clause);
       if (found.length) pool = found;
     }
     out.push(decideClause(clause, pool, params.store));

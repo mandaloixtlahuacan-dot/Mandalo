@@ -2,7 +2,50 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 17 de octubre de 2026. La búsqueda de Peke's
+> Última actualización: 17 de octubre de 2026. En Peke's un pedido
+> de varios renglones ya no junta pedazos ni anota lo que sobró.
+> «Dos.» suelto se pega al renglón de abajo. Cada cosa que entra al
+> carrito pasa por el validador y tiene que ser del mismo tipo que
+> pidió el cliente: «cajitas» no es Kellogg's. Si hay duda, salen
+> todas las preguntas juntas, cada una con opciones numeradas; si no
+> hay opciones, se dice que no contamos con eso. «Cuáles tienes?»
+> vuelve a listar las opciones sin llamar al modelo. La búsqueda
+> entiende diminutivos y tamaños en general (vasitos → vaso, cuarto
+> = 1/4 = 250 ml = 8 oz, medio litro = 500 ml) y no recorta troncos
+> cortos («sanitas» no es «sana»). No hay sinónimos por producto.
+> El pedido real (grenetina, lechera, Clavel, queso crema, vasitos de
+> cuarto) pregunta grenetina y lechera con opciones, anota Clavel y
+> el queso crema de 190 g, y dice que no hay vasitos de cuarto. No
+> entra Kellogg's. La migración
+> `20261017_lista_diminutivos_tamanos.sql` NO está aplicada: reemplaza
+> la función amplia, conserva la palabra completa y agrega esos
+> diminutivos y tamaños. El tope sigue en 5 opciones. Una falta no
+> anota sola: pregunta, y si la familia es grande dice que se puede
+> escribir otro tamaño o sabor. Abreviaturas ET/CJ/PZ, mayúsculas y
+> el número del nombre («7 Up», «ET 4») no parten el producto ni se
+> vuelven cantidad. Una palabra o frase ambigua que coincide con
+> varios productos o con varios tipos (sabor, color o marca suelta:
+> «naranja», «fresa», «marlboro», «chinita») no se anota: salen
+> opciones numeradas reales, con presentación, agrupadas por tipo
+> (el más común primero). Solo se anota cuando nombre y presentación
+> identifican un único producto. «chinita» ofrece Sal China y La
+> Chinita; «jugo manzana boda» y «jugo fresa boda» incluyen Jugo Bida;
+> «jugo cosecha para» incluye Cosecha Pura Naranja; «speed cool stcke»
+> ofrece Speed Stick Cool. Una palabra de tipo («jugo») no descarta
+> una opción cuyo nombre no la trae si la marca o el sabor coinciden.
+> `scripts/check-pekes-loose.ts` toma las 50 palabras que aparecen en
+> más productos de tipos distintos: ninguna anotó directo y todas
+> dieron opciones numeradas. `scripts/check-pekes-broad.ts` (300
+> productos, las 97 categorías, tres formas de pedirlo) quedó en 899
+> de 900 (99.9%) con la semilla 20261017 y en 900 de 900 (100%) con
+> la semilla 20261018. No hubo productos de otro tipo en el carrito
+> ni preguntas sin opciones. El único fallo es el juicio de falta
+> sobre el nombre exacto «7 Up 1.5 Lt» (el nombre no tiene una palabra
+> de 4 letras, así que la falta generada es el propio nombre): el
+> producto sí se anotó, 1 pieza. George y La Central siguen igual.
+> No está mergeado. No se llamó a OpenAI, no se mandó WhatsApp y no
+> se escribió en Supabase.
+> Actualización anterior del mismo día: la búsqueda de Peke's
 > se prueba contra el catálogo completo (12,865 filas,
 > `scripts/fixtures/pekes-catalogo-completo.json.gz`). Si el cliente
 > escribe nombre y presentación de un solo producto, se anota:
