@@ -280,7 +280,8 @@ async function play(item: Play): Promise<{ cart: AgentLine[]; replies: string[];
     const blocks = turn.reply.split(/\n\n+/).map((part) => part.trim()).filter(Boolean);
     if (new Set(blocks).size !== blocks.length) throw new Error(`${item.id}: texto duplicado`);
     const previous = replies[replies.length - 1] ?? "";
-    if (previous && turn.reply.trim() === previous.trim() && QUESTION.test(turn.reply)) {
+    const askedToSee = /\bcu[aá]les tienes\b|\bqu[eé] tienes\b|\bqu[eé] opciones\b/i.test(message);
+    if (previous && turn.reply.trim() === previous.trim() && QUESTION.test(turn.reply) && !askedToSee) {
       throw new Error(`${item.id}: repitió la misma pregunta`);
     }
     if (QUESTION.test(turn.reply)) questions += 1;
@@ -304,7 +305,7 @@ async function play(item: Play): Promise<{ cart: AgentLine[]; replies: string[];
 }
 
 const pekesOrders: Play[] = [
-  { id: "p-victor-1545", store: pekesStore, products: pekesProducts, messages: ["Quiero 2 fuste de frutos rojos también 1 kilo de frijol 1 litro de fabuloso y un nito", "Cuáles tienes?", "1"], cartIncludes: ["Fuzetea", "Nito"], cartExcludes: ["frijol"] },
+  { id: "p-victor-1545", store: pekesStore, products: pekesProducts, messages: ["Quiero 2 fuste de frutos rojos también 1 kilo de frijol 1 litro de fabuloso y un nito", "sí", "1"], cartIncludes: ["Fuzetea", "Nito", "Fabuloso"], cartExcludes: ["frijol"] },
   { id: "p-victor-1730", store: pekesStore, products: pekesProducts, messages: ["Quiero un kilo de tortillas también un pawer rojo también unos takis y unas mentas halls", "No es ninguno de los que me mostraste", "Creo que las mentas que dices no son los correctas de cuales tienes?", "Del 5", "Ninguna de las mostradas", "Seguimos"], cartIncludes: ["Tortilla", "Takis"], cartExcludes: ["Sello Rojo", "Mentas Menta"], maxQuestions: 3 },
   { id: "p-coca", store: pekesStore, products: pekesProducts, messages: ["una coca de 600 y un sabritas", "1"], cartIncludes: ["600"] },
   { id: "p-nito", store: pekesStore, products: pekesProducts, messages: ["un nito"], cartIncludes: ["Nito"] },

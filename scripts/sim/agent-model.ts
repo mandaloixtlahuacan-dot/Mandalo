@@ -17,6 +17,8 @@ function qtyFromMessage(message: string): number {
     .toLowerCase()
     .normalize("NFD")
     .replace(/\p{Diacritic}/gu, "")
+    // «2.5 lt» se pliega a «2 5 lt». Ese 2 no es la cantidad.
+    .replace(/\b\d+\s+\d\s*(?:l|lt|lts|litros?)\b/g, " ")
     .replace(/\b\d+(?:\.\d+)?\s*(?:ml|l|lt|lts|litros?|g|gr|gramos?|kg|kilos?|toallas?|servilletas?|hojas?|rollos?|pz|pzas?|piezas?|paq|paquetes?)\b/g, " ");
   const digit = folded.match(/\b(\d+(?:\.\d+)?)\b/);
   // «coca 600» y «100 toallas» son presentación, no cantidad.

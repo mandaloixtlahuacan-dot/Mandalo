@@ -100,6 +100,9 @@ export function presentationFromName(name: string): NamePresentation | null {
     return { key: caja ? "caja" : "paquete", pack: true, duo };
   }
   if (ml) return { key: `${amount(ml[1])}ml`, pack: false, duo };
+  // «2.5 Lt» se pliega a «2 5 lt». Es 2.5 litros, no 5.
+  const decimalLiters = text.match(/\b([1-9])\s+(\d)\s*(?:l|lt|lts|litros?)\b/);
+  if (decimalLiters) return { key: `${decimalLiters[1]}.${decimalLiters[2]}l`, pack: false, duo };
   if (liters) return { key: `${amount(liters[1])}l`, pack: false, duo };
   if (kilos) return { key: `${amount(kilos[1])}kg`, pack: false, duo };
   if (grams) return { key: `${amount(grams[1])}g`, pack: false, duo };
@@ -290,8 +293,16 @@ export function spokenPackageSize(text: string): string | null {
   const folded = foldAgent(normalizeMeasureWords(text));
   const household = !/\b(?:jamon|kilo|kilos|kg|gramo|gramos)\b/.test(folded);
   if (household && /\b(?:cuartos?|8oz|250ml)\b/.test(folded)) return "250ml";
+  const halfMore = folded.match(/\b(\d+(?:[.,]\d+)?)\s*(?:l|lt|lts|litros?)\s+y\s+medio\b/);
+  if (halfMore) {
+    const base = Number(halfMore[1].replace(",", "."));
+    if (base > 0) return `${base + 0.5}l`;
+  }
   if (/\bmedio\b/.test(folded) && /\blitros?\b/.test(folded)) return "500ml";
   if (/\b500ml\b/.test(folded)) return "500ml";
+  // «1.5 lt» se pliega a «1 5 lt». No es 5 litros.
+  const decimalLiters = folded.match(/\b([1-9])\s+(\d)\s*(?:l|lt|lts|litros?)\b/);
+  if (decimalLiters) return `${decimalLiters[1]}.${decimalLiters[2]}l`;
   const ml = folded.match(/\b(\d+(?:[.,]\d+)?)\s*ml\b/);
   if (ml) return `${ml[1].replace(",", ".")}ml`;
   const liters = folded.match(/\b(\d+(?:[.,]\d+)?)\s*(?:l|lt|lts|litros?)\b/);
@@ -356,6 +367,10 @@ export function messageSelectsProduct(product: AgentProduct, siblings: AgentProd
   const family = siblings.filter((row) => sharesMessageToken(row, message, loose) || row.id === product.id);
   if (genericDogoMessage(message) && isClasicoDogo(product)) return true;
   if (saidPack) {
+    // «un paquete de aguas» no elige la única caja de la ventana: faltan marca y tamaño.
+    const asked = productTypeTokens(clause);
+    const generic = asked.length > 0 && asked.every((token) => CATEGORY_WORD.has(token));
+    if (generic) return false;
     const packs = family.filter((row) => isPackProduct(row));
     return packs.length === 1 && packs[0].id === product.id;
   }
@@ -508,15 +523,88 @@ export function replacementLineId(cart: AgentLine[], product: AgentProduct, mess
 
 const CLAUSE_SPLIT = new RegExp(
   [
-    "\\s*(?:,|;|\\btambi[eé]n\\b|\\bdespu[eé]s\\b|\\bluego\\b|\\by\\b|\\be\\b)\\s*",
+    // «2 l y medio» es 2.5, no otro producto.
+    "\\s*(?:,|;|\\btambi[eé]n\\b|\\bdespu[eé]s\\b|\\bluego\\b|\\by\\b(?!\\s+medio\\b(?!\\s+kilos?\\b))|\\be\\b)\\s*",
     // «4 caja» y «24 pzas» son presentación, no otro producto.
     "\\s+(?=\\d+(?:[.,]\\d+)?\\s+(?:(?:kg|kilos?|l|lt|lts|litros?|g|gr|gramos?)\\s+de\\s+[a-zñ]|(?!(?:ml|l|lt|lts|litros?|g|gr|gramos?|kg|kilos?|cajas?|pzas?|piezas?|paquetes?|paq|packs?|cj|rollos?|latas?|bolsas?|botellas?|sobres?)\\b)[a-zñ]{3,}))",
-    "\\s+(?=(?:un|una|uno|unos|unas|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|medio|media)\\b)",
+    "\\s+(?=(?:un|una|uno|unos|unas|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\\b|(?<!\\by\\s)(?:medio|media)\\b)",
   ].join("|"),
   "i",
 );
 
 const QTY_ONLY = /^(?:un|una|uno|unos|unas|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|medio|media|\d+)\.?$/;
+
+/**
+ * Marcas de varias palabras. Una coma o un apóstrofe no las parte:
+ * «member, Mark» y «Member's Mark» son la misma marca.
+ */
+const MULTI_WORD_BRANDS: string[][] = [
+  ["members", "mark"],
+  ["costa", "brava"],
+  ["tres", "regiones"],
+  ["great", "value"],
+  ["sello", "rojo"],
+  ["santa", "clara"],
+  ["la", "costena"],
+  ["del", "monte"],
+];
+
+function normalizeBrandText(message: string): string {
+  return String(message ?? "")
+    .replace(/\bmember['’´`]s\b/gi, "Members")
+    .replace(/\bmembers\s+marck\b/gi, "Members Mark")
+    .replace(/\bmemberrs\b/gi, "Members");
+}
+
+function brandWords(part: string): string[] {
+  return foldAgent(normalizeBrandText(part))
+    .replace(/\bmember\b/g, "members")
+    .split(" ")
+    .filter(Boolean);
+}
+
+function glueBrandParts(parts: string[]): string[] {
+  const out: string[] = [];
+  let index = 0;
+  while (index < parts.length) {
+    const left = brandWords(parts[index]);
+    const right = index + 1 < parts.length ? brandWords(parts[index + 1]) : [];
+    const pair = left.length === 1 && right.length >= 1 ? [left[0], right[0]] : [];
+    const brand = MULTI_WORD_BRANDS.find((row) => row[0] === pair[0] && row[1] === pair[1]);
+    if (brand && right.length === 1) {
+      out.push(`${parts[index]} ${parts[index + 1]}`);
+      index += 2;
+      continue;
+    }
+    out.push(parts[index]);
+    index += 1;
+  }
+  return out;
+}
+
+function isPureBrand(part: string): boolean {
+  const words = brandWords(part);
+  return MULTI_WORD_BRANDS.some((brand) => brand.length === words.length && brand.every((word, index) => word === words[index]));
+}
+
+/** «aguas, Members Mark» es el agua de esa marca, no un segundo producto. */
+function attachBrandToPrevious(parts: string[]): string[] {
+  const out: string[] = [];
+  for (const part of parts) {
+    const previous = out[out.length - 1] ?? "";
+    const category = /\b(aguas?|leches?|refrescos?|jugos?|galletas?|papeles?|jabones?|tortillas?)\b/.test(foldAgent(previous));
+    if (isPureBrand(part) && category) {
+      out[out.length - 1] = `${previous} ${part}`;
+      continue;
+    }
+    out.push(part);
+  }
+  return out;
+}
+
+function finishClauses(parts: string[]): string[] {
+  return attachBrandToPrevious(glueBrandParts(parts));
+}
 
 function splitOneLine(message: string): string[] {
   const parts = String(message ?? "")
@@ -536,7 +624,7 @@ function splitOneLine(message: string): string[] {
 
 /** Un renglón es un producto. «Dos.» suelto se pega al siguiente o se ignora. */
 export function orderClauses(message: string): string[] {
-  const lines = String(message ?? "").split(/\n+/);
+  const lines = normalizeBrandText(message).split(/\n+/);
   const clauses: string[] = [];
   let carry = "";
   for (const raw of lines) {
@@ -550,7 +638,7 @@ export function orderClauses(message: string): string[] {
     carry = "";
     clauses.push(...splitOneLine(text));
   }
-  return clauses;
+  return finishClauses(clauses);
 }
 
 /**
@@ -558,7 +646,7 @@ export function orderClauses(message: string): string[] {
  * «Lirio Coco Y Almendras» es un producto, no coco y almendras.
  */
 export function listClauses(message: string, isExactLine: (line: string) => boolean): string[] {
-  const lines = String(message ?? "").split(/\n+/);
+  const lines = normalizeBrandText(message).split(/\n+/);
   const clauses: string[] = [];
   let carry = "";
   for (const raw of lines) {
@@ -573,7 +661,7 @@ export function listClauses(message: string, isExactLine: (line: string) => bool
     if (isExactLine(text)) clauses.push(text);
     else clauses.push(...splitOneLine(text));
   }
-  return clauses;
+  return finishClauses(clauses);
 }
 
 /** Lo que el cliente dijo, sin la cantidad del principio. Sirve para el nombre exacto. */
@@ -624,17 +712,78 @@ export function clauseMisspelled(clause: string, products: Array<Pick<AgentProdu
   return tokens.some((token) => !written(token));
 }
 
+const SAUCE_WORD = new Set(["chile", "chiles", "salsa", "salsas"]);
+const CLARIFICATION_FILLER = new Set([
+  "marca", "mira", "refiero", "refieres", "ok", "bueno", "entonces", "dice", "digo",
+]);
+
+/** «agua marca Members Mark» conserva el tipo y la marca. «marca» no es un producto. */
+function stripBrandCue(focus: string): string {
+  const text = foldAgent(focus);
+  const at = text.lastIndexOf(" marca");
+  if (at < 0) return text;
+  const before = text.slice(0, at).split(" ").filter(Boolean);
+  const after = text.slice(at + " marca".length).trim();
+  const type = [...before].reverse().find((word) => CATEGORY_WORD.has(word) || (word.length >= 4 && !CLARIFICATION_FILLER.has(word))) ?? "";
+  return `${type} ${after}`.replace(/\s+/g, " ").trim();
+}
+
+/** «me refiero a la agua marca X» se compara con esa aclaración, no con todo el mensaje. */
+export function clarificationFocus(message: string): string | null {
+  const text = foldAgent(message);
+  const marker = text.match(/\b(?:me refiero a|quiero decir|o sea)\b/);
+  let focus = "";
+  if (marker && marker.index != null) {
+    focus = text.slice(marker.index + marker[0].length).replace(/^(?:a|la|el|de|del)\s+/, "").trim();
+  } else if (/\bmarca\b/.test(text)) {
+    focus = text;
+  }
+  if (!focus) return null;
+  const cleaned = stripBrandCue(focus);
+  return cleaned || null;
+}
+
+function askedPieces(message: string): string[] {
+  const focus = clarificationFocus(message);
+  const source = focus ?? message;
+  const clauses = orderClauses(source);
+  return clauses.length ? clauses : [source];
+}
+
+/**
+ * Chile y salsa son el mismo tipo cuando el cliente también nombró la salsa
+ * (Costa Brava, Valentina). Un «chile» o una «salsa» sueltos no se cambian.
+ */
+export function sauceTypeAlias(blob: string, token: string, clause: string): boolean {
+  if (!SAUCE_WORD.has(token)) return false;
+  const others = contentTokens(clause).filter((word) => !SAUCE_WORD.has(word) && word.length >= 4 && !CLARIFICATION_FILLER.has(word));
+  if (!others.length) return false;
+  if (!others.every((word) => tokenInLoose(blob, word))) return false;
+  return [...SAUCE_WORD].some((form) => tokenInLoose(blob, form));
+}
+
+function typeTokenHits(blob: string, token: string, clause: string): boolean {
+  if (CLARIFICATION_FILLER.has(token)) return true;
+  if (tokenInLoose(blob, token)) return true;
+  if ((token === "member" || token === "members") && tokenInLoose(blob, "members")) return true;
+  if (token === "mark" && /\bmarks?\b/.test(blob)) return true;
+  return sauceTypeAlias(blob, token, clause);
+}
+
 export function sharesProductType(
   message: string,
   product: { name: string; brand?: string | null; presentation?: string | null; alias?: string[] | null },
 ): boolean {
-  const clauses = orderClauses(message);
-  const pieces = clauses.length ? clauses : [message];
+  const pieces = askedPieces(message);
   const blob = foldAgent([product.name, product.brand ?? "", product.presentation ?? "", ...(product.alias ?? [])].join(" "));
   return pieces.some((clause) => {
-    const tokens = productTypeTokens(clause);
+    const tokens = productTypeTokens(clause).filter((token) => !CLARIFICATION_FILLER.has(token));
     if (!tokens.length) return false;
-    return tokens.every((token) => tokenInLoose(blob, token));
+    const category = contentTokens(clause).filter((token) => CATEGORY_WORD.has(token));
+    const brandAndType = tokens.every((token) => typeTokenHits(blob, token, clause));
+    if (!brandAndType) return false;
+    if (!category.length) return true;
+    return category.every((token) => typeTokenHits(blob, token, clause) || tokenInLoose(blob, token));
   });
 }
 

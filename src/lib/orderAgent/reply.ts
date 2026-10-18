@@ -67,7 +67,10 @@ export function itemsFromAgentLines(lines: AgentLine[]): PedidoItemInput[] {
 
 /** Cuando el producto no está en esa tienda. Una sola salida, sin repetir «Ya anoté». */
 export function formatMissingProduct(label: string, askToRemove: boolean): string {
-  const name = String(label ?? "").replace(/\s+/g, " ").trim() || "eso";
+  const raw = String(label ?? "").replace(/\s+/g, " ").trim();
+  const folded = raw.toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "");
+  const name = raw && !/^(eso|esta|este|ok|mira)$/.test(folded) ? raw : "";
+  if (!name) return "";
   const head = `😔 *Perdón, no contamos con ${name}.*`;
   if (!askToRemove) return head;
   return `${head}\n\n*¿Deseas quitarlo de la lista?*\n\n_Si lo quitamos, seguimos con lo demás. También puedes escribir cancelar._`;
@@ -141,6 +144,9 @@ export function renderAgentReply(params: {
         kind,
       })
     : `${formatProductListConfirm(itemsFromAgentLines(params.cart), kind)}\n\n${formatPreConfirmFeeNote("cotiza_tienda")}`;
+  if (question && params.store.hasProductList) {
+    return [styleQuestion(question)].filter(Boolean).join("\n\n");
+  }
   if (question) {
     return [aside, heldCart(params.cart), styleQuestion(question)].filter(Boolean).join("\n\n");
   }

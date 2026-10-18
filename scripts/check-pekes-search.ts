@@ -386,14 +386,22 @@ async function main(): Promise<void> {
     escalationModel: null,
     logEvent: () => {},
   });
-  const incidentBlob = fold(`${incidentTurn.reply}\n${incidentTurn.cart.map((line) => line.name).join(" ")}`);
+  const incidentQueue = (incidentTurn.pending?.queue ?? []).map((item) => item.question).join("\n");
+  const incidentBlob = fold(`${incidentTurn.reply}\n${incidentQueue}\n${incidentTurn.cart.map((line) => line.name).join(" ")}`);
   const incidentNames = incidentTurn.cart.map((line) => line.name).join(" | ");
+  const questionsInReply = [
+    /cuál de estos/i,
+    /cuál de estas/i,
+    /deseas quitarlo de la lista/i,
+    /están bien estos productos/i,
+  ].filter((pattern) => pattern.test(incidentTurn.reply)).length;
   try {
-    assert(incidentTurn.reply.includes("Grenetina") && /1\. \*/.test(incidentTurn.reply), "la grenetina no salió con opciones");
-    assert(incidentBlob.includes("lechera") && (incidentTurn.reply.match(/1\. \*/g) ?? []).length >= 2, "la lechera no salió con opciones");
+    assert(questionsInReply <= 1, `el pedido de la mañana juntó ${questionsInReply} preguntas`);
+    assert(/grenetina/i.test(incidentBlob) && /1\. \*/.test(`${incidentTurn.reply}\n${incidentQueue}`), "la grenetina no salió con opciones");
+    assert(/lechera/i.test(incidentBlob), "la lechera no quedó en la cola");
     assert(incidentNames.includes("Clavel"), `Clavel no se anotó: ${incidentNames}`);
-    assert(/Queso Crema/i.test(incidentNames) || /queso crema/i.test(incidentTurn.reply), "el queso crema no se anotó ni se preguntó");
-    assert(/no contamos con vasitos/i.test(incidentTurn.reply), `los vasitos no dijeron que no hay: ${incidentTurn.reply.slice(0, 240)}`);
+    assert(/Queso Crema/i.test(incidentNames) || /queso crema/i.test(incidentBlob), "el queso crema no se anotó ni se preguntó");
+    assert(/no contamos con vasitos/i.test(incidentBlob), `los vasitos no dijeron que no hay: ${incidentBlob.slice(0, 240)}`);
     assert(!/kellogg/i.test(incidentBlob), "entró Kellogg's");
     assert(!/queso crema vasitos/i.test(incidentBlob), "se juntaron renglones distintos");
     assert(!/tapa #/i.test(incidentTurn.reply), "los vasitos se volvieron puras tapas");

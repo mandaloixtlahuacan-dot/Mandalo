@@ -160,7 +160,7 @@ export function agentPendingFromStoredAsk(stored: PendingAsk | null | undefined)
           : "pz",
     axis: asAxis(stored.agentAxis),
     query: stored.agentQuery ?? null,
-    queue: (stored.agentQueue ?? []).map(readClarification).filter((item) => item.question && item.candidateIds.length),
+    queue: (stored.agentQueue ?? []).map(readClarification).filter((item) => item.question && (item.candidateIds.length > 0 || /no contamos con/i.test(item.question))),
   };
 }
 

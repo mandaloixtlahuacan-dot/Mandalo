@@ -356,7 +356,12 @@ export function formatNicheSwitchList(niche: StoreNiche, stores: UxStore[]): str
 }
 
 export const ABARROTES_PRODUCT_REQUEST =
-  "Mándame lo que se te antoje, todo en un mensaje: marca, tamaño y cuántos.\n\n" +
+  "Te armo el mandado producto por producto. Si quieres, también puedes mandarme varios juntos.\n\n" +
+  "*Cómo pedir:* marca, tamaño y cuántos.\n" +
+  '_Ejemplo: "2 Coca-Cola de 600 ml"_\n\n' +
+  '*Cómo agregar:* "agrega 1 Pinol de 1 litro"\n\n' +
+  '*Cómo quitar:* "quita la leche"\n\n' +
+  '*Cómo corregir:* "cambia la leche Lala a 2 litros"\n\n' +
   "_Solo es un ejemplo, no está en tu pedido:_\n\n" +
   joinBlocks([
     formatCheckedLine("2 Coca-Cola de 600 ml"),
@@ -425,14 +430,29 @@ export function catalogMenuImageKind(store: UxStore): CatalogMenuImageKind | nul
 
 export function formatCatalogMenuCaption(store: UxStore, options?: { photo?: boolean }): string {
   const photo = options?.photo !== false;
-  const emoji = nicheIdForCategoria(store.categoria) === "carnicerias" ? "🥩" : "🍔";
+  const meat = nicheIdForCategoria(store.categoria) === "carnicerias";
+  const emoji = meat ? "🥩" : "🍔";
   const invite = photo
     ? "Pídeme lo que se te antoje, como sale en la foto."
     : "Pídeme lo que se te antoje, con el nombre del menú.";
+  const steps = meat
+    ? "Te armo el mandado producto por producto. Si quieres, también puedes mandarme varios juntos.\n\n" +
+      "*Cómo pedir:* el corte y los kilos, o cuántos pesos.\n" +
+      '_Ejemplo: "1 kg de chorizo"_\n\n' +
+      '*Cómo agregar:* "agrega 1 kilo de carne"\n\n' +
+      '*Cómo quitar:* "quita el pastor"\n\n' +
+      '*Cómo corregir:* "cambia el carbón a 2 bolsas"'
+    : "Te armo el mandado producto por producto. Si quieres, también puedes mandarme varios juntos.\n\n" +
+      "*Cómo pedir:* el nombre del menú y cuántos.\n" +
+      '_Ejemplo: "2 hamburguesas sencillas"_\n\n' +
+      '*Cómo agregar:* "agrega 1 refresco"\n\n' +
+      '*Cómo quitar:* "quita las papas"\n\n' +
+      '*Cómo corregir:* "cambia la hamburguesa a grande"';
   const closed = store.abierta ? "" : `${closedStoreNote(store)}\n\n`;
   return (
     `${closed}${emoji} *${UX_MENU_IMAGE_MARKER} ${store.nombre}*\n\n` +
     `${invite}\n\n` +
+    `${steps}\n\n` +
     `${formatCustomerFeeLine()}, aparte.`
   );
 }
