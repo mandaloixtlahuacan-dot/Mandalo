@@ -372,9 +372,36 @@ function foldProductListYesToken(token: string): string {
  * «Si está bien mi pedido» confirma la lista. El precio final sigue con
  * isYesConfirmation, que no se afloja aquí.
  */
+/**
+ * «Sí, qué tal lo realiza que sigues con el pedido» confirma la lista.
+ * Un sí que agrega, quita o nombra otro producto no: eso se anota.
+ */
+export function isAffirmativeChatter(text: string): boolean {
+  const raw = String(text ?? "").trim();
+  if (!raw || /[?]/.test(raw) || isBareOrderRejection(raw) || messageCorrectsOrder(raw)) return false;
+  const stripped = raw.replace(/\p{Extended_Pictographic}/gu, " ").replace(/[¡!.,;:]+/g, " ").trim();
+  if (!stripped) return false;
+  const core = normalizeMessageIntentText(stripped)
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\b(por favor|porfa|gracias)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!/^(si|sip|simon|ok|okey|va|sale|dale|andale|confirmo|confirmar)\b/.test(core)) return false;
+  if (/\b(quiero|quisiera|dame|traeme|anota|pido|ponme|agrega|anade|quita|cambia|tambien|falta|faltan|faltaron)\b/.test(core)) {
+    return false;
+  }
+  if (/\b(un|una|unos|unas|dos|tres|cuatro|cinco)\s+\p{L}{3,}/u.test(core)) return false;
+  if (/\b(como|cuando|donde|cual|cuales|cuanto|quien)\b/.test(core)) return false;
+  const rest = core.replace(/^(si|sip|simon|ok|okey|va|sale|dale|andale|confirmo|confirmar)\b/, "").trim();
+  // «sí el 2» o «sí la coca» elige la opción. No es charla.
+  if (/^(?:el|la|los|las|del|de|opcion|numero|\d+)\b/.test(rest)) return false;
+  return rest.length > 0;
+}
+
 export function isProductListYes(text: string): boolean {
   const raw = String(text ?? "").trim();
   if (!raw) return false;
+  if (isAffirmativeChatter(raw)) return true;
   if (/[?¿]/.test(raw) || QUESTION_WORDS_REGEX.test(raw)) return false;
   if (messageCorrectsOrder(raw) || isBareOrderRejection(raw)) return false;
 

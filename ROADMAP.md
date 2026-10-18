@@ -2,7 +2,24 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 17 de octubre de 2026. En Peke's un pedido
+> Última actualización: 17 de octubre de 2026, tarde. En Peke's
+> (tienda 7) cada mensaje trae una sola pregunta y un solo producto,
+> en el orden en que el cliente los pidió. Lo exacto se anota sin
+> volver a preguntar. Si hay opciones, salen numeradas solo de ese
+> producto, con un avance breve («Producto 2 de 4»). Si no está, se
+> nombra: «Perdón, no contamos con X». Al terminar las dudas se muestra
+> el carrito y se pide el sí; un sí con charla («Sí, qué tal…») pasa a
+> la ubicación. Una marca de varias palabras no se parte («member, Mark»
+> y «Member's Mark» siguen siendo el agua). «2 l y medio» es 2.5 L.
+> «un paquete de aguas» pregunta, no elige una caja. Chile y salsa se
+> tratan como el mismo tipo cuando también va el nombre (Costa Brava).
+> La bienvenida de Peke's, George y La Central explica cómo pedir,
+> agregar, quitar y corregir. George y La Central no cambian su lógica
+> de pedido. El último turno de la tarde usó gpt-4o-mini porque el
+> agente arranca en ese modelo y solo salta a gpt-4.1-mini después de
+> 2 fallas de validación; en ese turno `finish_cart` salió a la primera.
+> No es el fallback de `openaiClient`. No se cambió el modelo.
+> Actualización anterior: 17 de octubre de 2026. En Peke's un pedido
 > de varios renglones ya no junta pedazos ni anota lo que sobró.
 > «Dos.» suelto se pega al renglón de abajo. Cada cosa que entra al
 > carrito pasa por el validador y tiene que ser del mismo tipo que

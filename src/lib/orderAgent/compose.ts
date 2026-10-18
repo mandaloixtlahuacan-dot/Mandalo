@@ -4,6 +4,7 @@
  * No inventa productos ni deja una línea en silencio.
  */
 import { foldAgent, genericDogoProduct, isGenericDogoText, searchAgentProducts } from "@/lib/orderAgent/catalog";
+import { isAffirmativeChatter } from "@/lib/messages";
 import { isVagueListaQuery, listaRankTokens, listaWordHit, normalizeMeasureWords, synonymForms } from "@/lib/storeProductSearch";
 import {
   catalogAsk,
@@ -17,6 +18,7 @@ import {
   orderClauses,
   presentationFromName,
   productTypeTokens,
+  sauceTypeAlias,
   spokenMeasure,
   spokenPackageSize,
   variantFromMessage,
@@ -114,6 +116,11 @@ function prefixLimit(token: string): number {
 
 function wordMatches(word: string, token: string): boolean {
   return listaWordHit(word, token);
+}
+
+function categoryOnlyClause(clause: string): boolean {
+  const tokens = clauseTokens(clause);
+  return tokens.length > 0 && tokens.every((token) => CATEGORY_TOKENS.has(token));
 }
 
 function tokenInBlob(blob: string, token: string): boolean {
@@ -750,7 +757,10 @@ export function decideClause(clause: string, pool: AgentProduct[], store: AgentS
   if (!hits.length && isVagueListaQuery(text)) hits = ranked.slice(0, 5);
 
   if (!isVagueListaQuery(text) && tokens.length) {
-    const typed = hits.filter((product) => tokens.every((token) => tokenInBlob(productBlob(product), token)));
+    const typed = hits.filter((product) => tokens.every((token) => {
+      const blob = productBlob(product);
+      return tokenInBlob(blob, token) || sauceTypeAlias(blob, token, text);
+    }));
     if (!typed.length) return { kind: "missing", clause: text, label: labelOf(text) };
     hits = typed;
   }
@@ -760,7 +770,14 @@ export function decideClause(clause: string, pool: AgentProduct[], store: AgentS
     if (sized.length) hits = sized;
     else if (householdSize(text)) return { kind: "missing", clause: text, label: labelOf(text) };
   }
-  if (saidPack(text)) {
+  let forceAsk = false;
+  if (saidPack(text) && categoryOnlyClause(text)) {
+    // «un paquete de aguas» tiene varias marcas. No se anota la única caja de la ventana.
+    const packs = hits.filter((product) => isPackProduct(product));
+    const rest = hits.filter((product) => !isPackProduct(product));
+    hits = [...packs, ...rest].slice(0, 5);
+    forceAsk = hits.length > 0;
+  } else if (saidPack(text)) {
     const packs = hits.filter((product) => isPackProduct(product) && coverage(product, tokens) > 0);
     if (packs.length) hits = packs;
   } else if (hits.some((product) => isPackProduct(product)) && hits.some((product) => !isPackProduct(product))) {
@@ -859,6 +876,19 @@ export function decideClause(clause: string, pool: AgentProduct[], store: AgentS
   if (store.hasProductList && hits.length) hits = dropLooseWhenWritten(text, hits);
   if (store.hasProductList && clauseMisspelled(text, hits)) hits = preferVowelSlip(text, hits);
 
+  if (forceAsk && hits.length >= 1) {
+    const measure = lineQty(text, hits[0], store);
+    return {
+      kind: "ask",
+      clause: text,
+      query: tokens.slice(0, 4).join(" ") || text,
+      products: capOptions(hits),
+      qty: measure.qty,
+      unit: measure.unit,
+      marinade: false,
+    };
+  }
+
   if (hits.length === 1 && store.hasProductList && clauseMisspelled(text, hits)) {
     const measure = lineQty(text, hits[0], store);
     return {
@@ -906,6 +936,7 @@ const META = /^(?:si|no|ok|va|sale|esta bien|asi esta bien|correcto|todo bien|si
 const POINTER = /^(?:(?:la|el|del|de|opcion|numero|pues|es)\s+)?(?:ese|esa|eso|ese mismo|esa misma|el primero|la primera|\d+)$/;
 
 export function messageIsNotAnOrder(message: string): boolean {
+  if (isAffirmativeChatter(message)) return true;
   const text = foldAgent(message);
   if (!text || META.test(text) || POINTER.test(text)) return true;
   if (/^(?:cual|cuales|que)\b/.test(text) && text.split(" ").length <= 6) return true;

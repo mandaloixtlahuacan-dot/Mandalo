@@ -106,7 +106,7 @@ const cases: Case[] = [
     id: "victor-pekes",
     store: "pekes",
     message: VICTOR_PEKES,
-    answers: ["1"],
+    answers: ["sí", "1"],
     cartIncludes: ["Fuzetea/Frutos Rojos 600ml", "Fabuloso", "Nito 62g"],
     qty: [
       { name: "Fuzetea/Frutos Rojos 600ml", qty: 2 },
@@ -254,7 +254,7 @@ async function main(): Promise<void> {
         const nito = result.cart.find((line) => line.productId === 4034);
         assert(fuze && fuze.qty === 2, "fuste queda en Fuzetea/Frutos Rojos 600ml id 6476, cantidad 2");
         assert(nito && nito.qty === 1, "un nito queda en Nito 62g id 4034");
-        assert(result.questions === 1, "Peke's pregunta solo el Fabuloso");
+        assert(result.questions === 1, "Peke's pregunta el Fabuloso; el frijol va en su propio mensaje");
       }
       console.log(`PASA  ${item.id}  preguntas=${result.questions}  ${names}`);
     } catch (error) {
