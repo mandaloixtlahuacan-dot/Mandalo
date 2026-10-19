@@ -82,7 +82,7 @@ check("aviso-cliente", customer.startsWith("🛵 *Pedido #122*") && /no hay repa
 check("aviso-cliente-no-culpa", !/no confirmaste/i.test(customer));
 check("aviso-tienda", store.startsWith("🏪 *Pedido #122*") && /no hay repartidor disponible/i.test(store));
 check("aviso-tienda-no-culpa", !/no confirmó/i.test(store));
-check("aviso-admin", /Pedido: 122/.test(admin) && /no hay repartidor/i.test(admin));
+check("aviso-admin", /Pedido: 122/.test(admin) && /no hay repartidor/i.test(admin) && /Envío \$15/.test(admin) && /servicio \$10/.test(admin));
 
 const one = planStoreFreeText({ text: "150", openOrderIds: [48] });
 const money = planStoreFreeText({ text: "$150.50", openOrderIds: [48] });
@@ -169,8 +169,9 @@ check(
   "ticket-antes-del-si",
   /Hamburguesa de pollo/.test(ticket.reply) &&
     ticket.reply.includes("$55") &&
-    ticket.reply.includes("*Envío y servicio: $35*") &&
-    ticket.reply.includes("*Total: $90*") &&
+    ticket.reply.includes("🛵 *Envío: $15*") &&
+    ticket.reply.includes("servicio $10") &&
+    ticket.reply.includes("*Total: $80*") &&
     /responde sí/i.test(ticket.reply) &&
     !/te mando el total|confirme el precio/i.test(ticket.reply),
   ticket.reply,
@@ -194,27 +195,28 @@ const direct = formatCatalogFinalTicket({
   subtotal: 55,
   kind: "restaurante",
 });
-check("ticket-directo", direct.includes("$35") && /responde sí/i.test(direct) && direct.indexOf("$35") < direct.toLowerCase().indexOf("responde sí"));
+check("ticket-directo", direct.includes("Envío: $15") && direct.includes("servicio $10") && /responde sí/i.test(direct) && direct.indexOf("Envío: $15") < direct.toLowerCase().indexOf("responde sí"));
 
 const receipt = formatCatalogReceiptNotice({
   tiendaNombre: "Hamburguesas Hotdogs George",
   pedidoId: 9,
   subtotal: 55,
-  total: 90,
+  total: 80,
   itemLines: ["1 Hamburguesa de pollo — $55"],
 });
 check(
   "recibo-sin-segundo-si",
   receipt.includes("*Pedido #9*") &&
-    receipt.includes("*Envío y servicio: $35*") &&
-    receipt.includes("*Total a pagar: $90*") &&
+    receipt.includes("🛵 *Envío: $15*") &&
+    receipt.includes("servicio $10") &&
+    receipt.includes("*Total a pagar: $80*") &&
     !/responde \*sí\*/i.test(receipt),
 );
 
 const order = scheduledCustomerMessageOrder(true);
 check("orden-programado", order[0] === "ya_se_envio" && order[1] === "total");
 const sent = formatScheduledSentNotice(9, "Hamburguesas Hotdogs George", true);
-check("aviso-ya-se-envio", /Ya se envió/.test(sent) && !/\$35/.test(sent) && !/\$25/.test(sent) && !/total/i.test(sent));
+check("aviso-ya-se-envio", /Ya se envió/.test(sent) && !/\$\d/.test(sent) && !/total/i.test(sent));
 
 const stores: UxStore[] = [
   { id: 1, nombre: "Abarrotes Agua Santa", categoria: "Abarrotes", telefono: "1", abierta: true, abreTexto: "", usaCatalogoFijo: false },

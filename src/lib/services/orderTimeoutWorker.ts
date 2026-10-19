@@ -3,6 +3,7 @@ import { ensureMxWhatsappIntl } from "@/lib/roles";
 import { cancelPedidoInactivo, getPedidoById, setPedidoEstado, type PedidoFullRecord } from "@/lib/repositories/pedidoRepositoryV2";
 import * as outboxRepository from "@/lib/repositories/outboxRepository";
 import { formatCourierCancelNotice } from "@/lib/customerUx";
+import { formatMoney, MANDALO_DELIVERY_FEE, MANDALO_SERVICE_FEE } from "@/lib/ordenes";
 import { resetCustomerToCategoryMenu } from "@/lib/messages";
 import { withCategoryMenu } from "@/lib/orderSession";
 import { readOfferedCouriers } from "@/lib/services/courierAvailability";
@@ -198,7 +199,7 @@ const TIMEOUT_CONFIGS: TimeoutKindConfig[] = [
       return notices;
     },
     adminMessage: (pedido) =>
-      `Timeout de repartidor.\n\nPedido: ${pedido.id}\nNingún repartidor confirmó en 10 min. Pedido cancelado.`,
+      `Timeout de repartidor.\n\nPedido: ${pedido.id}\nEnvío ${formatMoney(MANDALO_DELIVERY_FEE)} y servicio ${formatMoney(MANDALO_SERVICE_FEE)}.\nNingún repartidor confirmó en 10 min. Pedido cancelado.`,
   },
   {
     kind: "product_adjustment",

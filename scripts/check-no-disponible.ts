@@ -33,9 +33,9 @@ function assertIgnorado(texto: string) {
   assert(extraerComandoNoDisponible(texto) === null, `${JSON.stringify(texto)} no debe marcar un producto`);
 }
 
-assert(MANDALO_SERVICE_FEE === 0 && MANDALO_DELIVERY_FEE === 35, "el desglose interno es 0 de Mándalo y 35 del repartidor");
-assert(MANDALO_SERVICE_FEE + MANDALO_DELIVERY_FEE === 35, "servicio y envío suman 35");
-assert(calculateFinalPrice(100) === 135, "el total es tienda + 35");
+assert(MANDALO_SERVICE_FEE === 10 && MANDALO_DELIVERY_FEE === 15, "el desglose interno es 10 de Mándalo y 15 del repartidor");
+assert(MANDALO_SERVICE_FEE + MANDALO_DELIVERY_FEE === 25, "servicio y envío suman 25");
+assert(calculateFinalPrice(100) === 125, "el total es tienda + 25");
 
 assertComando("ORDEN #12 no disponible mayonesa", 12, "mayonesa");
 assertComando("orden 12 no hay coca", 12, "coca");

@@ -2,10 +2,16 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 19 de octubre de 2026. Los arreglos de las
-> pruebas del 18 de octubre (Peke's, George y La Central) están en un
-> PR borrador contra `main`. No está mergeado ni desplegado. No se
-> llamó a OpenAI, no se mandó WhatsApp y no se escribió en Supabase.
+> Última actualización: 19 de octubre de 2026, noche. Cargo al cliente:
+> $15 de envío para el repartidor y $10 de servicio para Mándalo, $25
+> más los productos. El resumen muestra siempre `🛵 *Envío: $15*` y
+> debajo `servicio $10`. En `pedidos`, `servicio_repartidor` es 15 y
+> `servicio_mandalo` es 10. Va en un PR borrador aparte de los arreglos.
+> No está mergeado ni desplegado. La migración
+> `supabase/migrations/20261019_cargo_cliente_25.sql` solo cambia los
+> defaults y no está aplicada; no toca totales ya guardados. Los
+> arreglos de las pruebas del 18 de octubre ya están en `main` (PR #55).
+> No se llamó a OpenAI, no se mandó WhatsApp y no se escribió en Supabase.
 > En Peke's sigue una pregunta y un producto por mensaje. Una frase
 > con varias opciones («una Pepsi y una manzana», «el 2 y el 4») anota
 > una línea por opción. `queso crema`, `leche condensada` y `crema de

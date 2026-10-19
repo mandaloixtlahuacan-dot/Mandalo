@@ -40,7 +40,10 @@ Acción interna: `flow_greeting`
 
 1. *Carnicería La Central*
 
-*El menú trae precio, más $35 de envío y servicio.*
+*El menú trae precio.*
+
+🛵 *Envío: $15*
+servicio $10
 
 *¿De cuál te hago el mandado?*
 
@@ -56,7 +59,19 @@ Acción interna: `flow_show_niche`
 
 Pídeme lo que se te antoje, como sale en la foto.
 
-*Envío y servicio: $35*, aparte.
+Te armo el mandado producto por producto. Si quieres, también puedes mandarme varios juntos.
+
+*Cómo pedir:* el corte y los kilos, o cuántos pesos.
+_Ejemplo: "1 kg de chorizo"_
+
+*Cómo agregar:* "agrega 1 kilo de carne"
+
+*Cómo quitar:* "quita el pastor"
+
+*Cómo corregir:* "cambia el carbón a 2 bolsas"
+
+🛵 *Envío: $15*
+servicio $10
 
 Acción interna: `flow_switch_store`
 
@@ -72,9 +87,10 @@ OK, pediste:
 
 ✅ 🥩 *Diezmillo, 1 kilo — $215*
 
-*Envío y servicio: $35*
+🛵 *Envío: $15*
+servicio $10
 
-*Total: $250*
+*Total: $240*
 
 *¿Están bien estos productos?*
 

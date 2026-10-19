@@ -40,7 +40,10 @@ Acción interna: `flow_greeting`
 
 1. *Hamburguesas Hotdogs George*
 
-*El menú trae precio, más $35 de envío y servicio.*
+*El menú trae precio.*
+
+🛵 *Envío: $15*
+servicio $10
 
 *¿De cuál te hago el mandado?*
 
@@ -56,7 +59,19 @@ Acción interna: `flow_show_niche`
 
 Pídeme lo que se te antoje, como sale en la foto.
 
-*Envío y servicio: $35*, aparte.
+Te armo el mandado producto por producto. Si quieres, también puedes mandarme varios juntos.
+
+*Cómo pedir:* el nombre del menú y cuántos.
+_Ejemplo: "2 hamburguesas sencillas"_
+
+*Cómo agregar:* "agrega 1 refresco"
+
+*Cómo quitar:* "quita las papas"
+
+*Cómo corregir:* "cambia la hamburguesa a grande"
+
+🛵 *Envío: $15*
+servicio $10
 
 Acción interna: `flow_switch_store`
 
@@ -72,9 +87,10 @@ OK, pediste:
 
 ✅ 🌭 *Dogo Clásico, 3 piezas — $105*
 
-*Envío y servicio: $35*
+🛵 *Envío: $15*
+servicio $10
 
-*Total: $140*
+*Total: $130*
 
 *¿Están bien estos productos?*
 
@@ -109,7 +125,7 @@ Acción interna: `productos_confirmados`
 
 ✅ *Pedido #15 confirmado*
 
-Llegará aproximadamente a las 6:52 p.m..
+Llegará aproximadamente a las 1:32 p.m..
 
 🛵 Estamos coordinando tu entrega.
 
@@ -149,7 +165,8 @@ https://www.google.com/maps?q=20.865831,-103.240017
 
 ✅ 🌭 *Dogo Clásico, 3 pzs*
 
-💵 *Cobrar: $140*
+💵 *Cobrar: $130*
+🛵 *Tu envío: $15*
 
 *Tel. cliente:* 5213310001201
 
@@ -180,7 +197,8 @@ https://www.google.com/maps?q=20.865831,-103.240017
 
 ✅ 🌭 *Dogo Clásico, 3 pzs*
 
-💵 *Cobrar: $140*
+💵 *Cobrar: $130*
+🛵 *Tu envío: $15*
 
 *Tel. cliente:* 5213310001201
 
@@ -267,8 +285,8 @@ Pedido *#15*.
 
 Pedido entregado
 
-Total: $140
-Hora: 2026-10-17T00:32:07.319Z
+Total: $130
+Hora: 2026-10-19T19:12:08.312Z
 Repartidor: Roberto
 
 - cliente / notificacion_cliente / 5213310001201

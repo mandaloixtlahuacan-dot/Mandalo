@@ -1,5 +1,5 @@
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { MANDALO_SERVICE_FEE } from "@/lib/ordenes";
+import { MANDALO_DELIVERY_FEE, MANDALO_SERVICE_FEE } from "@/lib/ordenes";
 import { BUILDING_ORDER_STATES } from "@/lib/reliability";
 import { normalizePhone } from "@/lib/roles";
 import { resetChatHistory } from "@/lib/messages";
@@ -135,6 +135,7 @@ export async function getOrCreateDraftPedido(params: {
       cliente_telefono: telefono,
       estado: "seleccion_productos" satisfies OrderState,
       servicio_mandalo: MANDALO_SERVICE_FEE,
+      servicio_repartidor: MANDALO_DELIVERY_FEE,
     })
     .select("id, estado, metadata_json, updated_at")
     .maybeSingle();

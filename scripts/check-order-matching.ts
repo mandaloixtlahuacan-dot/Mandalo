@@ -298,7 +298,7 @@ async function main(): Promise<void> {
     assert(gajo?.qty === 1 && /gajo/i.test(gajo.name), "anota las papas gajo");
     assert(!george.cart.some((item) => item.productId != null && item.productId <= 14), "no mete hamburguesas");
     assert(george.reply.includes("$135") && george.reply.includes("$40") && george.reply.includes("$70"), "los importes son 135, 40 y 70");
-    assert(george.reply.includes("$35") && george.reply.includes("$280"), "el total es 245 más 35");
+    assert(george.reply.includes("Envío: $15") && george.reply.includes("servicio $10") && george.reply.includes("$270"), "el total es 245 más 25");
     assert(george.reply.includes("¿Están bien estos productos?"), "el pedido claro pide el sí");
   });
 

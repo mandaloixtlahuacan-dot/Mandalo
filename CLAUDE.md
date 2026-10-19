@@ -65,8 +65,8 @@ Sistema de delivery automatizado por WhatsApp para **Ixtlahuacán del Río**. Un
 - `repartidor_id` (FK, nulo hasta asignar)
 - `estado` (ver máquina de estados)
 - `direccion_entrega` (coordenadas GPS)
-- `servicio_mandalo` (fijo: $0)
-- `servicio_repartidor` ($35 desde el 15 de octubre de 2026; ver regla financiera)
+- `servicio_mandalo` ($10 desde el 19 de octubre de 2026; ver regla financiera)
+- `servicio_repartidor` ($15 desde el 19 de octubre de 2026; ver regla financiera)
 - `total_cliente`
 - `created_at`
 
@@ -97,10 +97,10 @@ Sistema de delivery automatizado por WhatsApp para **Ixtlahuacán del Río**. Un
 1. **Cobertura geográfica:** solo Ixtlahuacán del Río. Se valida por radio de distancia (Haversine) desde un punto central del pueblo, usando SIEMPRE ubicación GPS compartida por WhatsApp (no texto libre). Si está fuera del radio, se cancela antes de crear cualquier registro. *(Radio a calibrar con direcciones reales del pueblo — pendiente de definir el valor exacto en km).*
 2. **Precio:**
    `total_cliente = Σ subtotal_tienda + servicio_mandalo + servicio_repartidor`
-   `servicio_mandalo = $0`
-   `servicio_repartidor = $35`
-   *(Ajustado 15 de octubre de 2026: el cliente paga $35 de envío y servicio. Del 5 al 15 de octubre de 2026 era un solo $25. Antes, desde agosto 2026, era Mándalo $10 + repartidor $25. El recargo por tienda adicional no está construido.)*
-   Al cliente ese cargo se muestra **junto**, una sola línea de **$35 de envío y servicio**. No se le desglosa. En base, `servicio_mandalo` y `servicio_repartidor` suman 35, igual que el ticket.
+   `servicio_mandalo = $10`
+   `servicio_repartidor = $15`
+   *(Ajustado 19 de octubre de 2026: el cliente paga $15 de envío para el repartidor y $10 de servicio para Mándalo, $25 en total más los productos. Del 15 al 19 de octubre de 2026 era un solo $35. Del 5 al 15 de octubre de 2026 era un solo $25. Antes, desde agosto 2026, era Mándalo $10 + repartidor $25. El recargo por tienda adicional no está construido.)*
+   Al cliente ese cargo se muestra en dos líneas, siempre: **🛵 *Envío: $15*** y debajo `servicio $10` en texto normal, sin negritas ni emoji. Las dos entran en el total. En base, `servicio_mandalo` es 10 y `servicio_repartidor` es 15.
 3. **Pago:** solo efectivo, cobrado por el repartidor directamente al cliente.
 4. **Roles fijos por número:** un número registrado como tienda o repartidor NO puede pedir como cliente desde ese mismo número — se comunica manualmente a cada empleado que use un número distinto para pedidos personales. Cualquier número no registrado se trata como cliente.
 5. **Confirmación de productos:** la IA siempre repite/confirma el producto entendido antes de mandarlo a la tienda, para corregir errores de escritura del cliente.
@@ -113,7 +113,7 @@ Sistema de delivery automatizado por WhatsApp para **Ixtlahuacán del Río**. Un
 2. Bot valida cobertura geográfica → si está fuera, cancela ahí mismo
 3. Cliente confirma el pedido completo
 
-Antes de pedir la ubicación, cuando marca, tamaño y presentación ya quedaron claros, el bot lista los productos («OK, pediste… ¿Están bien estos productos?»). Un SÍ limpio sigue al GPS o a la dirección. Un «No» o «no está correcto» en esa lista, o en el resumen de `confirmacion_cliente`, cancela el pedido abierto. Si el cliente dice que algo se juntó, corrige una línea, o agrega («faltó», «agrega», «añade», «también quiero», «solamente te…», aunque empiece con sí), eso no es el SÍ: se anota el cambio, los productos quedan sin confirmar y se vuelve a listar. Lo mismo si ya se estaba pidiendo la ubicación. El GPS espera ese SÍ limpio. El resumen final (ubicación, horario y $35 de envío y servicio) no cambia.
+Antes de pedir la ubicación, cuando marca, tamaño y presentación ya quedaron claros, el bot lista los productos («OK, pediste… ¿Están bien estos productos?»). Un SÍ limpio sigue al GPS o a la dirección. Un «No» o «no está correcto» en esa lista, o en el resumen de `confirmacion_cliente`, cancela el pedido abierto. Si el cliente dice que algo se juntó, corrige una línea, o agrega («faltó», «agrega», «añade», «también quiero», «solamente te…», aunque empiece con sí), eso no es el SÍ: se anota el cambio, los productos quedan sin confirmar y se vuelve a listar. Lo mismo si ya se estaba pidiendo la ubicación. El GPS espera ese SÍ limpio. El resumen final (ubicación, horario, envío $15 y servicio $10) no cambia.
 4. Cada tienda involucrada recibe notificación de su parte del pedido
 5. Tienda revisa inventario:
    - Si tiene todo → confirma precio y disponibilidad
