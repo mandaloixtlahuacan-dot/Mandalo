@@ -4,12 +4,15 @@
  * No inventa productos ni deja una línea en silencio.
  */
 import { foldAgent, genericDogoProduct, isGenericDogoText, searchAgentProducts } from "@/lib/orderAgent/catalog";
-import { isAffirmativeChatter } from "@/lib/messages";
+import { isAffirmativeChatter, isCancelIntent } from "@/lib/messages";
 import { isVagueListaQuery, listaRankTokens, listaWordHit, normalizeMeasureWords, synonymForms } from "@/lib/storeProductSearch";
 import {
+  asideNote,
   catalogAsk,
   clauseMisspelled,
+  conjunctionPhrases,
   contentTokens,
+  filterAskedType,
   foldCatalogName,
   isPackProduct,
   listClauses,
@@ -360,10 +363,6 @@ function preferBareName(products: AgentProduct[]): AgentProduct[] {
   return unrelated ? products : bare;
 }
 
-function namedCut(clause: string): boolean {
-  return /\b(pollo|res|puerco|cuban|hawaian|camaron|arrachera|pastor)\b/.test(foldAgent(clause));
-}
-
 function pickStandardSize(clause: string, products: AgentProduct[]): AgentProduct | null {
   if (products.length < 2) return products[0] ?? null;
   const stems = new Set(products.map((product) => stemOf(product.name)));
@@ -372,8 +371,11 @@ function pickStandardSize(clause: string, products: AgentProduct[]): AgentProduc
   if (!sizes.every((size) => size === "chica" || size === "grande")) return null;
   const asked = saidSize(clause);
   if (asked) return products.find((product) => sizeWordOf(product.name) === asked) ?? null;
-  // «una hamburguesa» sigue preguntando. «de pollo» ya dice el tipo: se anota la chica.
-  if (!namedCut(clause)) return null;
+  const folded = foldAgent(clause);
+  // «una hamburguesa» y la de res preguntan el tamaño. «de pollo» ya nombra el tipo y sigue en la chica.
+  // «otra» también pregunta, no se asume.
+  if (/\bres\b/.test(folded) || /\botr[oa]s?\b/.test(folded)) return null;
+  if (!/\b(?:pollo|cuban\w*|hawaian\w*|camar[oó]n|arrachera|pastor|sencill\w*)\b/.test(folded)) return null;
   return products.find((product) => sizeWordOf(product.name) === "chica") ?? null;
 }
 
@@ -858,6 +860,15 @@ export function decideClause(clause: string, pool: AgentProduct[], store: AgentS
     }
   }
   if (!saidPack(text)) hits = piecesFirst(hits);
+  if (hits.length > 1) {
+    const narrowed = filterAskedType(text, hits);
+    if (narrowed.length === 1 && narrowed.length < hits.length) {
+      const family = filterAskedType(text, pool);
+      hits = family.length >= 2 ? capOptions(family) : narrowed;
+    } else {
+      hits = narrowed.length ? narrowed : hits;
+    }
+  }
 
   // «Caja Nito» no se anota sola. La columna presentación «paquete» sí: ahí es la unidad.
   if (hits.length === 1 && packInName(hits[0]) && !saidPack(text)) {
@@ -942,7 +953,8 @@ export function messageIsNotAnOrder(message: string): boolean {
   if (/^(?:cual|cuales|que)\b/.test(text) && text.split(" ").length <= 6) return true;
   if (/\b(ninguno|ninguna|ningunos|ningunas)\b/.test(text)) return true;
   if (/^(?:seguimos|sigue|continua|continuemos|es todo|nada mas)$/.test(text)) return true;
-  if (/\b(quita|quiteme|borra|elimina|cancela|ya no)\b/.test(text)) return true;
+  if (isCancelIntent(message)) return true;
+  if (/\b(quita|quitame|quiteme|quite|quitar|saca|sacame|sacalo|sacala|borra|elimina|cancela|ya no)\b/.test(text)) return true;
   return false;
 }
 
@@ -967,13 +979,17 @@ export async function composeMessage(params: {
     const lines = params.message.split(/\n+/).map((line) => line.trim()).filter(Boolean);
     for (const line of lines) await searchClause(line);
   }
+  const phrases = conjunctionPhrases([
+    ...params.pool.map((product) => product.name),
+    ...[...seenSearch.values()].flat().map((product) => product.name),
+  ]);
   const resolved = params.store.hasProductList && params.search
     ? listClauses(params.message, (line) => {
         const key = foldAgent(line);
         const found = seenSearch.get(key) ?? [];
         return found.some((product) => foldAgent(product.name) === key);
-      })
-    : orderClauses(params.message);
+      }, phrases)
+    : orderClauses(params.message, phrases);
   const out: ClauseDecision[] = [];
   for (const clause of resolved) {
     let pool = params.pool;
@@ -1031,7 +1047,7 @@ export function lineFromDecision(lineId: string, decision: ClauseAdd): AgentLine
     qty: decision.qty,
     unit: decision.unit,
     variant,
-    note: null,
+    note: asideNote(decision.clause),
     unitPrice: decision.product.price,
     brand: decision.product.brand,
     presentation: decision.product.presentation,

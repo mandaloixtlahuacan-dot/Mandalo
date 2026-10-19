@@ -28,12 +28,19 @@ function qtyLabel(line: AgentLine): string {
   return `${line.qty}`;
 }
 
+function lineName(line: AgentLine): string {
+  if (!line.note) return line.name;
+  if (foldAgent(line.name).includes(foldAgent(line.note))) return line.name;
+  return `${line.name} (${line.note})`;
+}
+
 export function agentLineLabel(line: AgentLine): string {
   const qty = qtyLabel(line);
-  if (line.unit === "pesos") return `${qty} ${line.name}`.replace(/\s+/g, " ").trim();
-  if (!qty) return line.name;
-  if (line.unit === "pz") return `${qty} ${line.name}`;
-  return `${qty} de ${line.name}`;
+  const name = lineName(line);
+  if (line.unit === "pesos") return `${qty} ${name}`.replace(/\s+/g, " ").trim();
+  if (!qty) return name;
+  if (line.unit === "pz") return `${qty} ${name}`;
+  return `${qty} de ${name}`;
 }
 
 const PACK_UNITS = ["paquete", "bolsa", "caja", "botella", "lata", "rollo", "frasco"];
@@ -122,12 +129,13 @@ export function renderAgentReply(params: {
   const aside = params.aside?.trim() || "";
   if (!params.cart.length && question) return [aside, styleQuestion(question)].filter(Boolean).join("\n\n");
   if (!params.cart.length) {
+    if (aside || question) return [aside, question ? styleQuestion(question) : ""].filter(Boolean).join("\n\n");
     const invite = params.store.category === "carniceria"
       ? "🥩 *Dime el corte y los kilos, o cuántos pesos.*"
       : params.store.category === "restaurante"
         ? "🍔 *Dime qué se te antoja del menú y cuántos.*"
         : "🛒 *Dime qué se te antoja, con marca y tamaño si lo tienes.*";
-    return [aside, question ? styleQuestion(question) : "", invite].filter(Boolean).join("\n\n");
+    return invite;
   }
   const priced = priceAgentCart(params.cart);
   const kind = kindOf(params.store.category);
@@ -148,7 +156,7 @@ export function renderAgentReply(params: {
     return [styleQuestion(question)].filter(Boolean).join("\n\n");
   }
   if (question) {
-    return [aside, heldCart(params.cart), styleQuestion(question)].filter(Boolean).join("\n\n");
+    return [heldCart(params.cart), styleQuestion(question)].filter(Boolean).join("\n\n");
   }
   return [aside, list].filter(Boolean).join("\n\n");
 }

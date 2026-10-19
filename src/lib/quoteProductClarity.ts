@@ -586,6 +586,7 @@ const CATEGORIES: Category[] = [
     id: "leche",
     nombre: "Leche",
     match: /\bleches?\b/,
+    exclude: /\b(condensada|evaporada)\b/,
     slots: ["marca", "tipo", "tamano"],
     typePhrase: lecheTipo,
     sizePhrase: (blob) => {
@@ -977,10 +978,40 @@ const CATEGORIES: Category[] = [
     emoji: "🫙",
   }),
   packagedFamily({
+    id: "queso-crema",
+    nombre: "Queso crema",
+    match: /\bqueso crema\b/,
+    article: "El",
+    example: "Philadelphia, Lala o Raskas",
+    shelfAsk: "de qué presentación (barra, taza o de cuántos gramos)",
+    follow: FOLLOW_LO,
+    emoji: "🧀",
+  }),
+  packagedFamily({
+    id: "leche-condensada",
+    nombre: "Leche condensada",
+    match: /\bleche condensada\b|\bleche evaporada\b/,
+    article: "La",
+    example: "La Lechera, Nestlé o Carnation",
+    shelfAsk: "de qué lata (chica o grande)",
+    follow: FOLLOW_LA,
+    emoji: "🥛",
+  }),
+  packagedFamily({
+    id: "crema-cacahuate",
+    nombre: "Crema de cacahuate",
+    match: /\bcrema de cacahuate\b|\bcrema de avellana\b|\bcrema de almendra\b/,
+    article: "La",
+    example: "Aladino, Skippy o Nutella",
+    shelfAsk: "de qué frasco (chico o grande)",
+    follow: FOLLOW_LA,
+    emoji: "🥜",
+  }),
+  packagedFamily({
     id: "crema",
     nombre: "Crema",
     match: /\bcrema\b/,
-    exclude: /\b(dental|corporal|batir|nivea|para el cafe|para cafe)\b/,
+    exclude: /\b(dental|corporal|batir|nivea|para el cafe|para cafe|de cacahuate|de avellana|de almendra)\b/,
     article: "La",
     example: "Lala, Alpura o Santa Clara",
     shelfAsk: "de qué presentación (chica, grande o de litro)",
@@ -1240,11 +1271,24 @@ function categoryFromBrand(haystack: string): Category | null {
 function categoryFor(text: string): Category | null {
   const haystack = norm(rewriteGrocerySlips(text));
   if (!haystack) return null;
+  let best: { category: Category; index: number; length: number } | null = null;
   for (const category of CATEGORIES) {
-    if (!category.match.test(haystack)) continue;
-    if (categoryRejected(category, haystack)) continue;
-    return category;
+    const re = new RegExp(category.match.source, "g");
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(haystack))) {
+      const span = haystack.slice(Math.max(0, match.index - 24), match.index + match[0].length + 24);
+      if (categoryRejected(category, span) || categoryRejected(category, haystack)) {
+        if (match.index === re.lastIndex) re.lastIndex += 1;
+        continue;
+      }
+      const candidate = { category, index: match.index, length: match[0].length };
+      const longerAtSameSpot = best != null && candidate.index === best.index && candidate.length > best.length;
+      const earlier = best == null || candidate.index < best.index;
+      if (earlier || longerAtSameSpot) best = candidate;
+      if (match.index === re.lastIndex) re.lastIndex += 1;
+    }
   }
+  if (best) return best.category;
   return categoryFromBrand(haystack);
 }
 
@@ -1273,7 +1317,7 @@ function looksLikeAddress(message: string): boolean {
   return /\b(calle|colonia|frente a|esquina|ubicacion|gps|vivo en|mi direccion)\b/.test(text);
 }
 
-type Hit = { wordIndex: number; category: Category };
+type Hit = { wordIndex: number; endWord: number; category: Category };
 
 function hitsIn(message: string): Hit[] {
   const words = norm(rewriteGrocerySlips(dropAddressTail(message))).split(" ").filter(Boolean);
@@ -1284,6 +1328,7 @@ function hitsIn(message: string): Hit[] {
     let match: RegExpExecArray | null;
     while ((match = re.exec(haystack))) {
       const wordIndex = haystack.slice(0, match.index).split(" ").filter(Boolean).length;
+      const endWord = wordIndex + Math.max(1, match[0].split(" ").filter(Boolean).length);
       const local = words.slice(Math.max(0, wordIndex - 3), wordIndex + 5).join(" ");
       const tail = haystack.slice(match.index, match.index + 40);
       if (categoryRejected(category, local) || (category.exclude?.test(tail) ?? false)) {
@@ -1294,14 +1339,14 @@ function hitsIn(message: string): Hit[] {
         if (match.index === re.lastIndex) re.lastIndex += 1;
         continue;
       }
-      hits.push({ wordIndex, category });
+      hits.push({ wordIndex, endWord, category });
       if (match.index === re.lastIndex) re.lastIndex += 1;
     }
   }
-  hits.sort((a, b) => a.wordIndex - b.wordIndex);
+  hits.sort((a, b) => a.wordIndex - b.wordIndex || b.endWord - a.endWord);
   const unique: Hit[] = [];
   for (const hit of hits) {
-    if (unique.some((item) => item.wordIndex === hit.wordIndex)) continue;
+    if (unique.some((item) => hit.wordIndex >= item.wordIndex && hit.endWord <= item.endWord)) continue;
     unique.push(hit);
   }
   // Sin palabra de producto, la marca conocida abre la línea (Sanitas = papel).
@@ -1327,7 +1372,8 @@ function brandHintHits(haystack: string): Hit[] {
     const category = CATEGORIES.find((item) => item.id === hint.id);
     if (!category) continue;
     const wordIndex = haystack.slice(0, match.index).split(" ").filter(Boolean).length;
-    return [{ wordIndex, category }];
+    const endWord = wordIndex + Math.max(1, match[0].split(" ").filter(Boolean).length);
+    return [{ wordIndex, endWord, category }];
   }
   return [];
 }

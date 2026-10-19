@@ -194,11 +194,21 @@ function questionKind(message: string): "fee" | "hours" | "have" | null {
   return null;
 }
 
-function looksLikeStreetAddress(message: string): boolean {
+function looksLikeStreetAddress(message: string, phase?: string): boolean {
   const text = whole(message);
   if (!text || text.length > 180) return false;
-  if (/\b(calle|avenida|av|colonia|col|frente a|esquina|domicilio|entre la|numero|num|#|mz|manzana|lote|casa)\b/.test(text)) return true;
-  return /\b\d{1,5}\b/.test(text) && /\b(hidalgo|juarez|morelos|allende|reforma|centro|ixtlahuacan)\b/.test(text);
+  const locating = phase === "ubicacion" || phase === "resumen";
+  const strong = /\b(calle|avenida|av|colonia|frente a|esquina|domicilio|entre la)\b/.test(text);
+  const weak = /\b(col|numero|num|#|mz|manzana|lote|casa|centro)\b/.test(text);
+  const named = /\b(hidalgo|juarez|morelos|allende|reforma|ixtlahuacan)\b/.test(text);
+  const numbered = /\b\d{1,5}\b/.test(text);
+  if (locating) {
+    if (strong || weak) return true;
+    return numbered && named;
+  }
+  if (weak && !strong) return false;
+  if (strong) return true;
+  return numbered && named;
 }
 
 const CANCEL_CONFIRM_QUESTION = "¿Quieres cancelar el pedido? Sí o No";
@@ -771,7 +781,7 @@ export function routeCustomerFlow(input: FlowRouteInput): FlowDecision {
     }
   }
 
-  if (looksLikeStreetAddress(message)) return acceptWrittenAddress(input);
+  if (looksLikeStreetAddress(message, input.phase)) return acceptWrittenAddress(input);
 
   const switched = storeSwitchFromCapture({
     message,

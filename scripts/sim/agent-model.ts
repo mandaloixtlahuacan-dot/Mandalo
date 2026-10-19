@@ -4,7 +4,7 @@
  * Si hay varias, no escoge: el loop del agente pregunta.
  */
 import { foldAgent, stripOrderVerbs, isOrderVerbOnly } from "../../src/lib/orderAgent/catalog";
-import { clauseMisspelled, messageSelectsProduct, orderClauses } from "../../src/lib/orderAgent/match";
+import { clauseMisspelled, conjunctionPhrases, messageSelectsProduct, orderClauses } from "../../src/lib/orderAgent/match";
 import type { AgentModel, AgentProduct } from "../../src/lib/orderAgent/types";
 
 function asProducts(value: unknown): AgentProduct[] {
@@ -104,7 +104,7 @@ export function createSimAgentModel(name: string): AgentModel {
         const entry = searched.find((item) => fold(String(item.call.arguments?.query ?? "")) === fold(line));
         const found = entry ? asProducts(entry.result) : [];
         if (isExactLine(line, found)) continue;
-        for (const clause of orderClauses(line)) {
+        for (const clause of orderClauses(line, conjunctionPhrases(found.map((product) => product.name)))) {
           const cleaned = stripOrderVerbs(clause).trim();
           if (!cleaned || isOrderVerbOnly(cleaned) || searchedQueries.has(fold(cleaned))) continue;
           pendingClauses.push(cleaned);

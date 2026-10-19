@@ -138,6 +138,13 @@ function isQuantity(token: string): boolean {
   return /^\d+(?:\.\d+)?$/.test(token) || /^\d+(?:ml|l|lt|lts|kg|g|gr|grs|mg|pza|pzas|pz)$/.test(token);
 }
 
+/** Lo que el cliente dictó mal y el catálogo escribe de otra forma. */
+export function normalizeVoice(text: string): string {
+  return String(text ?? "")
+    .replace(/\bmeriendas?\b/gi, "mirinda")
+    .replace(/\bmirandas?\b/gi, "mirinda");
+}
+
 /** Tokens con los que se busca en nombre, marca y alias. Sin acentos, sin cantidades. */
 export function listaSearchTokens(text: string): string[] {
   const seen = new Set<string>();
@@ -147,7 +154,7 @@ export function listaSearchTokens(text: string): string[] {
     seen.add(token);
     tokens.push(token);
   };
-  const prepared = normalizeMeasureWords(text).replace(/\bsin\s+sabor\b/gi, " ");
+  const prepared = normalizeVoice(normalizeMeasureWords(text)).replace(/\bsin\s+sabor\b/gi, " ");
   for (const token of foldListaText(prepared).split(" ")) {
     if (token.length < 3 || token.length > 40) continue;
     if (STOP.has(token) || isQuantity(token)) continue;
@@ -191,6 +198,9 @@ const SYNONYM_GROUPS: string[][] = [
   ["higienico", "higienicos", "hig"],
   ["lata", "latas"],
   ["capuchino", "capuccino", "cappuccino", "cappuchino"],
+  ["mirinda", "mirandas", "miranda", "merienda", "meriendas"],
+  ["seven", "7up"],
+  ["electrolit", "electrolight", "electrolitos"],
 ];
 
 const DRINK_HINTS = new Set([
@@ -269,7 +279,22 @@ export function listaSqlTokens(text: string): string[] {
   }
   if (/\bmedio\b/.test(folded) && /\blitros?\b/.test(folded)) push("500ml");
   if (/\blitros?\b/.test(folded)) push("litro");
+  // «queso crema» también es Philadelphia. El SQL suma por token, no exige todos.
+  if (/\bqueso\b/.test(folded) && /\bcrema\b/.test(folded)) push("philadelphia");
   return tokens;
+}
+
+function aliasCreamCheese(rows: ListaProducto[], text: string): ListaProducto[] {
+  const folded = foldListaText(text);
+  if (!/\bqueso\b/.test(folded) || !/\bcrema\b/.test(folded)) return rows;
+  return rows.map((row) => {
+    const name = foldListaText(row.nombre);
+    if (!/\bphiladelphia\b/.test(name)) return row;
+    if (/\bqueso\b/.test(name) && /\bcrema\b/.test(name)) return row;
+    const alias = [...(row.alias ?? [])];
+    if (alias.some((item) => foldListaText(item) === "queso crema")) return row;
+    return { ...row, alias: [...alias, "queso crema"] };
+  });
 }
 
 export function listaQueryText(
@@ -751,13 +776,26 @@ function pickVague(rows: ListaProducto[], limit: number): ListaProducto[] {
 }
 
 export function rankListaCandidates(rows: ListaProducto[], text: string, limit = LISTA_SEARCH_LIMIT): ListaProducto[] {
+  const aliased = aliasCreamCheese(rows, text);
   // «refresco» también es el nombre de 7up. La familia (Coca, Pepsi) va primero.
   if (isVagueListaQuery(text)) {
-    const vague = pickVague(vagueRows(rows, text), limit);
+    const vague = pickVague(vagueRows(aliased, text), limit);
     if (vague.length) return vague;
   }
   const must = listaSearchTokens(text);
-  const ranked = rankListaByTokens(rows, listaRankTokens(text), limit, listaPackageKey(text), must);
-  if (ranked.length) return ranked;
-  return pickVague(vagueRows(rows, text), limit);
+  const ranked = rankListaByTokens(aliased, listaRankTokens(text), limit, listaPackageKey(text), must);
+  if (ranked.length) return preferPhiladelphia(ranked, aliased, text, limit);
+  return pickVague(vagueRows(aliased, text), limit);
+}
+
+function preferPhiladelphia(ranked: ListaProducto[], rows: ListaProducto[], text: string, limit: number): ListaProducto[] {
+  const folded = foldListaText(text);
+  if (!/\bqueso\b/.test(folded) || !/\bcrema\b/.test(folded)) return ranked;
+  const cream = rows.filter((row) => /\bphiladelphia\b/.test(foldListaText(row.nombre)));
+  if (!cream.length) return ranked;
+  const seen = new Set(ranked.map((row) => row.nombre));
+  const extra = cream.filter((row) => !seen.has(row.nombre));
+  const head = [...cream.filter((row) => seen.has(row.nombre)), ...extra].slice(0, 3);
+  const rest = ranked.filter((row) => !head.some((item) => item.nombre === row.nombre));
+  return [...head, ...rest].slice(0, Math.max(limit, head.length));
 }

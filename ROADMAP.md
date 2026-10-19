@@ -2,7 +2,34 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 17 de octubre de 2026, tarde. En Peke's
+> Última actualización: 19 de octubre de 2026. Los arreglos de las
+> pruebas del 18 de octubre (Peke's, George y La Central) están en un
+> PR borrador contra `main`. No está mergeado ni desplegado. No se
+> llamó a OpenAI, no se mandó WhatsApp y no se escribió en Supabase.
+> En Peke's sigue una pregunta y un producto por mensaje. Una frase
+> con varias opciones («una Pepsi y una manzana», «el 2 y el 4») anota
+> una línea por opción. `queso crema`, `leche condensada` y `crema de
+> cacahuate` no se confunden con queso, leche o crema; en Peke's
+> «queso crema» alcanza Philadelphia. Una tienda sin lista encola las
+> dudas y no las pierde. «Agrega 2, Mirindas» es cantidad 2; «Mar y
+> Tierra» no se parte; «una orden de dos de queso» es 1 Dedos de Queso.
+> «otro/otra» suma 1 si el producto ya está. «meriendas» llega a
+> Mirinda. «7 Up 1.5 Lt» se queda en ese producto. Quitar («quítame»,
+> «saca») no agrega. En La Central la medida contestada se queda en el
+> corte que se preguntó. «sin verdura» es nota, no un producto.
+> «hamburguesa de res» sin tamaño pregunta chica o grande; «de pollo»
+> sigue en la chica; «otra» también pregunta. Una dirección floja
+> («manzana», «lote») solo cuenta en la fase de ubicación. Cancelar
+> por inactividad archiva el chat y marca `pedido_tiendas` en
+> cancelado; si la tabla de archivo no está, el cierre sigue.
+> Pruebas: `npm run check` ok (restaurante 127/127, pedido anclado
+> 104/104, Peke's 22 + el pedido real, flujo 349, pérdida 24, intake
+> 64). `check-pekes-broad` 300×3: semilla 20261017 quedó 899/900
+> (99.9%), el mismo fallo de juicio de «7 Up 1.5 Lt» de antes (sí se
+> anota el de 1.5); semilla 20261018 quedó 900/900. George 34
+> productos del menú, 11,790 frases de dos palabras, cola, quitar y
+> medida de La Central ok. `tsc` y `next build` ok.
+> Actualización anterior: 17 de octubre de 2026, tarde. En Peke's
 > (tienda 7) cada mensaje trae una sola pregunta y un solo producto,
 > en el orden en que el cliente los pidió. Lo exacto se anota sin
 > volver a preguntar. Si hay opciones, salen numeradas solo de ese

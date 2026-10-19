@@ -581,7 +581,12 @@ export function isCancelIntent(text: string): boolean {
     t.includes("ya no va") ||
     t.includes("ya no quiero nada") ||
     t === "ya no" ||
-    t === "no quiero nada"
+    t === "no quiero nada" ||
+    /\bya no quiero (?:un|el|mi|este|ese) pedido\b/.test(t) ||
+    /\bno quiero (?:un|el|mi|este|ese) pedido\b/.test(t) ||
+    /\bno quiero pedir\b/.test(t) ||
+    /\bya no quiero pedir\b/.test(t) ||
+    (/\bcaro\b/.test(t) && /\b(?:no quiero|ya no)\b/.test(t))
   );
 }
 

@@ -794,6 +794,20 @@ export async function cancelPedidoInactivo(params: {
     actorTipo: "sistema",
     payload: { reason: "inactivo", seen_state: params.fromState },
   });
+  await archiveConversation({
+    pedidoId: params.pedidoId,
+    customerPhone: params.customerPhone,
+  }).catch((error: unknown) => {
+    console.error(
+      "[pedidoRepository] no se pudo archivar la conversación inactiva",
+      error instanceof Error ? error.message : error,
+    );
+  });
+  const { error: storeError } = await supabase
+    .from("pedido_tiendas")
+    .update({ estado_tienda: "cancelado" })
+    .eq("pedido_id", params.pedidoId);
+  if (storeError) throw storeError;
   await resetChatHistory(params.customerPhone).catch(() => {});
   return true;
 }
