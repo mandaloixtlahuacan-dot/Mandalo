@@ -353,8 +353,7 @@ async function main(): Promise<void> {
       products: georgeProducts,
       steps: [{ toolCalls: [tool("search_products", { query: "hamburguesa de res" }, "s"), tool("set_cart_line", { product_id: 1, qty: 1, unit: "pz" }, "c"), tool("finish_cart", {}, "f")] }],
     });
-    assert(res.cart.some((item) => item.productId === 1) && /chica/i.test(res.reply), "sin tamaño, la de res queda en la chica");
-    assert(!/grande/i.test(res.cart.map((item) => item.name).join(" ")), "no anota la grande si no la pidió");
+    assert(res.cart.length === 0 && /chica/i.test(res.reply) && /grande/i.test(res.reply) && /1\./.test(res.reply), "sin tamaño, pregunta chica o grande");
     const grande = await play({
       message: "hamburguesa de res grande",
       store: georgeStore,

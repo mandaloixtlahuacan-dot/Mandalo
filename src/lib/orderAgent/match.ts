@@ -1,5 +1,5 @@
 import { foldAgent } from "@/lib/orderAgent/catalog";
-import { listaWordHit, normalizeMeasureWords, synonymForms } from "@/lib/storeProductSearch";
+import { listaWordHit, normalizeMeasureWords, normalizeVoice, synonymForms } from "@/lib/storeProductSearch";
 import type { AgentLine, AgentProduct, AgentUnit } from "@/lib/orderAgent/types";
 
 /**
@@ -24,6 +24,8 @@ const STOP = new Set([
   "paquetito", "paquetitos", "botellita", "botellitas",
   "perdon", "disculpa", "agrega", "agregame", "anota", "anotame", "porfa", "porfavor", "favor",
   "entonces", "recia", "reciona", "solo", "esta", "mala", "mal", "mas", "muy", "bien", "the",
+  "otro", "otra", "otros", "otras", "debes", "dejaste", "falta", "faltan", "refiero",
+  "pedir", "pedido", "caro", "cara", "peso", "pesos",
 ]);
 
 function wordsOf(value: string): string[] {
@@ -52,7 +54,9 @@ export function productTypeTokens(clause: string): string[] {
 }
 
 export function contentTokens(value: string): string[] {
-  const head = String(value ?? "").replace(/\([^)]*\)/g, " ");
+  const head = String(value ?? "")
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/\bsin\s+(?!el\b|la\b|los\b|las\b|eso\b|ese\b|esa\b|ello\b)[a-záéíóúüñ]+/gi, " ");
   const seen = new Set<string>();
   const tokens: string[] = [];
   for (const token of wordsOf(head)) {
@@ -470,7 +474,8 @@ export function optionsLookDifferent(products: AgentProduct[]): boolean {
 }
 
 export function variantFromMessage(variants: string[], message: string): string | null {
-  const text = foldAgent(message);
+  const raw = foldAgent(message);
+  const text = foldAgent(normalizeVoice(message));
   const forms = new Set<string>();
   for (const token of text.split(" ")) {
     forms.add(token);
@@ -479,9 +484,16 @@ export function variantFromMessage(variants: string[], message: string): string 
   for (const variant of variants) {
     const key = foldAgent(variant);
     if (!key) continue;
-    if (key === "manzana" && /\bmanzanitas?\b/.test(text)) return variant;
+    if (key === "manzana" && /\b(?:manzanitas?|sidral(?:\s+mundet)?)\b/.test(raw)) return variant;
+    if (key === "seven" && /\b7\s*ups?\b/.test(raw)) return variant;
+    if (key === "mirinda" && /\b(?:mirandas?|meriendas?)\b/.test(raw)) return variant;
     if (new RegExp(`\\b${key}s?\\b`).test(text)) return variant;
     if (forms.has(key)) return variant;
+  }
+  for (const variant of variants) {
+    const key = foldAgent(variant);
+    if (key.length < 4) continue;
+    if (text.split(" ").some((word) => word.length >= 4 && listaWordHit(word, key))) return variant;
   }
   return null;
 }
@@ -492,7 +504,17 @@ const WORD_QTY: Record<string, number> = {
 };
 
 export function spokenMeasure(message: string, productName: string): { qty: number; unit: AgentUnit } | null {
-  const clause = productClause(message, productName);
+  const clauses = orderClauses(message);
+  let clause = "";
+  if (productName.trim()) {
+    const best = productClause(message, productName);
+    if (clauses.length > 1 && (best === message || !clauses.includes(best))) return null;
+    clause = best;
+  } else {
+    const measured = clauses.filter((part) => /\b(kilos?|kg|litros?|lts?|pesos)\b|\$\s*\d/.test(foldAgent(part)));
+    if (measured.length !== 1) return null;
+    clause = measured[0];
+  }
   const folded = foldAgent(clause);
   const money = clause.match(/\$\s*(\d+(?:[.,]\d+)?)/) ?? folded.match(/\b(\d+(?:[.,]\d+)?)\s*pesos\b/);
   if (money && sharesMessageToken({ name: productName }, clause)) {
@@ -527,7 +549,7 @@ const CLAUSE_SPLIT = new RegExp(
     "\\s*(?:,|;|\\btambi[eé]n\\b|\\bdespu[eé]s\\b|\\bluego\\b|\\by\\b(?!\\s+medio\\b(?!\\s+kilos?\\b))|\\be\\b)\\s*",
     // «4 caja» y «24 pzas» son presentación, no otro producto.
     "\\s+(?=\\d+(?:[.,]\\d+)?\\s+(?:(?:kg|kilos?|l|lt|lts|litros?|g|gr|gramos?)\\s+de\\s+[a-zñ]|(?!(?:ml|l|lt|lts|litros?|g|gr|gramos?|kg|kilos?|cajas?|pzas?|piezas?|paquetes?|paq|packs?|cj|rollos?|latas?|bolsas?|botellas?|sobres?)\\b)[a-zñ]{3,}))",
-    "\\s+(?=(?:un|una|uno|unos|unas|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\\b|(?<!\\by\\s)(?:medio|media)\\b)",
+    "(?<!\\bde)\\s+(?=(?:un|una|uno|unos|unas|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\\b|(?<!\\by\\s)(?:medio|media)\\b)",
   ].join("|"),
   "i",
 );
@@ -606,11 +628,113 @@ function finishClauses(parts: string[]): string[] {
   return attachBrandToPrevious(glueBrandParts(parts));
 }
 
+const QTY_PART = /^(?:(?:agrega|agregame|anade|anademe|pon|ponme|suma|tambien)\s+)*(?:un|una|uno|unos|unas|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|medio|media|\d+)$/;
+
+function attachLooseQty(parts: string[]): string[] {
+  const out: string[] = [];
+  for (let index = 0; index < parts.length; index += 1) {
+    const folded = foldAgent(parts[index] ?? "");
+    if (QTY_PART.test(folded) && index + 1 < parts.length) {
+      const qty = folded.replace(/^(?:(?:agrega|agregame|anade|anademe|pon|ponme|suma|tambien)\s+)+/, "");
+      parts[index + 1] = `${qty} ${parts[index + 1]}`;
+      continue;
+    }
+    out.push(parts[index] ?? "");
+  }
+  return out;
+}
+
+function rewriteMenuPhrases(message: string): string {
+  return String(message ?? "")
+    .replace(/\b(?:una\s+)?orden\s+de\s+dos\s+de\s+queso\b/gi, "dedos de queso")
+    .replace(/\bdos\s+de\s+queso\b(?!\s+(?:oaxaca|panela|cottage|crema|manchego|amarillo|gouda|parmesano|fresco|asadero|chedar|cheddar))/gi, "dedos de queso");
+}
+
+function escapeReg(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** «mar y tierra» del catálogo no se parte en dos productos. */
+export function conjunctionPhrases(names: string[]): string[] {
+  const found = new Set<string>();
+  for (const name of names) {
+    const folded = foldAgent(name);
+    const re = /\b([a-zñ]{3,})\s+y\s+([a-zñ]{3,})\b/g;
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(folded))) found.add(`${match[1]} y ${match[2]}`);
+  }
+  return [...found];
+}
+
+function shieldConjunctions(message: string, phrases?: string[]): string {
+  if (!phrases?.length) return message;
+  let text = message;
+  const sorted = [...phrases].sort((a, b) => b.length - a.length);
+  for (const phrase of sorted) {
+    const parts = phrase.split(" y ");
+    if (parts.length !== 2 || !parts[0] || !parts[1]) continue;
+    const re = new RegExp(`\\b${escapeReg(parts[0])}\\s+y\\s+${escapeReg(parts[1])}\\b`, "gi");
+    text = text.replace(re, `${parts[0]} & ${parts[1]}`);
+  }
+  return text;
+}
+
+function restoreConjunctions(clause: string): string {
+  return clause.replace(/\s+&\s+/g, " y ");
+}
+
+/** «sin verdura» es una nota del producto, no otro producto. */
+export function asideNote(text: string): string | null {
+  const match = foldAgent(text).match(/\bsin\s+(?!el\b|la\b|los\b|las\b|eso\b|ese\b|esa\b|ello\b)([a-zñ]{3,})/);
+  if (!match) return null;
+  return `sin ${match[1]}`;
+}
+
+/** La opción más específica del pedido. «jalapeños» no ofrece Chile Icee. */
+export function filterAskedType(query: string, products: AgentProduct[]): AgentProduct[] {
+  if (products.length < 2) return products;
+  const token = productTypeTokens(query)
+    .filter((item) => item.length >= 6)
+    .sort((a, b) => b.length - a.length)[0];
+  if (!token) return products;
+  const forms = new Set<string>([token]);
+  if (token.length > 6 && token.endsWith("es")) forms.add(token.slice(0, -2));
+  else if (token.length > 6 && token.endsWith("s")) forms.add(token.slice(0, -1));
+  if (token.length >= 7 && token.endsWith("ita")) forms.add(`${token.slice(0, -3)}a`);
+  else if (token.length >= 7 && token.endsWith("ito")) forms.add(`${token.slice(0, -3)}o`);
+  const filtered = products.filter((product) => {
+    const words = foldAgent(product.name).split(" ").filter(Boolean);
+    return [...forms].some((form) => form.length >= 4 && words.some((word) => word === form || word.startsWith(form)));
+  });
+  return filtered.length ? filtered : products;
+}
+
+/** La frase del mensaje que más se parece a la pregunta o al producto. */
+export function clauseNaming(message: string, hints: string[]): string | null {
+  let best = "";
+  let bestScore = 0;
+  for (const part of orderClauses(message)) {
+    const text = foldAgent(part);
+    let score = 0;
+    for (const hint of hints) {
+      for (const token of contentTokens(hint)) {
+        if (token.length >= 4 && tokenIn(text, token)) score += token.length;
+      }
+    }
+    if (score > bestScore) {
+      best = part;
+      bestScore = score;
+    }
+  }
+  return bestScore > 0 ? best : null;
+}
+
 function splitOneLine(message: string): string[] {
-  const parts = String(message ?? "")
+  const raw = String(message ?? "")
     .split(CLAUSE_SPLIT)
     .map((part) => part.trim())
-    .filter((part) => contentTokens(part).length > 0);
+    .filter(Boolean);
+  const parts = attachLooseQty(raw).filter((part) => contentTokens(part).length > 0);
   const merged: string[] = [];
   for (const part of parts) {
     const text = foldAgent(part);
@@ -623,8 +747,8 @@ function splitOneLine(message: string): string[] {
 }
 
 /** Un renglón es un producto. «Dos.» suelto se pega al siguiente o se ignora. */
-export function orderClauses(message: string): string[] {
-  const lines = normalizeBrandText(message).split(/\n+/);
+export function orderClauses(message: string, phrases?: string[]): string[] {
+  const lines = normalizeBrandText(shieldConjunctions(rewriteMenuPhrases(normalizeVoice(message)), phrases)).split(/\n+/);
   const clauses: string[] = [];
   let carry = "";
   for (const raw of lines) {
@@ -638,15 +762,15 @@ export function orderClauses(message: string): string[] {
     carry = "";
     clauses.push(...splitOneLine(text));
   }
-  return finishClauses(clauses);
+  return finishClauses(clauses).map(restoreConjunctions);
 }
 
 /**
  * Cada renglón. Si el renglón completo es un nombre del catálogo, no se parte:
  * «Lirio Coco Y Almendras» es un producto, no coco y almendras.
  */
-export function listClauses(message: string, isExactLine: (line: string) => boolean): string[] {
-  const lines = normalizeBrandText(message).split(/\n+/);
+export function listClauses(message: string, isExactLine: (line: string) => boolean, phrases?: string[]): string[] {
+  const lines = normalizeBrandText(shieldConjunctions(rewriteMenuPhrases(normalizeVoice(message)), phrases)).split(/\n+/);
   const clauses: string[] = [];
   let carry = "";
   for (const raw of lines) {
@@ -661,7 +785,7 @@ export function listClauses(message: string, isExactLine: (line: string) => bool
     if (isExactLine(text)) clauses.push(text);
     else clauses.push(...splitOneLine(text));
   }
-  return finishClauses(clauses);
+  return finishClauses(clauses).map(restoreConjunctions);
 }
 
 /** Lo que el cliente dijo, sin la cantidad del principio. Sirve para el nombre exacto. */
@@ -845,12 +969,12 @@ function clauseCovered(clause: string, blob: string): boolean {
 }
 
 /** Lo que el cliente pidió y no está en el carrito ni en la pregunta. */
-export function uncoveredClauses(message: string, cart: AgentLine[], coveredText: string, clauses?: string[]): string[] {
+export function uncoveredClauses(message: string, cart: AgentLine[], coveredText: string, clauses?: string[], phrases?: string[]): string[] {
   const blob = foldAgent([
     coveredText,
     ...cart.map((line) => `${line.name} ${line.variant ?? ""} ${line.brand ?? ""} ${line.freeText ?? ""}`),
   ].join(" "));
-  return (clauses ?? orderClauses(message)).filter((clause) => !clauseCovered(clause, blob));
+  return (clauses ?? orderClauses(message, phrases)).filter((clause) => !clauseCovered(clause, blob));
 }
 
 export function answerMatchesPresentation(message: string, product: Pick<AgentProduct, "name" | "presentation">): boolean {

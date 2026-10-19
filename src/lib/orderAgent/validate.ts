@@ -19,6 +19,9 @@ import {
   orderClauses,
   presentationFromName,
   catalogAsk,
+  clauseNaming,
+  contentTokens,
+  filterAskedType,
   foldCatalogName,
   productClause,
   productMentionedStrict,
@@ -254,7 +257,7 @@ const TYPE_HINTS = ["pollo", "res", "gajo", "francesa", "cuban", "hawaian", "cam
 function narrowAskedProducts(query: string, products: AgentProduct[]): AgentProduct[] {
   const text = foldAgent(query);
   const wanted = TYPE_HINTS.filter((hint) => new RegExp(`\\b${hint}`).test(text));
-  let rows = products;
+  let rows = filterAskedType(query, products);
   if (wanted.length) {
     const filtered = products.filter((product) => {
       const name = foldAgent(product.name);
@@ -323,7 +326,7 @@ function clarificationOf(
   unit: AgentUnit | null,
   axis: PendingAxis,
 ): AgentClarification {
-  const sliced = products.slice(0, 5);
+  const sliced = filterAskedType(query, products).slice(0, 5);
   const brands = new Set(sliced.map((product) => foldAgent(product.brand ?? "")).filter(Boolean));
   const marinade = marinadePrompt(sliced, query);
   return {
@@ -456,7 +459,47 @@ function lineMentioned(message: string, line: AgentLine): boolean {
 }
 
 function removalVerb(message: string): boolean {
-  return /\b(quita|quitame|quitamelo|quitamela|quitalo|quitala|sin el|sin la|ya no|no pedi|no quiero|borra|elimina)\b/.test(foldAgent(message));
+  return /\b(quita|quitame|quiteme|quite|quitar|quitamelo|quitamela|quitalo|quitala|saca|sacame|sacalo|sacala|sin el|sin la|ya no|no pedi|no quiero|borra|elimina)\b/.test(foldAgent(message));
+}
+
+function removalTokenHits(line: AgentLine, token: string): boolean {
+  const blob = foldAgent(`${line.name} ${line.variant ?? ""} ${line.brand ?? ""} ${line.presentation ?? ""}`);
+  if (new RegExp(`\\b${token}`).test(blob)) return true;
+  if ((token === "cola" || token === "colas") && /\bcoca/.test(blob)) return true;
+  return false;
+}
+
+function linesForRemoval(clause: string, cart: AgentLine[]): AgentLine[] {
+  const tokens = contentTokens(clause).filter((token) => token.length >= 3);
+  if (!tokens.length) return [];
+  const hits = cart.filter((line) => tokens.every((token) => removalTokenHits(line, token)));
+  const loose = hits.length ? hits : cart.filter((line) => tokens.some((token) => token.length >= 4 && removalTokenHits(line, token)));
+  const size = spokenPackageSize(clause);
+  if (!size || loose.length < 2) return loose;
+  const sized = loose.filter((line) => presentationFromName(line.name)?.key === size);
+  return sized.length ? sized : loose;
+}
+
+/** Quita lo que el cliente nombró. Si hay varias coincidencias, no borra: pregunta cuál. */
+export function removeRequestedLines(message: string, cart: AgentLine[]): { cart: AgentLine[]; ambiguous: AgentLine[] } | null {
+  if (!removalVerb(message)) return null;
+  const clauses = orderClauses(message).filter((clause) => contentTokens(clause).length > 0);
+  const targets = clauses.length ? clauses : [message];
+  const removeIds = new Set<string>();
+  const ambiguous: AgentLine[] = [];
+  for (const clause of targets) {
+    const hits = linesForRemoval(clause, cart).filter((line) => !removeIds.has(line.lineId));
+    if (hits.length === 1) removeIds.add(hits[0].lineId);
+    else if (hits.length > 1) {
+      for (const line of hits) {
+        if (!ambiguous.some((item) => item.lineId === line.lineId)) ambiguous.push(line);
+      }
+    }
+  }
+  return {
+    cart: cart.filter((line) => !removeIds.has(line.lineId)),
+    ambiguous,
+  };
 }
 
 function removalAllowed(message: string, line: AgentLine, pending: AgentPending | null): boolean {
@@ -586,6 +629,10 @@ export function validateToolCall(params: {
       ids = head.candidateIds;
       axis = head.axis;
       query = head.query ?? query;
+    }
+    if (!query && params.customerMessage) {
+      const named = clauseNaming(params.customerMessage, [text, query ?? ""]);
+      if (named) query = named;
     }
     return {
       ok: true,

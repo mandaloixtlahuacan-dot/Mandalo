@@ -346,6 +346,10 @@ add("mensaje largo sin tienda", "categoria", `${"quiero muchas cocas ".repeat(40
 add("mensaje largo con tienda", "pedido", `${"coca cola 600 ".repeat(40)}`, { action: "agent", phase: "pedido", agent: true });
 add("dirección escrita en pin", "ubicacion", "calle hidalgo 12 frente a la tortillería", { action: "accept_address", phase: "resumen", includes: ["hidalgo", "Anoté tu dirección"] });
 add("dirección escrita en resumen", "resumen", "calle morelos 8", { action: "accept_address", phase: "resumen", includes: ["morelos"] });
+add("manzana en el pedido es producto", "pedido", "quiero un jugo de manzana", { action: "agent", phase: "pedido", agent: true });
+add("manzana suelta en el pedido", "pedido", "una manzana", { action: "agent", phase: "pedido", agent: true });
+add("manzana y lote en ubicación", "ubicacion", "manzana 4 lote 7", { action: "accept_address", phase: "resumen", includes: ["manzana"] });
+add("calle en el pedido se anota después", "pedido", "calle hidalgo 23", { action: "reprompt", phase: "pedido", includes: ["después"] });
 add("dirección escrita en pedido", "pedido", "mi dirección es calle morelos 8", { action: "reprompt", phase: "pedido", includes: ["escribirla", "pin de WhatsApp"] });
 add("pin sin coordenadas", "ubicacion", "", { action: "location_early", phase: "ubicacion", includes: ["escribe tu dirección"] }, { media: "location", coverage: null, coords: false });
 add("pin fuera de zona", "categoria", "", { action: "location_reject", phase: "categoria", includes: ["fuera de esa zona"] }, { media: "location", coverage: false, store: null, items: [] });
@@ -484,6 +488,10 @@ async function main(): Promise<void> {
   assert(isCancelIntent("ya no"), "ya no cancela");
   assert(isCancelIntent("no quiero nada"), "no quiero nada cancela");
   assert(!isCancelIntent("ya no quiero la coca"), "ya no quiero la coca no cancela el pedido");
+  assert(isCancelIntent("ya no quiero un pedido"), "ya no quiero un pedido cancela");
+  assert(isCancelIntent("Me refiero que ya no quiero un pedido"), "me refiero que ya no quiero un pedido cancela");
+  assert(isCancelIntent("Es muy caro, yo no quiero pedir"), "es muy caro y no quiero pedir cancela");
+  assert(isCancelIntent("yo no quiero pedir"), "no quiero pedir cancela");
 
   const listed = classifyCustomerTurn({
     message: "una hamburguesa",
@@ -842,7 +850,7 @@ async function main(): Promise<void> {
   assert(flow.includes("Perdón, ¿me lo repites?"), "si el agente falla se pide repetir, sin el bot viejo");
   assert(!flow.includes('kind !== "abarrotes"'), "el agente ya no se apaga fuera de abarrotes");
 
-  assert(scenarios.length === 345, "siguen los 345 escenarios");
+  assert(scenarios.length === 349, "siguen los 349 escenarios");
   assert(greeting.includes("¿De dónde quieres?"), "el menú de categorías sigue igual");
   assert(pekesWelcome.includes("Solo es un ejemplo") && georgeWelcome.includes("Te paso el menú"), "los avisos de tienda siguen igual");
 
