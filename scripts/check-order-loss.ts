@@ -233,15 +233,15 @@ async function main(): Promise<void> {
       }
       assert(result.questions <= 2, `${item.id}: ${result.questions} preguntas, el tope es 2`);
       if (item.priced) {
-        assert(/\$35/.test(said), `${item.id}: el ticket no trae los $35`);
+        assert(/Envío: \$15/.test(said) && /servicio \$10/.test(said), `${item.id}: el ticket no trae envío y servicio`);
         assert(/est[aá]n bien estos productos/i.test(said), `${item.id}: no pidió el sí`);
       }
       if (item.quote) {
         const closed = result.replies[result.replies.length - 1] ?? "";
         if (/est[aá]n bien estos productos/i.test(closed)) {
-          const withoutFee = closed.replace(/\$35/g, "");
+          const withoutFee = closed.replace(/\$15/g, "").replace(/\$10/g, "");
           assert(!/\$\d/.test(withoutFee), `${item.id}: Peke's mostró precio de producto`);
-          assert(/\$35/.test(closed), `${item.id}: la lista de Peke's no trae los $35`);
+          assert(/Envío: \$15/.test(closed) && /servicio \$10/.test(closed), `${item.id}: la lista de Peke's no trae envío y servicio`);
         }
       }
       if (item.id === "victor-george") {

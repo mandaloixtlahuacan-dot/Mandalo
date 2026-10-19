@@ -9,6 +9,7 @@ import {
   isGreetingOnly,
   formatAbarrotesStoreAck,
   formatCatalogMenuCaption,
+  formatCustomerFeeLine,
   formatNicheStoreList,
   matchNicheChoice,
   matchNicheTypo,
@@ -38,8 +39,6 @@ import { LIVE_LOCATION_REPLY, TEXT_ONLY_REPLY } from "@/lib/inboundMessage";
 import { ADDRESS_ASK_MESSAGE } from "@/lib/services/captureEngine";
 import { COVERAGE_REJECT_MESSAGE } from "@/lib/services/geo";
 import { formatHour12, MANDALO_HORA_APERTURA, MANDALO_HORA_CIERRE } from "@/lib/services/businessHours";
-import { formatMoney } from "@/lib/ordenes";
-
 export type CustomerMedia =
   | "text"
   | "sticker"
@@ -398,7 +397,7 @@ function withReprompt(input: FlowRouteInput, lead: string, action: FlowAction): 
 
 function answerFor(input: FlowRouteInput, kind: "fee" | "hours" | "have"): string {
   if (kind === "fee") {
-    return `El envío y servicio son ${formatMoney(35)}, en una sola línea.`;
+    return formatCustomerFeeLine();
   }
   const open = formatHour12(MANDALO_HORA_APERTURA);
   const close = formatHour12(MANDALO_HORA_CIERRE);

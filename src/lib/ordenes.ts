@@ -9,10 +9,10 @@
  * paralelo. Este archivo queda como funciones puras, sin efectos de lado.
  */
 
-/** Parte de Mándalo dentro del cargo. El cliente ve un solo monto; esta parte es 0. */
-export const MANDALO_SERVICE_FEE = 0;
-/** Parte del repartidor. Junto con MANDALO_SERVICE_FEE suma el $35 que ve el cliente. */
-export const DELIVERY_FEE = 35;
+/** Parte de Mándalo. El cliente la ve como «servicio $10», sin negritas. */
+export const MANDALO_SERVICE_FEE = 10;
+/** Parte del repartidor. El cliente la ve como «Envío: $15». Juntas suman $25. */
+export const DELIVERY_FEE = 15;
 export const MANDALO_DELIVERY_FEE = DELIVERY_FEE;
 
 export function calculateOrderTotal(storePrice: number) {

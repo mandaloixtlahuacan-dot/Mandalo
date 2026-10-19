@@ -9,7 +9,7 @@ import {
 } from "@/lib/repositories/pedidoRepositoryV2";
 import * as metricsRepository from "@/lib/repositories/metricsRepository";
 import { formatNoCourierAdmin, formatNoCourierCustomer, formatNoCourierStore } from "@/lib/customerUx";
-import { formatMoney } from "@/lib/ordenes";
+import { formatMoney, MANDALO_DELIVERY_FEE } from "@/lib/ordenes";
 import { formatNameQtyLine, joinBlocks } from "@/lib/messageStyle";
 import { dispatchItemAlreadyShowsQty } from "@/lib/services/captureEngine";
 import { mandaloNow } from "@/lib/services/businessHours";
@@ -195,7 +195,10 @@ export async function offerOrderToCouriers(params: {
 
   const mapsLink = resolveMapsLink({ latitud: pedido.latitud, longitud: pedido.longitud });
   const itemsText = formatItems(pedido.items);
-  const chargeLine = pedido.totalCliente != null ? `💵 *Cobrar: ${formatMoney(pedido.totalCliente)}*` : null;
+  const chargeLine = [
+    pedido.totalCliente != null ? `💵 *Cobrar: ${formatMoney(pedido.totalCliente)}*` : null,
+    `🛵 *Tu envío: ${formatMoney(MANDALO_DELIVERY_FEE)}*`,
+  ].filter(Boolean).join("\n");
 
   await setPedidoEstado({
     pedidoId: pedido.id,

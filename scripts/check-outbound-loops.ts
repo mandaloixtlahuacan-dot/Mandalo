@@ -319,12 +319,12 @@ assert(ABARROTES_PRODUCT_REQUEST.includes("Solo es un ejemplo, no está en tu pe
 for (const kind of ["abarrotes", "restaurante", "carniceria"] as const) {
   assert(formatShortEditHelp(kind).includes("Solo es un ejemplo, no está en tu pedido"), `${kind}: la ayuda marca el ejemplo`);
 }
-assert(MANDALO_SERVICE_FEE === 0 && MANDALO_DELIVERY_FEE === 35, "el cargo es $35, con la parte de Mándalo en cero");
+assert(MANDALO_SERVICE_FEE === 10 && MANDALO_DELIVERY_FEE === 15, "el cargo es $15 de envío y $10 de servicio");
 const feeLine = formatCustomerFeeLine();
-assert(feeLine.includes("$35") && feeLine.toLowerCase().includes("envío y servicio"), "la línea del cliente dice envío y servicio");
-assert(!feeLine.includes("$25") && !feeLine.includes("$20") && !feeLine.includes("$10"), "la línea no trae la tarifa vieja");
-const quote = formatCustomerQuoteMessage({ tiendaNombre: central.nombre, pedidoId: 12, subtotal: 80, total: 115, itemLines: ["1 kg de bistec"] });
-assert(quote.includes("Envío y servicio: $35") && quote.includes("$115"), "el total de la tienda suma el $35");
+assert(feeLine.includes("🛵 *Envío: $15*") && feeLine.includes("servicio $10"), "la línea del cliente separa envío y servicio");
+assert(!feeLine.includes("$35") && !feeLine.includes("$25") && !feeLine.includes("$20"), "la línea no trae la tarifa vieja");
+const quote = formatCustomerQuoteMessage({ tiendaNombre: central.nombre, pedidoId: 12, subtotal: 80, total: 105, itemLines: ["1 kg de bistec"] });
+assert(quote.includes("🛵 *Envío: $15*") && quote.includes("servicio $10") && quote.includes("$105"), "el total de la tienda suma envío y servicio");
 assert(formatNoCourierCustomer(12).includes("no hay repartidor") && !formatNoCourierCustomer(12).includes("$25"), "sin repartidor no reaparece el $25");
 const pekesAck = formatAbarrotesStoreAck(pekes);
 const georgeMenu = formatCatalogMenuCaption(george);
@@ -333,7 +333,7 @@ for (const text of fixed) {
   assert(!text.includes("undefined") && !text.includes("NaN") && !text.includes("[object Object]"), "un texto fijo trae un placeholder");
   assert(!/\$25\b/.test(text) && !/\$20\b/.test(text), "un texto fijo trae $20 o $25");
 }
-assert(pekesAck.includes("$35") && pekesAck.includes("Solo es un ejemplo"), "Peke's cobra $35 y marca el ejemplo");
-assert(georgeMenu.includes("cerrada") && georgeMenu.includes("Horario: 7pm a 9pm") && georgeMenu.includes("se programa") && georgeMenu.includes("$35"), "George cerrado avisa horario, se programa y cobra $35");
+assert(pekesAck.includes("Envío: $15") && pekesAck.includes("servicio $10") && pekesAck.includes("Solo es un ejemplo"), "Peke's cobra envío y servicio y marca el ejemplo");
+assert(georgeMenu.includes("cerrada") && georgeMenu.includes("Horario: 7pm a 9pm") && georgeMenu.includes("se programa") && georgeMenu.includes("Envío: $15") && georgeMenu.includes("servicio $10"), "George cerrado avisa horario, se programa y cobra envío y servicio");
 
 console.log("check-outbound-loops: ok");

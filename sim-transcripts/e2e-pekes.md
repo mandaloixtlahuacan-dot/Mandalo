@@ -40,7 +40,10 @@ Acción interna: `flow_greeting`
 
 1. *Mini Super Peke's*
 
-*La tienda cotiza tus productos, más $35 de envío y servicio.*
+*La tienda cotiza tus productos.*
+
+🛵 *Envío: $15*
+servicio $10
 
 *¿De cuál te hago el mandado?*
 
@@ -54,7 +57,16 @@ Acción interna: `flow_show_niche`
 
 🏪 *Va, de Mini Super Peke's.*
 
-Mándame lo que se te antoje, todo en un mensaje: marca, tamaño y cuántos.
+Te armo el mandado producto por producto. Si quieres, también puedes mandarme varios juntos.
+
+*Cómo pedir:* marca, tamaño y cuántos.
+_Ejemplo: "2 Coca-Cola de 600 ml"_
+
+*Cómo agregar:* "agrega 1 Pinol de 1 litro"
+
+*Cómo quitar:* "quita la leche"
+
+*Cómo corregir:* "cambia la leche Lala a 2 litros"
 
 _Solo es un ejemplo, no está en tu pedido:_
 
@@ -64,7 +76,10 @@ _Solo es un ejemplo, no está en tu pedido:_
 
 ✅ 🫓 *1 kg de tortillas*
 
-*La tienda cotiza y se suman $35 de envío y servicio.*
+*La tienda cotiza tus productos.*
+
+🛵 *Envío: $15*
+servicio $10
 
 Acción interna: `flow_switch_store`
 
@@ -74,11 +89,30 @@ Acción interna: `flow_switch_store`
 
 **Mándalo → cliente:**
 
+❓ *De una coca, ¿cuál de estos?*
+
+1. *Coca Cola 2.5 Lt*
+2. *Coca Cola 1 Lt Vidrio*
+
+_La tienda confirma el precio. Todavía no es un total cerrado._
+
+_Si es otro tamaño o sabor, escríbelo._
+
+_Responde con el número. Si no es, corrige el producto o escribe cancelar._
+
+Acción interna: `order_agent`
+
+### Turno 5
+
+**Cliente:** 1
+
+**Mándalo → cliente:**
+
 OK, pediste:
 
 🛒 *Tu pedido*
 
-✅ 🥤 *Coca 355ml, 1 pieza*
+✅ 🥤 *Coca Cola 2.5 Lt, 1 pieza*
 
 *¿Están bien estos productos?*
 
@@ -88,11 +122,14 @@ _Si algún producto está mal, escríbeme cuál es y qué cambio quieres._
 
 _Solo es un ejemplo, no está en tu pedido: "cambia la leche Lala a 2 litros" o "quita la leche"._
 
-*La tienda cotiza tus productos, más $35 de envío y servicio.*
+*La tienda cotiza tus productos.*
+
+🛵 *Envío: $15*
+servicio $10
 
 Acción interna: `order_agent`
 
-### Turno 5
+### Turno 6
 
 **Cliente:** sí
 
@@ -106,7 +143,7 @@ Si prefieres, también puedes escribirme tu dirección: calle y número, colonia
 
 Acción interna: `productos_confirmados`
 
-### Turno 6
+### Turno 7
 
 **Cliente:** [pin GPS]
 **Ubicación:** 20.865831, -103.240017
@@ -130,7 +167,7 @@ Ubicación compartida por GPS 📍
 
 🛒 *Pedido*
 
-✅ 🥤 *Coca 355ml, 1 pieza*
+✅ 🥤 *Coca Cola 2.5 Lt, 1 pieza*
 
 *Responde así:*
 ORDEN #17 PRECIO 150
@@ -141,7 +178,7 @@ ORDEN #17 PRECIO 150
 ORDEN #17 NO_DISPONIBLE nombre del producto
 
 
-### Turno 7
+### Turno 8
 
 **Cliente:** ORDEN #17 PRECIO 48
 
@@ -161,18 +198,19 @@ Ya le avisé al cliente el total del pedido *#17*.
 
 🛒 *Tu pedido*
 
-✅ 🥤 *Coca 355ml, 1 pieza*
+✅ 🥤 *Coca Cola 2.5 Lt, 1 pieza*
 
 *Subtotal: $48*
 
-*Envío y servicio: $35*
+🛵 *Envío: $15*
+servicio $10
 
-💵 *Total a pagar: $83*
+💵 *Total a pagar: $73*
 
 ¿Confirmas tu pedido? Responde *SÍ*
 
 
-### Turno 8
+### Turno 9
 
 **Cliente:** sí
 
@@ -180,7 +218,7 @@ Ya le avisé al cliente el total del pedido *#17*.
 
 ✅ *Pedido #17 confirmado*
 
-Llegará aproximadamente a las 6:52 p.m..
+Llegará aproximadamente a las 1:32 p.m..
 
 🛵 Estamos coordinando tu entrega.
 
@@ -205,9 +243,10 @@ https://www.google.com/maps?q=20.865831,-103.240017
 
 🛒 *Productos:*
 
-✅ 🥤 *Coca 355ml, 1 pieza*
+✅ 🥤 *Coca Cola 2.5 Lt, 1 pieza*
 
-💵 *Cobrar: $83*
+💵 *Cobrar: $73*
+🛵 *Tu envío: $15*
 
 *Tel. cliente:* 5213310001203
 
@@ -236,9 +275,10 @@ https://www.google.com/maps?q=20.865831,-103.240017
 
 🛒 *Productos:*
 
-✅ 🥤 *Coca 355ml, 1 pieza*
+✅ 🥤 *Coca Cola 2.5 Lt, 1 pieza*
 
-💵 *Cobrar: $83*
+💵 *Cobrar: $73*
+🛵 *Tu envío: $15*
 
 *Tel. cliente:* 5213310001203
 
@@ -251,7 +291,7 @@ https://www.google.com/maps?q=20.865831,-103.240017
 #ENTREGADO 17
 
 
-### Turno 9
+### Turno 10
 
 **Cliente:** #CONFIRMO 17
 
@@ -279,7 +319,7 @@ Lo tomó el repartidor *Roberto*.
 
 Acción interna: `aceptado`
 
-### Turno 10
+### Turno 11
 
 **Cliente:** #CONFIRMO 17
 
@@ -289,7 +329,7 @@ Acción interna: `aceptado`
 
 Acción interna: `already_taken`
 
-### Turno 11
+### Turno 12
 
 **Cliente:** #RECOGI 17
 
@@ -309,7 +349,7 @@ Pedido *#17*.
 
 Acción interna: `en_camino`
 
-### Turno 12
+### Turno 13
 
 **Cliente:** #ENTREGADO 17
 
@@ -325,8 +365,8 @@ Pedido *#17*.
 
 Pedido entregado
 
-Total: $83
-Hora: 2026-10-17T00:32:08.277Z
+Total: $73
+Hora: 2026-10-19T19:12:10.699Z
 Repartidor: Roberto
 
 - cliente / notificacion_cliente / 5213310001203

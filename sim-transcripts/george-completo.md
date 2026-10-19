@@ -40,7 +40,10 @@ Acción interna: `flow_greeting`
 
 1. *Hamburguesas Hotdogs George*
 
-*El menú trae precio, más $35 de envío y servicio.*
+*El menú trae precio.*
+
+🛵 *Envío: $15*
+servicio $10
 
 *¿De cuál te hago el mandado?*
 
@@ -56,7 +59,19 @@ Acción interna: `flow_show_niche`
 
 Pídeme lo que se te antoje, como sale en la foto.
 
-*Envío y servicio: $35*, aparte.
+Te armo el mandado producto por producto. Si quieres, también puedes mandarme varios juntos.
+
+*Cómo pedir:* el nombre del menú y cuántos.
+_Ejemplo: "2 hamburguesas sencillas"_
+
+*Cómo agregar:* "agrega 1 refresco"
+
+*Cómo quitar:* "quita las papas"
+
+*Cómo corregir:* "cambia la hamburguesa a grande"
+
+🛵 *Envío: $15*
+servicio $10
 
 Acción interna: `flow_switch_store`
 
@@ -72,9 +87,10 @@ OK, pediste:
 
 ✅ 🌭 *Dogo Clásico, 1 pieza — $35*
 
-*Envío y servicio: $35*
+🛵 *Envío: $15*
+servicio $10
 
-*Total: $70*
+*Total: $60*
 
 *¿Están bien estos productos?*
 
@@ -109,11 +125,11 @@ Acción interna: `productos_confirmados`
 
 ✅ *Pedido #7 confirmado*
 
-Llegará aproximadamente a las 6:51 p.m..
+Llegará aproximadamente a las 1:31 p.m..
 
-🛵 Estamos coordinando tu entrega.
+🛵 Estamos coordinando tu entrega con *Roberto*.
 
-Te aviso en cuanto un repartidor confirme.
+Te aviso en cuanto confirme.
 
 **Outbox `admin_notificaciones`:**
 
@@ -149,38 +165,8 @@ https://www.google.com/maps?q=20.865831,-103.240017
 
 ✅ 🌭 *Dogo Clásico, 1 pz*
 
-💵 *Cobrar: $70*
-
-*Tel. cliente:* 5213310001007
-
-*Responde con:*
-#CONFIRMO 7
-
-*Luego:*
-#RECOGI 7
-
-#ENTREGADO 7
-
-- repartidor / dispatch_repartidor / 5213300000012
-
-🛵 *Hola Mateo, tienes un nuevo pedido*
-
-🧾 *Pedido #7*
-
-🏪 *Hamburguesas Hotdogs George*
-
-📍 *Recoger en:*
-Ixtlahuacán del Río
-
-📍 *Entregar en:*
-Ubicación compartida por GPS 📍
-https://www.google.com/maps?q=20.865831,-103.240017
-
-🛒 *Productos:*
-
-✅ 🌭 *Dogo Clásico, 1 pz*
-
-💵 *Cobrar: $70*
+💵 *Cobrar: $60*
+🛵 *Tu envío: $15*
 
 *Tel. cliente:* 5213310001007
 

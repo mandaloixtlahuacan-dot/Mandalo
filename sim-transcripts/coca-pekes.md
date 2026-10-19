@@ -2,7 +2,7 @@
 
 Veredicto: **PASA**
 
-Anotó la Coca estándar, sin precio de producto. 1278 de 1278 filas de Peke's traen precio null.
+Preguntó la presentación de la Coca, sin precio de producto. 1278 de 1278 filas de Peke's traen precio null.
 
 Simulación en memoria. `ORDER_AGENT=on` solo en este proceso. El modelo es un `AgentModel` mock inyectado en `createOpenAIOrderAgentModel` (lo usa `runOrderAgentTurn`). No hubo llamada de red a OpenAI, Whapi ni Supabase.
 
@@ -40,7 +40,10 @@ Acción interna: `flow_greeting`
 
 1. *Mini Super Peke's*
 
-*La tienda cotiza tus productos, más $35 de envío y servicio.*
+*La tienda cotiza tus productos.*
+
+🛵 *Envío: $15*
+servicio $10
 
 *¿De cuál te hago el mandado?*
 
@@ -54,7 +57,16 @@ Acción interna: `flow_show_niche`
 
 🏪 *Va, de Mini Super Peke's.*
 
-Mándame lo que se te antoje, todo en un mensaje: marca, tamaño y cuántos.
+Te armo el mandado producto por producto. Si quieres, también puedes mandarme varios juntos.
+
+*Cómo pedir:* marca, tamaño y cuántos.
+_Ejemplo: "2 Coca-Cola de 600 ml"_
+
+*Cómo agregar:* "agrega 1 Pinol de 1 litro"
+
+*Cómo quitar:* "quita la leche"
+
+*Cómo corregir:* "cambia la leche Lala a 2 litros"
 
 _Solo es un ejemplo, no está en tu pedido:_
 
@@ -64,7 +76,10 @@ _Solo es un ejemplo, no está en tu pedido:_
 
 ✅ 🫓 *1 kg de tortillas*
 
-*La tienda cotiza y se suman $35 de envío y servicio.*
+*La tienda cotiza tus productos.*
+
+🛵 *Envío: $15*
+servicio $10
 
 Acción interna: `flow_switch_store`
 
@@ -74,20 +89,15 @@ Acción interna: `flow_switch_store`
 
 **Mándalo → cliente:**
 
-OK, pediste:
+❓ *De una coca, ¿cuál de estos?*
 
-🛒 *Tu pedido*
+1. *Coca Cola 2.5 Lt*
+2. *Coca Cola 1 Lt Vidrio*
 
-✅ 🥤 *Coca 355ml, 1 pieza*
+_La tienda confirma el precio. Todavía no es un total cerrado._
 
-*¿Están bien estos productos?*
+_Si es otro tamaño o sabor, escríbelo._
 
-*Si tu pedido está bien, responde sí.*
-
-_Si algún producto está mal, escríbeme cuál es y qué cambio quieres._
-
-_Solo es un ejemplo, no está en tu pedido: "cambia la leche Lala a 2 litros" o "quita la leche"._
-
-*La tienda cotiza tus productos, más $35 de envío y servicio.*
+_Responde con el número. Si no es, corrige el producto o escribe cancelar._
 
 Acción interna: `order_agent`

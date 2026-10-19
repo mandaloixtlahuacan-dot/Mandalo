@@ -227,7 +227,7 @@ async function main(): Promise<void> {
         const turns = [...(await shop(phone, "abarrotes", "Peke's")), await say(phone, "quiero una coca")];
         const reply = customerText(turns.slice(-1));
         const hasCoca = /coca/i.test(reply);
-        const productPrice = reply.replace(/\$35/g, "").match(/\$\s*\d/);
+        const productPrice = reply.replace(/\$15/g, "").replace(/\$10/g, "").match(/\$\s*\d/);
         const asked = /cu[aá]l de estos/i.test(reply);
         const closed = /est[aá]n bien estos productos/i.test(reply);
         const quotes = /cotiza|confirma el precio/i.test(reply);
@@ -812,8 +812,8 @@ async function main(): Promise<void> {
         cliente_telefono: phone,
         estado,
         repartidor_id: repartidorId,
-        servicio_mandalo: 0,
-        servicio_repartidor: 35,
+        servicio_mandalo: 10,
+        servicio_repartidor: 15,
         metadata_json: {
           capture_snapshot: {
             businessId: 5,

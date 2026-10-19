@@ -178,7 +178,7 @@ async function main(): Promise<void> {
   const fourth = await turn(salsaPick, putBack.cart, putBack.pending);
   assertOneQuestion(fourth.reply, "cierra el chile");
   assert(fourth.reply.includes("¿Están bien estos productos?"), "al terminar las dudas no mostró el carrito");
-  assert(fourth.reply.includes("$35 de envío y servicio"), "el cierre no trae los $35");
+  assert(fourth.reply.includes("Envío: $15") && fourth.reply.includes("servicio $10"), "el cierre no trae envío y servicio");
   assert(fourth.cart.some((line) => /Salsa Costa Brava 370gr/i.test(line.name)), "no anotó la salsa");
   assert(fourth.cart.some((line) => line.productId === 6392 && line.qty === 1), "la coca de 2.5 no quedó en 1");
   sample("TARDE — carrito", fourth.reply);
@@ -273,7 +273,7 @@ async function main(): Promise<void> {
     assert(/cómo corregir/i.test(text), `${name} no explica cómo corregir`);
     assert(/producto por producto/i.test(text), `${name} no recomienda ir de uno en uno`);
     assert(/varios juntos/i.test(text), `${name} dejó de aceptar varios juntos`);
-    assert(text.includes("$35"), `${name} no menciona los $35`);
+    assert(text.includes("Envío: $15") && text.includes("servicio $10"), `${name} no menciona envío y servicio`);
   }
   assert(pekesHi.includes("2 Coca-Cola de 600 ml") && pekesHi.includes("Pinol") && pekesHi.includes("tortillas"), "Peke's perdió los ejemplos de siempre");
   assert(pekesHi.includes("agrega 1 Pinol de 1 litro") && pekesHi.includes("quita la leche") && pekesHi.includes("cambia la leche Lala a 2 litros"), "Peke's no usa los comandos reales");

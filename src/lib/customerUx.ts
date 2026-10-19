@@ -124,13 +124,14 @@ export function normalizeUxText(text: string): string {
     .trim();
 }
 
+/** Las dos líneas del cargo. Siempre juntas: envío en negrita y servicio en texto normal. */
 export function formatCustomerFeeLine(): string {
-  return `*Envío y servicio: ${formatMoney(CUSTOMER_FACING_FEE)}*`;
+  return `🛵 *Envío: ${formatMoney(MANDALO_DELIVERY_FEE)}*\nservicio ${formatMoney(MANDALO_SERVICE_FEE)}`;
 }
 
 export function formatPreConfirmFeeNote(mode: "catalogo" | "cotiza_tienda"): string {
   if (mode === "catalogo") return formatCustomerFeeLine();
-  return `*La tienda cotiza tus productos, más ${formatMoney(CUSTOMER_FACING_FEE)} de envío y servicio.*`;
+  return `*La tienda cotiza tus productos.*\n\n${formatCustomerFeeLine()}`;
 }
 
 export function formatCatalogOrderRegistered(pedidoId: number, tiendaNombre: string): string {
@@ -200,7 +201,7 @@ export function formatNoCourierStore(pedidoId: number): string {
 }
 
 export function formatNoCourierAdmin(pedidoId: number): string {
-  return `Sin repartidor.\n\nPedido: ${pedidoId}\nYa estaba confirmado y no hay repartidor activo. Pedido cancelado.`;
+  return `Sin repartidor.\n\nPedido: ${pedidoId}\nEnvío ${formatMoney(MANDALO_DELIVERY_FEE)} y servicio ${formatMoney(MANDALO_SERVICE_FEE)}.\nYa estaba confirmado y no hay repartidor activo. Pedido cancelado.`;
 }
 
 export function formatStoreCommandHelp(orderIds: number[]): string {
@@ -256,12 +257,13 @@ export function formatCustomerQuoteMessage(params: {
   );
 }
 
-/** Detecta el desglose viejo ($10 de Mándalo y $25 de envío). El cargo vigente es una sola línea. */
+/** El desglose viejo era $10 de Mándalo y $25 de envío, sin el envío de $15. */
 export function customerCopySplitsFee(text: string): boolean {
   const t = normalizeUxText(text);
-  const mentionsServiceSlice = t.includes("servicio mandalo") || /\$\s*10\b/.test(text);
-  const mentionsDeliverySlice = /\benvio\b/.test(t) && /\$\s*25\b/.test(text);
-  return mentionsServiceSlice && mentionsDeliverySlice;
+  if (/\$\s*15\b/.test(text)) return false;
+  const oldService = t.includes("servicio mandalo") || /\$\s*10\b/.test(text);
+  const oldDelivery = /\benvio\b/.test(t) && /\$\s*25\b/.test(text);
+  return oldService && oldDelivery;
 }
 
 const GREETING_BODY = `👋 *¡Hola! Soy Mándalo, tu mandadero en Ixtlahuacán del Río.*
@@ -342,8 +344,8 @@ export function formatNicheStoreList(niche: StoreNiche, stores: UxStore[]): stri
 
   const fee =
     niche.id === "abarrotes"
-      ? `*La tienda cotiza tus productos, más ${formatMoney(CUSTOMER_FACING_FEE)} de envío y servicio.*`
-      : `*El menú trae precio, más ${formatMoney(CUSTOMER_FACING_FEE)} de envío y servicio.*`;
+      ? `*La tienda cotiza tus productos.*\n\n${formatCustomerFeeLine()}`
+      : `*El menú trae precio.*\n\n${formatCustomerFeeLine()}`;
   const canSchedule = mine.some((store) => !store.abierta)
     ? `\n\nSi está cerrada, se puede programar: la armamos y se manda cuando abra.`
     : "";
@@ -402,7 +404,7 @@ export function formatAbarrotesStoreAck(store: UxStore): string {
   return (
     `🏪 *Va, de ${store.nombre}.*\n\n` +
     `${closed}${ABARROTES_PRODUCT_REQUEST}\n\n` +
-    `*La tienda cotiza y se suman ${formatMoney(CUSTOMER_FACING_FEE)} de envío y servicio.*`
+    `*La tienda cotiza tus productos.*\n\n${formatCustomerFeeLine()}`
   );
 }
 
@@ -414,7 +416,7 @@ export function formatCatalogCategories(store: UxStore, categories: string[]): s
     `Te armo el mandado.${closed}\n\n` +
     `*${UX_CATEGORY_MARKER}*\n\n` +
     `${lines}\n\n` +
-    `${formatCustomerFeeLine()}, aparte del menú.`
+    `${formatCustomerFeeLine()}`
   );
 }
 
@@ -453,7 +455,7 @@ export function formatCatalogMenuCaption(store: UxStore, options?: { photo?: boo
     `${closed}${emoji} *${UX_MENU_IMAGE_MARKER} ${store.nombre}*\n\n` +
     `${invite}\n\n` +
     `${steps}\n\n` +
-    `${formatCustomerFeeLine()}, aparte.`
+    `${formatCustomerFeeLine()}`
   );
 }
 
@@ -499,15 +501,15 @@ export function storeMentionedInMessage(message: string, stores: UxStore[]): UxS
 
 export function formatCatalogMenu(storeName: string, category: string, items: Array<{ nombre: string; precio: number }>): string {
   const lines = joinBlocks(items.map((item) => formatCheckedLine(`${item.nombre} — ${formatMoney(item.precio)}`)));
-  return `🛒 *${category} en ${storeName}:*\n\n${lines}\n\n${formatCustomerFeeLine()}, aparte.\n\n*${UX_MENU_MARKER}*`;
+  return `🛒 *${category} en ${storeName}:*\n\n${lines}\n\n${formatCustomerFeeLine()}\n\n*${UX_MENU_MARKER}*`;
 }
 
 export function formatNoFixedMenu(storeName: string, kind: StoreKind = "abarrotes"): string {
   if (kind !== "abarrotes") {
     const emoji = kind === "carniceria" ? "🥩" : "🍔";
-    return `${emoji} *${storeName}*\n\nDime qué se te antoja y cuántos.\n\n${formatCustomerFeeLine()}.`;
+    return `${emoji} *${storeName}*\n\nDime qué se te antoja y cuántos.\n\n${formatCustomerFeeLine()}`;
   }
-  return `🏪 *${storeName}* es de abarrotes.\n\n${ABARROTES_PRODUCT_REQUEST}\n\n${formatCustomerFeeLine()}.`;
+  return `🏪 *${storeName}* es de abarrotes.\n\n${ABARROTES_PRODUCT_REQUEST}\n\n${formatCustomerFeeLine()}`;
 }
 
 export function replyBlamesStoreForMissingMenu(text: string, storeName: string): boolean {

@@ -387,7 +387,7 @@ async function main(): Promise<void> {
   assert(!follow.reply.includes(question), "no se repite la pregunta de abarrotes");
   assert(follow.reply.includes("Si tu pedido está bien, responde sí"), "la lista pide el sí");
   assert(follow.reply.includes("Solo es un ejemplo, no está en tu pedido"), "el ejemplo va marcado");
-  assert(follow.reply.includes("$35"), "el abarrotes muestra los $35");
+  assert(follow.reply.includes("Envío: $15") && follow.reply.includes("servicio $10"), "el abarrotes muestra envío y servicio");
   assert(followCalls.includes("gpt-4.1-mini"), "dos fallos saltan de modelo");
 
   const centralLines: AgentLine[] = [
@@ -425,7 +425,7 @@ async function main(): Promise<void> {
   assert(centralTurn.cart.length === 4, "La Central conserva los cuatro cortes");
   assert(!centralTurn.reply.toLowerCase().includes("marinada o normal"), "no pregunta marinada del chamberete");
   assert(centralTurn.reply.includes("Si tu pedido está bien, responde sí"), "el ticket de La Central pide el sí");
-  assert(centralTurn.reply.includes("$35"), "el ticket trae el envío de $35");
+  assert(centralTurn.reply.includes("Envío: $15") && centralTurn.reply.includes("servicio $10"), "el ticket trae envío y servicio");
   assert(centralTurn.reply.includes("$280") || centralTurn.reply.includes("280"), "la arrachera se cobra con el precio del menú");
 
   const normalAgent = await runOrderAgentTurn({

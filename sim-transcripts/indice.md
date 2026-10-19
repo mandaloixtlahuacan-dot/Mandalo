@@ -4,7 +4,7 @@ Peke's: 1278/1278 precios null.
 
 | Escenario | Resultado |
 | --- | --- |
-| coca-pekes | PASA. Anotó la Coca estándar, sin precio de producto. 1278 de 1278 filas de Peke's traen precio null. |
+| coca-pekes | PASA. Preguntó la presentación de la Coca, sin precio de producto. 1278 de 1278 filas de Peke's traen precio null. |
 | dogos-george | PASA. Anotó 3 dogos y mostró la lista para confirmar. |
 | nito-caja | PASA. Eligió la caja de Nito y la dejó en la lista. |
 | nito-pieza | PASA. Anotó Nito 62g, la pieza estándar, y cerró la lista. |

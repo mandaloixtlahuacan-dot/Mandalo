@@ -40,7 +40,10 @@ Acción interna: `flow_greeting`
 
 1. *Hamburguesas Hotdogs George*
 
-*El menú trae precio, más $35 de envío y servicio.*
+*El menú trae precio.*
+
+🛵 *Envío: $15*
+servicio $10
 
 *¿De cuál te hago el mandado?*
 
@@ -56,7 +59,19 @@ Acción interna: `flow_show_niche`
 
 Pídeme lo que se te antoje, como sale en la foto.
 
-*Envío y servicio: $35*, aparte.
+Te armo el mandado producto por producto. Si quieres, también puedes mandarme varios juntos.
+
+*Cómo pedir:* el nombre del menú y cuántos.
+_Ejemplo: "2 hamburguesas sencillas"_
+
+*Cómo agregar:* "agrega 1 refresco"
+
+*Cómo quitar:* "quita las papas"
+
+*Cómo corregir:* "cambia la hamburguesa a grande"
+
+🛵 *Envío: $15*
+servicio $10
 
 Acción interna: `flow_switch_store`
 
@@ -72,9 +87,10 @@ OK, pediste:
 
 ✅ 🌭 *Dogo Clásico, 3 piezas — $105*
 
-*Envío y servicio: $35*
+🛵 *Envío: $15*
+servicio $10
 
-*Total: $140*
+*Total: $130*
 
 *¿Están bien estos productos?*
 

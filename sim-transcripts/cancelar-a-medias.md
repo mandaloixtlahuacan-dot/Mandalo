@@ -40,7 +40,10 @@ Acción interna: `flow_greeting`
 
 1. *Mini Super Peke's*
 
-*La tienda cotiza tus productos, más $35 de envío y servicio.*
+*La tienda cotiza tus productos.*
+
+🛵 *Envío: $15*
+servicio $10
 
 *¿De cuál te hago el mandado?*
 
@@ -54,7 +57,16 @@ Acción interna: `flow_show_niche`
 
 🏪 *Va, de Mini Super Peke's.*
 
-Mándame lo que se te antoje, todo en un mensaje: marca, tamaño y cuántos.
+Te armo el mandado producto por producto. Si quieres, también puedes mandarme varios juntos.
+
+*Cómo pedir:* marca, tamaño y cuántos.
+_Ejemplo: "2 Coca-Cola de 600 ml"_
+
+*Cómo agregar:* "agrega 1 Pinol de 1 litro"
+
+*Cómo quitar:* "quita la leche"
+
+*Cómo corregir:* "cambia la leche Lala a 2 litros"
 
 _Solo es un ejemplo, no está en tu pedido:_
 
@@ -64,7 +76,10 @@ _Solo es un ejemplo, no está en tu pedido:_
 
 ✅ 🫓 *1 kg de tortillas*
 
-*La tienda cotiza y se suman $35 de envío y servicio.*
+*La tienda cotiza tus productos.*
+
+🛵 *Envío: $15*
+servicio $10
 
 Acción interna: `flow_switch_store`
 
@@ -77,9 +92,12 @@ Acción interna: `flow_switch_store`
 ❓ *De leche, ¿cuál de estos?*
 
 1. *Leche 19 Hnos 1lt*
-2. *Leche 19hns 1lt*
+2. *Leche La Granja Bolsa 1lt*
+3. *Leche Lala Deslactosada 1lt*
 
 _La tienda confirma el precio. Todavía no es un total cerrado._
+
+_Si es otro tamaño o sabor, escríbelo._
 
 _Responde con el número. Si no es, corrige el producto o escribe cancelar._
 
