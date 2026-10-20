@@ -234,19 +234,23 @@ assert(freshSends(storePhone, "tienda", "ok", "categoria") === 0, "un acuse suel
 
 resetOutboundGuard();
 const reminder =
-  "⏰ *Recordatorio*\n\nEl pedido #12 sigue esperando tu precio.\n\n*Responde así:*\nORDEN #12 PRECIO 150\n\n¿Te falta algún producto?\n\n*Responde:*\nORDEN #12 NO_DISPONIBLE nombre del producto";
+  "⏰ *Recordatorio*\n\nEl pedido #12 sigue esperando tu precio.\n\n*Responde así:*\nORDEN #12 PRECIO 150\n\n¿Te falta algún producto?\n\n*Responde:*\nORDEN #12 NO HAY nombre del producto\n\nSi son varios, sepáralos con coma.";
 const quoteNotice =
-  "🏪 *Cotizar. ORDEN #12*\n\n*Responde así:*\nORDEN #12 PRECIO 150\n\n¿Te falta algún producto?\n\n*Responde:*\nORDEN #12 NO_DISPONIBLE nombre del producto";
+  "🏪 *Cotizar. ORDEN #12*\n\n*Responde así:*\nORDEN #12 PRECIO 150\n\n¿Te falta algún producto?\n\n*Responde:*\nORDEN #12 NO HAY nombre del producto\n\nSi son varios, sepáralos con coma.";
 assert(isBotInstructionPaste(reminder) && isBotInstructionPaste(quoteNotice), "el aviso a la tienda se reconoce como instrucción nuestra");
 assert(extraerPrecio(quoteNotice) === 150, "sin el filtro, el ejemplo del aviso se leería como precio 150");
-assert(extraerComandoNoDisponible(quoteNotice)?.productoTexto.toLowerCase().includes("nombre del producto") === true, "sin el filtro, el ejemplo se leería como faltante");
+assert(extraerComandoNoDisponible(quoteNotice) === null, "el aviso trae precio y faltante juntos, así que no se queda con el ejemplo");
+assert(
+  extraerComandoNoDisponible("ORDEN #12 NO HAY nombre del producto")?.productoTexto === "nombre del producto",
+  "el comando suelto de faltante sí se lee",
+);
 assert(classifyRoleChatter(reminder) === "echo" && classifyRoleChatter(quoteNotice) === "echo", "el aviso a la tienda no se procesa como comando");
 assert(planStoreFreeText({ text: reminder, openOrderIds: [12] }).action === "ignore", "el recordatorio no se cobra como precio 150");
 assert(planStoreFreeText({ text: quoteNotice, openOrderIds: [12] }).action === "ignore", "el aviso de cotizar no se cobra como precio 150");
 const realQuote = planStoreFreeText({ text: "ORDEN #12 PRECIO 80", openOrderIds: [12] });
 assert(realQuote.action === "price" && realQuote.amount === 80, "una cotización real de la tienda sí entra");
 assert(!isExactCourierCommand(buildCourierOfferMessage({
-  courierName: "Roberto",
+  courierName: "Moy",
   pedidoId: 12,
   storeName: george.nombre,
   pickupAddress: "Centro",

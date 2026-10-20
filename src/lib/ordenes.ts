@@ -148,7 +148,7 @@ export function mensajeTiendaProductoNoEncontrado(
     `🏪 *No encontré "${productoTexto}" en el pedido #${ordenId}.*\n\n` +
     `🛒 *Pedido*\n\n${lineas}\n\n` +
     `*Escribe el nombre tal como aparece arriba.*\n\n` +
-    `ORDEN #${ordenId} NO_DISPONIBLE ${ejemploProducto}`
+    `ORDEN #${ordenId} NO HAY ${ejemploProducto}`
   );
 }
 

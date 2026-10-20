@@ -107,16 +107,17 @@ assert(mensajeClienteProductoNoDisponible("Abarrotes", "Coca").includes('"Coca"'
 const aLaTienda = mensajeTiendaProductoNoEncontrado(12, "kétchup", "- Mayonesa x1\n- Coca x2", "Mayonesa");
 assert(aLaTienda.includes('No encontré "kétchup"'), "le dice a la tienda qué texto no encontró");
 assert(aLaTienda.includes("- Mayonesa x1") && aLaTienda.includes("- Coca x2"), "lista las líneas del pedido");
-assert(aLaTienda.includes("ORDEN #12 NO_DISPONIBLE Mayonesa"), "incluye un ejemplo corto");
+assert(aLaTienda.includes("ORDEN #12 NO HAY Mayonesa"), "incluye un ejemplo corto");
 assert(!aLaTienda.includes("sin él"), "el ejemplo a la tienda no es el mensaje del cliente");
 
 const flow = readFileSync("src/lib/mandaloFlow.ts", "utf8");
 const notFoundStart = flow.indexOf("findPedidoItemByText");
-const flagStart = flow.indexOf("await flagItemUnavailable", notFoundStart);
-const notFound = flow.slice(notFoundStart, flagStart);
+const notFoundEnd = flow.indexOf('error: "PRODUCTO_NO_ENCONTRADO"', notFoundStart);
+const notFound = flow.slice(notFoundStart, notFoundEnd);
 assert(notFound.includes("mensajeTiendaProductoNoEncontrado"), "si no hay línea, se arma el recado a la tienda");
-assert(notFound.includes("PRODUCTO_NO_ENCONTRADO"), "ese caso regresa sin marcar el producto");
 assert(!notFound.includes("mensajeClienteProductoNoDisponible"), "ese caso no arma el mensaje al cliente");
+assert(!notFound.includes("mensajeClienteConfirmarSinProductos"), "ese caso no arma el pedido recalculado");
+assert(flow.includes("await askCustomerAboutRemovedItems"), "si sí hay línea, se avisa al cliente una vez por el outbox");
 
 const dispatch = readFileSync("src/lib/services/storeDispatch.ts", "utf8");
 assert(

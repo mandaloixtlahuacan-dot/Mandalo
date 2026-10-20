@@ -9,27 +9,28 @@
 import { checkTiendaSchedule, formatHour12, parseHorarioPorDia, weekdayInMandalo } from "@/lib/services/businessHours";
 
 export const MATEO_PHONE_INTL = "5213327898967";
-export const ROBERTO_PHONE_INTL = "5213314705434";
+/** Moy. El número antes estaba dado de alta como Roberto. */
+export const MOY_PHONE_INTL = "5213314705434";
 
-/** Tardes lun–dom, y el sábado el día completo. */
+/** Tardes lun–vie y domingo, y el sábado el día completo. Cierra 23:30. */
 export const MATEO_HORARIO_JSON = {
-  "0": { abre: "15:00", cierra: "21:00" },
-  "1": { abre: "15:00", cierra: "21:00" },
-  "2": { abre: "15:00", cierra: "21:00" },
-  "3": { abre: "15:00", cierra: "21:00" },
-  "4": { abre: "15:00", cierra: "21:00" },
-  "5": { abre: "15:00", cierra: "21:00" },
-  "6": { abre: "08:00", cierra: "21:00" },
+  "0": { abre: "15:00", cierra: "23:30" },
+  "1": { abre: "15:00", cierra: "23:30" },
+  "2": { abre: "15:00", cierra: "23:30" },
+  "3": { abre: "15:00", cierra: "23:30" },
+  "4": { abre: "15:00", cierra: "23:30" },
+  "5": { abre: "15:00", cierra: "23:30" },
+  "6": { abre: "08:00", cierra: "23:30" },
 } as const;
 
-/** Todos los días 08:00–21:00, menos el sábado. */
-export const ROBERTO_HORARIO_JSON = {
-  "0": { abre: "08:00", cierra: "21:00" },
-  "1": { abre: "08:00", cierra: "21:00" },
-  "2": { abre: "08:00", cierra: "21:00" },
-  "3": { abre: "08:00", cierra: "21:00" },
-  "4": { abre: "08:00", cierra: "21:00" },
-  "5": { abre: "08:00", cierra: "21:00" },
+/** Moy: todos los días 08:00–23:30, menos el sábado. */
+export const MOY_HORARIO_JSON = {
+  "0": { abre: "08:00", cierra: "23:30" },
+  "1": { abre: "08:00", cierra: "23:30" },
+  "2": { abre: "08:00", cierra: "23:30" },
+  "3": { abre: "08:00", cierra: "23:30" },
+  "4": { abre: "08:00", cierra: "23:30" },
+  "5": { abre: "08:00", cierra: "23:30" },
 } as const;
 
 export const COURIER_ORDER_TAKEN_MESSAGE =

@@ -1,5 +1,5 @@
 /**
- * Horario de reparto, horario semanal de Mateo y Roberto, y el claim
+ * Horario de reparto, horario semanal de Mateo y Moy, y el claim
  * del primer #CONFIRMO. No llama a OpenAI, Supabase ni WhatsApp.
  *
  *   npx tsx scripts/check-courier-availability.ts
@@ -15,8 +15,8 @@ import {
   COURIER_ORDER_TAKEN_MESSAGE,
   MATEO_HORARIO_JSON,
   MATEO_PHONE_INTL,
-  ROBERTO_HORARIO_JSON,
-  ROBERTO_PHONE_INTL,
+  MOY_HORARIO_JSON,
+  MOY_PHONE_INTL,
   applyCourierConfirmClaim,
   buildCourierOfferMessage,
   buildCustomerCourierCoordinatingMessage,
@@ -42,13 +42,13 @@ const mateo: CourierScheduleRow = {
   disponible: true,
   horarioJson: MATEO_HORARIO_JSON,
 };
-const roberto: CourierScheduleRow = {
+const moy: CourierScheduleRow = {
   id: 2,
-  nombre: "Roberto",
-  telefono: ROBERTO_PHONE_INTL,
+  nombre: "Moy",
+  telefono: MOY_PHONE_INTL,
   activo: true,
   disponible: true,
-  horarioJson: ROBERTO_HORARIO_JSON,
+  horarioJson: MOY_HORARIO_JSON,
 };
 const paul: CourierScheduleRow = {
   id: 3,
@@ -56,9 +56,9 @@ const paul: CourierScheduleRow = {
   telefono: "5213311111111",
   activo: false,
   disponible: true,
-  horarioJson: ROBERTO_HORARIO_JSON,
+  horarioJson: MOY_HORARIO_JSON,
 };
-const roster = [mateo, roberto, paul];
+const roster = [mateo, moy, paul];
 
 function namesAt(iso: string): string[] {
   return selectAvailableCouriers(roster, new Date(iso)).map((courier) => String(courier.nombre));
@@ -72,42 +72,48 @@ const sundayMorning = "2026-10-18T15:00:00.000Z"; // 09:00
 const saturdayAfternoon = "2026-10-17T22:00:00.000Z"; // 16:00
 
 check("sabado-manana-solo-mateo", namesAt(saturdayMorning).join(",") === "Mateo", namesAt(saturdayMorning).join(","));
-check("entre-semana-manana-solo-roberto", namesAt(thursdayMorning).join(",") === "Roberto", namesAt(thursdayMorning).join(","));
+check("entre-semana-manana-solo-moy", namesAt(thursdayMorning).join(",") === "Moy", namesAt(thursdayMorning).join(","));
 check(
   "entre-semana-tarde-los-dos",
-  namesAt(thursdayAfternoon).join(",") === "Mateo,Roberto",
+  namesAt(thursdayAfternoon).join(",") === "Mateo,Moy",
   namesAt(thursdayAfternoon).join(","),
 );
-check("domingo-manana-solo-roberto", namesAt(sundayMorning).join(",") === "Roberto");
+check("domingo-manana-solo-moy", namesAt(sundayMorning).join(",") === "Moy");
+const thursdayLate = "2026-10-16T05:00:00.000Z"; // viernes 23:00
+const thursdayClosed = "2026-10-16T05:30:00.000Z"; // viernes 23:30
+check("antes-de-2330-los-dos", namesAt(thursdayLate).join(",") === "Mateo,Moy", namesAt(thursdayLate).join(","));
+check("a-las-2330-nadie", namesAt(thursdayClosed).join(",") === "", namesAt(thursdayClosed).join(","));
 check("sabado-tarde-solo-mateo", namesAt(saturdayAfternoon).join(",") === "Mateo");
 check("paul-sigue-fuera", !namesAt(thursdayAfternoon).includes("Paul"));
 check("sin-horario-no-entra", !isCourierOnSchedule(null, new Date(thursdayAfternoon)));
 check(
   "no-disponible-no-entra",
-  selectAvailableCouriers([{ ...roberto, disponible: false }], new Date(thursdayMorning)).length === 0,
+  selectAvailableCouriers([{ ...moy, disponible: false }], new Date(thursdayMorning)).length === 0,
 );
 
 const beforeOpen = checkMandaloSchedule(new Date("2026-10-15T13:59:00.000Z")); // 07:59
 const atOpen = checkMandaloSchedule(new Date("2026-10-15T14:00:00.000Z")); // 08:00
-const beforeClose = checkMandaloSchedule(new Date("2026-10-16T02:59:00.000Z")); // 20:59
-const atClose = checkMandaloSchedule(new Date("2026-10-16T03:00:00.000Z")); // 21:00
+const beforeClose = checkMandaloSchedule(new Date("2026-10-16T05:29:00.000Z")); // 23:29
+const atClose = checkMandaloSchedule(new Date("2026-10-16T05:30:00.000Z")); // 23:30
+const atNine = checkMandaloSchedule(new Date("2026-10-16T03:00:00.000Z")); // 21:00
 check("antes-de-8-cerrado", beforeOpen.withinSchedule === false);
 check("a-las-8-abierto", atOpen.withinSchedule === true);
-check("antes-de-9pm-abierto", beforeClose.withinSchedule === true);
-check("a-las-9pm-cerrado", atClose.withinSchedule === false);
+check("a-las-9pm-sigue-abierto", atNine.withinSchedule === true);
+check("antes-de-1130-abierto", beforeClose.withinSchedule === true);
+check("a-las-1130-cerrado", atClose.withinSchedule === false);
 check("abre-8am", MANDALO_HORA_APERTURA === "08:00" && formatHour12(MANDALO_HORA_APERTURA) === "8am");
-check("cierra-9pm", MANDALO_HORA_CIERRE === "21:00" && formatHour12(MANDALO_HORA_CIERRE) === "9pm");
+check("cierra-1130", MANDALO_HORA_CIERRE === "23:30" && formatHour12(MANDALO_HORA_CIERRE) === "11:30pm");
 check(
   "texto-al-cliente",
-  mandaloHoursCustomerText(MANDALO_HORA_APERTURA, MANDALO_HORA_CIERRE) === "de 8am a 9pm",
+  mandaloHoursCustomerText(MANDALO_HORA_APERTURA, MANDALO_HORA_CIERRE) === "de 8am a 11:30pm",
 );
 
 let slot = { estado: "dispatch_repartidor_pendiente", repartidorId: null as number | null };
-const first = applyCourierConfirmClaim(slot, roberto.id ?? 2);
+const first = applyCourierConfirmClaim(slot, moy.id ?? 2);
 slot = first.row;
 const second = applyCourierConfirmClaim(slot, mateo.id ?? 1);
-check("primero-gana", first.claimed && first.row.repartidorId === roberto.id && first.message == null);
-check("segundo-pierde", !second.claimed && second.row.repartidorId === roberto.id);
+check("primero-gana", first.claimed && first.row.repartidorId === moy.id && first.message == null);
+check("segundo-pierde", !second.claimed && second.row.repartidorId === moy.id);
 check(
   "aviso-ya-lo-tomo",
   second.message === COURIER_ORDER_TAKEN_MESSAGE &&
@@ -116,7 +122,7 @@ check(
 
 const offered = [
   { id: mateo.id ?? null, telefono: mateo.telefono ?? "" },
-  { id: roberto.id ?? null, telefono: roberto.telefono ?? "" },
+  { id: moy.id ?? null, telefono: moy.telefono ?? "" },
 ];
 check(
   "los-dos-pueden-confirmar",
@@ -133,8 +139,8 @@ check(
       repartidorId: null,
       currentCourierId: null,
       currentCourierPhone: "",
-      courierId: roberto.id ?? null,
-      courierPhone: roberto.telefono ?? "",
+      courierId: moy.id ?? null,
+      courierPhone: moy.telefono ?? "",
     }),
 );
 check(
@@ -152,24 +158,24 @@ check(
   "despues-del-claim-solo-el-ganador",
   courierMayConfirmOffer({
     offered,
-    repartidorId: roberto.id ?? null,
-    currentCourierId: roberto.id ?? null,
-    currentCourierPhone: roberto.telefono ?? "",
-    courierId: roberto.id ?? null,
-    courierPhone: roberto.telefono ?? "",
+    repartidorId: moy.id ?? null,
+    currentCourierId: moy.id ?? null,
+    currentCourierPhone: moy.telefono ?? "",
+    courierId: moy.id ?? null,
+    courierPhone: moy.telefono ?? "",
   }) &&
     !courierMayConfirmOffer({
       offered,
-      repartidorId: roberto.id ?? null,
-      currentCourierId: roberto.id ?? null,
-      currentCourierPhone: roberto.telefono ?? "",
+      repartidorId: moy.id ?? null,
+      currentCourierId: moy.id ?? null,
+      currentCourierPhone: moy.telefono ?? "",
       courierId: mateo.id ?? null,
       courierPhone: mateo.telefono ?? "",
     }),
 );
 
 const offer = buildCourierOfferMessage({
-  courierName: "Roberto",
+  courierName: "Moy",
   pedidoId: 44,
   storeName: "Abarrotes",
   pickupAddress: "Centro",
@@ -179,14 +185,14 @@ const offer = buildCourierOfferMessage({
   chargeLine: "💵 *Cobrar: $50*",
   customerPhone: "5213312345678",
 });
-check("oferta-conserva-confirmo", offer.includes("🛵 *Hola Roberto, tienes un nuevo pedido*") && offer.includes("#CONFIRMO 44"));
+check("oferta-conserva-confirmo", offer.includes("🛵 *Hola Moy, tienes un nuevo pedido*") && offer.includes("#CONFIRMO 44"));
 check("oferta-sigue-con-recogi", offer.includes("#RECOGI 44") && offer.includes("#ENTREGADO 44"));
 
 const oneCustomer = buildCustomerCourierCoordinatingMessage({ pedidoId: 44, etaText: "4:20 p.m.", courierNames: ["Mateo"] });
 const twoCustomer = buildCustomerCourierCoordinatingMessage({
   pedidoId: 44,
   etaText: "4:20 p.m.",
-  courierNames: ["Mateo", "Roberto"],
+  courierNames: ["Mateo", "Moy"],
 });
 check("cliente-un-repartidor", oneCustomer.includes("con *Mateo*") && oneCustomer.includes("Te aviso en cuanto confirme."));
 check(
@@ -197,10 +203,10 @@ check(
 const notified = readOfferedCouriers({
   offered_couriers: [
     { id: 1, nombre: "Mateo", telefono: MATEO_PHONE_INTL },
-    { id: 2, nombre: "Roberto", telefono: ROBERTO_PHONE_INTL },
+    { id: 2, nombre: "Moy", telefono: MOY_PHONE_INTL },
   ],
 });
-check("recordatorio-a-los-dos", notified.map((courier) => courier.nombre).join(",") === "Mateo,Roberto");
+check("recordatorio-a-los-dos", notified.map((courier) => courier.nombre).join(",") === "Mateo,Moy");
 
 const transition = readFileSync(new URL("../src/lib/services/stateTransitionService.ts", import.meta.url), "utf8");
 const claimStart = transition.indexOf("async handleCourierConfirm");
@@ -215,10 +221,10 @@ const handoff = readFileSync(new URL("../src/lib/services/courierHandoff.ts", im
 check("ofrece-a-todos", handoff.includes("findAvailableCouriers") && handoff.includes("offerOrderToCouriers"));
 check("ya-no-toma-solo-uno", !handoff.includes(".limit(1)"));
 
-const sql = readFileSync(new URL("../supabase/data-fixes/20261015_repartidores_mateo_roberto.sql", import.meta.url), "utf8");
-check("sql-mateo", sql.includes(MATEO_PHONE_INTL) && sql.includes('"6": {"abre": "08:00", "cierra": "21:00"}'));
-check("sql-roberto", sql.includes(ROBERTO_PHONE_INTL) && sql.includes("Roberto"));
-check("sql-sin-borrar", !/\b(drop|delete)\b/i.test(sql));
+const sql = readFileSync(new URL("../supabase/migrations/20261020_moy_horario_2330.sql", import.meta.url), "utf8");
+check("sql-mateo", sql.includes(MATEO_PHONE_INTL) && sql.includes('"6": {"abre": "08:00", "cierra": "23:30"}'));
+check("sql-moy", sql.includes(MOY_PHONE_INTL) && sql.includes("nombre = 'Moy'") && sql.includes('"5": {"abre": "08:00", "cierra": "23:30"}'));
+check("sql-sin-borrar", !/\b(drop|delete)\b/i.test(sql) && /\bupdate\b/i.test(sql));
 const migration = readFileSync(new URL("../supabase/migrations/20261015_repartidores_horario_json.sql", import.meta.url), "utf8");
 check("migracion-aditiva", /add column if not exists horario_json/i.test(migration) && !/\b(drop|delete)\b/i.test(migration));
 

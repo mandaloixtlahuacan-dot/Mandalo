@@ -229,12 +229,10 @@ check(
 );
 
 const dispatchSource = readFileSync(new URL("../src/lib/services/storeDispatch.ts", import.meta.url), "utf8");
-const prepareAt = dispatchSource.indexOf("mayPrepareStore(alreadyConfirmed)");
-const prepareCopyAt = dispatchSource.indexOf("Prepáralo en cuanto puedas");
-check("prepara-solo-despues", prepareAt > 0 && prepareCopyAt > prepareAt);
 const noticeAt = dispatchSource.indexOf("formatScheduledSentNotice");
-const quoteAt = dispatchSource.indexOf("await finalizeStoreQuote");
-check("aviso-antes-del-total", noticeAt > 0 && quoteAt > noticeAt);
+const confirmAt = dispatchSource.indexOf("formatCatalogStoreConfirmRequest");
+check("aviso-antes-de-pedir-confirmo", noticeAt > 0 && confirmAt > noticeAt);
+check("menu-no-se-prepara-solo", !dispatchSource.includes("Prepáralo en cuanto puedas") && !dispatchSource.includes("await finalizeStoreQuote"));
 
 const workerSource = readFileSync(new URL("../src/lib/services/orderTimeoutWorker.ts", import.meta.url), "utf8");
 check(
@@ -251,7 +249,10 @@ check("inactivo-no-borra", inactiveFn.includes('cancelled_reason: "inactivo"') &
 const flowSource = readFileSync(new URL("../src/lib/mandaloFlow.ts", import.meta.url), "utf8");
 check(
   "despacho-de-menu-ya-confirmado",
-  flowSource.includes("catalogAlreadyConfirmed: true") && flowSource.includes("cancelBecauseNoCourier"),
+  flowSource.includes("catalogAlreadyConfirmed: true") &&
+    flowSource.includes("cancelBecauseNoCourier") &&
+    flowSource.includes("extraerComandoConfirmoTienda") &&
+    flowSource.includes("formatCatalogAwaitingStore"),
 );
 check("sin-filtro-prueba", !flowSource.includes("isHiddenTestStoreName") && !dispatchSource.includes("(PRUEBA)"));
 
