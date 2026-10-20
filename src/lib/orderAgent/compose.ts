@@ -61,7 +61,9 @@ function cleanClause(clause: string): string {
 }
 
 function countIn(clause: string): number {
-  const text = foldAgent(clause).replace(/\b\d+(?:[.,]\d+)?\s*(?:ml|l|lt|lts|litros?|g|gr|gramos?|kg|kilos?)\b/g, " ");
+  const text = foldAgent(clause)
+    .replace(/\b\d+\s+\d\s*(?:ml|l|lt|lts|litros?|g|gr|gramos?|kg|kilos?)\b/g, " ")
+    .replace(/\b\d+(?:[.,]\d+)?\s*(?:ml|l|lt|lts|litros?|g|gr|gramos?|kg|kilos?)\b/g, " ");
   const digit = text.match(/\b(\d+(?:[.,]\d+)?)\b/);
   if (digit) {
     const qty = Number(digit[1].replace(",", "."));
@@ -309,7 +311,7 @@ function lineQty(clause: string, product: AgentProduct, store: AgentStore): { qt
   if (store.category === "carniceria" && product.unit === "kg") {
     return { qty: countIn(clause) === 1 ? 1 : countIn(clause), unit: "kg" };
   }
-  const counted = qty != null && qty > 0 ? qty : countIn(clause);
+  const counted = !sizeInTheName && qty != null && qty > 0 ? qty : countIn(clause);
   return { qty: Number.isInteger(counted) ? counted : 1, unit: product.unit === "kg" ? "kg" : "pz" };
 }
 
