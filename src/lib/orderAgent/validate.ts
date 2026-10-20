@@ -277,7 +277,8 @@ function narrowAskedProducts(query: string, products: AgentProduct[]): AgentProd
   return unique;
 }
 
-export function formatProductOptions(query: string, products: AgentProduct[], invite = false): string {
+/** El que mejor pega va primero. El número de la lista es el mismo de candidateIds. */
+export function productsForOptions(query: string, products: AgentProduct[]): AgentProduct[] {
   const narrowed = narrowAskedProducts(query, products);
   const tokens = contentTokens(query).filter((token) => token.length >= 3);
   let best: AgentProduct | null = null;
@@ -291,7 +292,11 @@ export function formatProductOptions(query: string, products: AgentProduct[], in
     }
   }
   const withBest = best && !narrowed.some((row) => row.id === best?.id) ? [best, ...narrowed] : narrowed;
-  const rows = withBest.slice(0, 5);
+  return withBest.slice(0, 5);
+}
+
+export function formatProductOptions(query: string, products: AgentProduct[], invite = false): string {
+  const rows = products.slice(0, 5);
   const lines = rows.map((product, index) => {
     const price = optionPrice(product);
     const label = optionLabel(product);
@@ -357,7 +362,7 @@ function clarificationOf(
   unit: AgentUnit | null,
   axis: PendingAxis,
 ): AgentClarification {
-  const sliced = filterAskedType(query, products).slice(0, 5);
+  const sliced = productsForOptions(query, filterAskedType(query, products));
   const brands = new Set(sliced.map((product) => foldAgent(product.brand ?? "")).filter(Boolean));
   const marinade = marinadePrompt(sliced, query);
   return {

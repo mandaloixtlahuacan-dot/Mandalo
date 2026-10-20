@@ -169,7 +169,8 @@ function tokenSlip(word: string, token: string): boolean {
   if (word.length < 3 || token.length < 3) return false;
   if (word.startsWith(token) && word.length - token.length === 1) return true;
   if (token.startsWith(word) && token.length - word.length === 1) return true;
-  if (Math.min(word.length, token.length) < 4) return false;
+  // Una letra cambiada solo en palabras de 5 o más. «coca»/«cola» no se confunden.
+  if (Math.min(word.length, token.length) < 5) return false;
   if (Math.abs(word.length - token.length) > 1) return false;
   return editDistance(word, token) <= 1;
 }
