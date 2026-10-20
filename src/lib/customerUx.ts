@@ -216,7 +216,7 @@ export function formatStoreCommandHelp(orderIds: number[]): string {
       `🏪 *Así me contestas un pedido*\n\n` +
       `Ahorita no tengo uno abierto esperando tu precio.\n\n` +
       `*Cuando llegue, responde así:*\nORDEN #123 PRECIO 150\n\n` +
-      `*Si te falta algo:*\nORDEN #123 NO_DISPONIBLE nombre del producto`
+      `*Si te falta algo:*\nORDEN #123 NO HAY nombre del producto`
     );
   }
   const sample = ids[0];
@@ -225,12 +225,18 @@ export function formatStoreCommandHelp(orderIds: number[]): string {
     `🏪 *Así me contestas el pedido*\n\n` +
     `Pedidos abiertos: ${listed}\n\n` +
     `*Precio:*\nORDEN #${sample} PRECIO 150\n\n` +
-    `*Si te falta algo:*\nORDEN #${sample} NO_DISPONIBLE nombre del producto`
+    `*Si te falta algo:*\nORDEN #${sample} NO HAY nombre del producto`
   );
 }
 
 export function formatStoreOkAck(pedidoId: number): string {
   return `✅ *Recibido.*\n\nAnoté el OK del pedido *#${pedidoId}*.`;
+}
+
+/** Menú fijo: el cliente ya confirmó. Falta que la tienda mande CONFIRMO. */
+export function formatCatalogAwaitingStore(pedidoId: number, tiendaNombre: string): string {
+  const tienda = tiendaNombre.trim() || "la tienda";
+  return `🧾 *Pedido #${pedidoId}*\n\nYa va para *${tienda}*.\n\nEn cuanto confirmen el pedido, lo mando al repartidor.`;
 }
 
 export function formatQuoteOrderRegistered(pedidoId: number, tiendaNombre: string): string {

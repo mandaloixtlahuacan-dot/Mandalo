@@ -2,7 +2,17 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 19 de octubre de 2026, noche. Cargo al cliente:
+> Última actualización: 20 de octubre de 2026. Reparto de Mándalo de 8:00 a 23:30.
+> El 5213314705434 se llama Moy (antes Roberto): 8:00–23:30 todos los días
+> menos sábado. Mateo también cierra a las 23:30 (sábado 8:00–23:30).
+> Cada tienda conserva su horario. George (tienda 5) y La Central (tienda 6)
+> confirman con `ORDEN #N CONFIRMO` antes del repartidor; abarrotes sigue
+> cotizando con `ORDEN #N PRECIO`. Las tres pueden quitar productos con
+> `ORDEN #N NO HAY producto` (varios, separados por coma): el cliente ve el
+> pedido sin eso, envío $15 y servicio $10, y responde sí o no. El SQL
+> `supabase/migrations/20261020_moy_horario_2330.sql` no está aplicado.
+> No se llamó a OpenAI, no se mandó WhatsApp y no se escribió en Supabase.
+> Actualización anterior: 19 de octubre de 2026, noche. Cargo al cliente:
 > $15 de envío para el repartidor y $10 de servicio para Mándalo, $25
 > más los productos. El resumen muestra siempre `🛵 *Envío: $15*` y
 > debajo `servicio $10`. En `pedidos`, `servicio_repartidor` es 15 y

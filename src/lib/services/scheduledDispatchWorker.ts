@@ -5,14 +5,14 @@ import * as outboxRepository from "@/lib/repositories/outboxRepository";
 import { createStateTransitionService } from "@/lib/services/stateTransitionService";
 import { checkMandaloSchedule, checkTiendaSchedule } from "@/lib/services/businessHours";
 import { dispatchCotizacionToStore } from "@/lib/services/storeDispatch";
-import { cancelBecauseNoCourier, findAvailableCouriers, offerOrderToCouriers } from "@/lib/services/courierHandoff";
+import { cancelBecauseNoCourier, findAvailableCouriers } from "@/lib/services/courierHandoff";
 import { formatScheduledSentNotice } from "@/lib/customerUx";
 import { ESPERANDO_APERTURA_DEADLINE_FIELD } from "@/lib/services/orderTimeouts";
 
 // Dispara los pedidos programados (esperando_apertura_tienda, CLAUDE.md
 // Sección 5 regla 6 / Sección 8) en cuanto se puede despachar de verdad —
 // la tienda elegida abierta Y Mándalo dentro de su ventana de reparto
-// (8am-9pm, hora de México) — y cancela los que llevan más de 48h sin que se
+// (8am-11:30pm, hora de México) — y cancela los que llevan más de 48h sin que se
 // cumplan ambas condiciones. Pensado para correr cada minuto vía pg_cron +
 // pg_net, mismo patrón que orderTimeoutWorker.ts — pero es un worker aparte
 // porque el chequeo es distinto en naturaleza: "¿está abierto ahora mismo?"
@@ -76,15 +76,8 @@ async function releaseScheduledCatalog(pedido: PedidoFullRecord, summary: Schedu
     return;
   }
 
-  const fresh = await getPedidoById(pedido.id);
-  if (!fresh) return;
-  await offerOrderToCouriers({
-    pedido: fresh,
-    customerPhone: fresh.clienteTelefono,
-    couriers,
-    actorTipo: "sistema",
-    deliverCustomer: (body) => enqueueCustomer(fresh.id, fresh.clienteTelefono, body, `pedido:${fresh.id}:catalogo:repartidor:v1`),
-  });
+  // La tienda de menú fijo confirma con ORDEN #N CONFIRMO. El repartidor
+  // entra cuando llega ese comando, no en este tick.
   summary.dispatched += 1;
 }
 

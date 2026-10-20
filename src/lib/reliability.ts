@@ -66,8 +66,10 @@ function foldEcho(text: string): string {
 export function isBotInstructionPaste(text: string): boolean {
   const folded = foldEcho(text);
   if (folded.includes("asi me contestas")) return true;
-  if (folded.includes("nombre del producto") && /no_?disponible/.test(folded)) return true;
+  if (folded.includes("nombre del producto") && (/no hay/.test(folded) || /no_?disponible/.test(folded))) return true;
   if (folded.includes("responde asi") && /precio\s+150\b/.test(folded) && /no_?disponible/.test(folded)) return true;
+  if (folded.includes("responde asi") && /no hay/.test(folded) && (/precio\s+150\b/.test(folded) || /\bconfirmo\b/.test(folded))) return true;
+  if (folded.includes("separalos con coma") && /no hay/.test(folded)) return true;
   if (folded.includes("comando invalido")) return true;
   const commands = ["#confirmo", "#recogi", "#entregado"].filter((token) => folded.includes(token));
   return commands.length >= 2;
@@ -167,7 +169,7 @@ export function catalogStepAfterList(params: { confirmed: boolean; hasAddress: b
   return "dispatch";
 }
 
-/** La tienda de menú fijo recibe "Prepáralo" solo después del SÍ final. */
+/** El SÍ de la lista con precios es el último del cliente. La tienda de menú fijo igual confirma después. */
 export function mayPrepareStore(customerFinalConfirmed: boolean): boolean {
   return customerFinalConfirmed;
 }

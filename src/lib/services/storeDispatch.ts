@@ -4,6 +4,7 @@ import * as outboxRepository from "@/lib/repositories/outboxRepository";
 import {
   appendPedidoEvento,
   getProductosTiendaActivos,
+  removePedidoItem,
   setPedidoEstado,
   setPedidoItemDisponible,
   setPedidoTiendaCotizacion,
@@ -14,10 +15,10 @@ import {
 import { buildOrderTimeoutMetadata } from "@/lib/services/orderTimeouts";
 import { matchCatalogProduct, priceCatalogOrder } from "@/lib/catalogQuantities";
 import { formatCatalogReceiptNotice, formatCustomerQuoteMessage, formatScheduledSentNotice } from "@/lib/customerUx";
-import { mayPrepareStore } from "@/lib/reliability";
 import { formatCheckedLines, formatNameQtyLine, joinBlocks } from "@/lib/messageStyle";
 import { dispatchItemAlreadyShowsQty } from "@/lib/services/captureEngine";
 import { calculateFinalPrice, MANDALO_DELIVERY_FEE, MANDALO_SERVICE_FEE, mensajeClienteProductoNoDisponible } from "@/lib/ordenes";
+import { formatAbarrotesQuoteRequest, formatCatalogStoreConfirmRequest } from "@/lib/storeOrderCommands";
 import { saveChatMessage as guardarMensajeChat } from "@/lib/messages";
 import type { OrderState } from "@/lib/orderStateMachine";
 
@@ -190,11 +191,11 @@ export async function flagItemUnavailable(params: {
   await guardarMensajeChat({ telefono: pedido.clienteTelefono, texto: msgCliente, estado: "bot" }).catch(() => {});
 }
 
-// Tiendas con tiendas.usa_catalogo_fijo = true (ver migración
-// 20260907_tiendas_catalogo_fijo.sql): en vez de mandar "COTIZAR." y esperar
-// #PRECIO, resuelve el subtotal directo contra productos_tienda. Un producto
-// que no matchea con el catálogo se trata igual que un #NO_DISPONIBLE manual
-// (flagItemUnavailable) — la tienda nunca tiene que escribir nada.
+// Tiendas con tiendas.usa_catalogo_fijo = true (George, La Central): el
+// subtotal sale del menú, pero la tienda confirma con ORDEN #N CONFIRMO
+// antes del repartidor. Mismo estado pendiente_tiendas y el mismo timeout
+// de 10 min que abarrotes. Un producto que no está en el menú se trata
+// como faltante automático (flagItemUnavailable).
 async function dispatchCatalogoFijo(
   pedido: PedidoFullRecord,
   params: {
@@ -202,6 +203,7 @@ async function dispatchCatalogoFijo(
     actorTipo: "cliente" | "sistema";
     catalogAlreadyConfirmed?: boolean;
     sendCustomerReceipt?: boolean;
+    noticeKey?: string;
   },
 ): Promise<DispatchCotizacionResult> {
   if (!pedido.tienda?.telefono) return { ok: false, reason: "no_store_phone" };
@@ -212,7 +214,7 @@ async function dispatchCatalogoFijo(
     estadoOrigen: params.fromEstado,
     estadoDestino: "pendiente_tiendas",
     actorTipo: params.actorTipo,
-    payload: { catalogoFijo: true },
+    payload: { catalogoFijo: true, clienteYaConfirmo: params.catalogAlreadyConfirmed === true },
   });
 
   const catalogo = await getProductosTiendaActivos(pedido.tienda.tiendaId);
@@ -231,8 +233,8 @@ async function dispatchCatalogoFijo(
     matches.map((entry) => ({ nombre_producto: entry.item.nombreProducto, cantidad: entry.item.cantidad })),
     catalogo,
   );
-  const alreadyConfirmed = params.catalogAlreadyConfirmed === true;
-  // El aviso de "ya se envió" sale antes del total. El cliente ya confirmó.
+  // El cliente ya confirmó el menú. La tienda igual manda CONFIRMO
+  // antes de que el pedido pase al repartidor. El precio no se vuelve a pedir.
   if (params.sendCustomerReceipt) {
     await outboxRepository.enqueueOutboundMessage({
       pedidoId: pedido.id,
@@ -246,22 +248,15 @@ async function dispatchCatalogoFijo(
       idempotencyKey: `pedido:${pedido.id}:esperando_apertura:dispatched:v1`,
     });
   }
-  await finalizeStoreQuote({
-    pedido,
-    subtotal,
-    actorTipo: "sistema",
-    itemLines: priced.lines,
-    customerUpdate: params.sendCustomerReceipt ? "receipt" : alreadyConfirmed ? "none" : "confirm",
-  });
-
-  if (!mayPrepareStore(alreadyConfirmed)) return { ok: true };
 
   const tiendaTelefono = ensureMxWhatsappIntl(pedido.tienda.telefono);
-  const aviso =
-    `🏪 *Nuevo pedido #${pedido.id}*\n\n` +
-    `Ya trae precio del menú. Prepáralo en cuanto puedas.\n\n` +
-    `${pedido.direccionEntrega ? `📍 *Entrega:*\n${pedido.direccionEntrega}\n\n` : ""}` +
-    `🛒 *Pedido*\n\n${formatCheckedLines(priced.lines)}`;
+  const aviso = formatCatalogStoreConfirmRequest({
+    pedidoId: pedido.id,
+    direccion: pedido.direccionEntrega,
+    pedidoTexto: formatCheckedLines(priced.lines),
+    subtotal,
+    total: calculateFinalPrice(subtotal),
+  });
 
   logStoreDispatch({
     orderId: pedido.id,
@@ -279,7 +274,7 @@ async function dispatchCatalogoFijo(
     destinatarioId: pedido.tienda.tiendaId,
     telefonoDestino: tiendaTelefono,
     payload: { body: aviso },
-    idempotencyKey: `pedido:${pedido.id}:cotizacion_tienda:v1`,
+    idempotencyKey: params.noticeKey ?? `pedido:${pedido.id}:cotizacion_tienda:v1`,
   });
 
   return { ok: true };
@@ -301,6 +296,8 @@ export async function dispatchCotizacionToStore(
     actorTipo: "cliente" | "sistema";
     catalogAlreadyConfirmed?: boolean;
     sendCustomerReceipt?: boolean;
+    /** Otra vuelta a la tienda, cuando el cliente dejó el pedido sin un faltante. */
+    noticeKey?: string;
   },
 ): Promise<DispatchCotizacionResult> {
   if (!pedido.tienda?.telefono) {
@@ -334,12 +331,11 @@ export async function dispatchCotizacionToStore(
   }
 
   const tiendaTelefono = ensureMxWhatsappIntl(pedido.tienda.telefono);
-  const encabezado =
-    `🏪 *Cotizar. ORDEN #${pedido.id}*\n\n` +
-    `${pedido.direccionEntrega ? `📍 *Entrega:*\n${pedido.direccionEntrega}\n\n` : ""}` +
-    `🛒 *Pedido*\n\n${formatItemsForDispatch(pedido.items)}\n\n` +
-    `*Responde así:*\nORDEN #${pedido.id} PRECIO 150\n\n` +
-    `¿Te falta algún producto?\n\n*Responde:*\nORDEN #${pedido.id} NO_DISPONIBLE nombre del producto`;
+  const encabezado = formatAbarrotesQuoteRequest({
+    pedidoId: pedido.id,
+    direccion: pedido.direccionEntrega,
+    pedidoTexto: formatItemsForDispatch(pedido.items),
+  });
 
   logStoreDispatch({
     orderId: pedido.id,
@@ -357,7 +353,7 @@ export async function dispatchCotizacionToStore(
     destinatarioId: pedido.tienda.tiendaId,
     telefonoDestino: tiendaTelefono,
     payload: { body: encabezado },
-    idempotencyKey: `pedido:${pedido.id}:cotizacion_tienda:v1`,
+    idempotencyKey: params.noticeKey ?? `pedido:${pedido.id}:cotizacion_tienda:v1`,
   });
 
   await appendPedidoEvento({
@@ -369,4 +365,56 @@ export async function dispatchCotizacionToStore(
   });
 
   return { ok: true };
+}
+
+/**
+ * La tienda marcó faltantes. Se quitan, el pedido espera el sí/no del cliente
+ * y sale un solo aviso (outbox). No manda nada a la tienda: el acuse va en
+ * el turno del webhook.
+ */
+export async function askCustomerAboutRemovedItems(params: {
+  pedido: PedidoFullRecord;
+  removed: Array<{ id: number; nombreProducto: string }>;
+  body: string;
+}): Promise<void> {
+  const { pedido, removed } = params;
+  if (!pedido.tienda) throw new Error(`askCustomerAboutRemovedItems: pedido ${pedido.id} sin tienda`);
+  const ids = removed.map((item) => item.id).sort((a, b) => a - b);
+  const nombres = removed.map((item) => item.nombreProducto);
+
+  for (const item of removed) {
+    await removePedidoItem(item.id);
+  }
+
+  await setPedidoTiendaEstado({ pedidoTiendaId: pedido.tienda.pedidoTiendaId, estadoTienda: "ajuste_producto" });
+  await setPedidoEstado({
+    pedidoId: pedido.id,
+    estado: "ajuste_producto",
+    metadataPatch: {
+      ...buildOrderTimeoutMetadata("product_adjustment"),
+      product_adjustment_mode: "confirmar_restante",
+      product_adjustment_removed: nombres,
+      product_adjustment_removed_ids: ids,
+      product_adjustment_item_nombre: nombres.join(", "),
+      product_adjustment_item_id: ids[0] ?? null,
+    },
+  });
+  await appendPedidoEvento({
+    pedidoId: pedido.id,
+    tipoEvento: "producto_no_disponible",
+    estadoOrigen: "pendiente_tiendas",
+    estadoDestino: "ajuste_producto",
+    actorTipo: "tienda",
+    payload: { itemIds: ids, itemNombres: nombres },
+  });
+
+  await outboxRepository.enqueueOutboundMessage({
+    pedidoId: pedido.id,
+    tipoMensaje: "notificacion_cliente",
+    destinatarioTipo: "cliente",
+    telefonoDestino: pedido.clienteTelefono,
+    payload: { body: params.body },
+    idempotencyKey: `pedido:${pedido.id}:cliente:sin_productos:${ids.join("-")}:v1`,
+  });
+  await guardarMensajeChat({ telefono: pedido.clienteTelefono, texto: params.body, estado: "bot" }).catch(() => {});
 }

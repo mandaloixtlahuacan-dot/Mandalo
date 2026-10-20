@@ -131,6 +131,11 @@ assert(!checkMandaloSchedule(lunesTemprano).withinSchedule, "Mándalo a las 7:00
 assert(!checkMandaloSchedule(lunesAbre).withinSchedule, "Mándalo a las 7:30 todavía no reparte; abre a las 8:00");
 assert(checkMandaloSchedule(new Date("2026-10-12T14:00:00Z")).withinSchedule, "Mándalo a las 8:00 reparte");
 assert(checkMandaloSchedule(lunesNoche).withinSchedule, "Mándalo a las 20:59 todavía reparte");
-assert(!checkMandaloSchedule(lunesCierra).withinSchedule, "Mándalo a las 21:00 ya no reparte");
+assert(checkMandaloSchedule(lunesCierra).withinSchedule, "Mándalo a las 21:00 sigue repartiendo; la tienda ya puede haber cerrado");
+assert(!checkTiendaSchedule({ ...pekes, now: lunesCierra }).withinSchedule, "a las 21:00 manda el horario de Peke's, no el de Mándalo");
+const mandaAntes = new Date("2026-10-13T05:29:00Z");
+const mandaCierra = new Date("2026-10-13T05:30:00Z");
+assert(checkMandaloSchedule(mandaAntes).withinSchedule, "Mándalo a las 23:29 sigue repartiendo");
+assert(!checkMandaloSchedule(mandaCierra).withinSchedule, "Mándalo a las 23:30 ya no reparte");
 
 console.log("check-business-hours: ok");

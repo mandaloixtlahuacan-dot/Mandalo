@@ -51,7 +51,7 @@ import {
   parseDiasCerrado,
   type TiendaScheduleCheck,
 } from "@/lib/services/businessHours";
-import { dispatchCotizacionToStore, finalizeStoreQuote, flagItemUnavailable } from "@/lib/services/storeDispatch";
+import { askCustomerAboutRemovedItems, dispatchCotizacionToStore, finalizeStoreQuote } from "@/lib/services/storeDispatch";
 import { cancelBecauseNoCourier, findAvailableCouriers, offerOrderToCouriers } from "@/lib/services/courierHandoff";
 import {
   buildGreeting,
@@ -64,6 +64,7 @@ import {
   UX_MENU_MARKER,
   formatCatalogFinalTicket,
   formatCatalogReceiptFee,
+  formatCatalogAwaitingStore,
   formatQuoteOrderRegistered,
   formatStoreOkAck,
   formatPreConfirmFeeNote,
@@ -85,6 +86,13 @@ import {
   formatMoney,
   mensajeTiendaProductoNoEncontrado,
 } from "@/lib/ordenes";
+import {
+  decidirConfirmacionRestante,
+  extraerComandoConfirmoTienda,
+  mensajeClienteConfirmarSinProductos,
+  mensajeClientePedidoVacioPorFaltante,
+  partirProductosNoDisponibles,
+} from "@/lib/storeOrderCommands";
 import { canTransition, isTerminalState, type OrderState } from "@/lib/orderStateMachine";
 import { classifyRoleChatter, planStoreFreeText, shouldRestartOnGreeting, buildingIdleMs } from "@/lib/reliability";
 import { confirmationCustomerMessage, planConfirmationAmendment, renderPedidoSummary } from "@/lib/confirmationAmendment";
@@ -1492,7 +1500,7 @@ async function handleEsperandoConfirmacionInicial(
     return { ok: true, role: "cliente", stage: "confirmacion_cliente", pedidoId: pedido.id };
   }
 
-  // Tienda cerrada y/o fuera del horario de despacho de Mándalo (8am-9pm,
+  // Tienda cerrada y/o fuera del horario de despacho de Mándalo (8am-11:30pm,
   // CLAUDE.md Sección 5 regla 6): no se despacha todavía — se programa.
   // Mismo mecanismo sin importar cuál de las dos condiciones falle; la
   // tienda no se entera hasta que se pueda despachar de verdad (decisión de
@@ -1721,6 +1729,95 @@ async function extractReplacementProduct(params: { itemNombre: string; mensaje: 
 // confirma con el cliente antes de aplicarlo — no se guarda su texto crudo.
 // Reusa dispatchCotizacionToStore para volver a pendiente_tiendas y re-cotizar
 // con la tienda — mismo mecanismo que el dispatch inicial.
+function nombresQuitados(metadata: JsonObject): string[] {
+  const raw = metadata.product_adjustment_removed;
+  if (!Array.isArray(raw)) return [];
+  return raw.map((item) => String(item ?? "").trim()).filter(Boolean);
+}
+
+function idsQuitados(metadata: JsonObject): number[] {
+  const raw = metadata.product_adjustment_removed_ids;
+  if (!Array.isArray(raw)) return [];
+  return raw.map((item) => Number(item)).filter((id) => Number.isInteger(id) && id > 0);
+}
+
+async function armarMensajeRestante(pedido: PedidoFullRecord, faltantes: string[]): Promise<string> {
+  const items = pedido.items.filter((item) => item.disponible !== false);
+  const catalogo = pedido.tienda?.usaCatalogoFijo === true;
+  let pedidoTexto = formatItemsForMessage(items);
+  let subtotal: number | null = null;
+  if (catalogo && pedido.tienda?.tiendaId) {
+    const menu = await pedidoRepositoryV2.getProductosTiendaActivos(pedido.tienda.tiendaId);
+    const priced = priceCatalogOrder(
+      items.map((item) => ({ nombre_producto: item.nombreProducto, cantidad: item.cantidad })),
+      menu,
+    );
+    pedidoTexto = priced.lines.join("\n");
+    subtotal = priced.subtotal;
+  }
+  return mensajeClienteConfirmarSinProductos({
+    tiendaNombre: pedido.tienda?.nombre,
+    faltantes,
+    pedidoTexto,
+    subtotal,
+    catalogo,
+  });
+}
+
+async function responderConfirmacionRestante(telefono: string, mensaje: string, pedido: PedidoFullRecord): Promise<JsonObject> {
+  const faltantes = nombresQuitados(pedido.metadata);
+  const decision = decidirConfirmacionRestante(mensaje);
+  if (decision === "no") {
+    await cancelOpenPedido(
+      { id: pedido.id, estado: pedido.estado, snapshot_json: pedido.snapshot },
+      telefono,
+      "cliente_rechazo_sin_faltante",
+    );
+    const msg = `🧾 *Pedido #${pedido.id}*\n\nDe acuerdo, lo cancelamos. No se te cobra nada.\n\nCuando quieras hacer un pedido nuevo, aquí estoy.`;
+    await sendWhatsApp(telefono, msg);
+    await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+    return { ok: true, role: "cliente", accion: "rechazo_sin_faltante", pedidoId: pedido.id };
+  }
+
+  if (decision === "repetir") {
+    const msg = await armarMensajeRestante(pedido, faltantes);
+    await sendWhatsApp(telefono, msg);
+    await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+    return { ok: true, role: "cliente", stage: "ajuste_producto", pedidoId: pedido.id };
+  }
+
+  await pedidoRepositoryV2.setPedidoTiendaEstado({ pedidoTiendaId: pedido.tienda!.pedidoTiendaId, estadoTienda: "pendiente" });
+  const fresh = await pedidoRepositoryV2.getPedidoById(pedido.id);
+  if (!fresh?.tienda) {
+    const msg = "🧾 Hubo un problema al actualizar tu pedido.\n\nInténtalo de nuevo en un momento.";
+    await sendWhatsApp(telefono, msg);
+    await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+    return { ok: true, role: "cliente", stage: "ajuste_producto", pedidoId: pedido.id };
+  }
+
+  const ids = idsQuitados(pedido.metadata);
+  const dispatchResult = await dispatchCotizacionToStore(fresh, {
+    fromEstado: "ajuste_producto",
+    actorTipo: "cliente",
+    catalogAlreadyConfirmed: fresh.tienda.usaCatalogoFijo === true,
+    noticeKey: `pedido:${pedido.id}:cotizacion_tienda:ajuste:${ids.join("-") || "restante"}:v1`,
+  }).catch((e: unknown) => {
+    console.error("[mandalo] no se pudo reenviar el pedido tras un faltante", { pedidoId: pedido.id, message: getErrorMessage(e) });
+    return { ok: false as const, reason: "dispatch_failed" as const };
+  });
+
+  const tienda = fresh.tienda.nombre ?? "la tienda";
+  const aviso = fresh.tienda.usaCatalogoFijo
+    ? `Le avisé a *${tienda}* para que confirme el pedido #${pedido.id}.`
+    : `Le avisé a *${tienda}* para que confirme el precio del pedido #${pedido.id}.`;
+  const msg = dispatchResult.ok
+    ? `✅ *Listo.*\n\n${aviso}`
+    : `Hubo un problema al avisarle a la tienda. Dame un momento y lo reintento.`;
+  await sendWhatsApp(telefono, msg);
+  await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
+  return { ok: true, role: "cliente", accion: "ajuste_reconfirmado", pedidoId: pedido.id };
+}
+
 async function handleAjusteProducto(telefono: string, mensaje: string, pedido: PedidoFullRecord): Promise<JsonObject> {
   if (!pedido.tienda) {
     console.error("[mandalo] ajuste_producto sin tienda vinculada", { pedidoId: pedido.id });
@@ -1728,6 +1825,9 @@ async function handleAjusteProducto(telefono: string, mensaje: string, pedido: P
     await sendWhatsApp(telefono, msg);
     await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
     return { ok: true, role: "cliente", stage: "ajuste_producto", pedidoId: pedido.id };
+  }
+  if (pedido.metadata.product_adjustment_mode === "confirmar_restante") {
+    return responderConfirmacionRestante(telefono, mensaje, pedido);
   }
   const pedidoTiendaId = pedido.tienda.pedidoTiendaId;
 
@@ -2140,9 +2240,9 @@ async function deliverToCustomer(telefono: string, body: string): Promise<void> 
 }
 
 /**
- * Menú fijo: el SÍ de la lista (con precios y envío y servicio) ya es el último.
- * Con ubicación se manda. Sin repartidor se cancela con el aviso correcto,
- * y la tienda no recibe "Prepáralo" si todavía no se le había enviado.
+ * Menú fijo: el SÍ de la lista (con precios y envío y servicio) ya es el último
+ * del cliente. La tienda confirma con ORDEN #N CONFIRMO antes del repartidor.
+ * Sin repartidor se cancela antes de avisarle a la tienda.
  */
 async function commitCatalogDispatch(telefono: string, pedido: PedidoFullRecord): Promise<JsonObject> {
   if (!pedido.tienda) {
@@ -2214,22 +2314,13 @@ async function commitCatalogDispatch(telefono: string, pedido: PedidoFullRecord)
 
   const fresh = await pedidoRepositoryV2.getPedidoById(pedido.id);
   if (!fresh) return { ok: false, role: "cliente", error: "PEDIDO_NO_ENCONTRADO", pedidoId: pedido.id };
-  try {
-    await offerOrderToCouriers({
-      pedido: fresh,
-      customerPhone: telefono,
-      couriers,
-      actorTipo: "cliente",
-      deliverCustomer: (body) => deliverToCustomer(telefono, body),
-    });
-  } catch (e: unknown) {
-    console.error("[mandalo] no se pudo asignar repartidor al menú fijo", { pedidoId: pedido.id, message: getErrorMessage(e) });
-    const msg = "🛵 No pude registrar tu pedido para enviarlo al repartidor.\n\nInténtalo de nuevo en un momento.";
-    await sendWhatsApp(telefono, msg);
-    await guardarMensajeChat({ telefono, texto: msg, estado: "bot" }).catch(() => {});
-    return { ok: true, role: "cliente", stage: "confirmado_tiendas", pedidoId: pedido.id };
+  if (fresh.estado === "ajuste_producto") {
+    return { ok: true, role: "cliente", stage: "ajuste_producto", pedidoId: pedido.id };
   }
-  return { ok: true, role: "cliente", stage: "dispatch_repartidor_pendiente", pedidoId: pedido.id };
+  const msgCliente = formatCatalogAwaitingStore(fresh.id, fresh.tienda?.nombre ?? "la tienda");
+  await sendWhatsApp(telefono, msgCliente);
+  await guardarMensajeChat({ telefono, texto: msgCliente, estado: "bot" }).catch(() => {});
+  return { ok: true, role: "cliente", stage: "pendiente_tiendas", pedidoId: pedido.id };
 }
 
 async function completeFixedCatalogConfirmation(
@@ -3132,7 +3223,7 @@ async function handleClienteMessage(
         if (openPedido.estado === "pendiente_tiendas") {
           const full = await pedidoRepositoryV2.getPedidoById(openPedido.id);
           if (full?.tienda?.usaCatalogoFijo) {
-            trackingBody = "⏰ *Tu pedido ya está anotado.*\n\nYa tiene el precio del menú. Te aviso en cuanto vaya en camino.";
+            trackingBody = "⏰ *Tu pedido ya está anotado.*\n\nEstoy esperando a que la tienda lo confirme. Te aviso en cuanto vaya en camino.";
           }
         }
         if (openPedido.estado === "esperando_apertura_tienda") {
@@ -3596,26 +3687,157 @@ async function handleTiendaProductoNoDisponible(
     return { ok: true, role: "tienda", ordenId, error: "ESTADO_INVALIDO" };
   }
 
-  const item = await pedidoRepositoryV2.findPedidoItemByText(pedido.tienda.pedidoTiendaId, productoTexto);
-  if (!item) {
+  const nombres = partirProductosNoDisponibles(productoTexto);
+  const found: Array<{ id: number; nombreProducto: string }> = [];
+  const missing: string[] = [];
+  for (const nombre of nombres) {
+    const item = await pedidoRepositoryV2.findPedidoItemByText(pedido.tienda.pedidoTiendaId, nombre);
+    if (!item || found.some((row) => row.id === item.id)) {
+      if (!item) missing.push(nombre);
+      continue;
+    }
+    const row = pedido.items.find((it) => it.id === item.id);
+    if (row?.disponible === false) {
+      missing.push(nombre);
+      continue;
+    }
+    found.push(item);
+  }
+
+  const activos = pedido.items.filter((item) => item.disponible !== false);
+  if (!found.length || missing.length) {
     const msg = mensajeTiendaProductoNoEncontrado(
       ordenId,
-      productoTexto,
-      formatItemsForMessage(pedido.items),
-      pedido.items[0]?.nombreProducto ?? "producto",
+      missing.join(", ") || productoTexto,
+      formatItemsForMessage(activos),
+      activos[0]?.nombreProducto ?? "producto",
     );
     await sendWhatsApp(telefono, msg);
     return { ok: true, role: "tienda", ordenId, error: "PRODUCTO_NO_ENCONTRADO" };
   }
 
-  await flagItemUnavailable({ pedido, item, actorTipo: "tienda" });
+  const restantes = activos.filter((item) => !found.some((row) => row.id === item.id));
+  if (!restantes.length) {
+    for (const item of found) {
+      await pedidoRepositoryV2.removePedidoItem(item.id);
+    }
+    await cancelOpenPedido(
+      { id: pedido.id, estado: pedido.estado, snapshot_json: pedido.snapshot },
+      pedido.clienteTelefono,
+      "sin_productos_tras_faltante_tienda",
+    );
+    const msgCliente = mensajeClientePedidoVacioPorFaltante({
+      tiendaNombre: pedido.tienda.nombre,
+      pedidoId: pedido.id,
+      faltantes: found.map((item) => item.nombreProducto),
+    });
+    await sendWhatsApp(pedido.clienteTelefono, msgCliente);
+    await guardarMensajeChat({ telefono: pedido.clienteTelefono, texto: msgCliente, estado: "bot" }).catch(() => {});
+    return { ok: true, role: "tienda", ordenId, accion: "cancelado_sin_productos" };
+  }
 
+  const catalogo = pedido.tienda.usaCatalogoFijo === true;
+  let pedidoTexto = formatItemsForMessage(restantes);
+  let subtotal: number | null = null;
+  if (catalogo) {
+    const menu = await pedidoRepositoryV2.getProductosTiendaActivos(pedido.tienda.tiendaId);
+    const priced = priceCatalogOrder(
+      restantes.map((item) => ({ nombre_producto: item.nombreProducto, cantidad: item.cantidad })),
+      menu,
+    );
+    pedidoTexto = priced.lines.join("\n");
+    subtotal = priced.subtotal;
+  }
+  const body = mensajeClienteConfirmarSinProductos({
+    tiendaNombre: pedido.tienda.nombre,
+    faltantes: found.map((item) => item.nombreProducto),
+    pedidoTexto,
+    subtotal,
+    catalogo,
+  });
+  await askCustomerAboutRemovedItems({ pedido, removed: found, body });
+  const lista = found.map((item) => `*${item.nombreProducto}*`).join(", ");
   await sendWhatsApp(
     telefono,
-    `✅ *Recibido, gracias.*\n\nYa le avisé al cliente que *"${item.nombreProducto}"* no está disponible.\n\nEn cuanto me diga qué hacer, seguimos.`,
+    `✅ *Recibido, gracias.*\n\nYa le avisé al cliente que no hay: ${lista}.\n\nEn cuanto me diga si lo dejamos así, seguimos.`,
   );
 
-  return { ok: true, role: "tienda", ordenId, accion: "producto_no_disponible", itemId: item.id };
+  return { ok: true, role: "tienda", ordenId, accion: "producto_no_disponible", itemId: found[0]?.id ?? null };
+}
+
+async function handleTiendaConfirmo(telefono: string, tiendaId: number, ordenId: number): Promise<JsonObject> {
+  const pedido = await pedidoRepositoryV2.getPedidoById(ordenId);
+  if (!pedido) {
+    const msg = `🏪 No encontré el pedido *#${ordenId}*.\n\nVerifica el número e intenta de nuevo.`;
+    await sendWhatsApp(telefono, msg);
+    return { ok: true, role: "tienda", ordenId, error: "PEDIDO_NO_ENCONTRADO" };
+  }
+  if (!pedido.tienda || pedido.tienda.tiendaId !== tiendaId) {
+    const msg = "🏪 Ese pedido no corresponde a tu negocio.\n\nVerifica el número de orden.";
+    await sendWhatsApp(telefono, msg);
+    return { ok: true, role: "tienda", ordenId, error: "TIENDA_NO_CORRESPONDE" };
+  }
+  if (pedido.estado !== "pendiente_tiendas") {
+    const msg = `🏪 Ese pedido ya no está esperando confirmación.\n\nEstado actual: *${pedido.estado}*.`;
+    await sendWhatsApp(telefono, msg);
+    return { ok: true, role: "tienda", ordenId, error: "ESTADO_INVALIDO" };
+  }
+  if (!pedido.tienda.usaCatalogoFijo) {
+    const msg = `🏪 Este pedido se cotiza con precio.\n\n*Responde así:*\nORDEN #${ordenId} PRECIO 150`;
+    await sendWhatsApp(telefono, msg);
+    return { ok: true, role: "tienda", ordenId, accion: "guia_formato" };
+  }
+
+  const activos = pedido.items.filter((item) => item.disponible !== false);
+  const menu = await pedidoRepositoryV2.getProductosTiendaActivos(pedido.tienda.tiendaId);
+  const priced = priceCatalogOrder(
+    activos.map((item) => ({ nombre_producto: item.nombreProducto, cantidad: item.cantidad })),
+    menu,
+  );
+  if (priced.subtotal == null) {
+    const msg = `🏪 No pude cerrar el precio del menú del pedido #${ordenId}.\n\nRevisa que los productos sigan en el menú.`;
+    await sendWhatsApp(telefono, msg);
+    return { ok: true, role: "tienda", ordenId, error: "SIN_PRECIO" };
+  }
+
+  const couriers = await findAvailableCouriers();
+  if (!couriers.length) {
+    await cancelBecauseNoCourier({
+      pedido,
+      customerPhone: pedido.clienteTelefono,
+      notifyStore: true,
+      deliverCustomer: (body) => deliverToCustomer(pedido.clienteTelefono, body),
+    });
+    return { ok: true, role: "tienda", ordenId, accion: "sin_repartidor" };
+  }
+
+  await finalizeStoreQuote({
+    pedido,
+    subtotal: priced.subtotal,
+    actorTipo: "tienda",
+    itemLines: priced.lines,
+    customerUpdate: "none",
+  });
+  const fresh = await pedidoRepositoryV2.getPedidoById(pedido.id);
+  if (!fresh) return { ok: false, role: "tienda", ordenId, error: "PEDIDO_NO_ENCONTRADO" };
+
+  try {
+    await offerOrderToCouriers({
+      pedido: fresh,
+      customerPhone: fresh.clienteTelefono,
+      couriers,
+      actorTipo: "sistema",
+      deliverCustomer: (body) => deliverToCustomer(fresh.clienteTelefono, body),
+    });
+  } catch (e: unknown) {
+    console.error("[mandalo] la tienda confirmó pero no se ofreció al repartidor", { pedidoId: pedido.id, message: getErrorMessage(e) });
+    const msg = `🏪 Recibí la confirmación del pedido #${ordenId}, pero no pude avisarle al repartidor.\n\nAvísame y lo reintento.`;
+    await sendWhatsApp(telefono, msg);
+    return { ok: true, role: "tienda", ordenId, error: "DISPATCH_REPARTIDOR" };
+  }
+
+  await sendWhatsApp(telefono, `✅ *Recibido, gracias.*\n\nPedido *#${ordenId}* confirmado. Ya lo mando al repartidor.`);
+  return { ok: true, role: "tienda", ordenId, accion: "confirmado_tienda" };
 }
 
 async function handleTiendaAcuse(telefono: string, tiendaId: number, ordenId: number): Promise<JsonObject> {
@@ -3658,6 +3880,9 @@ async function handleTiendaMessage(telefono: string, mensaje: string, tiendaId: 
   if (noDisponible) {
     return handleTiendaProductoNoDisponible(telefono, tiendaId, noDisponible.ordenId, noDisponible.productoTexto);
   }
+
+  const confirmoId = extraerComandoConfirmoTienda(String(mensaje));
+  if (confirmoId) return handleTiendaConfirmo(telefono, tiendaId, confirmoId);
 
   let ordenId = extraerOrdenId(String(mensaje));
   let precio = extraerPrecio(String(mensaje));

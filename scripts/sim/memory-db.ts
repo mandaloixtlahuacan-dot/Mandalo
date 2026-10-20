@@ -609,12 +609,12 @@ export function seedFixtures(db: MemoryDatabase): CatalogPriceReport {
   db.seed("repartidores", [
     {
       id: 1,
-      nombre: "Roberto",
+      nombre: "Moy",
       telefono: "5213300000011",
       activo: true,
       disponible: true,
       vehiculo: "moto",
-      horario_json: { "0": { abre: "08:00", cierra: "21:00" }, "1": { abre: "08:00", cierra: "21:00" }, "2": { abre: "08:00", cierra: "21:00" }, "3": { abre: "08:00", cierra: "21:00" }, "4": { abre: "08:00", cierra: "21:00" }, "5": { abre: "08:00", cierra: "21:00" } },
+      horario_json: { "0": { abre: "08:00", cierra: "23:30" }, "1": { abre: "08:00", cierra: "23:30" }, "2": { abre: "08:00", cierra: "23:30" }, "3": { abre: "08:00", cierra: "23:30" }, "4": { abre: "08:00", cierra: "23:30" }, "5": { abre: "08:00", cierra: "23:30" } },
     },
     {
       id: 2,
@@ -623,7 +623,7 @@ export function seedFixtures(db: MemoryDatabase): CatalogPriceReport {
       activo: true,
       disponible: true,
       vehiculo: "moto",
-      horario_json: { "0": { abre: "15:00", cierra: "21:00" }, "1": { abre: "15:00", cierra: "21:00" }, "2": { abre: "15:00", cierra: "21:00" }, "3": { abre: "15:00", cierra: "21:00" }, "4": { abre: "15:00", cierra: "21:00" }, "5": { abre: "15:00", cierra: "21:00" }, "6": { abre: "08:00", cierra: "21:00" } },
+      horario_json: { "0": { abre: "15:00", cierra: "23:30" }, "1": { abre: "15:00", cierra: "23:30" }, "2": { abre: "15:00", cierra: "23:30" }, "3": { abre: "15:00", cierra: "23:30" }, "4": { abre: "15:00", cierra: "23:30" }, "5": { abre: "15:00", cierra: "23:30" }, "6": { abre: "08:00", cierra: "23:30" } },
     },
   ]);
   db.seed("configuracion", [{ clave: "admin_telefono", valor: "5213399990000" }]);

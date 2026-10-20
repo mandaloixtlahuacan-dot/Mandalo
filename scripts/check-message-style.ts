@@ -143,8 +143,8 @@ const aLaTienda = mensajeTiendaProductoNoEncontrado(12, "kétchup", "- Mayonesa 
 assert(aLaTienda.includes("🛒 *Pedido*"), "a la tienda el encabezado es Pedido");
 assert(!aLaTienda.includes("Tu pedido"), "a la tienda no se le dice tu pedido");
 assert(aLaTienda.includes('No encontré "kétchup"'), "el aviso a la tienda conserva la frase");
-assert(aLaTienda.includes("ORDEN #12 NO_DISPONIBLE Mayonesa"), "el comando a la tienda se copia sin asteriscos");
-assert(!/ORDEN #\d+ NO_DISPONIBLE \*/.test(aLaTienda), "el comando no abre negrita");
+assert(aLaTienda.includes("ORDEN #12 NO HAY Mayonesa"), "el comando a la tienda se copia sin asteriscos");
+assert(!/ORDEN #\d+ NO HAY \*/.test(aLaTienda), "el comando no abre negrita");
 
 const specific = formatSpecificItemLine({
   nombre_producto: "Coca-Cola",

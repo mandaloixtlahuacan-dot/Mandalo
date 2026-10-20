@@ -1,7 +1,7 @@
 // Validación de horario. El bot sigue platicando y armando pedidos 24/7.
-// El despacho de Mándalo es todos los días de 8am a 9pm, hora de México
-// (15 de octubre de 2026; antes era 3pm–9pm — ver CLAUDE.md Sección 5
-// regla 6). Cada tienda conserva su propio horario (hora_apertura /
+// El despacho de Mándalo es todos los días de 8am a 11:30pm, hora de México
+// (20 de octubre de 2026; antes, desde el 15 de octubre, era 8am–9pm —
+// ver CLAUDE.md Sección 5 regla 6). Cada tienda conserva su propio horario (hora_apertura /
 // hora_cierre, dias_cerrado, horario_por_dia). Un pedido fuera de la
 // ventana de Mándalo o de la tienda se programa (esperando_apertura_tienda).
 // El horario semanal de cada repartidor vive en repartidores.horario_json
@@ -272,7 +272,7 @@ export function checkTiendaSchedule(params: {
 // fail-open. Constantes exportadas (no solo usadas aquí) para que el prompt
 // y los mensajes al cliente muestren siempre el mismo valor.
 export const MANDALO_HORA_APERTURA = "08:00";
-export const MANDALO_HORA_CIERRE = "21:00";
+export const MANDALO_HORA_CIERRE = "23:30";
 
 export function checkMandaloSchedule(now?: Date): TiendaScheduleCheck {
   return checkTiendaSchedule({ horaApertura: MANDALO_HORA_APERTURA, horaCierre: MANDALO_HORA_CIERRE, now });

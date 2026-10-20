@@ -261,7 +261,7 @@ for (const phase of phases) {
   add("a qué hora abren", phase, "a qué hora abren", {
     action: "answer",
     phase: phase === "entregado" ? "categoria" : phase,
-    includes: ["8am", "9pm"],
+    includes: ["8am", "11:30pm"],
   });
   add("tienen coca?", phase, "tienen coca?", {
     action: "answer",

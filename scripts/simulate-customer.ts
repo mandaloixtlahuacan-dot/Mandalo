@@ -702,9 +702,13 @@ async function main(): Promise<void> {
           if (/fuera de esa zona|cuando ya est[eé] armado/i.test(placed)) problems.push("no llegó a ofrecer el pedido");
           const row = db.rows("pedidos").find((item) => String(item.cliente_telefono ?? "").endsWith(phone.slice(-10)));
           const id = Number(row?.id);
-          if (!id || String(row?.estado) !== "dispatch_repartidor_pendiente") {
-            problems.push(`estado ${String(row?.estado ?? "sin pedido")}, no dispatch`);
+          if (!row || !id || String(row.estado) !== "pendiente_tiendas") {
+            problems.push(`estado ${String(row?.estado ?? "sin pedido")}, no pendiente de la tienda`);
           } else {
+            built.push(await say(PHONES.george, `ORDEN #${id} CONFIRMO`));
+            if (String(row.estado) !== "dispatch_repartidor_pendiente") {
+              problems.push(`después de CONFIRMO quedó en ${String(row.estado)}`);
+            } else {
             built.push(await say(PHONES.roberto, `#RECOGI ${id}`));
             built.push(await say(PHONES.roberto, `#ENTREGADO ${id}`));
             const courier = built.slice(-2).flatMap((turn) => turn.replies.map((reply) => reply.body)).join("\n");
@@ -743,6 +747,7 @@ async function main(): Promise<void> {
               })),
               result: { ok: true },
             });
+            }
           }
           return {
             turns: built,
@@ -917,6 +922,16 @@ async function main(): Promise<void> {
       if (/cuando ya est[eé] armado|fuera de esa zona/i.test(placed)) {
         return { turns: built, verdict: { status: "FALLA", detail: "el pin de adentro no siguió" } };
       }
+      if (!/confirmen el pedido/i.test(placed)) {
+        return { turns: built, verdict: { status: "FALLA", detail: "no esperó la confirmación de la tienda" } };
+      }
+      const storePhone = /central/i.test(store) ? PHONES.central : PHONES.george;
+      const orderMatch = blob(built).match(/ORDEN #(\d+)/i) ?? blob(built).match(/Pedido #(\d+)/i);
+      const orderId = orderMatch ? Number(orderMatch[1]) : null;
+      if (!orderId || !/ORDEN #\d+\s+CONFIRMO/i.test(blob(built))) {
+        return { turns: built, verdict: { status: "FALLA", detail: "la tienda no recibió ORDEN #N CONFIRMO" } };
+      }
+      built.push(await say(storePhone, `ORDEN #${orderId} CONFIRMO`));
       const problems = await finishWithCouriers(phone, built);
       return {
         turns: built,

@@ -3,6 +3,11 @@ import { ensureMxWhatsappIntl } from "@/lib/roles";
 import { cancelPedidoInactivo, getPedidoById, setPedidoEstado, type PedidoFullRecord } from "@/lib/repositories/pedidoRepositoryV2";
 import * as outboxRepository from "@/lib/repositories/outboxRepository";
 import { formatCourierCancelNotice } from "@/lib/customerUx";
+import {
+  formatProductAdjustmentReminder,
+  formatStorePendingReminder,
+  formatStoreQuoteTimeoutCancel,
+} from "@/lib/storeOrderCommands";
 import { formatMoney, MANDALO_DELIVERY_FEE, MANDALO_SERVICE_FEE } from "@/lib/ordenes";
 import { resetCustomerToCategoryMenu } from "@/lib/messages";
 import { withCategoryMenu } from "@/lib/orderSession";
@@ -74,13 +79,11 @@ const TIMEOUT_CONFIGS: TimeoutKindConfig[] = [
       if (!pedido.tienda?.telefono) return null;
       return {
         telefono: ensureMxWhatsappIntl(pedido.tienda.telefono),
-        body:
-          `⏰ *Recordatorio*\n\n` +
-          `El pedido #${pedido.id} sigue esperando tu precio.\n\n` +
-          `🛒 *Pedido*\n\n${formatPedidoItems(pedido.items)}\n\n` +
-          `Tienes *5 minutos* antes de que se cancele.\n\n` +
-          `*Responde así:*\nORDEN #${pedido.id} PRECIO 150\n\n` +
-          `¿Te falta algún producto?\n\n*Responde:*\nORDEN #${pedido.id} NO_DISPONIBLE nombre del producto`,
+        body: formatStorePendingReminder({
+          pedidoId: pedido.id,
+          pedidoTexto: formatPedidoItems(pedido.items),
+          catalogo: pedido.tienda?.usaCatalogoFijo === true,
+        }),
         tipoMensaje: "cotizacion_tienda",
         destinatarioTipo: "negocio",
         destinatarioId: pedido.tienda.tiendaId,
@@ -99,7 +102,7 @@ const TIMEOUT_CONFIGS: TimeoutKindConfig[] = [
       if (pedido.tienda?.telefono) {
         notices.push({
           telefono: ensureMxWhatsappIntl(pedido.tienda.telefono),
-          body: `🏪 *Pedido #${pedido.id}*\n\nSe canceló por falta de respuesta a tiempo. Ya no es necesario cotizarlo.`,
+          body: formatStoreQuoteTimeoutCancel(pedido.id, pedido.tienda?.usaCatalogoFijo === true),
           tipoMensaje: "cotizacion_tienda",
           destinatarioTipo: "negocio",
           destinatarioId: pedido.tienda.tiendaId,
@@ -209,10 +212,11 @@ const TIMEOUT_CONFIGS: TimeoutKindConfig[] = [
       const itemNombre = cleanText(pedido.metadata.product_adjustment_item_nombre) ?? "un producto";
       return {
         telefono: ensureMxWhatsappIntl(pedido.clienteTelefono),
-        body:
-          `⏰ *Pedido #${pedido.id}*\n\n` +
-          `Sigue esperando tu decisión sobre *"${itemNombre}"*.\n\n` +
-          `Responde en los próximos *5 minutos*: escribe *sin él* para continuar sin ese producto, o dime por cuál lo cambio. Si no, se cancelará.`,
+        body: formatProductAdjustmentReminder({
+          pedidoId: pedido.id,
+          itemNombre,
+          mode: pedido.metadata.product_adjustment_mode,
+        }),
         tipoMensaje: "notificacion_cliente",
         destinatarioTipo: "cliente",
         destinatarioId: null,
