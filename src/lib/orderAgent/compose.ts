@@ -301,7 +301,9 @@ function lineQty(clause: string, product: AgentProduct, store: AgentStore): { qt
   const grocery = spoken ? null : parseGroceryFreeText(clause);
   const qty = spoken?.qty ?? grocery?.qty ?? null;
   const unit = spoken?.unit ?? grocery?.unit ?? null;
-  if (qty != null && qty > 0 && unit && measureAllowed(store, product, unit)) {
+  const packageSize = spokenPackageSize(clause);
+  const sizeInTheName = Boolean(packageSize && matchesPackage(product, packageSize));
+  if (qty != null && qty > 0 && unit && measureAllowed(store, product, unit) && !sizeInTheName) {
     return { qty, unit };
   }
   if (store.category === "carniceria" && product.unit === "kg") {
@@ -749,6 +751,13 @@ function chooseAbarrotes(clause: string, products: AgentProduct[]): AgentProduct
   }
   const sized = standardPresentation(clause, products);
   const keys = new Set(products.map((product) => sizeKeyOf(product)));
+  const baseOf = (product: AgentProduct) =>
+    foldAgent(product.name).replace(/\b\d+(?:[.,]\d+)?(?:ml|l|lt|lts|g|gr|kg|pz|paq)?\b/g, " ").replace(/\s+/g, " ").trim();
+  const bases = new Set(products.map(baseOf));
+  // «Queso Chelita» nombra marca y tipo. 1 kg y 250 g se preguntan; no se adivina el tamaño.
+  if (sized.length === 1 && keys.size >= 2 && bases.size === 1 && !unsizedNamedLine(clause, sized[0])) {
+    return capOptions(products);
+  }
   // «cocacola» y «zote» traen tamaño y hay varias: se pregunta.
   // «olé capuchino» nombra la línea y la pieza sin tamaño se queda.
   if (sized.length === 1 && keys.size >= 3 && !unsizedNamedLine(clause, sized[0])) {
