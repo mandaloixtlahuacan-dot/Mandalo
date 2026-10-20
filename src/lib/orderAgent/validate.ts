@@ -27,6 +27,7 @@ import {
   productMentionedStrict,
   productTypeTokens,
   sharesProductType,
+  tokenMatches,
   replacementLineId,
   uniqueHitMentioned,
   uncoveredClauses,
@@ -276,8 +277,26 @@ function narrowAskedProducts(query: string, products: AgentProduct[]): AgentProd
   return unique;
 }
 
+/** El que mejor pega va primero. El número de la lista es el mismo de candidateIds. */
+export function productsForOptions(query: string, products: AgentProduct[]): AgentProduct[] {
+  const narrowed = narrowAskedProducts(query, products);
+  const tokens = contentTokens(query).filter((token) => token.length >= 3);
+  let best: AgentProduct | null = null;
+  let bestScore = 0;
+  for (const product of products) {
+    const blob = `${product.brand ?? ""} ${product.name} ${product.presentation ?? ""}`;
+    const score = tokens.reduce((sum, token) => sum + (tokenMatches(blob, token) ? token.length : 0), 0);
+    if (score > bestScore) {
+      bestScore = score;
+      best = product;
+    }
+  }
+  const withBest = best && !narrowed.some((row) => row.id === best?.id) ? [best, ...narrowed] : narrowed;
+  return withBest.slice(0, 5);
+}
+
 export function formatProductOptions(query: string, products: AgentProduct[], invite = false): string {
-  const rows = narrowAskedProducts(query, products).slice(0, 5);
+  const rows = products.slice(0, 5);
   const lines = rows.map((product, index) => {
     const price = optionPrice(product);
     const label = optionLabel(product);
@@ -319,6 +338,23 @@ function marinadePrompt(products: AgentProduct[], query = ""): string | null {
   return null;
 }
 
+function measureFromQuery(
+  query: string,
+  products: AgentProduct[],
+  store: AgentStore,
+): { qty: number | null; unit: AgentUnit | null } {
+  const sample = products[0];
+  const spoken = spokenMeasure(query, sample?.name ?? "") ?? spokenMeasure(query, "");
+  const grocery = parseGroceryFreeText(query);
+  const qty = spoken?.qty ?? grocery.qty;
+  const unit = spoken?.unit ?? grocery.unit;
+  if (qty == null && !unit) return { qty: null, unit: null };
+  if (unit && products.length && !products.some((product) => unitAllowed(store, product, unit))) {
+    return { qty: qty ?? null, unit: null };
+  }
+  return { qty: qty ?? null, unit: unit ?? null };
+}
+
 function clarificationOf(
   query: string,
   products: AgentProduct[],
@@ -326,7 +362,7 @@ function clarificationOf(
   unit: AgentUnit | null,
   axis: PendingAxis,
 ): AgentClarification {
-  const sliced = filterAskedType(query, products).slice(0, 5);
+  const sliced = productsForOptions(query, filterAskedType(query, products));
   const brands = new Set(sliced.map((product) => foldAgent(product.brand ?? "")).filter(Boolean));
   const marinade = marinadePrompt(sliced, query);
   return {
@@ -595,12 +631,22 @@ export function validateToolCall(params: {
     }
     if (store.hasProductList && groups.length > 1) {
       const [first, ...rest] = groups;
-      const head = clarificationOf(first.query, first.products, qty, askedUnit, axis);
+      const headMeasure = measureFromQuery(first.query, first.products, store);
+      const head = clarificationOf(
+        first.query,
+        first.products,
+        qty ?? headMeasure.qty,
+        askedUnit ?? headMeasure.unit,
+        axis,
+      );
       text = head.question;
       ids = head.candidateIds;
       axis = head.axis;
       query = head.query ?? null;
-      queue = rest.map((group) => clarificationOf(group.query, group.products, null, null, null));
+      queue = rest.map((group) => {
+        const measured = measureFromQuery(group.query, group.products, store);
+        return clarificationOf(group.query, group.products, measured.qty, measured.unit, null);
+      });
     } else if (store.hasProductList && parts.length > 1) {
       text = parts[0];
       axis = axisOf(text, args.axis);

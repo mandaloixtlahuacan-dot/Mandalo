@@ -24,8 +24,11 @@ import {
   sauceTypeAlias,
   spokenMeasure,
   spokenPackageSize,
+  tokenMatches,
+  trailingQualifiers,
   variantFromMessage,
 } from "@/lib/orderAgent/match";
+import { parseGroceryFreeText } from "@/lib/orderAgent/grocery";
 import type { AgentLine, AgentProduct, AgentStore, AgentUnit } from "@/lib/orderAgent/types";
 
 export type ClauseAdd = {
@@ -58,7 +61,9 @@ function cleanClause(clause: string): string {
 }
 
 function countIn(clause: string): number {
-  const text = foldAgent(clause).replace(/\b\d+(?:[.,]\d+)?\s*(?:ml|l|lt|lts|litros?|g|gr|gramos?|kg|kilos?)\b/g, " ");
+  const text = foldAgent(clause)
+    .replace(/\b\d+\s+\d\s*(?:ml|l|lt|lts|litros?|g|gr|gramos?|kg|kilos?)\b/g, " ")
+    .replace(/\b\d+(?:[.,]\d+)?\s*(?:ml|l|lt|lts|litros?|g|gr|gramos?|kg|kilos?)\b/g, " ");
   const digit = text.match(/\b(\d+(?:[.,]\d+)?)\b/);
   if (digit) {
     const qty = Number(digit[1].replace(",", "."));
@@ -133,7 +138,35 @@ function tokenInBlob(blob: string, token: string): boolean {
   for (const form of forms) {
     if (words.some((word) => wordMatches(word, form))) return true;
   }
-  return false;
+  return tokenMatches(blob, token);
+}
+
+/** Productos que cubren todas las palabras del cliente, aunque una lleve un dedo mal. */
+function fuzzyFamily(text: string, pool: AgentProduct[]): AgentProduct[] {
+  const skip = trailingQualifiers(text);
+  const tokens = contentTokens(text).filter((token) => !skip.has(token) && token.length >= 3);
+  if (!tokens.some((token) => token.length >= 4)) return [];
+  const scored = pool
+    .filter((product) => product.available)
+    .map((product) => {
+      const blob = productBlob(product);
+      const covered = tokens.every((token) => tokenInBlob(blob, token));
+      const score = tokens.reduce((sum, token) => sum + (tokenInBlob(blob, token) ? token.length : 0), 0);
+      return { product, covered, score };
+    })
+    .filter((row) => row.covered && row.score > 0);
+  if (!scored.length) return [];
+  const ranked = scored
+    .map((row) => ({
+      ...row,
+      extra: contentTokens(row.product.name).filter((token) => {
+        if (/^\d/.test(token) || SIZE_WORD.test(token)) return false;
+        return !tokens.some((said) => tokenInBlob(token, said) || tokenInBlob(said, token));
+      }).length,
+    }))
+    .sort((a, b) => b.score - a.score || a.extra - b.extra || a.product.name.length - b.product.name.length);
+  const best = ranked[0]?.score ?? 0;
+  return ranked.filter((row) => row.score === best).map((row) => row.product);
 }
 
 /** «Coca Cola» se pide «coca» o «cocas». La segunda palabra no es otro producto. */
@@ -251,6 +284,12 @@ function exactNameDecision(clause: string, pool: AgentProduct[], store: AgentSto
   return { kind: "add", clause, product, qty: qty.qty, unit: qty.unit, variant: null };
 }
 
+function measureAllowed(store: AgentStore, product: AgentProduct, unit: AgentUnit): boolean {
+  if (store.catalogMode === "list") return true;
+  if (product.unit === "kg") return unit === "kg" || unit === "pesos" || unit === "g";
+  return unit === "pz";
+}
+
 function lineQty(clause: string, product: AgentProduct, store: AgentStore): { qty: number; unit: AgentUnit } {
   // «7 Up 1.5 Lt» y «ET 4» traen el número en el nombre. No es la cantidad.
   if (store.category === "abarrotes" && foldCatalogName(clause) === foldCatalogName(product.name)) {
@@ -260,15 +299,20 @@ function lineQty(clause: string, product: AgentProduct, store: AgentStore): { qt
   if (grams != null && (store.category === "carniceria" || product.unit === "kg")) {
     return { qty: grams, unit: "g" };
   }
-  const spoken = spokenMeasure(clause, product.name);
-  if (spoken && (spoken.unit === "kg" || spoken.unit === "pesos" || store.category === "carniceria" || product.unit === spoken.unit)) {
-    return spoken;
+  const spoken = spokenMeasure(clause, product.name) ?? spokenMeasure(clause, "");
+  const grocery = spoken ? null : parseGroceryFreeText(clause);
+  const qty = spoken?.qty ?? grocery?.qty ?? null;
+  const unit = spoken?.unit ?? grocery?.unit ?? null;
+  const packageSize = spokenPackageSize(clause);
+  const sizeInTheName = Boolean(packageSize && matchesPackage(product, packageSize));
+  if (qty != null && qty > 0 && unit && measureAllowed(store, product, unit) && !sizeInTheName) {
+    return { qty, unit };
   }
   if (store.category === "carniceria" && product.unit === "kg") {
     return { qty: countIn(clause) === 1 ? 1 : countIn(clause), unit: "kg" };
   }
-  const qty = countIn(clause);
-  return { qty: Number.isInteger(qty) ? qty : 1, unit: "pz" };
+  const counted = !sizeInTheName && qty != null && qty > 0 ? qty : countIn(clause);
+  return { qty: Number.isInteger(counted) ? counted : 1, unit: product.unit === "kg" ? "kg" : "pz" };
 }
 
 function labelOf(clause: string): string {
@@ -709,6 +753,13 @@ function chooseAbarrotes(clause: string, products: AgentProduct[]): AgentProduct
   }
   const sized = standardPresentation(clause, products);
   const keys = new Set(products.map((product) => sizeKeyOf(product)));
+  const baseOf = (product: AgentProduct) =>
+    foldAgent(product.name).replace(/\b\d+(?:[.,]\d+)?(?:ml|l|lt|lts|g|gr|kg|pz|paq)?\b/g, " ").replace(/\s+/g, " ").trim();
+  const bases = new Set(products.map(baseOf));
+  // «Queso Chelita» nombra marca y tipo. 1 kg y 250 g se preguntan; no se adivina el tamaño.
+  if (sized.length === 1 && keys.size >= 2 && bases.size === 1 && !unsizedNamedLine(clause, sized[0])) {
+    return capOptions(products);
+  }
   // «cocacola» y «zote» traen tamaño y hay varias: se pregunta.
   // «olé capuchino» nombra la línea y la pieza sin tamaño se queda.
   if (sized.length === 1 && keys.size >= 3 && !unsizedNamedLine(clause, sized[0])) {
@@ -763,7 +814,22 @@ export function decideClause(clause: string, pool: AgentProduct[], store: AgentS
       const blob = productBlob(product);
       return tokenInBlob(blob, token) || sauceTypeAlias(blob, token, text);
     }));
-    if (!typed.length) return { kind: "missing", clause: text, label: labelOf(text) };
+    if (!typed.length) {
+      const rescued = fuzzyFamily(text, pool);
+      if (rescued.length) {
+        const measure = lineQty(text, rescued[0], store);
+        return {
+          kind: "ask",
+          clause: text,
+          query: text,
+          products: capOptions(rescued),
+          qty: measure.qty,
+          unit: measure.unit,
+          marinade: false,
+        };
+      }
+      return { kind: "missing", clause: text, label: labelOf(text) };
+    }
     hits = typed;
   }
   const wanted = spokenPackageSize(text);

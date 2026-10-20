@@ -256,7 +256,7 @@ for (const phase of phases) {
   add("cuánto cuesta el envío", phase, "cuánto cuesta el envío", {
     action: "answer",
     phase: phase === "entregado" ? "categoria" : phase,
-    includes: ["Envío: $15", "servicio $10"],
+    includes: ["$15 de envío", "$10 de servicio", "te lo sumo al final"],
   });
   add("a qué hora abren", phase, "a qué hora abren", {
     action: "answer",

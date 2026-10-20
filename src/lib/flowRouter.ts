@@ -9,7 +9,7 @@ import {
   isGreetingOnly,
   formatAbarrotesStoreAck,
   formatCatalogMenuCaption,
-  formatCustomerFeeLine,
+  formatFeeAnswer,
   formatNicheStoreList,
   matchNicheChoice,
   matchNicheTypo,
@@ -397,7 +397,7 @@ function withReprompt(input: FlowRouteInput, lead: string, action: FlowAction): 
 
 function answerFor(input: FlowRouteInput, kind: "fee" | "hours" | "have"): string {
   if (kind === "fee") {
-    return formatCustomerFeeLine();
+    return formatFeeAnswer();
   }
   const open = formatHour12(MANDALO_HORA_APERTURA);
   const close = formatHour12(MANDALO_HORA_CIERRE);

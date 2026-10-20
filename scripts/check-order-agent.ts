@@ -387,7 +387,7 @@ async function main(): Promise<void> {
   assert(!follow.reply.includes(question), "no se repite la pregunta de abarrotes");
   assert(follow.reply.includes("Si tu pedido está bien, responde sí"), "la lista pide el sí");
   assert(follow.reply.includes("Solo es un ejemplo, no está en tu pedido"), "el ejemplo va marcado");
-  assert(follow.reply.includes("Envío: $15") && follow.reply.includes("servicio $10"), "el abarrotes muestra envío y servicio");
+  assert(!follow.reply.includes("Envío: $15") && !follow.reply.includes("servicio $10"), "el abarrotes no cobra antes del resumen");
   assert(followCalls.includes("gpt-4.1-mini"), "dos fallos saltan de modelo");
 
   const centralLines: AgentLine[] = [

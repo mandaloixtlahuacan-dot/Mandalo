@@ -333,7 +333,7 @@ for (const text of fixed) {
   assert(!text.includes("undefined") && !text.includes("NaN") && !text.includes("[object Object]"), "un texto fijo trae un placeholder");
   assert(!/\$25\b/.test(text) && !/\$20\b/.test(text), "un texto fijo trae $20 o $25");
 }
-assert(pekesAck.includes("Envío: $15") && pekesAck.includes("servicio $10") && pekesAck.includes("Solo es un ejemplo"), "Peke's cobra envío y servicio y marca el ejemplo");
-assert(georgeMenu.includes("cerrada") && georgeMenu.includes("Horario: 7pm a 9pm") && georgeMenu.includes("se programa") && georgeMenu.includes("Envío: $15") && georgeMenu.includes("servicio $10"), "George cerrado avisa horario, se programa y cobra envío y servicio");
+assert(!pekesAck.includes("Envío: $15") && !pekesAck.includes("servicio $10") && pekesAck.includes("Solo es un ejemplo"), "Peke's no cobra al saludar y marca el ejemplo");
+assert(georgeMenu.includes("cerrada") && georgeMenu.includes("Horario: 7pm a 9pm") && georgeMenu.includes("se programa") && !georgeMenu.includes("Envío: $15") && !georgeMenu.includes("servicio $10"), "George cerrado avisa horario y se programa, sin cobrar todavía");
 
 console.log("check-outbound-loops: ok");
