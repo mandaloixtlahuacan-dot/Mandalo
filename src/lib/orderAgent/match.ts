@@ -148,6 +148,32 @@ export function isClasicoDogo(product: Pick<AgentProduct, "name">): boolean {
   return /\bdogo clasico\b/.test(foldAgent(product.name));
 }
 
+function editDistance(left: string, right: string): number {
+  const rows = left.length + 1;
+  const cols = right.length + 1;
+  const grid = Array.from({ length: rows }, () => new Array<number>(cols).fill(0));
+  for (let i = 0; i < rows; i += 1) grid[i][0] = i;
+  for (let j = 0; j < cols; j += 1) grid[0][j] = j;
+  for (let i = 1; i < rows; i += 1) {
+    for (let j = 1; j < cols; j += 1) {
+      const cost = left[i - 1] === right[j - 1] ? 0 : 1;
+      grid[i][j] = Math.min(grid[i - 1][j] + 1, grid[i][j - 1] + 1, grid[i - 1][j - 1] + cost);
+    }
+  }
+  return grid[left.length][right.length];
+}
+
+/** Una letra de más, de menos o cambiada. «mary» llega a «mar»; «tiera» a «tierra». */
+function tokenSlip(word: string, token: string): boolean {
+  if (!word || !token || word[0] !== token[0]) return false;
+  if (word.length < 3 || token.length < 3) return false;
+  if (word.startsWith(token) && word.length - token.length === 1) return true;
+  if (token.startsWith(word) && token.length - word.length === 1) return true;
+  if (Math.min(word.length, token.length) < 4) return false;
+  if (Math.abs(word.length - token.length) > 1) return false;
+  return editDistance(word, token) <= 1;
+}
+
 function tokenIn(text: string, token: string): boolean {
   if (!token) return false;
   if (token === "dogo" || token === "dogos") {
@@ -161,8 +187,9 @@ function tokenIn(text: string, token: string): boolean {
   const stem = token.endsWith("s") && token.length > 4 ? token.slice(0, -1) : token;
   if (new RegExp(`\\b${stem}s?\\b`).test(text)) return true;
   // «lecheras» no está cubierto por «leche»: el pedazo corto no cuenta.
-  // Sí cuenta el diminutivo (vasitos / vaso) o un plural de hasta 3 letras.
+  // Sí cuenta el diminutivo (vasitos / vaso), un plural corto o un dedo (mary / mar).
   return text.split(" ").some((word) => {
+    if (tokenSlip(word, token) || tokenSlip(word, stem)) return true;
     if (word.length < 4 || token.length < 4) return false;
     if (word.startsWith(token) && word.length - token.length <= 3) return true;
     if (!token.startsWith(word)) return false;
@@ -171,12 +198,39 @@ function tokenIn(text: string, token: string): boolean {
   });
 }
 
+/** Para el resto del pedido: la palabra del cliente cabe en el nombre, con un dedo de margen. */
+export function tokenMatches(text: string, token: string): boolean {
+  return tokenIn(foldAgent(text), foldAgent(token));
+}
+
+const OPTIONAL_PRODUCT_WORD = /^(?:rayad|rallad|chic[ao]s?|grandes?|enter[ao]s?|lights?|naturals?|integrals?|deslactosad|descremad|semidescremad)/;
+
 function requiredTokens(name: string, message: string): string[] {
   const text = foldAgent(message);
   return contentTokens(name).filter((token) => {
     if (/^marinad/.test(token) && !/\bmarinad/.test(text)) return false;
+    // «rayado», «chica» o «grande» eligen entre opciones. No hacen falta para reconocer el producto.
+    if (OPTIONAL_PRODUCT_WORD.test(token) && !tokenIn(text, token)) return false;
     return true;
   });
+}
+
+/** Lo que va después de «de», una vez que ya hubo un sustantivo: «tortillas de maíz». */
+export function trailingQualifiers(clause: string): Set<string> {
+  const words = foldAgent(clause).split(" ").filter(Boolean);
+  const qual = new Set<string>();
+  const measure = new Set(["kg", "kilo", "kilos", "litro", "litros", "lt", "lts", "gramo", "gramos", "gr", "ml", "pieza", "piezas"]);
+  let seenNoun = false;
+  for (let index = 0; index < words.length; index += 1) {
+    const word = words[index] ?? "";
+    if (word.length >= 4 && !measure.has(word)) seenNoun = true;
+    if (!seenNoun || (word !== "de" && word !== "del")) continue;
+    const next = words[index + 1] ?? "";
+    if (next.length < 3) continue;
+    qual.add(next);
+    if (next.endsWith("s") && next.length > 4) qual.add(next.slice(0, -1));
+  }
+  return qual;
 }
 
 function allTokensIn(name: string, message: string): boolean {
@@ -903,9 +957,13 @@ export function sharesProductType(
   return pieces.some((clause) => {
     const tokens = productTypeTokens(clause).filter((token) => !CLARIFICATION_FILLER.has(token));
     if (!tokens.length) return false;
+    const qual = trailingQualifiers(clause);
+    const head = tokens[0];
+    if (!typeTokenHits(blob, head, clause)) return false;
+    // El sustantivo basta. «de maíz» o «rayado» ordenan; no rechazan Tortillas ni Chelita.
+    const required = tokens.filter((token) => !qual.has(token));
+    if (!required.every((token) => typeTokenHits(blob, token, clause))) return false;
     const category = contentTokens(clause).filter((token) => CATEGORY_WORD.has(token));
-    const brandAndType = tokens.every((token) => typeTokenHits(blob, token, clause));
-    if (!brandAndType) return false;
     if (!category.length) return true;
     return category.every((token) => typeTokenHits(blob, token, clause) || tokenInLoose(blob, token));
   });

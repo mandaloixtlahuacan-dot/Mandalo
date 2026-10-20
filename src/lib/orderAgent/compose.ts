@@ -24,6 +24,8 @@ import {
   sauceTypeAlias,
   spokenMeasure,
   spokenPackageSize,
+  tokenMatches,
+  trailingQualifiers,
   variantFromMessage,
 } from "@/lib/orderAgent/match";
 import type { AgentLine, AgentProduct, AgentStore, AgentUnit } from "@/lib/orderAgent/types";
@@ -133,7 +135,26 @@ function tokenInBlob(blob: string, token: string): boolean {
   for (const form of forms) {
     if (words.some((word) => wordMatches(word, form))) return true;
   }
-  return false;
+  return tokenMatches(blob, token);
+}
+
+/** Productos que cubren todas las palabras del cliente, aunque una lleve un dedo mal. */
+function fuzzyFamily(text: string, pool: AgentProduct[]): AgentProduct[] {
+  const skip = trailingQualifiers(text);
+  const tokens = contentTokens(text).filter((token) => !skip.has(token) && token.length >= 3);
+  if (!tokens.some((token) => token.length >= 4)) return [];
+  const scored = pool
+    .filter((product) => product.available)
+    .map((product) => {
+      const blob = productBlob(product);
+      const covered = tokens.every((token) => tokenInBlob(blob, token));
+      const score = tokens.reduce((sum, token) => sum + (tokenInBlob(blob, token) ? token.length : 0), 0);
+      return { product, covered, score };
+    })
+    .filter((row) => row.covered && row.score > 0);
+  if (!scored.length) return [];
+  const best = Math.max(...scored.map((row) => row.score));
+  return scored.filter((row) => row.score === best).map((row) => row.product);
 }
 
 /** «Coca Cola» se pide «coca» o «cocas». La segunda palabra no es otro producto. */
@@ -763,7 +784,22 @@ export function decideClause(clause: string, pool: AgentProduct[], store: AgentS
       const blob = productBlob(product);
       return tokenInBlob(blob, token) || sauceTypeAlias(blob, token, text);
     }));
-    if (!typed.length) return { kind: "missing", clause: text, label: labelOf(text) };
+    if (!typed.length) {
+      const rescued = fuzzyFamily(text, pool);
+      if (rescued.length) {
+        const measure = lineQty(text, rescued[0], store);
+        return {
+          kind: "ask",
+          clause: text,
+          query: text,
+          products: capOptions(rescued),
+          qty: measure.qty,
+          unit: measure.unit,
+          marinade: false,
+        };
+      }
+      return { kind: "missing", clause: text, label: labelOf(text) };
+    }
     hits = typed;
   }
   const wanted = spokenPackageSize(text);
