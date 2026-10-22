@@ -8,10 +8,10 @@ import { readFileSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
 
 import { formatAbarrotesStoreAck, formatCatalogMenuCaption, type UxStore } from "../src/lib/customerUx";
-import { confirmsShownProductList, isAffirmativeChatter } from "../src/lib/messages";
+import { confirmsShownProductList, isAffirmativeChatter, isCancelIntent } from "../src/lib/messages";
 import { searchAgentProducts } from "../src/lib/orderAgent/catalog";
 import { DEFAULT_ORDER_AGENT_ESCALATION_MODEL, DEFAULT_ORDER_AGENT_MODEL } from "../src/lib/orderAgent/env";
-import { itemsFromAgentLines, runOrderAgentTurn, type AgentLine, type AgentPending, type AgentProduct, type AgentStore } from "../src/lib/orderAgent";
+import { itemsFromAgentLines, runOrderAgentTurn, type AgentLine, type AgentModel, type AgentPending, type AgentProduct, type AgentStore } from "../src/lib/orderAgent";
 import { orderClauses, sharesProductType } from "../src/lib/orderAgent/match";
 import { ADDRESS_ASK_MESSAGE } from "../src/lib/services/captureEngine";
 import { validateCaptureForConfirmation } from "../src/lib/services/validationEngine";
@@ -93,6 +93,31 @@ function optionNumber(reply: string, name: RegExp): string {
     if (match && name.test(line)) return match[1];
   }
   throw new Error(`no está ${name} en:\n${reply}`);
+}
+
+function lineOf(lineId: string, name: string, productId: number | null, qty = 1): AgentLine {
+  return {
+    lineId,
+    productId,
+    freeText: null,
+    name,
+    qty,
+    unit: "pz",
+    variant: null,
+    note: null,
+    unitPrice: null,
+    brand: null,
+    presentation: null,
+  };
+}
+
+function optionLines(reply: string): string[] {
+  return reply.split("\n").filter((row) => /^\d+\.\s/.test(row));
+}
+
+function progressTotal(reply: string): number | null {
+  const match = reply.match(/\*Producto \d+ de (\d+)\*/);
+  return match ? Number(match[1]) : null;
 }
 
 function locationAsk(cart: AgentLine[], userMessage: string): string {
@@ -198,11 +223,21 @@ async function main(): Promise<void> {
   assert(pack.cart.length === 0, `un paquete de aguas se anotó solo: ${pack.cart.map((line) => line.name).join(" | ")}`);
   assert(/1\. \*/.test(pack.reply) && /2\. \*/.test(pack.reply), "un paquete de aguas no dio opciones");
   assert(/ciel|kirkland|bonafont/i.test(pack.reply), "las opciones de agua no salieron");
+  assert(
+    pack.reply.includes("*Si arriba no salió lo que buscas, responde QUITAR para sacarlo de la lista o escríbelo de otra forma.*"),
+    `el paquete de aguas no cerró con QUITAR:\n${pack.reply}`,
+  );
   sample("PAQUETE DE AGUAS", pack.reply);
 
   const four = "Coca Cola 2.5 Lt, sanitas, kombucha y jabon zote";
   let state = await turn(four, [], null);
   const fourLog: string[] = [`Cliente: ${four}`, "", state.reply];
+  const progressTotals: number[] = [];
+  const noteProgress = (reply: string) => {
+    const total = progressTotal(reply);
+    if (total != null) progressTotals.push(total);
+  };
+  noteProgress(state.reply);
   assertOneQuestion(state.reply, "4 productos, inicio");
   assert(state.cart.some((line) => line.productId === 6392), "la Coca 2.5 exacta no se anotó");
   assert(/sanitas/i.test(state.reply), "el primer pendiente no fue sanitas");
@@ -222,7 +257,11 @@ async function main(): Promise<void> {
     fourLog.push("", `Cliente: ${answer}`, "", "");
     state = await turn(answer, state.cart, state.pending);
     fourLog.push(state.reply);
+    noteProgress(state.reply);
     assertOneQuestion(state.reply, `4 productos, paso ${step + 1}`);
+  }
+  for (let index = 1; index < progressTotals.length; index += 1) {
+    assert(progressTotals[index] >= progressTotals[index - 1], `el total del progreso bajó de ${progressTotals[index - 1]} a ${progressTotals[index]}`);
   }
   assert(!state.pending, "el pedido de 4 productos no cerró las dudas");
   assert(state.reply.includes("¿Están bien estos productos?"), "el pedido de 4 no pidió confirmación");
@@ -235,6 +274,151 @@ async function main(): Promise<void> {
   assert(fourAsk === ADDRESS_ASK_MESSAGE, "el pedido de 4 no pidió la ubicación");
   fourLog.push("", "Cliente: sí", "", fourAsk);
   sample("PEDIDO DE 4", fourLog.join("\n"));
+
+  assert(isCancelIntent("cansela"), "cansela no cancela");
+  assert(isCancelIntent("cánsela"), "cánsela no cancela");
+  assert(isCancelIntent("cancelo"), "cancelo no cancela");
+  assert(isCancelIntent("candela"), "candela suelta no cancela");
+  assert(isCancelIntent("borrar todo"), "borrar todo no cancela");
+  assert(isCancelIntent("reiniciar"), "reiniciar no cancela");
+  assert(!isCancelIntent("canela en polvo"), "canela en polvo se tomó como cancelar");
+  assert(!isCancelIntent("quiero canela"), "quiero canela se tomó como cancelar");
+  assert(!isCancelIntent("candela de chocolate"), "candela de chocolate se tomó como cancelar");
+  const cansela = await turn("cansela", [], null);
+  assert(/cancelar el pedido/i.test(cansela.reply), `cansela no preguntó si cancela:\n${cansela.reply}`);
+  const canela = await turn("canela en polvo", [], null);
+  assert(!/cancelar el pedido/i.test(canela.reply), `canela en polvo canceló:\n${canela.reply}`);
+  assert(/canela/i.test(canela.reply), `canela en polvo no se entendió:\n${canela.reply}`);
+
+  const birotes = await turn("Tienes birotes ?", [], null);
+  assert(/bolillo/i.test(birotes.reply), `birotes no ofreció bolillo:\n${birotes.reply}`);
+  assert(!/tienes birotes/i.test(birotes.reply), `birotes repitió el texto crudo:\n${birotes.reply}`);
+  assert(!/no contamos con tienes/i.test(birotes.reply), `birotes dijo que no hay «tienes»:\n${birotes.reply}`);
+  sample("BIROTES", birotes.reply);
+  const borrar = await turn("Borrar todo", [lineOf("l1", "Coca Cola 2.5 Lt", 6392)], null);
+  assert(/cancelar el pedido/i.test(borrar.reply), `borrar todo no preguntó si cancela:\n${borrar.reply}`);
+  assert(!/no contamos/i.test(borrar.reply), `borrar todo dijo que no hay:\n${borrar.reply}`);
+
+  const shampoo = await turn("shampoo medicasp", [], null);
+  assert(/no encontr[eé]|no contamos con shampoo medicasp/i.test(shampoo.reply), `medicasp no dijo que no está:\n${shampoo.reply}`);
+  assert(!/huggies/i.test(shampoo.reply), `medicasp ofreció Huggies:\n${shampoo.reply}`);
+  sample("MEDICASP", shampoo.reply);
+
+  const pasta = await turn("2 pasta espagueti", [], null);
+  assert(!/colgate/i.test(pasta.reply), `pasta ofreció Colgate:\n${pasta.reply}`);
+  assert(/spagueti|spaghetti/i.test(pasta.reply) && !/no contamos con pasta espagueti/i.test(pasta.reply), `pasta no ofreció el espagueti:\n${pasta.reply}`);
+  const pastaLines = pasta.cart.filter((item) => /fusil|spaghetti|espagueti|spagueti/i.test(item.name));
+  assert(pastaLines.length <= 1, `la pasta se duplicó: ${pastaLines.map((item) => `${item.qty} ${item.name}`).join(" | ")}`);
+  sample("PASTA", pasta.reply);
+
+  const tortillas = await turn("tortillas tía rosa", [], null);
+  assert(/tortill/i.test(tortillas.reply), `tortillas no ofreció tortillas:\n${tortillas.reply}`);
+  assert(!/bolo/i.test(tortillas.reply), `tortillas ofreció bolo:\n${tortillas.reply}`);
+  assert(!/concha/i.test(tortillas.reply), `tortillas ofreció conchas:\n${tortillas.reply}`);
+  for (const row of optionLines(tortillas.reply)) {
+    assert(!/bolo/i.test(row), `tortillas ofreció bolo:\n${row}`);
+    assert(/tortill/i.test(row), `tortillas ofreció algo que no es tortilla:\n${row}`);
+  }
+  sample("TORTILLAS", tortillas.reply);
+
+  const lecheCarton = await turn("3 litros de leche Lala de cartón", [], null);
+  const lalaLines = lecheCarton.cart.filter((item) => /lala/i.test(item.name) && /leche/i.test(item.name));
+  assert(lalaLines.length <= 1, `la leche Lala se duplicó: ${lalaLines.map((item) => `${item.qty} ${item.name}`).join(" | ")}`);
+  if (lalaLines.length) {
+    assert(!/leche lala/i.test(lecheCarton.pending?.query ?? ""), `la leche ya anotada se volvió a preguntar:\n${lecheCarton.pending?.question ?? ""}`);
+  }
+  sample("LECHE LALA CARTÓN", lecheCarton.reply);
+
+  const takis = await turn("takis fuego", [], null);
+  assert(takis.cart.filter((item) => /takis/i.test(item.name) && /fuego/i.test(item.name)).length <= 1, "Takis Fuego quedó en más de una línea");
+  const air = await turn("2 air wick", [], null);
+  assert(air.cart.filter((item) => /air wick|airwick/i.test(item.name)).length <= 1, "Air Wick quedó en más de una línea");
+  sample("TAKIS", takis.reply);
+  sample("AIR WICK", air.reply);
+
+  const tres = [
+    lineOf("l1", "Leche Lala Entera 1 Lt", 4933),
+    lineOf("l2", "Bolillo", 324),
+    lineOf("l3", "Takis Fuego", 11362),
+  ];
+  const cual = [
+    "❓ *¿Cuál quieres quitar?*",
+    "",
+    "1. *1 Leche Lala Entera 1 Lt*",
+    "2. *1 Bolillo*",
+    "3. *1 Takis Fuego*",
+    "",
+    "_Responde con el número._",
+  ].join("\n");
+  const quitaDos = await turn("2", tres, {
+    question: cual,
+    candidateIds: [],
+    qty: null,
+    unit: null,
+    axis: null,
+    query: "quitar",
+  });
+  assert(!quitaDos.cart.some((item) => /bolillo/i.test(item.name)), "el número 2 no quitó el bolillo");
+  assert(quitaDos.cart.length === 2, `quitar el 2 dejó ${quitaDos.cart.length} líneas`);
+  assert(quitaDos.cart.some((item) => /leche/i.test(item.name)) && quitaDos.cart.some((item) => /takis/i.test(item.name)), "el 2 quitó otra línea");
+
+  for (const phrase of ["quítalo", "sácalo", "no lo quiero"]) {
+    const gone = await turn(phrase, [lineOf("l1", "Takis Fuego", 11362)], null);
+    assert(gone.cart.length === 0, `${phrase} no vació la única línea`);
+  }
+  const sinBolillo = await turn("no quiero bolillo", tres, null);
+  assert(!sinBolillo.cart.some((item) => /bolillo/i.test(item.name)), "no quiero bolillo lo dejó");
+  assert(sinBolillo.cart.length === 2, "no quiero bolillo quitó de más");
+
+  const solo = await turn("solo leche y bolillo", tres, null);
+  assert(solo.cart.some((item) => /leche/i.test(item.name)) && solo.cart.some((item) => /bolillo/i.test(item.name)), "solo leche y bolillo no conservó las dos");
+  assert(!solo.cart.some((item) => /takis/i.test(item.name)), "solo leche y bolillo dejó los Takis");
+  assert(solo.reply.includes("¿Están bien estos productos?"), "solo leche y bolillo no rehízo la lista");
+
+  const ninguno = await turn("ninguno", [lineOf("l1", "Bolillo", 324)], {
+    question: "❓ *De Takis Fuego, ¿cuál de estos?*\n\n1. *Takis Fuego*",
+    candidateIds: [11362],
+    qty: 1,
+    unit: "pz",
+    axis: "size",
+    query: "takis fuego",
+  });
+  assert(ninguno.pending == null, "ninguno dejó la pregunta de Takis");
+  assert(!/cuál de estos/i.test(ninguno.reply), "ninguno volvió a preguntar los Takis");
+  assert(ninguno.cart.some((item) => /bolillo/i.test(item.name)), "ninguno quitó el bolillo que ya estaba");
+
+  const lecheDoble: AgentModel = {
+    name: "sim-leche-doble",
+    async complete(request) {
+      const searched = request.toolTrace.some((entry) => entry.call.name === "search_products");
+      if (!searched) {
+        return { toolCalls: [{ id: "s1", name: "search_products", arguments: { query: "leche lala" } }], text: null };
+      }
+      return {
+        toolCalls: [
+          { id: "set1", name: "set_cart_line", arguments: { product_id: 4933, qty: 1, unit: "pz" } },
+          { id: "ask1", name: "ask_customer", arguments: { text: "¿Qué leche Lala quieres?", candidate_ids: [4870, 4933] } },
+        ],
+        text: null,
+      };
+    },
+  };
+  const doble = await runOrderAgentTurn({
+    message: "Leche Lala Entera 1 Lt",
+    cart: [],
+    pending: null,
+    history: [],
+    awaitingList: false,
+    store,
+    products: [],
+    search: async (query) => searchAgentProducts(products, query, 24),
+    model: lecheDoble,
+    escalationModel: null,
+    logEvent: () => {},
+  });
+  const dobleLala = doble.cart.filter((item) => /lala/i.test(item.name) && /leche/i.test(item.name));
+  assert(dobleLala.length === 1, `add_line no dejó una sola leche: ${dobleLala.map((item) => item.name).join(" | ") || doble.toolCalls.map((item) => `${item.call.name} ${JSON.stringify(item.result)}`).join(" ; ")}`);
+  assert(!/leche lala/i.test(doble.pending?.query ?? ""), `la pregunta de la leche ya anotada no se tragó:\n${doble.reply}`);
 
   const pekes: UxStore = {
     id: 7,

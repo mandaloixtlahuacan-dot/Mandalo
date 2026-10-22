@@ -2,7 +2,8 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 20 de octubre de 2026. Reparto de Mándalo de 8:00 a 23:30.
+> Última actualización: 22 de octubre de 2026. Pedir de Peke's: no duplica líneas ni preguntas del mismo producto, limpia «no contamos con», las opciones traen el sustantivo y el pie de QUITAR, y acepta quitar/cancelar con dedo sin confundir canela. La tienda (las tres) tiene 15 min para confirmar, recordatorio único a los 8; el cliente ve que tarda unos 15 minutos o menos. No se llamó a OpenAI, no se mandó WhatsApp y no se escribió en Supabase. No está mergeado ni desplegado.
+> Actualización anterior: 20 de octubre de 2026. Reparto de Mándalo de 8:00 a 23:30.
 > El 5213314705434 se llama Moy (antes Roberto): 8:00–23:30 todos los días
 > menos sábado. Mateo también cierra a las 23:30 (sábado 8:00–23:30).
 > Cada tienda conserva su horario. George (tienda 5) y La Central (tienda 6)

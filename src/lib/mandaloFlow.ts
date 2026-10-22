@@ -1965,7 +1965,7 @@ async function handleAjusteProducto(telefono: string, mensaje: string, pedido: P
 }
 
 const TRACKING_MESSAGES: Partial<Record<OrderState, string>> = {
-  pendiente_tiendas: "⏰ *Estoy esperando el precio de la tienda.*\n\nEn cuanto me lo confirmen, te aviso con el total.",
+  pendiente_tiendas: "⏰ *Estoy esperando el precio de la tienda.*\n\nLa tienda tarda unos *15 minutos* o menos en confirmar. Espérame con paciencia. En cuanto me lo confirmen, te aviso con el total.",
   dispatch_repartidor_pendiente: "🛵 *Tu pedido está confirmado.*\n\nEstoy buscando repartidor.",
   repartidor_asignado: "🛵 *Tu pedido ya va con el repartidor*, en camino a recogerlo.",
   recogiendo: "🛵 *El repartidor ya recogió tu pedido* y va en camino.",
@@ -3223,7 +3223,7 @@ async function handleClienteMessage(
         if (openPedido.estado === "pendiente_tiendas") {
           const full = await pedidoRepositoryV2.getPedidoById(openPedido.id);
           if (full?.tienda?.usaCatalogoFijo) {
-            trackingBody = "⏰ *Tu pedido ya está anotado.*\n\nEstoy esperando a que la tienda lo confirme. Te aviso en cuanto vaya en camino.";
+            trackingBody = "⏰ *Tu pedido ya está anotado.*\n\nLa tienda tarda unos *15 minutos* o menos en confirmar. Espérame con paciencia. Te aviso en cuanto vaya en camino.";
           }
         }
         if (openPedido.estado === "esperando_apertura_tienda") {
