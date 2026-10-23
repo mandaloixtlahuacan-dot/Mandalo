@@ -9,6 +9,7 @@
  */
 
 import { formatCustomerFeeLine } from "@/lib/customerUx";
+import { STORE_QUOTE_REMINDER_AT_MINUTES, STORE_QUOTE_TIMEOUT_MINUTES } from "@/lib/services/orderTimeouts";
 import { isNoConfirmation, isYesConfirmation } from "@/lib/messages";
 import {
   calculateFinalPrice,
@@ -38,7 +39,7 @@ function faltanteBlock(ordenId: number): string {
   return `¿Te falta algún producto?\n\n*Responde:*\n${comandoNoHay(ordenId)}\n\nSi son varios, sepáralos con coma.`;
 }
 
-/** Aviso a abarrotes: cotiza precio. Mismo timeout de 10 min que el menú fijo. */
+/** Aviso a abarrotes: cotiza precio. George y La Central confirman en los mismos 15 min. */
 export function formatAbarrotesQuoteRequest(params: {
   pedidoId: number;
   direccion?: string | null;
@@ -86,11 +87,12 @@ export function formatStorePendingReminder(params: {
     ? `El pedido #${params.pedidoId} sigue esperando tu confirmación.`
     : `El pedido #${params.pedidoId} sigue esperando tu precio.`;
   const comando = params.catalogo ? comandoConfirmoTienda(params.pedidoId) : comandoPrecio(params.pedidoId);
+  const restantes = STORE_QUOTE_TIMEOUT_MINUTES - STORE_QUOTE_REMINDER_AT_MINUTES;
   return (
     `⏰ *Recordatorio*\n\n` +
     `${espera}\n\n` +
     `🛒 *Pedido*\n\n${params.pedidoTexto}\n\n` +
-    `Tienes *5 minutos* antes de que se cancele.\n\n` +
+    `Tienes *${restantes} minutos* antes de que se cancele.\n\n` +
     `*Responde así:*\n${comando}\n\n` +
     faltanteBlock(params.pedidoId)
   );

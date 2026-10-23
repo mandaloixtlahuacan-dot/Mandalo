@@ -1,5 +1,6 @@
 import { formatMoney } from "@/lib/ordenes";
 import { closestAgentProducts, foldAgent, genericDogoProduct, isGenericDogoText, isOrderVerbOnly, stripOrderVerbs } from "@/lib/orderAgent/catalog";
+import { isVagueListaQuery } from "@/lib/storeProductSearch";
 import { clauseResolvesTo, decideClause } from "@/lib/orderAgent/compose";
 import {
   groceryClarityError,
@@ -25,9 +26,12 @@ import {
   foldCatalogName,
   productClause,
   productMentionedStrict,
+  cleanProductAsk,
   productTypeTokens,
+  sameProductFamily,
   sharesProductType,
   tokenMatches,
+  tokenNear,
   replacementLineId,
   uniqueHitMentioned,
   uncoveredClauses,
@@ -277,10 +281,37 @@ function narrowAskedProducts(query: string, products: AgentProduct[]): AgentProd
   return unique;
 }
 
+const LISTA_OPTION_FOOTER = "*Si arriba no salió lo que buscas, responde QUITAR para sacarlo de la lista o escríbelo de otra forma.*";
+
+function optionQuery(query: string): string {
+  return cleanProductAsk(query) || foldAgent(query);
+}
+
+function optionTitle(query: string, fallback: string): string {
+  const cleaned = optionQuery(query);
+  const tokens = contentTokens(cleaned).filter((token) => token !== "carton" && token !== "cartones").slice(0, 4);
+  const words = tokens.length ? tokens : foldAgent(fallback).split(" ").filter((word) => word.length >= 3).slice(0, 3);
+  if (!words.length) return "Este";
+  return words.map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ");
+}
+
+/** Cada opción tiene que traer el sustantivo. Shampoo no se contesta con Huggies. */
+export function optionFitsQuery(query: string, product: AgentProduct): boolean {
+  const focus = optionQuery(query);
+  if (!focus) return true;
+  if (isVagueListaQuery(focus) || isVagueListaQuery(query)) return true;
+  if (sharesProductType(focus, product)) return true;
+  const tokens = productTypeTokens(focus).filter((token) => token.length >= 4);
+  if (!tokens.length) return true;
+  const blob = foldAgent([product.name, product.brand ?? "", product.presentation ?? "", ...(product.alias ?? [])].join(" "));
+  const words = blob.split(" ").filter(Boolean);
+  return tokens.every((token) => words.some((word) => word === token || tokenNear(word, token)));
+}
+
 /** El que mejor pega va primero. El número de la lista es el mismo de candidateIds. */
-export function productsForOptions(query: string, products: AgentProduct[]): AgentProduct[] {
+export function productsForOptions(query: string, products: AgentProduct[], fitNoun = false): AgentProduct[] {
   const narrowed = narrowAskedProducts(query, products);
-  const tokens = contentTokens(query).filter((token) => token.length >= 3);
+  const tokens = contentTokens(optionQuery(query)).filter((token) => token.length >= 3);
   let best: AgentProduct | null = null;
   let bestScore = 0;
   for (const product of products) {
@@ -292,18 +323,23 @@ export function productsForOptions(query: string, products: AgentProduct[]): Age
     }
   }
   const withBest = best && !narrowed.some((row) => row.id === best?.id) ? [best, ...narrowed] : narrowed;
-  return withBest.slice(0, 5);
+  const sliced = withBest.slice(0, 5);
+  if (!fitNoun) return sliced;
+  return sliced.filter((product) => optionFitsQuery(query, product));
 }
 
-export function formatProductOptions(query: string, products: AgentProduct[], invite = false): string {
+export function formatProductOptions(query: string, products: AgentProduct[], invite = false, lista = false): string {
   const rows = products.slice(0, 5);
+  const title = lista || /[?¿]/.test(query) ? optionTitle(query, rows[0]?.name || "este") : query.trim() || rows[0]?.name || "este";
+  if (lista && rows.length === 0) {
+    return `😔 *No encontré ${title}.*\n\n${LISTA_OPTION_FOOTER}`;
+  }
   const lines = rows.map((product, index) => {
     const price = optionPrice(product);
     const label = optionLabel(product);
     const body = price ? `${label} — ${price}` : label;
     return `${index + 1}. *${body}*`;
   });
-  const title = query.trim() || rows[0]?.name || "este";
   const priced = rows.filter((product) => optionPrice(product));
   const note =
     rows.length > 0 && priced.length === 0
@@ -312,7 +348,10 @@ export function formatProductOptions(query: string, products: AgentProduct[], in
         ? "\n\n_Donde no hay monto, la tienda confirma el precio._"
         : "";
   const more = invite && rows.length > 0 ? "\n\n_Si es otro tamaño o sabor, escríbelo._" : "";
-  return `❓ *De ${title}, ¿cuál de estos?*\n\n${lines.join("\n")}${note}${more}\n\n_Responde con el número. Si no es, corrige el producto o escribe cancelar._`;
+  const footer = lista
+    ? `\n\n_Responde con el número._\n\n${LISTA_OPTION_FOOTER}`
+    : "\n\n_Responde con el número. Si no es, corrige el producto o escribe cancelar._";
+  return `❓ *De ${title}, ¿cuál de estos?*\n\n${lines.join("\n")}${note}${more}${footer}`;
 }
 
 function marinadePrompt(products: AgentProduct[], query = ""): string | null {
@@ -361,12 +400,24 @@ function clarificationOf(
   qty: number | null,
   unit: AgentUnit | null,
   axis: PendingAxis,
+  lista = false,
 ): AgentClarification {
-  const sliced = productsForOptions(query, filterAskedType(query, products));
+  const sliced = productsForOptions(query, filterAskedType(query, products), lista);
+  const titleQuery = optionQuery(query) || query;
+  if (lista && sliced.length === 0) {
+    return {
+      question: formatProductOptions(titleQuery, [], false, true),
+      candidateIds: [],
+      qty,
+      unit,
+      axis: null,
+      query,
+    };
+  }
   const brands = new Set(sliced.map((product) => foldAgent(product.brand ?? "")).filter(Boolean));
-  const marinade = marinadePrompt(sliced, query);
+  const marinade = marinadePrompt(sliced, titleQuery);
   return {
-    question: marinade ?? formatProductOptions(query, sliced),
+    question: marinade ?? formatProductOptions(titleQuery, sliced, false, lista),
     candidateIds: sliced.map((product) => product.id),
     qty,
     unit,
@@ -438,7 +489,7 @@ export function openClarifications(params: {
     if (!optionsDiffer(options)) continue;
     if (options.some((product) => params.cart.some((line) => line.productId === product.id))) continue;
     if (options.some((product) => covered.has(product.id))) continue;
-    const item = clarificationOf(hit.query, options, null, null, null);
+    const item = clarificationOf(hit.query, options, null, null, null, params.store?.hasProductList === true);
     items.push(item);
     for (const id of item.candidateIds) covered.add(id);
   }
@@ -638,6 +689,7 @@ export function validateToolCall(params: {
         qty ?? headMeasure.qty,
         askedUnit ?? headMeasure.unit,
         axis,
+        true,
       );
       text = head.question;
       ids = head.candidateIds;
@@ -645,7 +697,7 @@ export function validateToolCall(params: {
       query = head.query ?? null;
       queue = rest.map((group) => {
         const measured = measureFromQuery(group.query, group.products, store);
-        return clarificationOf(group.query, group.products, measured.qty, measured.unit, null);
+        return clarificationOf(group.query, group.products, measured.qty, measured.unit, null, true);
       });
     } else if (store.hasProductList && parts.length > 1) {
       text = parts[0];
@@ -670,7 +722,7 @@ export function validateToolCall(params: {
       if (!rows.length) {
         return { ok: false, error: "Esas opciones no están en la lista. No preguntes sin productos reales." };
       }
-      const head = clarificationOf(query ?? text, rows, qty, askedUnit, axis);
+      const head = clarificationOf(query ?? text, rows, qty, askedUnit, axis, true);
       text = head.question;
       ids = head.candidateIds;
       axis = head.axis;
@@ -1002,6 +1054,30 @@ function lineFromProduct(
     brand: product.brand,
     presentation: product.presentation,
   };
+}
+
+/** Una sola línea por producto o familia. La cantidad que se queda es la mayor, no la suma. */
+export function collapseFamilyLines(cart: AgentLine[]): AgentLine[] {
+  const out: AgentLine[] = [];
+  for (const line of cart) {
+    const index = out.findIndex((item) => sameProductFamily(item, line));
+    if (index < 0) {
+      out.push(line);
+      continue;
+    }
+    const prev = out[index];
+    const richer = line.name.length > prev.name.length ? line : prev;
+    out[index] = {
+      ...richer,
+      lineId: prev.lineId,
+      qty: Math.max(prev.qty, line.qty),
+      productId: richer.productId ?? prev.productId ?? line.productId,
+      unitPrice: prev.unitPrice ?? line.unitPrice,
+      brand: richer.brand ?? prev.brand,
+      presentation: richer.presentation ?? prev.presentation,
+    };
+  }
+  return out;
 }
 
 export function upsertLine(cart: AgentLine[], line: AgentLine): AgentLine[] {

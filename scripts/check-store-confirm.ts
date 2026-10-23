@@ -11,6 +11,7 @@ import {
 } from "../src/lib/services/businessHours";
 import { MOY_HORARIO_JSON, MOY_PHONE_INTL, isCourierOnSchedule } from "../src/lib/services/courierAvailability";
 import { isBotInstructionPaste } from "../src/lib/reliability";
+import { buildOrderTimeoutMetadata } from "../src/lib/services/orderTimeouts";
 import { calculateFinalPrice, extraerComandoNoDisponible, extraerPrecio } from "../src/lib/ordenes";
 import {
   comandoConfirmoTienda,
@@ -77,12 +78,23 @@ check("george-eco-no-confirma", extraerComandoConfirmoTienda(catalogo) === null)
 const abarrotes = formatAbarrotesQuoteRequest({ pedidoId: 7, pedidoTexto: "✅ 🥤 *Coca x1*" });
 check("pekes-pide-precio", abarrotes.includes("ORDEN #7 PRECIO 150") && abarrotes.includes(comandoNoHay(7)));
 check("pekes-es-eco", isBotInstructionPaste(abarrotes));
-check("pekes-recordatorio", formatStorePendingReminder({ pedidoId: 7, pedidoTexto: "Coca", catalogo: false }).includes("tu precio"));
+const pekesRecordatorio = formatStorePendingReminder({ pedidoId: 7, pedidoTexto: "Coca", catalogo: false });
+check("pekes-recordatorio", pekesRecordatorio.includes("tu precio"));
+check("pekes-recordatorio-7", pekesRecordatorio.includes("*7 minutos*"));
+const menuRecordatorio = formatStorePendingReminder({ pedidoId: 15, pedidoTexto: "Hamburguesa", catalogo: true });
 check(
   "menu-recordatorio",
-  formatStorePendingReminder({ pedidoId: 15, pedidoTexto: "Hamburguesa", catalogo: true }).includes(comandoConfirmoTienda(15)) &&
-    !formatStorePendingReminder({ pedidoId: 15, pedidoTexto: "Hamburguesa", catalogo: true }).includes("PRECIO 150"),
+  menuRecordatorio.includes(comandoConfirmoTienda(15)) && !menuRecordatorio.includes("PRECIO 150"),
 );
+check("menu-recordatorio-7", menuRecordatorio.includes("*7 minutos*"));
+const desde = "2026-10-22T12:00:00.000Z";
+const tiendaTimeout = buildOrderTimeoutMetadata("store_quote", desde);
+check("tienda-15", tiendaTimeout.store_quote_deadline_at === "2026-10-22T12:15:00.000Z");
+check("tienda-aviso-8", tiendaTimeout.store_quote_reminder_at === "2026-10-22T12:08:00.000Z");
+check("tienda-aviso-una-vez", tiendaTimeout.store_quote_reminded_at === null);
+const repartidorTimeout = buildOrderTimeoutMetadata("courier_confirmation", desde);
+check("repartidor-10", repartidorTimeout.courier_confirmation_deadline_at === "2026-10-22T12:10:00.000Z");
+check("repartidor-aviso-5", repartidorTimeout.courier_confirmation_reminder_at === "2026-10-22T12:05:00.000Z");
 check("cancel-menu", formatStoreQuoteTimeoutCancel(15, true).includes("confirmarlo"));
 check("cancel-abarrotes", formatStoreQuoteTimeoutCancel(7, false).includes("cotizarlo"));
 

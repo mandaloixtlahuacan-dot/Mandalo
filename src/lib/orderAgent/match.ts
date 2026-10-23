@@ -1,4 +1,4 @@
-import { foldAgent } from "@/lib/orderAgent/catalog";
+import { foldAgent, PRODUCT_ASK_ALIAS } from "@/lib/orderAgent/catalog";
 import { listaWordHit, normalizeMeasureWords, normalizeVoice, synonymForms } from "@/lib/storeProductSearch";
 import type { AgentLine, AgentProduct, AgentUnit } from "@/lib/orderAgent/types";
 
@@ -185,6 +185,9 @@ function tokenIn(text: string, token: string): boolean {
   }
   if (token === "cola" && /\bcocas?\b/.test(text)) return true;
   if (token === "coca" && /\bcolas?\b/.test(text)) return true;
+  if (token === "espagueti" || token === "spagueti" || token === "spaghetti") {
+    return /\b(?:espagueti|spagueti|spaghetti)\b/.test(text);
+  }
   const stem = token.endsWith("s") && token.length > 4 ? token.slice(0, -1) : token;
   if (new RegExp(`\\b${stem}s?\\b`).test(text)) return true;
   // «lecheras» no está cubierto por «leche»: el pedazo corto no cuenta.
@@ -193,6 +196,7 @@ function tokenIn(text: string, token: string): boolean {
     if (tokenSlip(word, token) || tokenSlip(word, stem)) return true;
     if (word.length < 4 || token.length < 4) return false;
     if (word.startsWith(token) && word.length - token.length <= 3) return true;
+    if (word.length >= 7 && token.length >= 7 && word.slice(0, 7) === token.slice(0, 7) && Math.abs(word.length - token.length) <= 3) return true;
     if (!token.startsWith(word)) return false;
     const rest = token.slice(word.length);
     return rest.length > 0 && rest.length <= 4 && /^(?:s|es|ito|ita|itos|itas)$/.test(rest);
@@ -849,6 +853,143 @@ export function normalizedAsk(clause: string): string {
     .replace(/^(?:un|una|uno|unos|unas|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|\d+)\s+/, "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+const ASK_FILLER = new Set([
+  "tienes", "tiene", "tengo", "hay", "quiero", "quisiera", "quieres", "prefieres",
+  "dame", "deme", "das", "agrega", "agregame", "anade", "anademe", "otro", "otra",
+  "otros", "otras", "vendes", "vende", "me", "un", "una", "unos", "unas", "el", "la",
+  "los", "las", "de", "del", "por", "favor", "porfa", "que", "cual", "cuales", "hola",
+]);
+
+/** Empaque que no cambia el producto: «de cartón» no es otra leche. */
+const PACK_EXTRA = new Set([
+  "carton", "cartones", "caja", "cajas", "paquete", "paquetes", "pieza", "piezas",
+  "botella", "botellas", "bolsa", "bolsas", "lata", "latas", "aerosol", "aerosoles",
+  "repuesto", "repuestos",
+]);
+
+const NOT_A_PRODUCT = /^(?:borrar todo|reiniciar|reinicio|cancelar|cancela|cansela|candela|candelar|cancelo|quitar|quita|quitalo|quitala|sacalo|sacala|nada|hola|menu|pedido|pedido nuevo)$/;
+
+/** Quita verbos, muletillas y signos. «Tienes birotes ?» queda en «birotes». */
+export function cleanProductAsk(clause: string): string {
+  const words = foldAgent(clause).replace(/[?¿!¡]/g, " ").split(" ").filter(Boolean);
+  while (words.length && ASK_FILLER.has(words[0])) words.shift();
+  while (words.length && ASK_FILLER.has(words[words.length - 1])) words.pop();
+  return words.join(" ").trim();
+}
+
+export function looksLikeProductAsk(clause: string): boolean {
+  const cleaned = cleanProductAsk(clause);
+  if (!cleaned || NOT_A_PRODUCT.test(cleaned)) return false;
+  return contentTokens(cleaned).some((token) => token.length >= 4);
+}
+
+function askTokens(text: string): string[] {
+  return contentTokens(cleanProductAsk(text) || text).filter((token) => !PACK_EXTRA.has(token) && token.length >= 4);
+}
+
+/** El sustantivo que distingue al producto. «cartón» y «litros» no cuentan. */
+export function principalNoun(text: string): string {
+  const tokens = askTokens(text);
+  if (!tokens.length) return "";
+  return [...tokens].sort((left, right) => right.length - left.length || left.localeCompare(right))[0] ?? "";
+}
+
+/** Misma familia si una lista de sustantivos cabe en la otra. Tamaños distintos no. */
+export function sameProductFamily(
+  left: { productId?: number | null; name: string; unit: string; variant?: string | null },
+  right: { productId?: number | null; name: string; unit: string; variant?: string | null },
+): boolean {
+  if (left.unit !== right.unit) return false;
+  if (left.productId != null && left.productId === right.productId && (left.variant ?? null) === (right.variant ?? null)) return true;
+  const sizeLeft = presentationFromName(left.name)?.key ?? "";
+  const sizeRight = presentationFromName(right.name)?.key ?? "";
+  if (sizeLeft && sizeRight && sizeLeft !== sizeRight) return false;
+  const a = askTokens(`${left.name} ${left.variant ?? ""}`);
+  const b = askTokens(`${right.name} ${right.variant ?? ""}`);
+  if (!a.length || !b.length) return false;
+  const small = a.length <= b.length ? a : b;
+  const large = a.length <= b.length ? b : a;
+  return small.every((token) => large.some((other) => other === token || tokenMatches(other, token)));
+}
+
+/** Dos preguntas del mismo producto, aunque una traiga una palabra de más. */
+export function nounSetsAlign(left: string, right: string): boolean {
+  const a = askTokens(left);
+  const b = askTokens(right);
+  if (!a.length || !b.length) return false;
+  const small = a.length <= b.length ? a : b;
+  const large = a.length <= b.length ? b : a;
+  const noun = principalNoun(small.join(" "));
+  if (!noun || noun.length < 4) return false;
+  if (!large.some((token) => token === noun || tokenMatches(token, noun))) return false;
+  return small.every((token) => large.some((other) => other === token || tokenMatches(other, token)));
+}
+
+function tokenClose(word: string, token: string): boolean {
+  if (!word || !token || word[0] !== token[0]) return false;
+  if (Math.min(word.length, token.length) < 5) return false;
+  if (Math.abs(word.length - token.length) > 2) return false;
+  return editDistance(word, token) <= 2;
+}
+
+/** «espagueti» llega a «spagueti». No junta palabras que solo se parecen de lejos. */
+export function tokenNear(word: string, token: string): boolean {
+  if (!word || !token) return false;
+  if (word === token || tokenMatches(word, token) || tokenMatches(token, word)) return true;
+  return tokenClose(word, token) || tokenClose(token, word);
+}
+
+
+/**
+ * Corrige un dedo o un alias del pueblo al término que sí está en el catálogo.
+ * Null si el texto ya está bien o no hay un término cercano.
+ */
+export function suggestCatalogQuery(clause: string, names: string[]): string | null {
+  const cleaned = cleanProductAsk(clause);
+  if (!looksLikeProductAsk(cleaned)) return null;
+  const catalog = new Set<string>();
+  for (const name of names) {
+    for (const token of contentTokens(name)) {
+      if (token.length >= 4) catalog.add(token);
+    }
+  }
+  const aliased = askTokens(cleaned).map((token) => PRODUCT_ASK_ALIAS[token]).filter((token): token is string => Boolean(token));
+  if (aliased.length) return aliased.join(" ");
+  let changed = false;
+  const next = askTokens(cleaned).map((token) => {
+    if (token.length < 5 || catalog.has(token)) return token;
+    let best = token;
+    let bestDistance = 2;
+    for (const word of catalog) {
+      if (word[0] !== token[0] || Math.abs(word.length - token.length) > 1) continue;
+      const distance = editDistance(word, token);
+      if (distance > 0 && distance < bestDistance) {
+        bestDistance = distance;
+        best = word;
+      }
+    }
+    if (best !== token) changed = true;
+    return best;
+  });
+  if (!changed) return null;
+  const query = next.join(" ").trim();
+  return query && query !== cleaned ? query : null;
+}
+
+/** La cláusula ya está en el carrito. Una palabra de empaque («cartón») no la reabre. */
+export function clauseHeldInCart(clause: string, cart: AgentLine[]): boolean {
+  const text = cleanProductAsk(clause) || clause;
+  if (!text.trim()) return false;
+  if (uncoveredClauses(text, cart, "").length === 0) return true;
+  const asked = askTokens(text);
+  if (!asked.length) return false;
+  return cart.some((line) => {
+    const has = askTokens(`${line.name} ${line.brand ?? ""} ${line.variant ?? ""} ${line.freeText ?? ""}`);
+    if (!has.length) return false;
+    return asked.every((token) => has.some((word) => word === token || tokenMatches(word, token) || tokenClose(word, token)));
+  });
 }
 
 /**

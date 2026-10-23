@@ -4,6 +4,7 @@ import { formatCheckedLine, joinBlocks } from "@/lib/messageStyle";
 import { formatProductListConfirm, formatSpecificItemLine, type PedidoItemInput } from "@/lib/services/captureEngine";
 import { formatMoney } from "@/lib/ordenes";
 import { foldAgent } from "@/lib/orderAgent/catalog";
+import { cleanProductAsk, looksLikeProductAsk } from "@/lib/orderAgent/match";
 import type { AgentLine, AgentStore, OrderCategory } from "@/lib/orderAgent/types";
 
 function kindOf(category: OrderCategory): StoreKind {
@@ -74,9 +75,10 @@ export function itemsFromAgentLines(lines: AgentLine[]): PedidoItemInput[] {
 
 /** Cuando el producto no está en esa tienda. Una sola salida, sin repetir «Ya anoté». */
 export function formatMissingProduct(label: string, askToRemove: boolean): string {
-  const raw = String(label ?? "").replace(/\s+/g, " ").trim();
-  const folded = raw.toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "");
-  const name = raw && !/^(eso|esta|este|ok|mira)$/.test(folded) ? raw : "";
+  const cleaned = cleanProductAsk(label);
+  if (!looksLikeProductAsk(cleaned)) return "";
+  const folded = foldAgent(cleaned);
+  const name = cleaned && !/^(eso|esta|este|ok|mira)$/.test(folded) ? cleaned : "";
   if (!name) return "";
   const head = `😔 *Perdón, no contamos con ${name}.*`;
   if (!askToRemove) return head;
@@ -86,6 +88,7 @@ export function formatMissingProduct(label: string, askToRemove: boolean): strin
 function styleQuestion(question: string): string {
   const text = question.trim();
   if (!text) return "";
+  if (/no encontr[eé]/i.test(text) || text.includes("responde QUITAR")) return text;
   if (text.includes("*") && /[?¿]/.test(text)) return text;
   const exit = "_Responde con el número o el nombre. Si no es, corrige el producto o escribe cancelar._";
   if (text.includes(exit)) return `❓ *${text}*`;

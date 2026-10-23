@@ -564,8 +564,24 @@ export function isNewOrderIntent(text: string): boolean {
 // (cancelar/cancela/cancelalo/cancele/cancelo, anular/anula/anúlalo) sin
 // tener que listar cada una — mismo estilo de heurística por substring que
 // el resto de este archivo.
+// «candela» y «cansela» son dedos de cancela. «canela» es un producto cuando
+// el resto del mensaje lo dice claro (canela en polvo, quiero canela).
+function looseCancelWord(word: string): boolean {
+  return word === "cansela" || word === "cansel" || word === "canselar" || word === "canselo" || word === "candela" || word === "candelar";
+}
+
+function looseCancelCommand(text: string): boolean {
+  if (/\bborrar todo\b/.test(text) || /\breiniciar\b/.test(text) || text === "reinicio") return true;
+  const words = text.split(" ").filter(Boolean);
+  if (!words.some(looseCancelWord)) return false;
+  const leftover = words.filter((word) => !looseCancelWord(word) && !/^(?:el|la|los|las|un|una|pedido|por|favor|porfa|todo|ya|me|porfavor)$/.test(word));
+  if (leftover.some((word) => word === "canela" || word === "canelas")) return false;
+  return leftover.length === 0;
+}
+
 export function isCancelIntent(text: string): boolean {
   const t = normalizeMessageIntentText(text);
+  if (looseCancelCommand(t)) return true;
   return (
     t.includes("cancel") ||
     t.includes("anular") ||

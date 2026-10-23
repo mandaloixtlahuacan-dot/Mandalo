@@ -36,13 +36,29 @@ function asLista(product: AgentProduct): ListaProducto & { id: number } {
   };
 }
 
+/** Alias del pueblo. «birotes» es bolillo. La corrección de dedo vive en suggestCatalogQuery. */
+export const PRODUCT_ASK_ALIAS: Record<string, string> = {
+  birote: "bolillo",
+  birotes: "bolillo",
+  espagueti: "spagueti",
+  spaghetti: "spagueti",
+};
+
+/** Si el cliente dijo un alias, se busca el producto del catálogo. */
+export function aliasProductQuery(query: string): string {
+  const words = foldAgent(query).split(" ").filter(Boolean);
+  const replaced = words.map((word) => PRODUCT_ASK_ALIAS[word]).filter((word): word is string => Boolean(word));
+  return replaced.length ? replaced.join(" ") : query;
+}
+
 export function searchAgentProducts(products: AgentProduct[], query: string, limit = 8): AgentProduct[] {
   const cleaned = stripOrderVerbs(query);
   if (!cleaned) return [];
+  const looked = aliasProductQuery(cleaned);
   const byId = new Map(products.map((product) => [product.id, product]));
-  const said = foldAgent(cleaned);
+  const said = foldAgent(looked);
   const exact = products.filter((product) => product.available && said.length >= 3 && foldAgent(product.name) === said);
-  const ranked = rankListaCandidates(products.map(asLista), cleaned, limit);
+  const ranked = rankListaCandidates(products.map(asLista), looked, limit);
   const found: AgentProduct[] = [];
   const seen = new Set<number>();
   for (const product of exact) {

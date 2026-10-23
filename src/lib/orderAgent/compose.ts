@@ -16,8 +16,12 @@ import {
   foldCatalogName,
   isPackProduct,
   listClauses,
+  cleanProductAsk,
+  looksLikeProductAsk,
   normalizedAsk,
   packInName,
+  sharesProductType,
+  suggestCatalogQuery,
   orderClauses,
   presentationFromName,
   productTypeTokens,
@@ -316,12 +320,37 @@ function lineQty(clause: string, product: AgentProduct, store: AgentStore): { qt
 }
 
 function labelOf(clause: string): string {
-  const text = normalizedAsk(clause)
-    .replace(/^(?:latas?|latitas?|cajitas?|cajas?|paquetes?|paquetitos?|bolsas?|bolsitas?|piezas?|botellas?)\s+de\s+/, "")
-    .trim();
+  const text = cleanProductAsk(
+    normalizedAsk(clause).replace(/^(?:latas?|latitas?|cajitas?|cajas?|paquetes?|paquetitos?|bolsas?|bolsitas?|piezas?|botellas?)\s+de\s+/, ""),
+  );
   const name = text || clauseTokens(clause).slice(0, 4).join(" ");
   if (wantsKilo(clause) && name) return `${name} por kilo`;
-  return name || cleanClause(clause);
+  return name || cleanProductAsk(clause) || cleanClause(clause);
+}
+
+/** Si no parece producto, no se dice «no contamos con». Si hay un término cercano, se ofrece. */
+function finishMissing(text: string, pool: AgentProduct[], store: AgentStore): ClauseDecision {
+  const label = labelOf(text);
+  if (!looksLikeProductAsk(label)) return { kind: "skip", clause: text };
+  if (store.category === "abarrotes" || store.hasProductList) {
+    const suggested = suggestCatalogQuery(text, pool.map((product) => `${product.name} ${product.brand ?? ""}`));
+    if (suggested) {
+      const found = searchAgentProducts(pool, suggested, 8).filter((product) => product.available && sharesProductType(suggested, product));
+      if (found.length) {
+        const measure = lineQty(text, found[0], store);
+        return {
+          kind: "ask",
+          clause: text,
+          query: suggested,
+          products: capOptions(found),
+          qty: measure.qty,
+          unit: measure.unit,
+          marinade: false,
+        };
+      }
+    }
+  }
+  return { kind: "missing", clause: text, label };
 }
 
 function unexplainedWords(product: AgentProduct, clause: string): string[] {
@@ -828,7 +857,7 @@ export function decideClause(clause: string, pool: AgentProduct[], store: AgentS
           marinade: false,
         };
       }
-      return { kind: "missing", clause: text, label: labelOf(text) };
+      return finishMissing(text, pool, store);
     }
     hits = typed;
   }
@@ -836,7 +865,7 @@ export function decideClause(clause: string, pool: AgentProduct[], store: AgentS
   if (wanted) {
     const sized = hits.filter((product) => matchesPackage(product, wanted));
     if (sized.length) hits = sized;
-    else if (householdSize(text)) return { kind: "missing", clause: text, label: labelOf(text) };
+    else if (householdSize(text)) return finishMissing(text, pool, store);
   }
   let forceAsk = false;
   if (saidPack(text) && categoryOnlyClause(text)) {
@@ -854,7 +883,7 @@ export function decideClause(clause: string, pool: AgentProduct[], store: AgentS
   }
   hits = uniqueProducts(hits);
   const named = hits.filter((product) => !falseFriend(text, product));
-  if (!named.length) return { kind: "missing", clause: text, label: labelOf(text) };
+  if (!named.length) return finishMissing(text, pool, store);
   // «una caja de sanitas» no se queda en el nombre pelón: la caja no existe y se ofrecen las presentaciones.
   const flavored = isVagueListaQuery(text) ? named : withoutFlavors(text, named);
   hits = saidPack(text) ? flavored : preferBareName(flavored);
@@ -863,11 +892,11 @@ export function decideClause(clause: string, pool: AgentProduct[], store: AgentS
     if (clean.length === 1) hits = clean;
   }
 
-  if (!hits.length) return { kind: "missing", clause: text, label: labelOf(text) };
+  if (!hits.length) return finishMissing(text, pool, store);
 
   if (store.category !== "carniceria" && wantsKilo(text) && !hits.some((product) => hasKilo(product) || product.unit === "kg")) {
     const loose = hits.filter((product) => extrasOf(product, text).length === 0);
-    if (!loose.length) return { kind: "missing", clause: text, label: labelOf(text) };
+    if (!loose.length) return finishMissing(text, pool, store);
     hits = loose;
   }
 
@@ -921,7 +950,7 @@ export function decideClause(clause: string, pool: AgentProduct[], store: AgentS
       const namedPacks = focus.length
         ? narrowToNamedProduct(text, available.filter((product) => packInName(product)))
         : null;
-      if (!namedPacks?.length) return { kind: "missing", clause: text, label: labelOf(text) };
+      if (!namedPacks?.length) return finishMissing(text, pool, store);
       hits = namedPacks;
     }
   }
@@ -1020,7 +1049,8 @@ export function messageIsNotAnOrder(message: string): boolean {
   if (/\b(ninguno|ninguna|ningunos|ningunas)\b/.test(text)) return true;
   if (/^(?:seguimos|sigue|continua|continuemos|es todo|nada mas)$/.test(text)) return true;
   if (isCancelIntent(message)) return true;
-  if (/\b(quita|quitame|quiteme|quite|quitar|saca|sacame|sacalo|sacala|borra|elimina|cancela|ya no)\b/.test(text)) return true;
+  if (/\b(quita|quitame|quiteme|quite|quitar|saca|sacame|sacalo|sacala|borra|elimina|cancela|ya no|no lo quiero)\b/.test(text)) return true;
+  if (/^(?:borrar todo|reiniciar)$/.test(text)) return true;
   return false;
 }
 

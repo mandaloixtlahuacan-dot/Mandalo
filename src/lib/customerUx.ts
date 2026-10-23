@@ -145,10 +145,13 @@ export function formatCatalogOrderRegistered(pedidoId: number, tiendaNombre: str
 }
 
 /** Aviso de pedido programado. En menú fijo va solo: el total sale en el mensaje siguiente. */
+/** Lo que ve el cliente cuando el pedido ya va a la tienda. Las tres tardan lo mismo. */
+export const STORE_CONFIRM_WAIT_NOTE = "La tienda tarda unos *15 minutos* o menos en confirmar. Espérame con paciencia.";
+
 export function formatScheduledSentNotice(pedidoId: number, tiendaNombre: string, catalog: boolean): string {
   const tienda = tiendaNombre.trim() || "la tienda";
-  if (catalog) return `🧾 *Pedido #${pedidoId}*\n\nYa se envió a *${tienda}*.`;
-  return `🧾 *Pedido #${pedidoId}*\n\nYa se envió a *${tienda}*.\n\nTe aviso en cuanto confirme el precio.`;
+  if (catalog) return `🧾 *Pedido #${pedidoId}*\n\nYa se envió a *${tienda}*.\n\n${STORE_CONFIRM_WAIT_NOTE}`;
+  return `🧾 *Pedido #${pedidoId}*\n\nYa se envió a *${tienda}*.\n\n${STORE_CONFIRM_WAIT_NOTE} Te aviso en cuanto confirme el precio.`;
 }
 
 /**
@@ -236,12 +239,12 @@ export function formatStoreOkAck(pedidoId: number): string {
 /** Menú fijo: el cliente ya confirmó. Falta que la tienda mande CONFIRMO. */
 export function formatCatalogAwaitingStore(pedidoId: number, tiendaNombre: string): string {
   const tienda = tiendaNombre.trim() || "la tienda";
-  return `🧾 *Pedido #${pedidoId}*\n\nYa va para *${tienda}*.\n\nEn cuanto confirmen el pedido, lo mando al repartidor.`;
+  return `🧾 *Pedido #${pedidoId}*\n\nYa va para *${tienda}*.\n\n${STORE_CONFIRM_WAIT_NOTE} En cuanto confirmen el pedido, lo mando al repartidor.`;
 }
 
 export function formatQuoteOrderRegistered(pedidoId: number, tiendaNombre: string): string {
   const tienda = tiendaNombre.trim() || "la tienda";
-  return `🧾 *Pedido #${pedidoId}*\n\nYa va para *${tienda}*.\n\nTe aviso en cuanto la tienda confirme el precio.`;
+  return `🧾 *Pedido #${pedidoId}*\n\nYa va para *${tienda}*.\n\n${STORE_CONFIRM_WAIT_NOTE} Te aviso en cuanto la tienda confirme el precio.`;
 }
 
 export function formatCourierCancelNotice(pedidoId: number): string {
