@@ -5,7 +5,8 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { RESTAURANT_EXTRAS, SALSA_SUGERENCIAS, useCart } from "@/components/app/cart";
-import { PEKES_SHELVES, shelfVisual, type ShelfId } from "@/lib/app/shelves";
+import { IconoAnaquel, IconoCarne, IconoHamburguesa, IconoMas } from "@/components/app/icons";
+import { PEKES_SHELVES, type ShelfId } from "@/lib/app/shelves";
 
 type Store = {
   id: number;
@@ -96,9 +97,16 @@ export default function StorePage() {
 
   return (
     <>
-      <Link href={store ? `/app/categoria/${store.categoriaId}` : "/app"} className="ayuda">← Tiendas</Link>
-      <h1>{store?.nombre ?? "Tienda"}</h1>
-      {store ? <p className="ayuda">{store.abierta ? "Abierta" : store.abreTexto || "Cerrada"}{store.horarioTexto ? ` · ${store.horarioTexto}` : ""}</p> : null}
+      <header className="tienda-hero">
+        <Link href={store ? `/app/categoria/${store.categoriaId}` : "/app"} className="volver">Tiendas</Link>
+        <h1>{store?.nombre ?? "Tienda"}</h1>
+        {store ? (
+          <div className="tienda-meta">
+            <span className={store.abierta ? "pastilla abierta" : "pastilla"}>{store.abierta ? "Abierta" : "Cerrada"}</span>
+            <span>{store.abierta ? store.horarioTexto : store.abreTexto || store.horarioTexto}</span>
+          </div>
+        ) : null}
+      </header>
       {store && !store.abierta ? <p className="aviso">Si confirmas ahora, el pedido espera a que se pueda repartir.</p> : null}
       {store?.cotizar ? <p className="aviso">Precio estimado. La tienda confirma el final.</p> : null}
       {error ? <p className="aviso error">{error}</p> : null}
@@ -115,7 +123,8 @@ export default function StorePage() {
                 setAnaquel((current) => (current === shelf.id ? "" : shelf.id));
               }}
             >
-              {shelf.icono} {shelf.titulo}
+              <IconoAnaquel id={shelf.id} />
+              {shelf.titulo}
             </button>
           ))}
         </div>
@@ -132,16 +141,22 @@ export default function StorePage() {
       {body?.necesitaBusqueda || body?.mensaje ? <p className="ayuda">{body.mensaje}</p> : null}
       <div className="lista">
         {products.map((product) => {
-          const shelf = shelfVisual(product.anaquel ?? "otros");
+          const anaquelId = product.anaquel ?? "otros";
           return (
-            <article key={product.id} className="tarjeta producto-tarjeta">
-              <div className="producto">
-                <span className="producto-icono" aria-hidden="true">{store?.usaLista ? shelf.icono : restaurante ? "🍔" : "🥩"}</span>
+            <article key={product.id} className="tarjeta comida">
+              <div className="comida-cuerpo">
+                <span className="comida-icono">
+                  {store?.usaLista ? <IconoAnaquel id={anaquelId} /> : restaurante ? <IconoHamburguesa /> : <IconoCarne />}
+                </span>
                 <div>
                   <strong className="nombre-grande">{product.nombre}</strong>
-                  {store?.usaLista ? <p className="ayuda">{shelf.titulo}</p> : null}
+                  <span className="precio-visible">{store?.cotizar ? "Por cotizar" : money(product.precio)}</span>
                 </div>
-                <span className="precio">{store?.cotizar ? "Por cotizar" : money(product.precio)}</span>
+                {openId === product.id ? null : (
+                  <button type="button" className="mas" aria-label={`Agregar ${product.nombre}`} onClick={() => { setOpenId(product.id); setQty(1); setExtras([]); setNota(""); setSalsa(""); }}>
+                    <IconoMas />
+                  </button>
+                )}
               </div>
               {openId === product.id ? (
                 <div className="lista">
@@ -168,9 +183,7 @@ export default function StorePage() {
                   )}
                   <button type="button" className="boton" onClick={() => add(product)}>Agregar</button>
                 </div>
-              ) : (
-                <button type="button" className="boton claro" onClick={() => { setOpenId(product.id); setQty(1); setExtras([]); setNota(""); setSalsa(""); }}>Agregar</button>
-              )}
+              ) : null}
             </article>
           );
         })}

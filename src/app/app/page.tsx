@@ -52,6 +52,7 @@ export default function AppHomePage() {
   return (
     <>
       <section className="bienvenida">
+        <img className="monograma grande" src="/brand/monograma.svg" alt="" />
         <p className="eyebrow">Tu mandado a domicilio</p>
         <h1>{usuario ? `Hola, ${usuario.nombre.split(" ")[0]}` : "¿Qué se te antoja?"}</h1>
         {!usuario && !modo ? (

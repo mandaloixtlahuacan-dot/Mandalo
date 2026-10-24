@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { useCart } from "@/components/app/cart";
+import { IconoCarrito, IconoMas } from "@/components/app/icons";
 
 export default function CartPage() {
   const cart = useCart();
@@ -60,7 +61,7 @@ export default function CartPage() {
 
   return (
     <>
-      <h1>Carrito</h1>
+      <h1 className="con-icono"><IconoCarrito /> Carrito</h1>
       {cart.lines.length === 0 ? <p className="ayuda">Todavía no agregas nada. <Link href="/app">Ver tiendas</Link></p> : null}
       <div className="lista">
         {cart.lines.map((line) => (
@@ -72,9 +73,9 @@ export default function CartPage() {
               {line.nota ? <p className="ayuda">Nota: {line.nota}</p> : null}
               {line.salsa ? <p className="ayuda">Salsa: {line.salsa}</p> : null}
               <div className="paginas">
-                <button type="button" className="boton claro" onClick={() => cart.updateLine(line.key, { cantidad: Math.max(1, line.cantidad - 1) })}>−</button>
-                <span>{line.cantidad}</span>
-                <button type="button" className="boton claro" onClick={() => cart.updateLine(line.key, { cantidad: Math.min(20, line.cantidad + 1) })}>+</button>
+                <button type="button" className="cantidad" aria-label="Quitar uno" onClick={() => cart.updateLine(line.key, { cantidad: Math.max(1, line.cantidad - 1) })}>−</button>
+                <span className="cantidad-numero">{line.cantidad}</span>
+                <button type="button" className="cantidad mas-linea" aria-label="Agregar uno" onClick={() => cart.updateLine(line.key, { cantidad: Math.min(20, line.cantidad + 1) })}><IconoMas /></button>
               </div>
             </div>
             <div>
