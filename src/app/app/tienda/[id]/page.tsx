@@ -253,5 +253,6 @@ export default function StorePage() {
 
 function money(value: number | null): string {
   if (value == null || !Number.isFinite(value)) return "";
-  return `$${value}`;
+  const rounded = Math.round(value * 100) / 100;
+  return Number.isInteger(rounded) ? `$${rounded}` : `$${rounded.toFixed(2)}`;
 }
