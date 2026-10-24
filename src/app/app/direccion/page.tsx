@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 
 import { useCart } from "@/components/app/cart";
 import { MapPicker } from "@/components/app/MapPicker";
+import type { MapProviderId } from "@/lib/app/geocode";
 
 type Decision = {
   ok: boolean;
@@ -18,6 +19,7 @@ type Decision = {
 
 export default function AddressPage() {
   const cart = useCart();
+  const [proveedor, setProveedor] = useState<MapProviderId>("osm");
   const [mapsKey, setMapsKey] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const [latitude, setLatitude] = useState("");
@@ -30,8 +32,14 @@ export default function AddressPage() {
   useEffect(() => {
     void fetch("/api/app/publico")
       .then((response) => response.json())
-      .then((body: { mapsKey?: string | null }) => setMapsKey(body.mapsKey ?? null))
-      .catch(() => setMapsKey(null))
+      .then((body: { proveedor?: string; mapsKey?: string | null }) => {
+        setProveedor(body.proveedor === "google" ? "google" : "osm");
+        setMapsKey(body.mapsKey ?? null);
+      })
+      .catch(() => {
+        setProveedor("osm");
+        setMapsKey(null);
+      })
       .finally(() => setReady(true));
   }, []);
 
@@ -39,7 +47,7 @@ export default function AddressPage() {
     if (!cart.address) return;
     if (cart.address.latitude != null) setLatitude(String(cart.address.latitude));
     if (cart.address.longitude != null) setLongitude(String(cart.address.longitude));
-    setReferencia(cart.address.referencia);
+    setReferencia(cart.address.texto || cart.address.referencia);
   }, [cart.address]);
 
   async function check() {
@@ -61,12 +69,12 @@ export default function AddressPage() {
       setError(next.mensaje || "Ese punto queda fuera.");
       return;
     }
-    const texto = [next.zona, referencia.trim(), next.latitude != null ? "pin en el mapa" : ""].filter(Boolean).join(" · ");
+    const calle = referencia.trim();
     cart.saveAddress({
       latitude: next.latitude ?? null,
       longitude: next.longitude ?? null,
-      referencia: referencia.trim(),
-      texto,
+      referencia: calle,
+      texto: calle || next.zona || "Pin guardado",
       regla: next.regla || "radio",
     });
   }
@@ -74,23 +82,27 @@ export default function AddressPage() {
   return (
     <>
       <h1>¿Dónde lo dejamos?</h1>
-      <p className="ayuda">Solo la cabecera de Ixtlahuacán del Río. Toca el mapa para clavar el pin.</p>
-      {!ready ? <p className="ayuda">Cargando mapa…</p> : null}
-      {ready && !mapsKey ? (
-        <p className="aviso">El mapa no está disponible en este preview. Pega latitud y longitud, o escribe la calle.</p>
-      ) : null}
-      <MapPicker
-        apiKey={mapsKey}
-        onPick={(lat, lng) => {
-          setLatitude(String(lat));
-          setLongitude(String(lng));
-        }}
-      />
+      <p className="ayuda">Solo la cabecera de Ixtlahuacán del Río. Escribe la calle y el número.</p>
+      {!ready ? <p className="ayuda">Cargando mapa…</p> : (
+        <MapPicker
+          provider={proveedor}
+          apiKey={mapsKey}
+          onPlace={(place) => {
+            setLatitude(String(place.latitude));
+            setLongitude(String(place.longitude));
+            if (place.direccion) setReferencia(place.direccion);
+          }}
+        />
+      )}
       <div className="lista">
-        <input className="campo" inputMode="decimal" placeholder="Latitud" value={latitude} onChange={(event) => setLatitude(event.target.value)} />
-        <input className="campo" inputMode="decimal" placeholder="Longitud" value={longitude} onChange={(event) => setLongitude(event.target.value)} />
-        <input className="campo" placeholder="Calle, número o referencia" value={referencia} onChange={(event) => setReferencia(event.target.value)} />
-        <button type="button" className="boton" onClick={() => void check()}>Revisar cobertura</button>
+        <p className="ayuda">{referencia || "La dirección aparece aquí cuando elijas una calle."}</p>
+        <details className="mapa-manual">
+          <summary>Si el mapa no abre</summary>
+          <input className="campo" placeholder="Calle y número" value={referencia} onChange={(event) => setReferencia(event.target.value)} />
+          <input className="campo" inputMode="decimal" placeholder="Latitud" value={latitude} onChange={(event) => setLatitude(event.target.value)} />
+          <input className="campo" inputMode="decimal" placeholder="Longitud" value={longitude} onChange={(event) => setLongitude(event.target.value)} />
+        </details>
+        <button type="button" className="boton" onClick={() => void check()}>Usar esta dirección</button>
       </div>
       {error ? <p className="aviso error">{error}</p> : null}
       {decision?.ok ? <p className="aviso">Sí cubrimos ahí. {decision.aviso || ""}</p> : null}

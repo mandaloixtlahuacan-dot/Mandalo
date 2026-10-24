@@ -45,6 +45,7 @@ export async function POST(request: Request) {
             cantidad: Number(row.cantidad),
             extras: Array.isArray(row.extras) ? row.extras.map((item) => String(item)) : [],
             nota: String(row.nota ?? ""),
+            salsa: String(row.salsa ?? ""),
           };
         }),
         latitude: finite(body.latitude),

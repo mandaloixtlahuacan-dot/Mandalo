@@ -6,11 +6,11 @@ La migración de cuentas y avisos está en `supabase/migrations/20261024_app_pwa
 
 ## Cómo se arma un pedido
 
-1. El cliente elige una de tres categorías fijas: Abarrotes, Carnicería, Restaurantes (`src/lib/app/categories.ts`). El nombre de la tienda sale de `tiendas`. Si `categoria` viene vacía, se reconoce por el nombre (Peke's, La Central, George o Conyorch).
-2. El catálogo se lee de `productos_tienda`. Solo tiendas `activa = true`. El horario es el que ya guarda la tienda (`hora_apertura`, `hora_cierre`, `horario_por_dia`, `dias_cerrado`).
-3. Abarrotes (`usa_lista_productos` o la categoría abarrotes) no vuelca los ~12,500 productos: hay que escribir al menos 2 letras y la búsqueda es del servidor, 20 por página (`src/lib/app/catalog.ts`).
-4. El carrito vive en el teléfono (`localStorage`). Cada línea puede llevar extras de una lista cerrada y una nota de 120 caracteres.
-5. La dirección es un pin. Si no hay `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`, la pantalla pide latitud, longitud o una calle.
+1. El cliente entra por una bienvenida y elige una categoría: Tienda (abarrotes), Restaurantes o Carnicería (`src/lib/app/categories.ts`). En la siguiente pantalla salen las tiendas de esa categoría, con horario y si están abiertas. Recién ahí se entra al menú.
+2. El catálogo se lee de `productos_tienda`. Solo tiendas `activa = true`. El horario es el que ya guarda la tienda.
+3. En Peke's los ~12,500 productos se agrupan en anaqueles con reglas de palabras clave (`src/lib/app/shelves.ts`): Bebidas, Botanas, Dulces, Lácteos, Panadería, Despensa, Sazonadores, Enlatados, Limpieza, Higiene, Bebés, Mascotas y Otros. No usa OpenAI. Si el nombre no alcanza, usa la `categoria` que ya trae el producto. La columna `categoria_app` está propuesta en `supabase/migrations/20261024_app_pwa_categoria_anaquel.sql` y no está aplicada; el código no la lee.
+4. El carrito vive en el teléfono. Los extras (sin cebolla, término, bien cocido) y la salsa solo aplican en restaurantes. En George el campo dice: «Si deseas alguna salsa o condimento especial (BBQ, Buffalo...), indícalo aquí». Abarrotes y carnicería no muestran esos extras.
+5. La dirección se escribe en el mapa. Por defecto es Leaflet con teselas de OpenStreetMap y la atribución © OpenStreetMap. La búsqueda pasa por `/api/app/geocode`, que llama a Nominatim con espera de al menos 1 segundo, User-Agent y Referer de Mándalo, y resultados acotados a Ixtlahuacán del Río, Jalisco (`viewbox` del cuadro de la cabecera y `bounded=1`). Ese cuadro no acepta ni rechaza el pedido: eso sigue siendo el radio de 1.5 km. El autocompletado mueve el pin y el cliente lo puede arrastrar. Se guardan la calle y las coordenadas. No hace falta API key. Google solo entra si `NEXT_PUBLIC_MAP_PROVIDER=google` y además hay `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`.
 6. Confirmar exige cuenta (cookie `mandalo_app`, httpOnly). `placeAppOrder` crea el pedido en `confirmacion_cliente`, igual que el SÍ del bot, y luego usa el mismo despacho.
 
 El precio de abarrotes es cotización: `usa_catalogo_fijo` es falso, `total_cliente` nace nulo y la tienda recibe `ORDEN #N PRECIO`. George y La Central (`usa_catalogo_fijo`) confirman con `ORDEN #N CONFIRMO` y el total ya incluye envío y servicio. El corte es esa columna, no el nombre de la categoría.
@@ -43,7 +43,21 @@ Se mandan desde el mismo lugar donde hoy cambia el estado, sin cambiar el mensaj
 
 La lectura de suscripciones y el envío esperan como máximo 3 segundos, para alcanzar a armar el aviso de entregado antes de que la retención borre el pedido, sin congelar el isolate. Si falla el push, el bot sigue. Si las tablas no existen, se calla 5 minutos y reintenta.
 
-Hace falta `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` y `VAPID_SUBJECT` (`mailto:` o una URL https). No hay un subject inventado.
+Hace falta `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` y `VAPID_SUBJECT` (`mailto:` o una URL https). No hay un subject inventado en el código.
+
+Para generar un par nuevo, sin guardarlo en el repo:
+
+```
+npx tsx scripts/gen-vapid.ts
+```
+
+En Vercel, proyecto `mandalo1`, target **Preview** (no Production):
+
+- `NEXT_PUBLIC_VAPID_PUBLIC_KEY` tipo encrypted
+- `VAPID_PRIVATE_KEY` tipo sensitive
+- `VAPID_SUBJECT` = `https://mandalo1.vercel.app`
+
+El deployment que ya estaba construido no las toma. Hace falta un deploy nuevo. La clave privada no va en git.
 
 ## Qué tocar cuando Víctor cambie algo
 
@@ -51,10 +65,12 @@ Hace falta `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` y `VAPID_SUBJECT`
 |---|---|
 | Categorías o el texto de cada una | `src/lib/app/categories.ts` y, si es un nicho nuevo del bot, `CUSTOMER_STORE_NICHES` |
 | Envío o servicio | `src/lib/ordenes.ts` (`DELIVERY_FEE`, `MANDALO_SERVICE_FEE`) |
-| Extras permitidos | `EXTRAS` en `src/components/app/cart.tsx` y `EXTRAS_OK` en `src/lib/app/placeOrder.ts` (tienen que coincidir) |
+| Extras y salsas | `RESTAURANT_EXTRAS` y `SALSA_SUGERENCIAS` en `src/components/app/cart.tsx`, y `EXTRAS_OK` en `src/lib/app/placeOrder.ts`. Solo cuentan si la tienda es restaurante. |
+| Anaqueles de Peke's | `src/lib/app/shelves.ts` |
 | Textos del push | `src/lib/app/pushCopy.ts` |
 | Pasos de la pantalla de seguimiento | `src/lib/app/tracking.ts` |
 | Radio o centro | `src/lib/services/geo.ts` (lo comparte el bot) |
+| Mapa | Por defecto OSM en `src/lib/app/geocode.ts` y `src/components/app/OsmMap.tsx`. Google solo con `NEXT_PUBLIC_MAP_PROVIDER=google` y la llave. |
 
 Los extras se pegan al nombre del producto solo si el menú fijo sigue reconociendo el mismo producto. Si no, el nombre queda exacto y la nota sale en un segundo WhatsApp a la tienda. En abarrotes el paréntesis siempre va en el renglón, porque no hay menú fijo que parear. La cantidad va en `cantidad`, no en el nombre.
 
@@ -65,13 +81,14 @@ Manifest en `/app/manifest.webmanifest`. Íconos con el monograma en `public/ico
 ## Variables en Vercel
 
 ```
+NEXT_PUBLIC_MAP_PROVIDER
 NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
 NEXT_PUBLIC_VAPID_PUBLIC_KEY
 VAPID_PRIVATE_KEY
 VAPID_SUBJECT
 ```
 
-La llave de Maps es pública. Restríngela por referrer del preview y del dominio. Sin ella el pin se degrada a coordenadas escritas.
+`NEXT_PUBLIC_MAP_PROVIDER` vacío o `osm` usa OpenStreetMap. No hace falta llave. Google pide las dos: `google` y `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`. Las pruebas no llaman a Nominatim.
 
 ## Cuando Víctor aplique la migración
 

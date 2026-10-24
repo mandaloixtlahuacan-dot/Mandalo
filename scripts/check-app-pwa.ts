@@ -4,6 +4,7 @@
  *
  *   npx tsx scripts/check-app-pwa.ts
  */
+import { gunzipSync } from "node:zlib";
 import { readFileSync } from "node:fs";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -16,6 +17,8 @@ import { composeStoreItemName } from "../src/lib/app/itemText";
 import { notifyAppPushForOrderState, resetPushSchemaProbeForTests, setPushSenderForTests } from "../src/lib/app/orderPush";
 import { placeAppOrder } from "../src/lib/app/placeOrder";
 import { pushNoticesForState } from "../src/lib/app/pushCopy";
+import { NOMINATIM_DEBOUNCE_MS, NOMINATIM_USER_AGENT, nominatimHeaders, nominatimSearchUrl, parseGeocodeRequest, readNominatimHits, resolveMapProvider } from "../src/lib/app/geocode";
+import { classifyShelf, shelfOrFilter } from "../src/lib/app/shelves";
 import { matchCatalogProduct, type CatalogPriceRow } from "../src/lib/catalogQuantities";
 import { IXTLAHUACAN_CENTER } from "../src/lib/services/geo";
 import { MemoryDatabase } from "./sim/memory-db";
@@ -25,6 +28,46 @@ function check(name: string, ok: boolean, detail = ""): void {
   if (ok) return;
   failures.push(detail ? `${name}: ${detail}` : name);
 }
+
+check("takis-botanas", classifyShelf("Takis Fuego 60g", "sabritas") === "botanas");
+check("coca-bebidas", classifyShelf("Coca Cola 600 ml", "bebidas") === "bebidas");
+check("sh-higiene", classifyShelf("Sh Fructis Biotina 650ml", "shampoo y acondicion") === "higiene");
+check("det-limpieza", classifyShelf("Det Ariel Downy 1.5kg", "detergentes") === "limpieza");
+check("fabuloso-limpieza", classifyShelf("Fabuloso Pasion De Frutas 2lt", "limpiadores de piso") === "limpieza");
+check("leche-lacteos", classifyShelf("Leche Lala 1lt", "lacteos") === "lacteos");
+check("anaquel-or", (shelfOrFilter("botanas") ?? "").includes("takis"));
+const pekes = JSON.parse(gunzipSync(readFileSync("scripts/fixtures/pekes-catalogo-completo.json.gz")).toString("utf8")) as Array<{ nombre_producto: string; categoria?: string }>;
+const otros = pekes.filter((row) => classifyShelf(row.nombre_producto, row.categoria) === "otros").length;
+check("pekes-otros-menor-25", otros / pekes.length < 0.25, `${otros}/${pekes.length}`);
+
+check("mapa-default-osm", resolveMapProvider({}) === "osm");
+check("mapa-google-sin-llave", resolveMapProvider({ provider: "google", googleKey: "  " }) === "osm");
+check("mapa-google-con-llave", resolveMapProvider({ provider: "google", googleKey: "llave" }) === "google");
+const nominatim = nominatimSearchUrl("Morelos 10");
+check(
+  "nominatim-acotado",
+  nominatim.includes("bounded=1") && nominatim.includes("viewbox=") && nominatim.includes("countrycodes=mx") && nominatim.includes("Ixtlahuac"),
+  nominatim,
+);
+check("nominatim-debounce", NOMINATIM_DEBOUNCE_MS >= 1000);
+check("nominatim-ua", NOMINATIM_USER_AGENT.includes("Mandalo") && nominatimHeaders()["User-Agent"].includes("Mandalo") && Boolean(nominatimHeaders().Referer));
+const calleSinPin = parseGeocodeRequest(new URLSearchParams("q=Morelos 10"));
+check("geocode-calle-no-es-cero", calleSinPin.latitude == null && calleSinPin.q === "Morelos 10");
+const pinExplicito = parseGeocodeRequest(new URLSearchParams("lat=20.86&lng=-103.24"));
+check("geocode-pin-explicito", pinExplicito.latitude === 20.86 && pinExplicito.longitude === -103.24);
+const hit = readNominatimHits([{ lat: "20.86", lon: "-103.24", display_name: "Morelos 10, Ixtlahuacán del Río" }]);
+check("nominatim-lee-hit", hit.length === 1 && hit[0]?.direccion.includes("Morelos"));
+const geocodeRoute = readFileSync("src/app/api/app/geocode/route.ts", "utf8");
+check("geocode-sin-google", geocodeRoute.includes("nominatimHeaders") && geocodeRoute.includes("waitNominatimSlot") && !geocodeRoute.includes("maps.googleapis"));
+const osmMap = readFileSync("src/components/app/OsmMap.tsx", "utf8");
+check(
+  "osm-tiles",
+  osmMap.includes("tile.openstreetmap.org") && osmMap.includes("openstreetmap.org/copyright") && osmMap.includes("NOMINATIM_DEBOUNCE_MS") && !osmMap.includes("maps.googleapis"),
+);
+const picker = readFileSync("src/components/app/MapPicker.tsx", "utf8");
+check("picker-osm-por-defecto", picker.includes('provider = "osm"') && picker.includes('provider === "google"'));
+const direccion = readFileSync("src/app/app/direccion/page.tsx", "utf8");
+check("direccion-sin-aviso-de-llave", direccion.includes("provider={proveedor}") && !direccion.includes("Sin mapa en este preview"));
 
 const cart = summarizeCart([{ precio: 100, cantidad: 1, cotizar: false }]);
 check("carrito-100-15-10", cart.subtotal === 100 && cart.envio === 15 && cart.servicio === 10 && cart.total === 125, JSON.stringify(cart));
@@ -181,7 +224,7 @@ async function placeCase(label: string, now: string, catalogo: boolean, conRepar
       telefono: "3311111111",
       nombre: "Ana López",
       tiendaId: catalogo ? 5 : 7,
-      lines: [{ productoId: catalogo ? 10 : 1, cantidad: 2, extras: ["Sin cebolla", "Inventado"], nota: "sin picante" }],
+      lines: [{ productoId: catalogo ? 10 : 1, cantidad: 2, extras: ["Sin cebolla", "Con verdura"], nota: "sin picante", salsa: "BBQ" }],
       latitude: IXTLAHUACAN_CENTER.latitude,
       longitude: IXTLAHUACAN_CENTER.longitude,
       referencia: "Calle Morelos 10",
@@ -212,7 +255,8 @@ async function placeCase(label: string, now: string, catalogo: boolean, conRepar
   check(`${label}-origen`, meta.origen === "app");
   const item = db.rows("pedido_items")[0];
   if (label === "abierta-cotiza") {
-    check("cotiza-extras", String(item?.nombre_producto ?? "").includes("Sin cebolla") && !String(item?.nombre_producto).includes("Inventado"));
+    check("cotiza-sin-extras-de-restaurante", !String(item?.nombre_producto ?? "").includes("Sin cebolla") && !String(item?.nombre_producto ?? "").includes("BBQ"));
+    check("cotiza-nota", String(item?.nombre_producto ?? "").includes("sin picante"));
     check("cotiza-cantidad", Number(item?.cantidad) === 2);
     check("cotiza-despacho", dispatches[0]?.fromEstado === "confirmacion_cliente" && dispatches[0]?.catalogAlreadyConfirmed === false);
     check("cotiza-whatsapp", enqueued.some((row) => row.tipoMensaje === "notificacion_cliente" && String(row.payload.body).includes("Pedido #")));
@@ -223,6 +267,9 @@ async function placeCase(label: string, now: string, catalogo: boolean, conRepar
     check("cerrada-aviso", enqueued.some((row) => row.tipoMensaje === "notificacion_cliente"));
   }
   if (label === "catalogo") {
+    const aviso = enqueued.map((row) => String(row.payload.body ?? "")).join("\n");
+    const visible = `${String(item?.nombre_producto ?? "")}\n${aviso}`;
+    check("catalogo-salsa", visible.includes("BBQ") && visible.includes("Sin cebolla"), visible.slice(0, 180));
     check("catalogo-confirmado", dispatches[0]?.catalogAlreadyConfirmed === true);
     check("catalogo-no-cancela", cancelled === false);
   }

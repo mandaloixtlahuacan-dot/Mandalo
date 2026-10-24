@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { phoneIsStaff } from "@/lib/app/auth";
+import { categoryForStore } from "@/lib/app/categories";
 import { isMissingColumn } from "@/lib/app/dbError";
 import { composeStoreItemName, formatSeparateNotes } from "@/lib/app/itemText";
 import { decideCoverage } from "@/lib/app/coverage";
@@ -18,13 +19,14 @@ import type { EnqueueOutboundMessageInput } from "@/lib/services/dispatchWorker"
 import type { DispatchCotizacionResult } from "@/lib/services/storeDispatch";
 import type { CatalogPriceRow } from "@/lib/catalogQuantities";
 
-const EXTRAS_OK = new Set(["Con verdura", "Sin verdura", "Sin cebolla", "Bien cocido", "Término medio"]);
+const EXTRAS_OK = new Set(["Sin cebolla", "Bien cocido", "Término medio"]);
 
 export type PlaceLineInput = {
   productoId: number;
   cantidad: number;
   extras: string[];
   nota: string;
+  salsa?: string;
 };
 
 export type PlaceInput = {
@@ -125,8 +127,12 @@ export async function placeAppOrder(input: PlaceInput, ports: PlacePorts): Promi
     if (!product) return fail(400, "CARRITO", "Un producto ya no está disponible en esa tienda.");
     const cantidad = Math.round(Number(line.cantidad));
     if (!Number.isInteger(cantidad) || cantidad < 1 || cantidad > 20) return fail(400, "CARRITO", "La cantidad tiene que ser de 1 a 20.");
-    const extras = cleanExtras(line.extras);
-    const nota = cleanNote(line.nota);
+    const restaurante = categoryForStore({
+      nombre: String(tienda.nombre ?? ""),
+      categoria: tienda.categoria == null ? null : String(tienda.categoria),
+    }) === "restaurantes";
+    const extras = restaurante ? cleanExtras(line.extras) : [];
+    const nota = joinNote(restaurante ? cleanSalsa(line.salsa ?? "") : "", cleanNote(line.nota));
     const composed = composeStoreItemName(String(product.nombre_producto), extras, nota, catalog);
     prepared.push({
       productoId: Number(product.id),
@@ -139,7 +145,7 @@ export async function placeAppOrder(input: PlaceInput, ports: PlacePorts): Promi
     });
   }
 
-  const referencia = cleanNote(input.referencia ?? "") || null;
+  const referencia = cleanAddress(input.referencia ?? "") || null;
   const zones = await loadZones(ports.supabase);
   const coverage = decideCoverage({
     latitude: input.latitude,
@@ -355,8 +361,8 @@ async function loadZones(supabase: SupabaseClient): Promise<string[] | null> {
 }
 
 function formatAddress(latitude: number | null, referencia: string | null): string {
-  const parts = [latitude != null ? buildAddressTextFromCoords() : "", referencia ?? ""].map((item) => item.trim()).filter(Boolean);
-  return parts.join(" · ");
+  if (referencia) return referencia;
+  return latitude != null ? buildAddressTextFromCoords() : "";
 }
 
 function customerMessage(pedidoId: number, telefono: string, body: string): EnqueueOutboundMessageInput {
@@ -382,6 +388,18 @@ function cleanExtras(extras: string[]): string[] {
 
 function cleanNote(value: string): string {
   return String(value ?? "").replace(/\s+/g, " ").trim().slice(0, 120);
+}
+
+function cleanSalsa(value: string): string {
+  return String(value ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
+}
+
+function cleanAddress(value: string): string {
+  return String(value ?? "").replace(/\s+/g, " ").trim().slice(0, 200);
+}
+
+function joinNote(salsa: string, nota: string): string {
+  return [salsa, nota].filter(Boolean).join(". ").slice(0, 120);
 }
 
 function buildRecord(params: {

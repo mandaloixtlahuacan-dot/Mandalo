@@ -15,6 +15,7 @@ export type CartLine = {
   cantidad: number;
   extras: string[];
   nota: string;
+  salsa: string;
 };
 
 export type SavedAddress = {
@@ -41,7 +42,8 @@ const CartContext = createContext<CartContextValue | null>(null);
 const CART_KEY = "mandalo.carrito.v1";
 const ADDRESS_KEY = "mandalo.direccion.v1";
 
-export const EXTRAS = ["Con verdura", "Sin verdura", "Sin cebolla", "Bien cocido", "Término medio"];
+export const RESTAURANT_EXTRAS = ["Sin cebolla", "Bien cocido", "Término medio"];
+export const SALSA_SUGERENCIAS = ["BBQ", "Buffalo", "Chipotle", "Ranch", "Mango habanero"];
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [lines, setLines] = useState<CartLine[]>([]);
@@ -79,7 +81,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             if (!replace) return current;
             return [{ ...line, key: crypto.randomUUID() }];
           }
-          const key = `${line.productoId}:${line.extras.join("|")}:${line.nota}`;
+          const key = `${line.productoId}:${line.extras.join("|")}:${line.nota}:${line.salsa}`;
           const existing = current.find((item) => item.key === key);
           if (existing) {
             return current.map((item) => (item.key === key ? { ...item, cantidad: Math.min(20, item.cantidad + line.cantidad) } : item));

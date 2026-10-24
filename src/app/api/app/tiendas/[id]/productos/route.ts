@@ -16,7 +16,8 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     const url = new URL(request.url);
     const page = Number(url.searchParams.get("page") ?? "1");
     const q = url.searchParams.get("q") ?? "";
-    const result = await searchStoreProducts(supabase, tienda, { q, page: Number.isFinite(page) ? page : 1 });
+    const anaquel = url.searchParams.get("anaquel");
+    const result = await searchStoreProducts(supabase, tienda, { q, page: Number.isFinite(page) ? page : 1, anaquel });
     return appJson({ ok: true, tienda, pageSize: PAGE_SIZE, page: Math.max(1, page || 1), ...result });
   } catch (error: unknown) {
     return catchAppError(error);

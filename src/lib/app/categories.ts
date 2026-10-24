@@ -4,20 +4,26 @@ import { nicheIdForCategoria, type StoreNicheId } from "@/lib/customerUx";
 export const APP_CATEGORIES = [
   {
     id: "abarrotes",
-    titulo: "Abarrotes",
-    detalle: "Mini Super Peke's",
+    titulo: "Tienda",
+    detalle: "Abarrotes",
+    color: "#1F8A4C",
+    suave: "#E7F6EC",
     cotizarPorDefecto: true,
-  },
-  {
-    id: "carnicerias",
-    titulo: "Carnicería",
-    detalle: "La Central",
-    cotizarPorDefecto: false,
   },
   {
     id: "restaurantes",
     titulo: "Restaurantes",
     detalle: "George y Conyorch",
+    color: "#C68600",
+    suave: "#FFF3CC",
+    cotizarPorDefecto: false,
+  },
+  {
+    id: "carnicerias",
+    titulo: "Carnicería",
+    detalle: "La Central",
+    color: "#F26B1D",
+    suave: "#FFE6D4",
     cotizarPorDefecto: false,
   },
 ] as const;

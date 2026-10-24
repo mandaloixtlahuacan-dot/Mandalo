@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { APP_CATEGORIES, categoryForStore, type AppCategoryId } from "@/lib/app/categories";
+import { classifyShelf, isShelfId, OTROS_CATEGORIA_LABELS, shelfOrFilter, type ShelfId } from "@/lib/app/shelves";
 import { isMissingRelation, MIGRACION_MENSAJE, MIGRACION_PENDIENTE } from "@/lib/app/dbError";
 import {
   checkTiendaSchedule,
@@ -34,6 +35,7 @@ export type CatalogProduct = {
   nombre: string;
   precio: number | null;
   categoria: string | null;
+  anaquel: ShelfId;
 };
 
 type StoreRow = {
@@ -89,24 +91,28 @@ export async function getAppStore(supabase: SupabaseClient, tiendaId: number): P
 export async function searchStoreProducts(
   supabase: SupabaseClient,
   store: AppStoreCard,
-  query: { q: string; page: number },
-): Promise<{ productos: CatalogProduct[]; total: number; necesitaBusqueda: boolean; mensaje: string | null }> {
+  query: { q: string; page: number; anaquel?: string | null },
+): Promise<{ productos: CatalogProduct[]; total: number; necesitaBusqueda: boolean; mensaje: string | null; anaquel: ShelfId | null }> {
   const page = Math.max(1, query.page);
   const q = query.q.trim();
+  const anaquel = store.usaLista && isShelfId(query.anaquel) ? query.anaquel : null;
   if (store.usaLista || store.cotizar) {
-    if (q.length < 2) {
+    if (q.length >= 2) {
+      try {
+        const ranked = await queryListaProductos(supabase as unknown as ListaSupabase, store.id, q);
+        const rows = ranked.map(fromLista).filter((row) => !anaquel || row.anaquel === anaquel);
+        return { ...pageRows(rows, page, null), anaquel };
+      } catch (error: unknown) {
+        console.error("[app] la búsqueda rankeada falló, sigo con un filtro simple", error instanceof Error ? error.message : error);
+      }
+    } else if (!anaquel) {
       return {
         productos: [],
         total: 0,
         necesitaBusqueda: true,
-        mensaje: "Escribe el producto. Son miles y aquí se buscan de uno en uno.",
+        mensaje: "Elige un anaquel o escribe el producto.",
+        anaquel: null,
       };
-    }
-    try {
-      const ranked = await queryListaProductos(supabase as unknown as ListaSupabase, store.id, q);
-      return pageRows(ranked.map(fromLista), page, null);
-    } catch (error: unknown) {
-      console.error("[app] la búsqueda rankeada falló, sigo con un filtro simple", error instanceof Error ? error.message : error);
     }
   }
 
@@ -114,24 +120,26 @@ export async function searchStoreProducts(
     .from("productos_tienda")
     .select("id, nombre_producto, precio, categoria", { count: "exact" })
     .eq("tienda_id", store.id)
-    .eq("disponible", true)
-    .order("nombre_producto", { ascending: true });
+    .eq("disponible", true);
+  if (anaquel === "otros") request = request.in("categoria", OTROS_CATEGORIA_LABELS);
+  if (anaquel && anaquel !== "otros") {
+    const filter = shelfOrFilter(anaquel);
+    if (filter) request = request.or(filter);
+  }
+  request = request.order("nombre_producto", { ascending: true });
   if (q) request = request.ilike("nombre_producto", `%${q.replace(/[%_]/g, "")}%`);
   const from = (page - 1) * PAGE_SIZE;
   const result = await request.range(from, from + PAGE_SIZE - 1);
   if (result.error) {
     if (isMissingRelation(result.error)) {
-      return { productos: [], total: 0, necesitaBusqueda: false, mensaje: MIGRACION_MENSAJE };
+      return { productos: [], total: 0, necesitaBusqueda: false, mensaje: MIGRACION_MENSAJE, anaquel };
     }
     throw result.error;
   }
-  const productos = ((result.data ?? []) as Array<Record<string, unknown>>).map((row) => ({
-    id: Number(row.id),
-    nombre: String(row.nombre_producto ?? ""),
-    precio: row.precio == null ? null : Number(row.precio),
-    categoria: row.categoria == null ? null : String(row.categoria),
-  }));
-  return { productos, total: result.count ?? productos.length, necesitaBusqueda: false, mensaje: null };
+  const productos = ((result.data ?? []) as Array<Record<string, unknown>>).map((row) => toProduct(row));
+  const visibles = anaquel ? productos.filter((row) => row.anaquel === anaquel) : productos;
+  const mensaje = anaquel === "otros" ? "Otros es farmacia, desechables y lo que no cayó en un anaquel. Si buscas por nombre, se afina." : null;
+  return { productos: visibles, total: result.count ?? visibles.length, necesitaBusqueda: false, mensaje, anaquel };
 }
 
 function pageRows(
@@ -154,6 +162,19 @@ function fromLista(row: ListaProductoRow): CatalogProduct {
     nombre: row.nombreProducto,
     precio: row.precio,
     categoria: row.categoria,
+    anaquel: classifyShelf(row.nombreProducto, row.categoria),
+  };
+}
+
+function toProduct(row: Record<string, unknown>): CatalogProduct {
+  const nombre = String(row.nombre_producto ?? "");
+  const categoria = row.categoria == null ? null : String(row.categoria);
+  return {
+    id: Number(row.id),
+    nombre,
+    precio: row.precio == null ? null : Number(row.precio),
+    categoria,
+    anaquel: classifyShelf(nombre, categoria),
   };
 }
 

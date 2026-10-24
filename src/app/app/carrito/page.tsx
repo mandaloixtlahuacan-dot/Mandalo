@@ -30,10 +30,11 @@ export default function CartPage() {
             cantidad: line.cantidad,
             extras: line.extras,
             nota: line.nota,
+            salsa: line.salsa ?? "",
           })),
           latitude: cart.address.latitude,
           longitude: cart.address.longitude,
-          referencia: cart.address.referencia,
+          referencia: cart.address.texto || cart.address.referencia,
         }),
       });
       const body = (await response.json()) as { ok?: boolean; mensaje?: string; pedidoId?: number; code?: string };
@@ -69,6 +70,7 @@ export default function CartPage() {
               <p className="ayuda">{line.tiendaNombre}</p>
               {line.extras.length ? <p className="ayuda">{line.extras.join(", ")}</p> : null}
               {line.nota ? <p className="ayuda">Nota: {line.nota}</p> : null}
+              {line.salsa ? <p className="ayuda">Salsa: {line.salsa}</p> : null}
               <div className="paginas">
                 <button type="button" className="boton claro" onClick={() => cart.updateLine(line.key, { cantidad: Math.max(1, line.cantidad - 1) })}>−</button>
                 <span>{line.cantidad}</span>
