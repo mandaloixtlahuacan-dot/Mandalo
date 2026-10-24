@@ -20,7 +20,10 @@ import { pushNoticesForState } from "../src/lib/app/pushCopy";
 import { NOMINATIM_DEBOUNCE_MS, NOMINATIM_USER_AGENT, nominatimHeaders, nominatimSearchUrl, parseGeocodeRequest, readNominatimHits, resolveMapProvider } from "../src/lib/app/geocode";
 import { isBebidaAlcoholica } from "../src/lib/app/alcohol";
 import { classifyShelf, FILTER_SHELVES, parseShelfBrowse, shelfOrFilter } from "../src/lib/app/shelves";
-import { matchCatalogProduct, type CatalogPriceRow } from "../src/lib/catalogQuantities";
+import { matchCatalogProduct, priceCatalogOrder, type CatalogPriceRow } from "../src/lib/catalogQuantities";
+import { butcherLine, formatKilos, MAX_KILOS, parseKilos } from "../src/lib/kiloLabel";
+import { formatNameQtyLine } from "../src/lib/messageStyle";
+import { dispatchItemAlreadyShowsQty } from "../src/lib/services/captureEngine";
 import { IXTLAHUACAN_CENTER } from "../src/lib/services/geo";
 import { MemoryDatabase } from "./sim/memory-db";
 
@@ -63,6 +66,14 @@ for (const name of ["Manzanita Sol 600ml", "Clamato 946 Ml", "Cerveza De Raiz 50
 const tiendaSrc = read("src/app/app/tienda/[id]/page.tsx");
 check("tienda-todos", tiendaSrc.includes('useState("todos")') && tiendaSrc.includes("Cargar más") && tiendaSrc.includes("FILTER_SHELVES") && !tiendaSrc.includes(">Otros<"));
 check("carrito-flotante", read("src/components/app/Shell.tsx").includes("carrito-flotante"));
+const inicio = read("src/app/app/page.tsx");
+check("inicio-categorias", inicio.includes("tarjeta-grande") && inicio.includes("/app/categoria/") && !inicio.includes("tarjeta-mini") && !inicio.includes("/api/app/categorias"));
+check("carniceria-kilos", tiendaSrc.includes("SelectorKilos") && tiendaSrc.includes('unidad: carniceria ? "kg" : "pieza"'));
+check("kilos-cuarto", parseKilos("1/4") === 0.25 && parseKilos("¼") === 0.25 && formatKilos(0.25) === "¼ kg");
+check("kilos-medio", parseKilos("0,5") === 0.5 && parseKilos(0.5) === 0.5 && formatKilos(0.5) === "½ kg" && butcherLine("Pulpa de puerco", 0.5) === "½ kg Pulpa de puerco");
+check("kilos-rechaza", parseKilos(0) == null && parseKilos(-1) == null && parseKilos(MAX_KILOS + 0.1) == null && parseKilos("abc") == null && parseKilos(1.5) === 1.5);
+check("kilos-sin-doble", dispatchItemAlreadyShowsQty("½ kg Pulpa de puerco", 0.5) && !formatNameQtyLine("½ kg Pulpa de puerco", 0.5, dispatchItemAlreadyShowsQty("½ kg Pulpa de puerco", 0.5)).includes("x0.5"));
+check("kilos-bot-sigue", priceCatalogOrder([{ nombre_producto: "Arrachera Marinada", cantidad: 0.5, unidad: "kilo" }], [{ nombreProducto: "Arrachera Marinada", precio: 280 }]).lines[0]?.includes("0.5 kg Arrachera Marinada — $140") === true);
 check("alcohol-en-catalogo", read("src/lib/app/catalog.ts").includes("isBebidaAlcoholica") && read("src/lib/app/catalog.ts").includes("ALCOHOL_AISLE_OR"));
 check("alcohol-en-pedido", read("src/lib/app/placeOrder.ts").includes("isBebidaAlcoholica"));
 const ilustracion = read("src/components/app/ilustraciones.tsx");
@@ -109,6 +120,21 @@ const george = JSON.parse(readFileSync("scripts/fixtures/george-catalogo.json", 
 const central = JSON.parse(readFileSync("scripts/fixtures/lacentral-catalogo.json", "utf8")) as Array<{ nombre_producto: string; precio: number }>;
 assertSameProduct("george", george, "Hamburguesa de Res Chica");
 assertSameProduct("central", central, central[0]?.nombre_producto ?? "");
+for (const row of central) {
+  const labeled = butcherLine(row.nombre_producto, 0.5);
+  const matched = matchCatalogProduct(central.map((item) => ({ nombreProducto: item.nombre_producto, precio: item.precio })), labeled);
+  check(`kilos-parea-${row.nombre_producto}`, matched?.nombreProducto === row.nombre_producto, matched?.nombreProducto ?? "sin pareo");
+}
+const pulpa = central.find((row) => row.nombre_producto === "Pulpa de puerco");
+const ticketPulpa = priceCatalogOrder(
+  [{ nombre_producto: butcherLine("Pulpa de puerco", 0.5), cantidad: 0.5 }],
+  [{ nombreProducto: "Pulpa de puerco", precio: pulpa?.precio ?? 0 }],
+);
+check(
+  "kilos-ticket",
+  Boolean(ticketPulpa.lines[0]?.includes("½ kg Pulpa de puerco")) && !ticketPulpa.lines[0]?.includes("x0.5") && ticketPulpa.subtotal === (pulpa?.precio ?? 0) / 2,
+  ticketPulpa.lines[0] ?? "",
+);
 
 const center = decideCoverage({
   latitude: IXTLAHUACAN_CENTER.latitude,
@@ -200,6 +226,7 @@ await placeCase("cerrada", "2026-10-25T10:00:00.000Z", false, true);
 await placeCase("catalogo", "2026-10-25T18:00:00.000Z", true, true);
 await placeCase("sin-repartidor", "2026-10-25T18:00:00.000Z", true, false);
 await alcoholCase();
+await butcherCase();
 
 const placeSrc = read("src/lib/app/placeOrder.ts") + read("src/lib/app/production.ts");
 check("sin-waapi", !placeSrc.includes("waapiSendText") && !placeSrc.includes("from \"@/lib/waapi\"") && !placeSrc.includes("from '@/lib/waapi'"));
@@ -352,6 +379,78 @@ async function alcoholCase(): Promise<void> {
     },
   );
   check("pedido-sin-alcohol", result.ok === false && result.code === "ALCOHOL" && db.rows("pedidos").length === 0, JSON.stringify(result));
+}
+
+async function butcherCase(): Promise<void> {
+  const ports = {
+    supabase: null as unknown as SupabaseClient,
+    async enqueue() { return 1; },
+    async dispatch() { return { ok: true as const }; },
+    async findCouriers() { return [{ id: 1 }]; },
+    async cancelNoCourier() { return undefined; },
+  };
+  const piezas = new MemoryDatabase();
+  piezas.insertRows("tiendas", [{
+    id: 7,
+    nombre: "Mini Super Peke's",
+    telefono: "5213300000001",
+    activa: true,
+    categoria: "abarrotes",
+    hora_apertura: "08:00",
+    hora_cierre: "21:00",
+    usa_catalogo_fijo: true,
+    direccion: "centro",
+  }]);
+  piezas.insertRows("productos_tienda", [{ id: 1, tienda_id: 7, nombre_producto: "Leche 1L", precio: 28, disponible: true }]);
+  piezas.insertRows("zonas_cobertura", [{ id: 1, nombre: "Calle Morelos", activa: true }]);
+  const mediaPieza = await placeAppOrder(
+    {
+      telefono: "3311113333",
+      nombre: "Ana López",
+      tiendaId: 7,
+      lines: [{ productoId: 1, cantidad: 0.5, extras: [], nota: "", salsa: "" }],
+      latitude: IXTLAHUACAN_CENTER.latitude,
+      longitude: IXTLAHUACAN_CENTER.longitude,
+      referencia: "Calle Morelos 10",
+      now: new Date("2026-10-25T18:00:00.000Z"),
+    },
+    { ...ports, supabase: piezas.client() as unknown as SupabaseClient },
+  );
+  check("piezas-rechazan-kilos", mediaPieza.ok === false && mediaPieza.code === "CARRITO" && piezas.rows("pedidos").length === 0, JSON.stringify(mediaPieza));
+
+  const db = new MemoryDatabase();
+  db.insertRows("tiendas", [{
+    id: 6,
+    nombre: "La Central",
+    telefono: "5213300000002",
+    activa: true,
+    categoria: "carnicerias",
+    hora_apertura: "08:00",
+    hora_cierre: "21:00",
+    usa_catalogo_fijo: true,
+    direccion: "centro",
+  }]);
+  db.insertRows("productos_tienda", [{ id: 74, tienda_id: 6, nombre_producto: "Pulpa de puerco", precio: 115, disponible: true }]);
+  db.insertRows("zonas_cobertura", [{ id: 1, nombre: "Calle Morelos", activa: true }]);
+  const result = await placeAppOrder(
+    {
+      telefono: "3311114444",
+      nombre: "Ana López",
+      tiendaId: 6,
+      lines: [{ productoId: 74, cantidad: 0.5, extras: [], nota: "", salsa: "" }],
+      latitude: IXTLAHUACAN_CENTER.latitude,
+      longitude: IXTLAHUACAN_CENTER.longitude,
+      referencia: "Calle Morelos 10",
+      now: new Date("2026-10-25T18:00:00.000Z"),
+    },
+    { ...ports, supabase: db.client() as unknown as SupabaseClient },
+  );
+  const item = db.rows("pedido_items")[0];
+  const pedido = db.rows("pedidos")[0] as { total_cliente?: number } | undefined;
+  check("carniceria-ok", result.ok === true, JSON.stringify(result));
+  check("carniceria-nombre", String(item?.nombre_producto) === "½ kg Pulpa de puerco", String(item?.nombre_producto));
+  check("carniceria-cantidad", Number(item?.cantidad) === 0.5);
+  check("carniceria-total", pedido?.total_cliente === 57.5 + 25, String(pedido?.total_cliente));
 }
 
 function read(path: string): string {

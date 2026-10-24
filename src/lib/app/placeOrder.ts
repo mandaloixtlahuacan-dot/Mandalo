@@ -5,6 +5,8 @@ import { phoneIsStaff } from "@/lib/app/auth";
 import { categoryForStore } from "@/lib/app/categories";
 import { isMissingColumn } from "@/lib/app/dbError";
 import { composeStoreItemName, formatSeparateNotes } from "@/lib/app/itemText";
+import { matchCatalogProduct } from "@/lib/catalogQuantities";
+import { butcherLine, MAX_KILOS, parseKilos } from "@/lib/kiloLabel";
 import { decideCoverage } from "@/lib/app/coverage";
 import { parseAppPhone, phoneVariants, whatsappTo } from "@/lib/app/phone";
 import { scheduleAppPush } from "@/lib/app/notifyHook";
@@ -130,15 +132,33 @@ export async function placeAppOrder(input: PlaceInput, ports: PlacePorts): Promi
     if (isBebidaAlcoholica(String(product.nombre_producto), product.categoria == null ? null : String(product.categoria))) {
       return fail(400, "ALCOHOL", "No manejamos bebidas alcohólicas en la app.");
     }
-    const cantidad = Math.round(Number(line.cantidad));
-    if (!Number.isInteger(cantidad) || cantidad < 1 || cantidad > 20) return fail(400, "CARRITO", "La cantidad tiene que ser de 1 a 20.");
-    const restaurante = categoryForStore({
+    const nicho = categoryForStore({
       nombre: String(tienda.nombre ?? ""),
       categoria: tienda.categoria == null ? null : String(tienda.categoria),
-    }) === "restaurantes";
+    });
+    const restaurante = nicho === "restaurantes";
+    const carniceria = nicho === "carnicerias";
+    const piezas = Number(line.cantidad);
+    const cantidad = carniceria ? parseKilos(line.cantidad) : piezas;
+    if (carniceria && cantidad == null) {
+      return fail(400, "KILOS", `En la carnicería la cantidad es en kilos, mayor a 0 y hasta ${MAX_KILOS}.`);
+    }
+    if (!carniceria && (!Number.isInteger(piezas) || piezas < 1 || piezas > 20)) {
+      return fail(400, "CARRITO", "La cantidad tiene que ser de 1 a 20.");
+    }
+    if (cantidad == null) return fail(400, "CARRITO", "La cantidad tiene que ser de 1 a 20.");
     const extras = restaurante ? cleanExtras(line.extras) : [];
     const nota = joinNote(restaurante ? cleanSalsa(line.salsa ?? "") : "", cleanNote(line.nota));
-    const composed = composeStoreItemName(String(product.nombre_producto), extras, nota, catalog);
+    const base = String(product.nombre_producto).trim();
+    const composed = carniceria
+      ? { nombre: butcherLine(base, cantidad), notasAparte: Boolean(nota) }
+      : composeStoreItemName(base, extras, nota, catalog);
+    if (carniceria && catalog) {
+      const matched = matchCatalogProduct(catalog, composed.nombre);
+      if (!matched || matched.nombreProducto.trim().toLowerCase() !== base.toLowerCase()) {
+        return fail(400, "CARRITO", "No pude anotar los kilos de ese corte.");
+      }
+    }
     prepared.push({
       productoId: Number(product.id),
       nombre: composed.nombre,
@@ -173,7 +193,7 @@ export async function placeAppOrder(input: PlaceInput, ports: PlacePorts): Promi
   });
   const mandaloSchedule = checkMandaloSchedule(now);
   const direccion = formatAddress(coverage.latitude, referencia || coverage.zona);
-  const subtotal = prepared.reduce((sum, line) => sum + line.precio * line.cantidad, 0);
+  const subtotal = Math.round(prepared.reduce((sum, line) => sum + line.precio * line.cantidad, 0) * 100) / 100;
   const total = cotizar ? null : calculateOrderTotal(subtotal).total;
   const storeKind = storeKindFromCategoria(tienda.categoria == null ? null : String(tienda.categoria));
   const metadata = {

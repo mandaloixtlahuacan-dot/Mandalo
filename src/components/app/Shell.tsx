@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { useCart } from "@/components/app/cart";
+import { formatKilos } from "@/lib/kiloLabel";
 import { IconoCarrito, IconoCasa, IconoCuenta, IconoPedido } from "@/components/app/icons";
 import { PwaRegister } from "@/components/app/PwaRegister";
 
@@ -49,7 +50,12 @@ function CarritoFlotante() {
   const cart = useCart();
   const pathname = usePathname();
   if (!cart.ready || cart.lines.length === 0 || pathname.startsWith("/app/carrito")) return null;
-  const piezas = cart.lines.reduce((sum, line) => sum + line.cantidad, 0);
+  const enKilos = cart.lines.every((line) => line.unidad === "kg");
+  const piezas = enKilos
+    ? cart.lines.length === 1
+      ? formatKilos(cart.lines[0]?.cantidad ?? 0)
+      : String(cart.lines.length)
+    : String(cart.lines.reduce((sum, line) => sum + line.cantidad, 0));
   return (
     <Link href="/app/carrito" className="carrito-flotante">
       <span>Ver carrito · {piezas}</span>

@@ -1,14 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
-import { MiniaturaCategoria } from "@/components/app/ilustraciones";
+import { ArtCarniceria, ArtRestaurante, ArtTienda } from "@/components/app/art";
 import { APP_CATEGORIES, type AppCategoryId } from "@/lib/app/categories";
 
 type User = { nombre: string };
-type Store = { id: number; nombre: string; abierta: boolean; abreTexto: string; horarioTexto: string; cotizar: boolean };
-type Block = { id: AppCategoryId; titulo: string; detalle: string; tiendas: Store[] };
+
+function ArteCategoria({ id }: { id: AppCategoryId }) {
+  if (id === "restaurantes") return <ArtRestaurante />;
+  if (id === "carnicerias") return <ArtCarniceria />;
+  return <ArtTienda />;
+}
 
 export default function AppHomePage() {
   const [usuario, setUsuario] = useState<User | null>(null);
@@ -18,19 +22,12 @@ export default function AppHomePage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [q, setQ] = useState("");
-  const [bloques, setBloques] = useState<Block[]>([]);
 
   useEffect(() => {
     void fetch("/api/app/sesion")
       .then((response) => response.json())
       .then((body: { usuario?: User | null }) => {
         if (body.usuario) setUsuario(body.usuario);
-      })
-      .catch(() => undefined);
-    void fetch("/api/app/categorias")
-      .then((response) => response.json())
-      .then((body: { ok?: boolean; categorias?: Block[] }) => {
-        if (body.ok) setBloques(body.categorias ?? []);
       })
       .catch(() => undefined);
   }, []);
@@ -54,19 +51,15 @@ export default function AppHomePage() {
   }
 
   const consulta = fold(q);
-  const visibles = useMemo(() => {
-    return bloques
-      .map((block) => ({
-        ...block,
-        tiendas: block.tiendas.filter((store) => !consulta || fold(store.nombre).includes(consulta) || fold(block.titulo).includes(consulta)),
-      }))
-      .filter((block) => !consulta || block.tiendas.length > 0 || fold(block.titulo).includes(consulta));
-  }, [bloques, consulta]);
+  const categorias = APP_CATEGORIES.filter((category) => {
+    if (!consulta) return true;
+    return fold(category.titulo).includes(consulta) || fold(category.detalle).includes(consulta);
+  });
 
   return (
     <>
       <div className="buscar-fija">
-        <input className="campo buscar" value={q} placeholder="Busca una tienda" onChange={(event) => setQ(event.target.value)} />
+        <input className="campo buscar" value={q} placeholder="Busca una categoría" onChange={(event) => setQ(event.target.value)} />
       </div>
       <section className="bienvenida">
         <p className="eyebrow">Tu mandado a domicilio</p>
@@ -88,32 +81,18 @@ export default function AppHomePage() {
         {error ? <p className="aviso error">{error}</p> : null}
       </section>
 
-      <h2 className="fila-titulo">Categorías</h2>
-      <div className="carrusel">
-        {APP_CATEGORIES.map((category) => (
-          <Link key={category.id} href={`/app/categoria/${category.id}`} className="circulo">
-            <MiniaturaCategoria id={category.id} />
-            <span>{category.titulo}</span>
+      {consulta && categorias.length === 0 ? <p className="ayuda">No encontré esa categoría.</p> : null}
+      <div className="tarjetas-grandes">
+        {categorias.map((category) => (
+          <Link key={category.id} href={`/app/categoria/${category.id}`} className="tarjeta-grande" style={{ background: category.suave }}>
+            <span>
+              <strong>{category.titulo}</strong>
+              <span>{category.detalle}</span>
+            </span>
+            <ArteCategoria id={category.id} />
           </Link>
         ))}
       </div>
-
-      {consulta && visibles.length === 0 ? <p className="ayuda">No encontré esa tienda.</p> : null}
-      {visibles.map((block) => (
-        <section key={block.id}>
-          <h2 className="fila-titulo">{block.titulo}</h2>
-          {block.tiendas.length === 0 ? <p className="ayuda">Todavía no hay una tienda activa aquí.</p> : null}
-          <div className="carrusel">
-            {block.tiendas.map((store) => (
-              <Link key={store.id} href={`/app/tienda/${store.id}`} className="tarjeta-mini">
-                <strong>{store.nombre}</strong>
-                <span className={store.abierta ? "pastilla abierta" : "pastilla"}>{store.abierta ? "Abierta" : "Cerrada"}</span>
-                <p className="ayuda">{store.abierta ? store.horarioTexto : store.abreTexto || store.horarioTexto}</p>
-              </Link>
-            ))}
-          </div>
-        </section>
-      ))}
     </>
   );
 }

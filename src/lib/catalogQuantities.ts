@@ -8,6 +8,7 @@
  * cambia. El renglón muestra piezas por precio de línea (precio × cantidad).
  */
 
+import { nameAlreadyShowsKilos } from "@/lib/kiloLabel";
 import { formatMoney } from "@/lib/ordenes";
 
 type CatalogItem = {
@@ -247,6 +248,7 @@ function formatCount(qty: number): string {
 function ticketLabel(nombre: string, qty: number, unidad?: string | null): string {
   const cleaned = nombre.replace(new RegExp(`(?:,\\s*)?x\\s*${formatCount(qty).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`, "i"), "").trim();
   const base = cleaned || nombre;
+  if (nameAlreadyShowsKilos(base, qty)) return base;
   if (unidad === "kilo") return `${formatCount(qty)} kg ${base}`;
   if (unidad === "pesos") return `$${formatCount(qty)} de ${base}`;
   return `${formatCount(qty)} ${base}`;

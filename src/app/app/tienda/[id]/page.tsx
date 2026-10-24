@@ -7,7 +7,9 @@ import { useEffect, useState } from "react";
 import { RESTAURANT_EXTRAS, SALSA_SUGERENCIAS, useCart } from "@/components/app/cart";
 import { MiniaturaCategoria } from "@/components/app/ilustraciones";
 import { IconoMas } from "@/components/app/icons";
+import { SelectorKilos } from "@/components/app/SelectorKilos";
 import { isBebidaAlcoholica } from "@/lib/app/alcohol";
+import { butcherLine, formatKilos, parseKilos } from "@/lib/kiloLabel";
 import { FILTER_SHELVES, type ShelfId } from "@/lib/app/shelves";
 
 type Store = {
@@ -46,6 +48,7 @@ export default function StorePage() {
   const [loading, setLoading] = useState(true);
   const [openId, setOpenId] = useState<number | null>(null);
   const [qty, setQty] = useState(1);
+  const [kilosTexto, setKilosTexto] = useState<Record<number, string>>({});
   const [extras, setExtras] = useState<string[]>([]);
   const [nota, setNota] = useState("");
   const [salsa, setSalsa] = useState("");
@@ -88,6 +91,7 @@ export default function StorePage() {
 
   const store = body?.tienda;
   const restaurante = store?.categoriaId === "restaurantes";
+  const carniceria = store?.categoriaId === "carnicerias";
   const miniatura = store?.usaLista ? null : restaurante ? "restaurantes" : "carnicerias";
   const hayMas = products.length < total;
 
@@ -100,6 +104,11 @@ export default function StorePage() {
   function add(product: Product) {
     if (!store) return;
     if (isBebidaAlcoholica(product.nombre, product.categoria)) return;
+    const kilos = carniceria ? parseKilos(kilosTexto[product.id] ?? "1") : null;
+    if (carniceria && kilos == null) {
+      setError("Escribe kilos mayores a 0 y hasta 10.");
+      return;
+    }
     cart.addLine({
       productoId: product.id,
       tiendaId: store.id,
@@ -107,12 +116,13 @@ export default function StorePage() {
       cotizar: store.cotizar,
       nombre: product.nombre,
       precio: product.precio,
-      cantidad: qty,
+      cantidad: carniceria ? kilos ?? 1 : qty,
+      unidad: carniceria ? "kg" : "pieza",
       extras: restaurante ? extras : [],
-      nota: restaurante ? "" : nota,
+      nota: restaurante || carniceria ? "" : nota,
       salsa: restaurante ? salsa : "",
     });
-    setAdded(product.nombre);
+    setAdded(carniceria && kilos != null ? butcherLine(product.nombre, kilos) : product.nombre);
     setOpenId(null);
     setQty(1);
     setExtras([]);
@@ -177,15 +187,31 @@ export default function StorePage() {
                 </span>
                 <div>
                   <strong className="nombre-grande">{product.nombre}</strong>
-                  <span className="precio-visible">{store?.cotizar ? "Por cotizar" : money(product.precio)}</span>
+                  <span className="precio-visible">
+                    {store?.cotizar ? "Por cotizar" : carniceria ? `${money(product.precio)} / kg` : money(product.precio)}
+                  </span>
                 </div>
-                {openId === product.id ? null : (
+                {carniceria || openId === product.id ? null : (
                   <button type="button" className="mas" aria-label={`Agregar ${product.nombre}`} onClick={() => { setOpenId(product.id); setQty(1); setExtras([]); setNota(""); setSalsa(""); }}>
                     <IconoMas />
                   </button>
                 )}
               </div>
-              {openId === product.id ? (
+              {carniceria ? (
+                <div className="lista">
+                  <SelectorKilos
+                    value={kilosTexto[product.id] ?? "1"}
+                    onChange={(text) => setKilosTexto((current) => ({ ...current, [product.id]: text }))}
+                  />
+                  {product.precio != null && parseKilos(kilosTexto[product.id] ?? "1") != null ? (
+                    <p className="ayuda">
+                      {formatKilos(parseKilos(kilosTexto[product.id] ?? "1") ?? 1)} · {money((product.precio ?? 0) * (parseKilos(kilosTexto[product.id] ?? "1") ?? 1))}
+                    </p>
+                  ) : null}
+                  <button type="button" className="boton" onClick={() => add(product)}>Agregar</button>
+                </div>
+              ) : null}
+              {!carniceria && openId === product.id ? (
                 <div className="lista">
                   <input className="campo" type="number" min={1} max={20} value={qty} onChange={(event) => setQty(Number(event.target.value))} />
                   {restaurante ? (

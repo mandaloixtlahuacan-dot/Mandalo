@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { leadingKilos } from "@/lib/kiloLabel";
+
 type Step = { id: string; titulo: string; detalle: string; hecho: boolean; actual: boolean; destacado: boolean };
 type OrderView = {
   id: number;
@@ -87,7 +89,7 @@ export default function TrackingPage() {
         <section className="lista">
           {pedido.items.map((item) => (
             <article key={item.id} className="tarjeta">
-              <strong>{item.cantidad ?? 1} × {item.nombre}</strong>
+              <strong>{leadingKilos(item.nombre) != null ? item.nombre : `${item.cantidad ?? 1} × ${item.nombre}`}</strong>
               {item.extras.length ? <p className="ayuda">{item.extras.join(", ")}</p> : null}
               {item.nota ? <p className="ayuda">Nota: {item.nota}</p> : null}
             </article>

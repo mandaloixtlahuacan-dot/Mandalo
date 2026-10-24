@@ -386,6 +386,8 @@ a.boton {
   letter-spacing: -0.03em;
 }
 .tarjeta-grande span { color: rgba(20, 9, 11, 0.7); }
+.kilos { display: grid; gap: 8px; margin-top: 8px; }
+.kilos .chip { min-height: 40px; }
 .ilustracion { width: 148px; height: 112px; flex: none; }
 .tarjeta-tienda { display: block; border-radius: 24px; padding: 18px; min-height: 88px; }
 .tarjeta-tienda strong {

@@ -6,6 +6,8 @@ import { useState } from "react";
 
 import { useCart } from "@/components/app/cart";
 import { IconoCarrito, IconoMas } from "@/components/app/icons";
+import { SelectorKilos } from "@/components/app/SelectorKilos";
+import { butcherLine, parseKilos } from "@/lib/kiloLabel";
 
 export default function CartPage() {
   const cart = useCart();
@@ -67,19 +69,23 @@ export default function CartPage() {
         {cart.lines.map((line) => (
           <article key={line.key} className="tarjeta linea">
             <div>
-              <strong>{line.nombre}</strong>
+              <strong>{line.unidad === "kg" ? butcherLine(line.nombre, line.cantidad) : line.nombre}</strong>
               <p className="ayuda">{line.tiendaNombre}</p>
               {line.extras.length ? <p className="ayuda">{line.extras.join(", ")}</p> : null}
               {line.nota ? <p className="ayuda">Nota: {line.nota}</p> : null}
               {line.salsa ? <p className="ayuda">Salsa: {line.salsa}</p> : null}
-              <div className="paginas">
-                <button type="button" className="cantidad" aria-label="Quitar uno" onClick={() => cart.updateLine(line.key, { cantidad: Math.max(1, line.cantidad - 1) })}>−</button>
-                <span className="cantidad-numero">{line.cantidad}</span>
-                <button type="button" className="cantidad mas-linea" aria-label="Agregar uno" onClick={() => cart.updateLine(line.key, { cantidad: Math.min(20, line.cantidad + 1) })}><IconoMas /></button>
-              </div>
+              {line.unidad === "kg" ? (
+                <EditorKilos cantidad={line.cantidad} onChange={(kilos) => cart.updateLine(line.key, { cantidad: kilos })} />
+              ) : (
+                <div className="paginas">
+                  <button type="button" className="cantidad" aria-label="Quitar uno" onClick={() => cart.updateLine(line.key, { cantidad: Math.max(1, line.cantidad - 1) })}>−</button>
+                  <span className="cantidad-numero">{line.cantidad}</span>
+                  <button type="button" className="cantidad mas-linea" aria-label="Agregar uno" onClick={() => cart.updateLine(line.key, { cantidad: Math.min(20, line.cantidad + 1) })}><IconoMas /></button>
+                </div>
+              )}
             </div>
             <div>
-              <div className="precio">{line.cotizar || line.precio == null ? "Por cotizar" : `$${line.precio}`}</div>
+              <div className="precio">{line.cotizar || line.precio == null ? "Por cotizar" : line.unidad === "kg" ? money(line.precio * line.cantidad) : `$${line.precio}`}</div>
               <button type="button" className="boton claro" onClick={() => cart.removeLine(line.key)}>Quitar</button>
             </div>
           </article>
@@ -110,4 +116,23 @@ export default function CartPage() {
       {error.includes("Entra") ? <p className="ayuda"><Link href="/app/cuenta">Entra o regístrate</Link></p> : null}
     </>
   );
+}
+
+function EditorKilos({ cantidad, onChange }: { cantidad: number; onChange: (kilos: number) => void }) {
+  const [text, setText] = useState(String(cantidad));
+  return (
+    <SelectorKilos
+      value={text}
+      onChange={(next) => {
+        setText(next);
+        const parsed = parseKilos(next);
+        if (parsed != null) onChange(parsed);
+      }}
+    />
+  );
+}
+
+function money(value: number): string {
+  const rounded = Math.round(value * 100) / 100;
+  return Number.isInteger(rounded) ? `$${rounded}` : `$${rounded.toFixed(2)}`;
 }

@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useMemo, useState } from "react";
 
 import { isBebidaAlcoholica } from "@/lib/app/alcohol";
 import { summarizeCart, type CartSummary } from "@/lib/app/cartMath";
+import { MAX_KILOS, parseKilos, roundKilos } from "@/lib/kiloLabel";
 
 export type CartLine = {
   key: string;
@@ -14,6 +15,7 @@ export type CartLine = {
   nombre: string;
   precio: number | null;
   cantidad: number;
+  unidad: "kg" | "pieza";
   extras: string[];
   nota: string;
   salsa: string;
@@ -52,18 +54,24 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    try {
-      const stored = window.localStorage.getItem(CART_KEY);
-      const savedAddress = window.localStorage.getItem(ADDRESS_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored) as CartLine[];
-        setLines(parsed.filter((line) => !isBebidaAlcoholica(line.nombre)));
+    const handle = window.setTimeout(() => {
+      try {
+        const stored = window.localStorage.getItem(CART_KEY);
+        const savedAddress = window.localStorage.getItem(ADDRESS_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored) as CartLine[];
+          setLines(parsed.filter((line) => !isBebidaAlcoholica(line.nombre)).map((line) => ({
+            ...line,
+            unidad: line.unidad === "kg" ? "kg" : "pieza",
+          })));
+        }
+        if (savedAddress) setAddress(JSON.parse(savedAddress) as SavedAddress);
+      } catch {
+        setLines([]);
       }
-      if (savedAddress) setAddress(JSON.parse(savedAddress) as SavedAddress);
-    } catch {
-      setLines([]);
-    }
-    setReady(true);
+      setReady(true);
+    }, 0);
+    return () => window.clearTimeout(handle);
   }, []);
 
   useEffect(() => {
@@ -86,16 +94,28 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             if (!replace) return current;
             return [{ ...line, key: crypto.randomUUID() }];
           }
-          const key = `${line.productoId}:${line.extras.join("|")}:${line.nota}:${line.salsa}`;
+          const key = `${line.productoId}:${line.unidad}:${line.extras.join("|")}:${line.nota}:${line.salsa}`;
           const existing = current.find((item) => item.key === key);
           if (existing) {
-            return current.map((item) => (item.key === key ? { ...item, cantidad: Math.min(20, item.cantidad + line.cantidad) } : item));
+            const suma = existing.unidad === "kg" ? roundKilos(existing.cantidad + line.cantidad) : existing.cantidad + line.cantidad;
+            const tope = existing.unidad === "kg" ? MAX_KILOS : 20;
+            return current.map((item) => (item.key === key ? { ...item, cantidad: Math.min(tope, suma) } : item));
           }
-          return [...current, { ...line, key }];
+          return [...current, { ...line, unidad: line.unidad === "kg" ? "kg" : "pieza", key }];
         });
       },
       updateLine(key, patch) {
-        setLines((current) => current.map((item) => (item.key === key ? { ...item, ...patch } : item)));
+        setLines((current) => current.map((item) => {
+          if (item.key !== key) return item;
+          if (patch.cantidad == null) return { ...item, ...patch };
+          if (item.unidad === "kg") {
+            const kilos = parseKilos(patch.cantidad);
+            return kilos == null ? item : { ...item, ...patch, cantidad: kilos };
+          }
+          const piezas = Math.round(patch.cantidad);
+          if (!Number.isInteger(piezas) || piezas < 1 || piezas > 20) return item;
+          return { ...item, ...patch, cantidad: piezas };
+        }));
       },
       removeLine(key) {
         setLines((current) => current.filter((item) => item.key !== key));
