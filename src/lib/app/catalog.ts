@@ -1,7 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { APP_CATEGORIES, categoryForStore, type AppCategoryId } from "@/lib/app/categories";
-import { classifyShelf, isShelfId, OTROS_CATEGORIA_LABELS, shelfOrFilter, type ShelfId } from "@/lib/app/shelves";
+import { ALCOHOL_AISLE_OR, ALCOHOL_NAME_IMATCH, isBebidaAlcoholica } from "@/lib/app/alcohol";
+import { classifyShelf, parseShelfBrowse, shelfOrFilter, type ShelfId } from "@/lib/app/shelves";
 import { isMissingRelation, MIGRACION_MENSAJE, MIGRACION_PENDIENTE } from "@/lib/app/dbError";
 import {
   checkTiendaSchedule,
@@ -92,15 +93,18 @@ export async function searchStoreProducts(
   supabase: SupabaseClient,
   store: AppStoreCard,
   query: { q: string; page: number; anaquel?: string | null },
-): Promise<{ productos: CatalogProduct[]; total: number; necesitaBusqueda: boolean; mensaje: string | null; anaquel: ShelfId | null }> {
+): Promise<{ productos: CatalogProduct[]; total: number; necesitaBusqueda: boolean; mensaje: string | null; anaquel: ShelfId | "todos" | null }> {
   const page = Math.max(1, query.page);
   const q = query.q.trim();
-  const anaquel = store.usaLista && isShelfId(query.anaquel) ? query.anaquel : null;
+  const anaquel = store.usaLista ? parseShelfBrowse(query.anaquel) : null;
   if (store.usaLista || store.cotizar) {
     if (q.length >= 2) {
       try {
         const ranked = await queryListaProductos(supabase as unknown as ListaSupabase, store.id, q);
-        const rows = ranked.map(fromLista).filter((row) => !anaquel || row.anaquel === anaquel);
+        const rows = ranked
+          .map(fromLista)
+          .filter((row) => !isBebidaAlcoholica(row.nombre, row.categoria))
+          .filter((row) => !anaquel || anaquel === "todos" || row.anaquel === anaquel);
         return { ...pageRows(rows, page, null), anaquel };
       } catch (error: unknown) {
         console.error("[app] la búsqueda rankeada falló, sigo con un filtro simple", error instanceof Error ? error.message : error);
@@ -110,36 +114,47 @@ export async function searchStoreProducts(
         productos: [],
         total: 0,
         necesitaBusqueda: true,
-        mensaje: "Elige un anaquel o escribe el producto.",
+        mensaje: "Escribe el producto que buscas.",
         anaquel: null,
       };
     }
   }
 
-  let request = supabase
-    .from("productos_tienda")
-    .select("id, nombre_producto, precio, categoria", { count: "exact" })
-    .eq("tienda_id", store.id)
-    .eq("disponible", true);
-  if (anaquel === "otros") request = request.in("categoria", OTROS_CATEGORIA_LABELS);
-  if (anaquel && anaquel !== "otros") {
-    const filter = shelfOrFilter(anaquel);
-    if (filter) request = request.or(filter);
-  }
-  request = request.order("nombre_producto", { ascending: true });
-  if (q) request = request.ilike("nombre_producto", `%${q.replace(/[%_]/g, "")}%`);
+  const build = () => {
+    let request = supabase
+      .from("productos_tienda")
+      .select("id, nombre_producto, precio, categoria", { count: "exact" })
+      .eq("tienda_id", store.id)
+      .eq("disponible", true);
+    if (anaquel && anaquel !== "todos") {
+      const filter = shelfOrFilter(anaquel);
+      if (filter) request = request.or(filter);
+    }
+    if (q) request = request.ilike("nombre_producto", `%${q.replace(/[%_]/g, "")}%`);
+    return request.order("nombre_producto", { ascending: true });
+  };
+
   const from = (page - 1) * PAGE_SIZE;
-  const result = await request.range(from, from + PAGE_SIZE - 1);
+  let result = await applyAlcoholQuery(build()).range(from, from + PAGE_SIZE - 1);
+  if (result.error && !isMissingRelation(result.error)) {
+    console.error("[app] el filtro de alcohol en la consulta falló; filtro la página", result.error.message);
+    result = await build().range(from, from + PAGE_SIZE - 1);
+  }
   if (result.error) {
     if (isMissingRelation(result.error)) {
       return { productos: [], total: 0, necesitaBusqueda: false, mensaje: MIGRACION_MENSAJE, anaquel };
     }
     throw result.error;
   }
-  const productos = ((result.data ?? []) as Array<Record<string, unknown>>).map((row) => toProduct(row));
-  const visibles = anaquel ? productos.filter((row) => row.anaquel === anaquel) : productos;
-  const mensaje = anaquel === "otros" ? "Otros es farmacia, desechables y lo que no cayó en un anaquel. Si buscas por nombre, se afina." : null;
-  return { productos: visibles, total: result.count ?? visibles.length, necesitaBusqueda: false, mensaje, anaquel };
+  const productos = ((result.data ?? []) as Array<Record<string, unknown>>)
+    .map((row) => toProduct(row))
+    .filter((row) => !isBebidaAlcoholica(row.nombre, row.categoria));
+  const visibles = anaquel && anaquel !== "todos" ? productos.filter((row) => row.anaquel === anaquel) : productos;
+  return { productos: visibles, total: result.count ?? visibles.length, necesitaBusqueda: false, mensaje: null, anaquel };
+}
+
+function applyAlcoholQuery<T extends { or(filters: string): T; not(column: string, operator: string, value: string): T }>(request: T): T {
+  return request.or(ALCOHOL_AISLE_OR).not("nombre_producto", "imatch", ALCOHOL_NAME_IMATCH);
 }
 
 function pageRows(

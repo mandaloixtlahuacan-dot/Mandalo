@@ -5,8 +5,10 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { RESTAURANT_EXTRAS, SALSA_SUGERENCIAS, useCart } from "@/components/app/cart";
-import { IconoAnaquel, IconoCarne, IconoHamburguesa, IconoMas } from "@/components/app/icons";
-import { PEKES_SHELVES, type ShelfId } from "@/lib/app/shelves";
+import { MiniaturaCategoria } from "@/components/app/ilustraciones";
+import { IconoMas } from "@/components/app/icons";
+import { isBebidaAlcoholica } from "@/lib/app/alcohol";
+import { FILTER_SHELVES, type ShelfId } from "@/lib/app/shelves";
 
 type Store = {
   id: number;
@@ -18,7 +20,7 @@ type Store = {
   usaLista: boolean;
   categoriaId: "abarrotes" | "carnicerias" | "restaurantes";
 };
-type Product = { id: number; nombre: string; precio: number | null; anaquel?: ShelfId };
+type Product = { id: number; nombre: string; precio: number | null; categoria?: string | null; anaquel?: ShelfId };
 
 type SearchBody = {
   ok?: boolean;
@@ -36,9 +38,12 @@ export default function StorePage() {
   const cart = useCart();
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
-  const [anaquel, setAnaquel] = useState<ShelfId | "">("");
+  const [anaquel, setAnaquel] = useState("todos");
+  const [products, setProducts] = useState<Product[]>([]);
+  const [total, setTotal] = useState(0);
   const [body, setBody] = useState<SearchBody | null>(null);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
   const [openId, setOpenId] = useState<number | null>(null);
   const [qty, setQty] = useState(1);
   const [extras, setExtras] = useState<string[]>([]);
@@ -48,33 +53,53 @@ export default function StorePage() {
 
   useEffect(() => {
     if (!Number.isInteger(tiendaId)) return;
+    const controller = new AbortController();
     const handle = window.setTimeout(() => {
       const url = `/api/app/tiendas/${tiendaId}/productos?page=${page}&q=${encodeURIComponent(q.trim())}&anaquel=${encodeURIComponent(anaquel)}`;
-      void fetch(url)
+      setLoading(true);
+      void fetch(url, { signal: controller.signal })
         .then((response) => response.json())
         .then((next: SearchBody) => {
+          if (controller.signal.aborted) return;
           if (!next.ok) {
             setError(next.mensaje || "No pude cargar la tienda.");
             setBody(null);
             return;
           }
+          const incoming = (next.productos ?? []).filter((product) => !isBebidaAlcoholica(product.nombre, product.categoria));
           setError("");
           setBody(next);
+          setTotal(next.total ?? incoming.length);
+          setProducts((current) => (page === 1 ? incoming : [...current, ...incoming]));
         })
-        .catch(() => setError("No pude cargar la tienda."));
+        .catch((reason: unknown) => {
+          if (reason instanceof DOMException && reason.name === "AbortError") return;
+          setError("No pude cargar la tienda.");
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setLoading(false);
+        });
     }, 280);
-    return () => window.clearTimeout(handle);
+    return () => {
+      controller.abort();
+      window.clearTimeout(handle);
+    };
   }, [tiendaId, q, page, anaquel]);
 
   const store = body?.tienda;
-  const products = body?.productos ?? [];
-  const pageSize = body?.pageSize ?? 20;
-  const total = body?.total ?? 0;
-  const pages = Math.max(1, Math.ceil(total / pageSize));
   const restaurante = store?.categoriaId === "restaurantes";
+  const miniatura = store?.usaLista ? null : restaurante ? "restaurantes" : "carnicerias";
+  const hayMas = products.length < total;
+
+  function elegirAnaquel(id: string) {
+    setProducts([]);
+    setPage(1);
+    setAnaquel(id);
+  }
 
   function add(product: Product) {
     if (!store) return;
+    if (isBebidaAlcoholica(product.nombre, product.categoria)) return;
     cart.addLine({
       productoId: product.id,
       tiendaId: store.id,
@@ -107,46 +132,48 @@ export default function StorePage() {
           </div>
         ) : null}
       </header>
+      <div className="buscar-fija">
+        <input
+          className="campo buscar"
+          value={q}
+          placeholder={store?.usaLista ? "Busca un producto" : "Busca en el menú"}
+          onChange={(event) => {
+            setPage(1);
+            setQ(event.target.value);
+          }}
+        />
+      </div>
       {store && !store.abierta ? <p className="aviso">Si confirmas ahora, el pedido espera a que se pueda repartir.</p> : null}
       {store?.cotizar ? <p className="aviso">Precio estimado. La tienda confirma el final.</p> : null}
       {error ? <p className="aviso error">{error}</p> : null}
       {added ? <p className="aviso">Agregaste {added}. <Link href="/app/carrito">Ver carrito</Link></p> : null}
       {store?.usaLista ? (
-        <div className="chips chips-scroll">
-          {PEKES_SHELVES.map((shelf) => (
-            <button
-              key={shelf.id}
-              type="button"
-              className={anaquel === shelf.id ? "chip encendido" : "chip"}
-              onClick={() => {
-                setPage(1);
-                setAnaquel((current) => (current === shelf.id ? "" : shelf.id));
-              }}
-            >
-              <IconoAnaquel id={shelf.id} />
-              {shelf.titulo}
+        <>
+          <h2 className="fila-titulo">Categorías</h2>
+          <div className="carrusel">
+            <button type="button" className={anaquel === "todos" ? "chip encendido" : "chip"} onClick={() => elegirAnaquel("todos")}>
+              <MiniaturaCategoria id="todos" />
+              Todos
             </button>
-          ))}
-        </div>
+            {FILTER_SHELVES.map((shelf) => (
+              <button key={shelf.id} type="button" className={anaquel === shelf.id ? "chip encendido" : "chip"} onClick={() => elegirAnaquel(shelf.id)}>
+                <MiniaturaCategoria id={shelf.id} />
+                {shelf.titulo}
+              </button>
+            ))}
+          </div>
+        </>
       ) : null}
-      <input
-        className="campo"
-        value={q}
-        placeholder={store?.usaLista ? "Busca, por ejemplo Takis" : "Busca en el menú"}
-        onChange={(event) => {
-          setPage(1);
-          setQ(event.target.value);
-        }}
-      />
       {body?.necesitaBusqueda || body?.mensaje ? <p className="ayuda">{body.mensaje}</p> : null}
+      {!loading && products.length === 0 && !body?.necesitaBusqueda ? <p className="ayuda">No encontré ese producto.</p> : null}
       <div className="lista">
         {products.map((product) => {
-          const anaquelId = product.anaquel ?? "otros";
+          const ilustracion = miniatura ?? product.anaquel ?? "otros";
           return (
             <article key={product.id} className="tarjeta comida">
               <div className="comida-cuerpo">
                 <span className="comida-icono">
-                  {store?.usaLista ? <IconoAnaquel id={anaquelId} /> : restaurante ? <IconoHamburguesa /> : <IconoCarne />}
+                  <MiniaturaCategoria id={ilustracion} />
                 </span>
                 <div>
                   <strong className="nombre-grande">{product.nombre}</strong>
@@ -188,13 +215,12 @@ export default function StorePage() {
           );
         })}
       </div>
-      {pages > 1 ? (
-        <div className="paginas">
-          <button type="button" className="boton claro" disabled={page <= 1} onClick={() => setPage((current) => current - 1)}>Anterior</button>
-          <span>{page} / {pages}</span>
-          <button type="button" className="boton claro" disabled={page >= pages} onClick={() => setPage((current) => current + 1)}>Siguiente</button>
-        </div>
+      {hayMas ? (
+        <button type="button" className="boton claro" disabled={loading} onClick={() => setPage((current) => current + 1)}>
+          {loading ? "Cargando…" : "Cargar más"}
+        </button>
       ) : null}
+      {loading && products.length === 0 ? <p className="ayuda">Cargando…</p> : null}
     </>
   );
 }

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { useCart } from "@/components/app/cart";
 import { IconoCarrito, IconoCasa, IconoCuenta, IconoPedido } from "@/components/app/icons";
 import { PwaRegister } from "@/components/app/PwaRegister";
 
@@ -25,6 +26,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
       </header>
       <PwaRegister />
       <main className="cuerpo">{children}</main>
+      <CarritoFlotante />
       <nav className="nav">
         {LINKS.map((link) => {
           const active = link.href === "/app"
@@ -40,5 +42,18 @@ export function Shell({ children }: { children: React.ReactNode }) {
         })}
       </nav>
     </div>
+  );
+}
+
+function CarritoFlotante() {
+  const cart = useCart();
+  const pathname = usePathname();
+  if (!cart.ready || cart.lines.length === 0 || pathname.startsWith("/app/carrito")) return null;
+  const piezas = cart.lines.reduce((sum, line) => sum + line.cantidad, 0);
+  return (
+    <Link href="/app/carrito" className="carrito-flotante">
+      <span>Ver carrito · {piezas}</span>
+      <strong>{cart.summary.totalTexto}</strong>
+    </Link>
   );
 }

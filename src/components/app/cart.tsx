@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 
+import { isBebidaAlcoholica } from "@/lib/app/alcohol";
 import { summarizeCart, type CartSummary } from "@/lib/app/cartMath";
 
 export type CartLine = {
@@ -54,7 +55,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     try {
       const stored = window.localStorage.getItem(CART_KEY);
       const savedAddress = window.localStorage.getItem(ADDRESS_KEY);
-      if (stored) setLines(JSON.parse(stored) as CartLine[]);
+      if (stored) {
+        const parsed = JSON.parse(stored) as CartLine[];
+        setLines(parsed.filter((line) => !isBebidaAlcoholica(line.nombre)));
+      }
       if (savedAddress) setAddress(JSON.parse(savedAddress) as SavedAddress);
     } catch {
       setLines([]);
@@ -75,6 +79,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       summary,
       address,
       addLine(line) {
+        if (isBebidaAlcoholica(line.nombre)) return;
         setLines((current) => {
           if (current.length && current[0].tiendaId !== line.tiendaId) {
             const replace = window.confirm("El carrito es de otra tienda. ¿Lo vacío y empiezo con esta?");

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { isBebidaAlcoholica } from "@/lib/app/alcohol";
 import { phoneIsStaff } from "@/lib/app/auth";
 import { categoryForStore } from "@/lib/app/categories";
 import { isMissingColumn } from "@/lib/app/dbError";
@@ -61,6 +62,7 @@ type ProductRow = {
   nombre_producto: string;
   precio: number;
   disponible: boolean;
+  categoria?: string | null;
 };
 
 export async function placeAppOrder(input: PlaceInput, ports: PlacePorts): Promise<PlaceResult> {
@@ -108,7 +110,7 @@ export async function placeAppOrder(input: PlaceInput, ports: PlacePorts): Promi
   if (ids.length !== input.lines.length) return fail(400, "CARRITO", "Hay un producto que no reconocí.");
   const productsResult = await ports.supabase
     .from("productos_tienda")
-    .select("id, tienda_id, nombre_producto, precio, disponible")
+    .select("id, tienda_id, nombre_producto, precio, disponible, categoria")
     .in("id", ids);
   if (productsResult.error) return fail(500, "CARRITO", "No pude leer los productos.");
   const byId = new Map<number, ProductRow>();
@@ -125,6 +127,9 @@ export async function placeAppOrder(input: PlaceInput, ports: PlacePorts): Promi
   for (const line of input.lines) {
     const product = byId.get(Number(line.productoId));
     if (!product) return fail(400, "CARRITO", "Un producto ya no está disponible en esa tienda.");
+    if (isBebidaAlcoholica(String(product.nombre_producto), product.categoria == null ? null : String(product.categoria))) {
+      return fail(400, "ALCOHOL", "No manejamos bebidas alcohólicas en la app.");
+    }
     const cantidad = Math.round(Number(line.cantidad));
     if (!Number.isInteger(cantidad) || cantidad < 1 || cantidad > 20) return fail(400, "CARRITO", "La cantidad tiene que ser de 1 a 20.");
     const restaurante = categoryForStore({

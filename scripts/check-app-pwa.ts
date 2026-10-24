@@ -18,7 +18,8 @@ import { notifyAppPushForOrderState, resetPushSchemaProbeForTests, setPushSender
 import { placeAppOrder } from "../src/lib/app/placeOrder";
 import { pushNoticesForState } from "../src/lib/app/pushCopy";
 import { NOMINATIM_DEBOUNCE_MS, NOMINATIM_USER_AGENT, nominatimHeaders, nominatimSearchUrl, parseGeocodeRequest, readNominatimHits, resolveMapProvider } from "../src/lib/app/geocode";
-import { classifyShelf, shelfOrFilter } from "../src/lib/app/shelves";
+import { isBebidaAlcoholica } from "../src/lib/app/alcohol";
+import { classifyShelf, FILTER_SHELVES, parseShelfBrowse, shelfOrFilter } from "../src/lib/app/shelves";
 import { matchCatalogProduct, type CatalogPriceRow } from "../src/lib/catalogQuantities";
 import { IXTLAHUACAN_CENTER } from "../src/lib/services/geo";
 import { MemoryDatabase } from "./sim/memory-db";
@@ -36,9 +37,39 @@ check("det-limpieza", classifyShelf("Det Ariel Downy 1.5kg", "detergentes") === 
 check("fabuloso-limpieza", classifyShelf("Fabuloso Pasion De Frutas 2lt", "limpiadores de piso") === "limpieza");
 check("leche-lacteos", classifyShelf("Leche Lala 1lt", "lacteos") === "lacteos");
 check("anaquel-or", (shelfOrFilter("botanas") ?? "").includes("takis"));
+check("sin-otros-visible", FILTER_SHELVES.every((item) => item.id !== "otros") && FILTER_SHELVES.length === 12);
+check("todos-por-defecto", parseShelfBrowse("") === "todos" && parseShelfBrowse("otros") === "todos" && parseShelfBrowse("bebidas") === "bebidas");
+check("velas-limpieza", classifyShelf("Vela Aromatica", "velas/aromatizantes") === "limpieza");
+check("farmacia-higiene", classifyShelf("Pepto Bismol 118ml", "farmacia") === "higiene");
+check("desechables-limpieza", classifyShelf("Vaso Reyma", "desechables") === "limpieza");
+check("encanto-botanas", classifyShelf("Cheeses Encanto", "encanto") === "botanas");
 const pekes = JSON.parse(gunzipSync(readFileSync("scripts/fixtures/pekes-catalogo-completo.json.gz")).toString("utf8")) as Array<{ nombre_producto: string; categoria?: string }>;
 const otros = pekes.filter((row) => classifyShelf(row.nombre_producto, row.categoria) === "otros").length;
-check("pekes-otros-menor-25", otros / pekes.length < 0.25, `${otros}/${pekes.length}`);
+check("pekes-sin-categoria", otros / pekes.length < 0.03, `${otros}/${pekes.length}`);
+const alcohol = pekes.filter((row) => isBebidaAlcoholica(row.nombre_producto, row.categoria));
+check("alcohol-bloqueados", alcohol.length === 111, String(alcohol.length));
+check("alcohol-sin-vinagre", !alcohol.some((row) => /vinagre/i.test(row.nombre_producto)));
+check("alcohol-sin-clamato-solo", !alcohol.some((row) => /^clamato/i.test(row.nombre_producto)));
+check("alcohol-sin-chicharron", !alcohol.some((row) => /chicharron/i.test(row.nombre_producto)));
+check("alcohol-sin-manzanita", !alcohol.some((row) => /manzanita sol/i.test(row.nombre_producto)));
+for (const name of ["Corona Light 355ml", "Tequila Don Julio Reposado 700ml", "Jack Daniels Whiskey 473ml", "Sol Clamato Laton", "Boones Durazno 750ml", "Indio", "Bacardi Coca Cola 355ml"]) {
+  const row = pekes.find((item) => item.nombre_producto === name);
+  check(`bloquea-${name}`, Boolean(row) && isBebidaAlcoholica(row?.nombre_producto ?? "", row?.categoria));
+}
+for (const name of ["Manzanita Sol 600ml", "Clamato 946 Ml", "Cerveza De Raiz 500ml", "Chorizo Corona 200g", "Alka Seltzer", "Heineken 0 Alchol 355ml", "Sangrita Viuda De Sanchez", "Fibra Metalica Mega", "Surtido Modelo Alteño 5k", "Cj Vinagre Blanco 1lt", "Chicharron Sabritas 70g", "Paleton Corona 25g", "Bon O Bon Licores 450g", "Veladora Mexico Michelada"]) {
+  const row = pekes.find((item) => item.nombre_producto === name);
+  check(`permite-${name}`, Boolean(row) && !isBebidaAlcoholica(row?.nombre_producto ?? "", row?.categoria));
+}
+const tiendaSrc = read("src/app/app/tienda/[id]/page.tsx");
+check("tienda-todos", tiendaSrc.includes('useState("todos")') && tiendaSrc.includes("Cargar más") && tiendaSrc.includes("FILTER_SHELVES") && !tiendaSrc.includes(">Otros<"));
+check("carrito-flotante", read("src/components/app/Shell.tsx").includes("carrito-flotante"));
+check("alcohol-en-catalogo", read("src/lib/app/catalog.ts").includes("isBebidaAlcoholica") && read("src/lib/app/catalog.ts").includes("ALCOHOL_AISLE_OR"));
+check("alcohol-en-pedido", read("src/lib/app/placeOrder.ts").includes("isBebidaAlcoholica"));
+const ilustracion = read("src/components/app/ilustraciones.tsx");
+check("ilustraciones", ilustracion.includes("function Higiene") && ilustracion.includes("function Bebidas") && ilustracion.includes("<svg") && !ilustracion.includes("http"));
+console.log(`sin-categoria ${otros}/${pekes.length}`);
+console.log(`alcohol-bloqueados ${alcohol.length}`);
+console.log(`alcohol-ejemplos ${["Corona Light 355ml", "Tequila Don Julio Reposado 700ml", "Jack Daniels Whiskey 473ml", "Sol Clamato Laton", "Boones Durazno 750ml", "Indio", "Bacardi Coca Cola 355ml", "Dos Equis Caguamon", "Malibu", "Heineken Caguamon"].join(" | ")}`);
 
 check("mapa-default-osm", resolveMapProvider({}) === "osm");
 check("mapa-google-sin-llave", resolveMapProvider({ provider: "google", googleKey: "  " }) === "osm");
@@ -168,6 +199,7 @@ await placeCase("abierta-cotiza", "2026-10-25T18:00:00.000Z", false, true);
 await placeCase("cerrada", "2026-10-25T10:00:00.000Z", false, true);
 await placeCase("catalogo", "2026-10-25T18:00:00.000Z", true, true);
 await placeCase("sin-repartidor", "2026-10-25T18:00:00.000Z", true, false);
+await alcoholCase();
 
 const placeSrc = read("src/lib/app/placeOrder.ts") + read("src/lib/app/production.ts");
 check("sin-waapi", !placeSrc.includes("waapiSendText") && !placeSrc.includes("from \"@/lib/waapi\"") && !placeSrc.includes("from '@/lib/waapi'"));
@@ -276,6 +308,50 @@ async function placeCase(label: string, now: string, catalogo: boolean, conRepar
   if (label === "sin-repartidor") {
     check("sin-repartidor", result.ok && result.estado === "cancelado" && cancelled && dispatches.length === 0);
   }
+}
+
+async function alcoholCase(): Promise<void> {
+  const db = new MemoryDatabase();
+  db.insertRows("tiendas", [{
+    id: 7,
+    nombre: "Mini Super Peke's",
+    telefono: "5213300000001",
+    activa: true,
+    categoria: "abarrotes",
+    hora_apertura: "08:00",
+    hora_cierre: "21:00",
+    usa_catalogo_fijo: true,
+    direccion: "centro",
+  }]);
+  db.insertRows("productos_tienda", [{
+    id: 99,
+    tienda_id: 7,
+    nombre_producto: "Corona Light 355ml",
+    categoria: "cerveza",
+    precio: 25,
+    disponible: true,
+  }]);
+  db.insertRows("zonas_cobertura", [{ id: 1, nombre: "Calle Morelos", activa: true }]);
+  const result = await placeAppOrder(
+    {
+      telefono: "3311112222",
+      nombre: "Ana López",
+      tiendaId: 7,
+      lines: [{ productoId: 99, cantidad: 1, extras: [], nota: "", salsa: "" }],
+      latitude: IXTLAHUACAN_CENTER.latitude,
+      longitude: IXTLAHUACAN_CENTER.longitude,
+      referencia: "Calle Morelos 10",
+      now: new Date("2026-10-25T18:00:00.000Z"),
+    },
+    {
+      supabase: db.client() as unknown as SupabaseClient,
+      async enqueue() { return 1; },
+      async dispatch() { return { ok: true }; },
+      async findCouriers() { return [{ id: 1 }]; },
+      async cancelNoCourier() { return undefined; },
+    },
+  );
+  check("pedido-sin-alcohol", result.ok === false && result.code === "ALCOHOL" && db.rows("pedidos").length === 0, JSON.stringify(result));
 }
 
 function read(path: string): string {
