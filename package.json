@@ -7,23 +7,29 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "check": "npx tsx scripts/check-product-ordering.ts && npx tsx scripts/check-category-flows.ts && npx tsx scripts/check-customer-ux.ts && npx tsx scripts/check-business-hours.ts && npx tsx scripts/check-no-disponible.ts && npx tsx scripts/check-store-confirm.ts && npx tsx scripts/check-message-style.ts && npx tsx scripts/check-clarification-answers.ts && npx tsx scripts/check-restaurant-orders.ts && npx tsx scripts/check-catalog-orders.ts && npx tsx scripts/check-reliability.ts && npx tsx scripts/check-courier-availability.ts && npx tsx scripts/check-store-product-search.ts && npx tsx scripts/check-pekes-search.ts && npx tsx scripts/check-pekes-one-question.ts && npx tsx scripts/check-order-agent.ts && npx tsx scripts/check-order-matching.ts && npx tsx scripts/check-order-shortcuts.ts && npx tsx scripts/check-flow-router.ts && npx tsx scripts/check-outbound-loops.ts && npx tsx --import ./scripts/sim/preload.mjs scripts/check-sim-outbound.ts && npx tsx scripts/check-order-loss.ts && npx tsx scripts/check-order-intake.ts",
+    "check": "npx tsx scripts/check-product-ordering.ts && npx tsx scripts/check-category-flows.ts && npx tsx scripts/check-customer-ux.ts && npx tsx scripts/check-business-hours.ts && npx tsx scripts/check-no-disponible.ts && npx tsx scripts/check-store-confirm.ts && npx tsx scripts/check-message-style.ts && npx tsx scripts/check-clarification-answers.ts && npx tsx scripts/check-restaurant-orders.ts && npx tsx scripts/check-catalog-orders.ts && npx tsx scripts/check-reliability.ts && npx tsx scripts/check-courier-availability.ts && npx tsx scripts/check-store-product-search.ts && npx tsx scripts/check-pekes-search.ts && npx tsx scripts/check-pekes-one-question.ts && npx tsx scripts/check-order-agent.ts && npx tsx scripts/check-order-matching.ts && npx tsx scripts/check-order-shortcuts.ts && npx tsx scripts/check-flow-router.ts && npx tsx scripts/check-outbound-loops.ts && npx tsx --import ./scripts/sim/preload.mjs scripts/check-sim-outbound.ts && npx tsx scripts/check-order-loss.ts && npx tsx scripts/check-order-intake.ts && npx tsx scripts/check-app-pwa.ts",
     "simulate:customer": "npx tsx --import ./scripts/sim/preload.mjs scripts/simulate-customer.ts",
     "check:pekes-broad": "npx tsx scripts/check-pekes-broad.ts",
     "check:pekes-loose": "npx tsx scripts/check-pekes-loose.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.4",
+    "bcryptjs": "^2.4.3",
+    "leaflet": "^1.9.4",
     "next": "16.2.6",
     "openai": "^6.37.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "web-push": "^3.6.7",
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/leaflet": "^1.9.21",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/web-push": "^3.6.4",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
     "typescript": "^5"
