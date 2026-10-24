@@ -2,7 +2,8 @@
 
 > Este archivo es el estado operativo: qué está listo, qué está roto, qué falta construir.
 > Para reglas de negocio y arquitectura estable, ver `CLAUDE.md` (fuente de verdad).
-> Última actualización: 22 de octubre de 2026. Pedir de Peke's: no duplica líneas ni preguntas del mismo producto, limpia «no contamos con», las opciones traen el sustantivo y el pie de QUITAR, y acepta quitar/cancelar con dedo sin confundir canela. La tienda (las tres) tiene 15 min para confirmar, recordatorio único a los 8; el cliente ve que tarda unos 15 minutos o menos. No se llamó a OpenAI, no se mandó WhatsApp y no se escribió en Supabase. No está mergeado ni desplegado.
+> Última actualización: 24 de octubre de 2026. Primera versión de la app web PWA en `/app` y `/api/app/*`, en un PR borrador. No está mergeada. La migración `supabase/migrations/20261024_app_pwa_usuarios_push.sql` es propuesta y no está aplicada. El catálogo es solo lectura. El pedido entra al flujo de WhatsApp que ya usan la tienda y el repartidor. El push se engancha al cambio de estado sin cambiar el comportamiento del bot. No se llamó a OpenAI, no se mandó WhatsApp, no se envió push real y no se escribió en Supabase. El detalle vive en `docs/app-pwa.md`.
+> Actualización anterior: 22 de octubre de 2026. Pedir de Peke's: no duplica líneas ni preguntas del mismo producto, limpia «no contamos con», las opciones traen el sustantivo y el pie de QUITAR, y acepta quitar/cancelar con dedo sin confundir canela. La tienda (las tres) tiene 15 min para confirmar, recordatorio único a los 8; el cliente ve que tarda unos 15 minutos o menos. No se llamó a OpenAI, no se mandó WhatsApp y no se escribió en Supabase. No está mergeado ni desplegado.
 > Actualización anterior: 20 de octubre de 2026. Reparto de Mándalo de 8:00 a 23:30.
 > El 5213314705434 se llama Moy (antes Roberto): 8:00–23:30 todos los días
 > menos sábado. Mateo también cierra a las 23:30 (sábado 8:00–23:30).

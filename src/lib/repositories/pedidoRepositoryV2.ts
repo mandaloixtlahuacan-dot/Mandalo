@@ -714,19 +714,32 @@ export async function setPedidoEstado(params: {
 }): Promise<void> {
   const supabase = getSupabaseAdmin();
   const update: Record<string, unknown> = { estado: params.estado, updated_at: new Date().toISOString() };
+  let previousEstado: string | null = null;
 
   if (params.metadataPatch) {
     const { data: current, error: readError } = await supabase
       .from("pedidos")
-      .select("metadata_json")
+      .select("estado, metadata_json")
       .eq("id", params.pedidoId)
       .maybeSingle();
     if (readError) throw readError;
+    previousEstado = current?.estado == null ? null : String(current.estado);
     update.metadata_json = { ...toPlainObject(current?.metadata_json as Record<string, unknown> | null), ...params.metadataPatch };
+  } else {
+    const read = await supabase.from("pedidos").select("estado").eq("id", params.pedidoId).maybeSingle();
+    if (!read.error && read.data) previousEstado = read.data.estado == null ? null : String(read.data.estado);
   }
 
   const { error } = await supabase.from("pedidos").update(update).eq("id", params.pedidoId);
   if (error) throw error;
+
+  // Aviso de la app. No cambia el pedido ni el WhatsApp si falla.
+  try {
+    const { scheduleAppPush } = await import("@/lib/app/notifyHook");
+    await scheduleAppPush({ pedidoId: params.pedidoId, estado: params.estado, previousEstado });
+  } catch (pushError: unknown) {
+    console.error("[app-push] el aviso no salió", pushError instanceof Error ? pushError.message : pushError);
+  }
 }
 
 // Retención (CLAUDE.md Sección 4): "solo se conservan pedidos activos. Al

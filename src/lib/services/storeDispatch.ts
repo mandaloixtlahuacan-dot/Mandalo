@@ -321,6 +321,13 @@ export async function dispatchCotizacionToStore(
   if (error) throw error;
   if (!data) return { ok: false, reason: "not_claimed" };
 
+  try {
+    const { scheduleAppPush } = await import("@/lib/app/notifyHook");
+    await scheduleAppPush({ pedidoId: pedido.id, estado: "pendiente_tiendas", previousEstado: params.fromEstado });
+  } catch (pushError: unknown) {
+    console.error("[app-push] el aviso no salió", pushError instanceof Error ? pushError.message : pushError);
+  }
+
   // pedido en memoria no trae el estado recién escrito por el UPDATE de
   // arriba — solo estado importa para lo que sigue (tienda/items/cliente no
   // cambiaron), así que se sobreescribe local en vez de releer de la BD.

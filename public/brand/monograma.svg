@@ -1,0 +1,11 @@
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1024" height="1024" fill="#E00B2D"/>
+  <g transform="translate(163.8 238.9) scale(0.7361)">
+    <g fill="#FFF6EF">
+      <path d="M0 700 0 140 126 140 250 436 374 140 500 140 500 700 396 700 396 318 288 558 212 558 104 318 104 700Z"/>
+      <path transform="translate(534 0)" fill-rule="evenodd" d="M0 500a206 206 0 1 0 412 0a206 206 0 1 0 -412 0M104 500a102 102 0 1 1 204 0a102 102 0 1 1 -204 0Z"/>
+      <rect transform="translate(534 0)" x="308" y="300" width="104" height="400"/>
+    </g>
+    <path fill="none" stroke="#FFF6EF" stroke-width="72" stroke-linecap="round" stroke-linejoin="round" d="M665 222L815 72M695 72H815V192"/>
+  </g>
+</svg>

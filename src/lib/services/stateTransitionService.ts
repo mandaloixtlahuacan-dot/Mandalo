@@ -134,6 +134,14 @@ async function writePedidoState(params: {
     .eq("id", params.pedidoId);
 
   if (error) throw error;
+
+  // #RECOGI y #ENTREGADO pasan por aquí. El aviso push no cambia el estado.
+  try {
+    const { scheduleAppPush } = await import("@/lib/app/notifyHook");
+    await scheduleAppPush({ pedidoId: params.pedidoId, estado: params.estado, previousEstado: current.estado });
+  } catch (pushError: unknown) {
+    console.error("[app-push] el aviso no salió", pushError instanceof Error ? pushError.message : pushError);
+  }
 }
 
 // Valida y persiste una transición de estado de alto nivel usando el mismo
