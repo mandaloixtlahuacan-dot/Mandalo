@@ -3,6 +3,7 @@ import { formatHowToEditList, formatPreConfirmFeeNote } from "@/lib/customerUx";
 import { formatCheckedLine, formatCheckedLines, joinBlocks } from "@/lib/messageStyle";
 import { isProductListYes, isYesConfirmation, messageCorrectsOrder } from "@/lib/messages";
 import type { CatalogPriceRow } from "@/lib/catalogQuantities";
+import { nameAlreadyShowsKilos } from "@/lib/kiloLabel";
 import { advanceMenuAsk } from "@/lib/catalogOrderSpeech";
 import { assembleCapturedItems } from "@/lib/orderGrounding";
 import { restoreNamedFromHistory } from "@/lib/quoteProductClarity";
@@ -554,6 +555,7 @@ export function formatSpecificItemLine(item: PedidoItemInput): string {
 }
 
 export function dispatchItemAlreadyShowsQty(nombreProducto: string, cantidad: number): boolean {
+  if (nameAlreadyShowsKilos(nombreProducto, cantidad)) return true;
   const qty = trimQty(cantidad).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(`(?:^|[^\\d.-])${qty}(?!\\d)`).test(nombreProducto);
 }
