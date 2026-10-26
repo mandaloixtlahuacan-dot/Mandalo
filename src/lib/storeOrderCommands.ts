@@ -39,7 +39,7 @@ function faltanteBlock(ordenId: number): string {
   return `¿Te falta algún producto?\n\n*Responde:*\n${comandoNoHay(ordenId)}\n\nSi son varios, sepáralos con coma.`;
 }
 
-/** Aviso a abarrotes: cotiza precio. George y La Central confirman en los mismos 15 min. */
+/** Aviso a abarrotes: cotiza precio. George y La Central confirman en los mismos 20 min. */
 export function formatAbarrotesQuoteRequest(params: {
   pedidoId: number;
   direccion?: string | null;
@@ -101,6 +101,11 @@ export function formatStorePendingReminder(params: {
 export function formatStoreQuoteTimeoutCancel(pedidoId: number, catalogo: boolean): string {
   const verbo = catalogo ? "confirmarlo" : "cotizarlo";
   return `🏪 *Pedido #${pedidoId}*\n\nSe canceló por falta de respuesta a tiempo. Ya no es necesario ${verbo}.`;
+}
+
+/** La tienda escribe cuando el pedido ya se borró por el timeout. */
+export function mensajeTiendaPedidoVencido(ordenId: number): string {
+  return `Ese pedido (#${ordenId}) ya se canceló por tiempo`;
 }
 
 export function formatProductAdjustmentReminder(params: {

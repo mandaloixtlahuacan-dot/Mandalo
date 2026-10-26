@@ -1,6 +1,9 @@
 import { ensureMxWhatsappIntl, normalizePhone } from "@/lib/roles";
 
-/** Teléfono de la app: 52 + 10 dígitos, o 521 + 10, igual que el `to` de WhatsApp. */
+/**
+ * Teléfono guardado de la app: 52 + 10 dígitos, o 521 + 10 si así llegó.
+ * El envío a WhatsApp no usa este valor tal cual: `whatsappTo` lo pasa a 521.
+ */
 export function parseAppPhone(raw: string): string | null {
   const digits = normalizePhone(raw);
   if (digits.length === 10) return `52${digits}`;

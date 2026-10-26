@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { MANDALO_DELIVERY_FEE, MANDALO_SERVICE_FEE } from "@/lib/ordenes";
+import { archivoEsCancelacionPorTiempo, TIMEOUT_ARCHIVE_WINDOW_MS } from "@/lib/services/orderTimeouts";
 import { BUILDING_ORDER_STATES } from "@/lib/reliability";
 import { normalizePhone } from "@/lib/roles";
 import { resetChatHistory } from "@/lib/messages";
@@ -844,7 +845,7 @@ export async function listPedidoIdsAwaitingStoreQuote(tiendaId: number): Promise
  * Copia agent_turn y el chat antes de que la retención borre el pedido.
  * Si la tabla todavía no existe, o el insert falla, el cierre sigue.
  */
-async function archiveConversation(params: { pedidoId: number; customerPhone: string }): Promise<void> {
+async function archiveConversation(params: { pedidoId: number; customerPhone: string; motivo?: string | null }): Promise<void> {
   const supabase = getSupabaseAdmin();
   const telefono = normalizePhone(params.customerPhone) || String(params.customerPhone ?? "").trim();
   const eventsResult = await supabase
@@ -854,6 +855,21 @@ async function archiveConversation(params: { pedidoId: number; customerPhone: st
     .eq("tipo_evento", "agent_turn")
     .order("created_at", { ascending: true });
   if (eventsResult.error) throw eventsResult.error;
+
+  const timeoutResult = await supabase
+    .from("pedido_eventos")
+    .select("payload_json")
+    .eq("pedido_id", params.pedidoId)
+    .eq("tipo_evento", "timeout_cancelado")
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (timeoutResult.error) throw timeoutResult.error;
+  const timeoutPayload = toPlainObject(
+    (timeoutResult.data?.[0] as { payload_json?: Record<string, unknown> } | undefined)?.payload_json,
+  );
+  const motivo =
+    cleanText(params.motivo) ??
+    (typeof timeoutPayload.reasonCode === "string" ? timeoutPayload.reasonCode : null);
 
   let chatHistory: unknown[] = [];
   if (telefono) {
@@ -869,12 +885,17 @@ async function archiveConversation(params: { pedidoId: number; customerPhone: st
     payload: {
       agent_turns: eventsResult.data ?? [],
       chat_history: chatHistory,
+      ...(motivo ? { cierre: { motivo, at: new Date().toISOString() } } : {}),
     },
   });
   if (error) throw error;
 }
 
-export async function finalizePedidoRetention(params: { pedidoId: number; customerPhone: string }): Promise<void> {
+export async function finalizePedidoRetention(params: {
+  pedidoId: number;
+  customerPhone: string;
+  motivo?: string | null;
+}): Promise<void> {
   await archiveConversation(params).catch((error: unknown) => {
     console.error(
       "[pedidoRepository] no se pudo archivar la conversación",
@@ -883,4 +904,22 @@ export async function finalizePedidoRetention(params: { pedidoId: number; custom
   });
   await resetChatHistory(params.customerPhone);
   await deletePedido(params.pedidoId);
+}
+
+/** El pedido ya no está en `pedidos`, pero el archivo reciente dice que venció por tiempo. */
+export async function findRecentTimeoutArchive(pedidoId: number, nowMs = Date.now()): Promise<boolean> {
+  const supabase = getSupabaseAdmin();
+  const since = new Date(nowMs - TIMEOUT_ARCHIVE_WINDOW_MS).toISOString();
+  const { data, error } = await supabase
+    .from("conversaciones_archivo")
+    .select("payload, created_at")
+    .eq("pedido_id", pedidoId)
+    .gte("created_at", since)
+    .order("created_at", { ascending: false })
+    .limit(5);
+  if (error) throw error;
+  return (data ?? []).some((row) => {
+    const createdAt = String((row as { created_at?: unknown }).created_at ?? "");
+    return archivoEsCancelacionPorTiempo((row as { payload?: unknown }).payload, createdAt, nowMs);
+  });
 }

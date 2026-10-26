@@ -208,6 +208,41 @@ const cases: Case[] = [
     hides: ["cloralex", "sanitario", "coca"],
     missing: "kombucha",
   },
+  {
+    input: "Condones Sico",
+    shows: ["Sico Safety"],
+    hides: ["Condones Premier", "no encontré", "no contamos"],
+    cartExcludes: ["Sico", "Premier"],
+    numbered: true,
+  },
+  {
+    input: "Xico",
+    shows: ["Sico Safety"],
+    hides: ["Condones Premier", "no encontré", "no contamos"],
+    cartExcludes: ["Sico", "Premier"],
+    numbered: true,
+  },
+  {
+    input: "condon",
+    shows: ["Sico Safety"],
+    hides: ["Condones Premier", "no encontré", "no contamos"],
+    cartExcludes: ["Sico", "Premier"],
+    numbered: true,
+  },
+  {
+    input: "preservativos",
+    shows: ["Sico Safety"],
+    hides: ["Condones Premier", "no encontré", "no contamos"],
+    cartExcludes: ["Sico", "Premier"],
+    numbered: true,
+  },
+  {
+    input: "Precerbativos",
+    shows: ["Sico Safety"],
+    hides: ["Condones Premier", "no encontré", "no contamos"],
+    cartExcludes: ["Sico", "Premier"],
+    numbered: true,
+  },
 ];
 
 function fold(value: string): string {
@@ -314,6 +349,11 @@ async function main(): Promise<void> {
     { query: "vasitos de cuarto con tapa", need: /Vaso/ },
     { query: "vasos con tapita de 1/4", need: /Vaso/ },
     { query: "cajitas de grenetina sin sabor", need: /Grenetina/ },
+    { query: "Condones Sico", need: /Sico Safety/ },
+    { query: "Xico", need: /Sico Safety/ },
+    { query: "condon", need: /Sico Safety/ },
+    { query: "preservativos", need: /Sico Safety/ },
+    { query: "Precerbativos", need: /Sico Safety/ },
   ];
   for (const check of windowChecks) {
     const window = sqlWindow(check.query);

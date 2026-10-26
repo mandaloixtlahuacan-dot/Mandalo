@@ -146,7 +146,7 @@ export function formatCatalogOrderRegistered(pedidoId: number, tiendaNombre: str
 
 /** Aviso de pedido programado. En menú fijo va solo: el total sale en el mensaje siguiente. */
 /** Lo que ve el cliente cuando el pedido ya va a la tienda. Las tres tardan lo mismo. */
-export const STORE_CONFIRM_WAIT_NOTE = "La tienda tarda unos *15 minutos* o menos en confirmar. Espérame con paciencia.";
+export const STORE_CONFIRM_WAIT_NOTE = "La tienda tarda unos *20 minutos* o menos en confirmar. Espérame con paciencia.";
 
 export function formatScheduledSentNotice(pedidoId: number, tiendaNombre: string, catalog: boolean): string {
   const tienda = tiendaNombre.trim() || "la tienda";
@@ -283,6 +283,9 @@ export function customerCopySplitsFee(text: string): boolean {
 const GREETING_BODY = `👋 *¡Hola! Soy Mándalo, tu mandadero en Ixtlahuacán del Río.*
 
 Con gusto pido en la tienda, el restaurante o la carnicería que me digas y te lo llevo a la puerta.
+
+Puedes pedirlo *aquí por WhatsApp* o en la *app de Mándalo*. Ábrela y agrégala a la pantalla de inicio:
+https://mandalo1.vercel.app/app
 
 *¿De dónde quieres?*
 

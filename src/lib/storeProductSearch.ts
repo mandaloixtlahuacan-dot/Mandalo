@@ -155,11 +155,15 @@ export function listaSearchTokens(text: string): string[] {
     tokens.push(token);
   };
   const prepared = normalizeVoice(normalizeMeasureWords(text)).replace(/\bsin\s+sabor\b/gi, " ");
-  for (const token of foldListaText(prepared).split(" ")) {
+  for (const raw of foldListaText(prepared).split(" ")) {
+    if (raw.length < 3 || raw.length > 40) continue;
+    if (STOP.has(raw) || isQuantity(raw)) continue;
+    const token = canonicalToken(raw);
     if (token.length < 3 || token.length > 40) continue;
-    if (STOP.has(token) || isQuantity(token)) continue;
     push(token);
-    if (token.endsWith("s") && token.length > 4) {
+    // «condones» ya tiene sinónimo y familia. El tronco «condone» no es un producto.
+    const grouped = synonymForms(token).some((form) => form !== token) || PRODUCT_FAMILY[token] != null;
+    if (!grouped && token.endsWith("s") && token.length > 4) {
       const stem = token.slice(0, -1);
       if (stem.length >= 4 && !STOP.has(stem) && !isQuantity(stem)) push(stem);
     }
@@ -175,7 +179,7 @@ export function listaSearchTokens(text: string): string[] {
     const rest = foldListaText(prepared).split(" ").filter((token) => token && !filler.has(token));
     if (rest.length === 1 && /^(?:cajas?|bolsas?|paquetes?|para)$/.test(rest[0])) push(rest[0]);
   }
-  return tokens;
+  return familyFocusTokens(tokens) ?? tokens;
 }
 
 /** Palabras de presentación o categoría. No deben tapar la marca. */
@@ -201,7 +205,29 @@ const SYNONYM_GROUPS: string[][] = [
   ["mirinda", "mirandas", "miranda", "merienda", "meriendas"],
   ["seven", "7up"],
   ["electrolit", "electrolight", "electrolitos"],
+  ["sico", "xico", "siko", "cico", "zico"],
+  ["condon", "condones", "preserv", "preservativo", "preservativos", "precerbativo", "precerbativos"],
 ];
+
+/**
+ * El tipo no está escrito en el nombre («Sico Safety» no dice condón).
+ * Es de una sola vía: buscar «sico» no arrastra «Condones Premier».
+ */
+const PRODUCT_FAMILY: Record<string, string[]> = {
+  condon: ["sico"],
+  condones: ["sico"],
+  preserv: ["sico"],
+  preservativo: ["sico"],
+  preservativos: ["sico"],
+  precerbativo: ["sico"],
+  precerbativos: ["sico"],
+};
+
+const KNOWN_TERMS = new Set<string>([
+  ...SYNONYM_GROUPS.flat(),
+  ...Object.keys(PRODUCT_FAMILY),
+  ...Object.values(PRODUCT_FAMILY).flat(),
+]);
 
 const DRINK_HINTS = new Set([
   "fuse", "fuze", "fusi", "fuste", "fuzet", "fuzete", "fuzetea",
@@ -220,6 +246,71 @@ export function synonymForms(token: string): string[] {
   for (const extra of diminutiveFamily(token)) forms.add(extra);
   if (token === "ti" || token === "tea" || token === "te") forms.add("tea");
   return [...forms];
+}
+
+/** s/x/z/c y b/v se oyen igual. No cambia el largo de la palabra. */
+function phoneticKey(token: string): string {
+  return token
+    .replace(/qu/g, "k")
+    .replace(/x/g, "s")
+    .replace(/z/g, "s")
+    .replace(/v/g, "b")
+    .replace(/c(?=[ei])/g, "s")
+    .replace(/c/g, "k")
+    .replace(/q/g, "k");
+}
+
+function phoneticClose(left: string, right: string): boolean {
+  if (left === right) return true;
+  return left + "s" === right || right + "s" === left || left + "es" === right || right + "es" === left;
+}
+
+/**
+ * «xico» es Sico y «precerbativos» es preservativos.
+ * Una palabra que ya está en el catálogo o en un sinónimo se queda igual.
+ * Con dos cambios hace falta una palabra larga, para no juntar marcas cortas.
+ */
+export function canonicalToken(token: string): string {
+  if (!token || token.length < 4 || KNOWN_TERMS.has(token)) return token;
+  const key = phoneticKey(token);
+  let best: { term: string; distance: number } | null = null;
+  for (const term of KNOWN_TERMS) {
+    if (Math.abs(term.length - token.length) > 2) continue;
+    if (!phoneticClose(key, phoneticKey(term))) continue;
+    const distance = editDistance(token, term);
+    if (distance === 0) return term;
+    if (distance > 2) continue;
+    if (distance === 2 && token.length < 8) continue;
+    if (
+      !best ||
+      distance < best.distance ||
+      (distance === best.distance && Math.abs(term.length - token.length) < Math.abs(best.term.length - token.length))
+    ) {
+      best = { term, distance };
+    }
+  }
+  return best?.term ?? token;
+}
+
+/** Si el cliente dijo el tipo (condón, preservativo), la búsqueda usa la marca. Si también dijo la marca, el tipo no estorba. */
+export function familyFocusTokens(tokens: string[]): string[] | null {
+  const brands: string[] = [];
+  const specific: string[] = [];
+  let sawFamily = false;
+  for (const token of tokens) {
+    const canon = canonicalToken(token);
+    const family = PRODUCT_FAMILY[canon] ?? PRODUCT_FAMILY[token];
+    if (family) {
+      sawFamily = true;
+      for (const brand of family) {
+        if (!brands.includes(brand)) brands.push(brand);
+      }
+      continue;
+    }
+    if (!specific.includes(canon)) specific.push(canon);
+  }
+  if (!sawFamily) return null;
+  return specific.length ? specific : brands;
 }
 
 /**
@@ -246,7 +337,7 @@ export function listaRankTokens(text: string): string[] {
   for (const token of [...tokens]) {
     for (const form of synonymForms(token)) push(form);
   }
-  return tokens;
+  return familyFocusTokens(tokens) ?? tokens;
 }
 
 /** Lo que se manda al SQL: sin la palabra genérica si ya hay una marca. Con sinónimos. */
@@ -466,6 +557,24 @@ export function listaWordHit(word: string, token: string): boolean {
     if (form.length >= 4 && word.length === form.length && word[0] === form[0] && editDistance(word, form) <= 1) return true;
     if (form.length >= 5 && Math.abs(word.length - form.length) <= 1 && word[0] === form[0] && editDistance(word, form) <= 1) return true;
     if (form.length >= 6 && word.length === form.length && commonPrefixLength(word, form) >= 4 && editDistance(word, form) <= 2) return true;
+    if (
+      form.length >= 4 &&
+      word.length === form.length &&
+      phoneticKey(word) === phoneticKey(form) &&
+      editDistance(word, form) <= 1
+    ) {
+      return true;
+    }
+    if (
+      form.length >= 8 &&
+      word.length >= 8 &&
+      word[0] === form[0] &&
+      Math.abs(word.length - form.length) <= 1 &&
+      editDistance(word, form) <= 2 &&
+      !meaningSplit(word, form)
+    ) {
+      return true;
+    }
   }
   return false;
 }
@@ -605,6 +714,13 @@ function rowText(row: ListaProducto): string {
   return foldListaText(`${row.nombre} ${row.marca ?? ""} ${row.presentacion ?? ""} ${(row.alias ?? []).join(" ")}`);
 }
 
+function rowExactToken(row: ListaProducto, token: string): boolean {
+  const nombre = foldListaText(row.nombre);
+  const marca = foldListaText(row.marca ?? "");
+  const aliasText = (row.alias ?? []).map((alias) => foldListaText(alias)).filter(Boolean).join(" ");
+  return [nombre, marca, aliasText].some((field) => fieldHit(field, token, true) != null);
+}
+
 export function rankListaByTokens(
   rows: ListaProducto[],
   tokens: string[],
@@ -648,6 +764,13 @@ export function rankListaByTokens(
   if (colors.length) {
     const painted = chosen.filter((entry) => colors.every((color) => rowText(entry.row).includes(color)));
     if (painted.length) chosen = painted;
+  }
+  // «sico» exacto se queda. «saco» solo se parece y sale. Quien no usa esa palabra, se queda.
+  for (const token of tokens) {
+    if (WEAK_TOKENS.has(token) || isColorToken(token)) continue;
+    const exact = chosen.some((entry) => rowExactToken(entry.row, token));
+    if (!exact) continue;
+    chosen = chosen.filter((entry) => rowExactToken(entry.row, token) || scoreToken(entry.row, token) <= 0);
   }
   chosen.sort((a, b) => b.score - a.score || a.extra - b.extra || a.row.nombre.localeCompare(b.row.nombre) || a.index - b.index);
   return diversifyLooseToken(chosen, tokens, cap).map((entry) => entry.row);
@@ -700,10 +823,24 @@ const VAGUE_WORDS = new Set([
   "refresco", "refrescos", "soda", "sodas",
 ]);
 
-/** «algo de limpieza» o «refresco»: no nombran un producto, nombran el tipo. */
+function contentWords(text: string): string[] {
+  return foldListaText(text).split(" ").filter((word) => word.length >= 3 && !STOP.has(word));
+}
+
+function isCondomQuery(text: string): boolean {
+  const words = contentWords(text);
+  if (!words.length) return false;
+  return words.every((word) => {
+    const canon = canonicalToken(word);
+    return PRODUCT_FAMILY[canon] != null || PRODUCT_FAMILY[word] != null;
+  });
+}
+
+/** «algo de limpieza», «refresco» o «condones»: no nombran un producto, nombran el tipo. */
 export function isVagueListaQuery(text: string): boolean {
-  const words = foldListaText(text).split(" ").filter((word) => word.length >= 3 && !STOP.has(word));
-  return words.length > 0 && words.every((word) => VAGUE_WORDS.has(word));
+  const words = contentWords(text);
+  if (words.length > 0 && words.every((word) => VAGUE_WORDS.has(word))) return true;
+  return isCondomQuery(text);
 }
 
 const VAGUE_FAMILY: Record<string, string[]> = {
@@ -732,7 +869,7 @@ function vagueFamilyTokens(text: string): string[] {
 
 function vagueFamily(name: string): string {
   const words = foldListaText(name).split(" ").filter(Boolean);
-  const known = ["coca", "sprite", "pepsi", "mirinda", "seven", "sidral", "manzanita", "fabuloso", "pinol", "cloro", "limpiador", "limpiadora"];
+  const known = ["coca", "sprite", "pepsi", "mirinda", "seven", "sidral", "manzanita", "fabuloso", "pinol", "cloro", "limpiador", "limpiadora", "sico"];
   return words.find((word) => known.includes(word)) ?? words[0] ?? name;
 }
 
@@ -747,6 +884,7 @@ function vagueRows(rows: ListaProducto[], text: string): ListaProducto[] {
     // El pedido vago se queda en las marcas de limpieza, no en todo el pasillo.
     if (cleaning) return /\b(?:fabuloso|pinol|cloro|limpiadores?|limpiadoras?)\b/.test(name);
     if (soda) return /\b(coca|sprite|pepsi|mirinda|seven|sidral|manzanita)\b/.test(name);
+    if (isCondomQuery(text)) return /\bsico\b/.test(name);
     return false;
   });
 }

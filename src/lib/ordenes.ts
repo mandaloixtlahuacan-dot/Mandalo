@@ -42,25 +42,112 @@ export function extraerOrdenId(texto: string): number | null {
   return m ? Number(m[1]) : null;
 }
 
+/**
+ * Lee un monto escrito por la tienda.
+ * Coma o punto seguido de exactamente 3 dígitos es separador de miles
+ * (`1,049` y `1.049` → 1049). Si el último grupo trae 1 o 2 dígitos, son
+ * centavos (`$1,049.50` → 1049.5). Los espacios no cuentan (`1 049`, `$ 1049`).
+ */
+export function parseMonto(raw: string): number | null {
+  const compact = String(raw ?? "")
+    .replace(/[$\s]/g, "")
+    .replace(/[.,]+$/g, "");
+  if (!compact || !/^[\d.,]+$/.test(compact)) return null;
+  const parts = compact.split(/[.,]/);
+  if (!parts.length || parts.some((part) => !/^\d+$/.test(part))) return null;
+  if (parts.length === 1) {
+    const value = Number(parts[0]);
+    return Number.isFinite(value) ? value : null;
+  }
+  const last = parts[parts.length - 1] ?? "";
+  const heads = parts.slice(0, -1);
+  const gruposDeMiles = heads.every((part, index) => (index === 0 ? part.length >= 1 : part.length === 3));
+  if (!gruposDeMiles) return null;
+  if (last.length === 3) {
+    const value = Number(parts.join(""));
+    return Number.isFinite(value) ? value : null;
+  }
+  if (last.length === 1 || last.length === 2) {
+    const value = Number(`${heads.join("")}.${last}`);
+    return Number.isFinite(value) ? value : null;
+  }
+  return null;
+}
+
+function montoAcotado(value: number | null): number | null {
+  if (value == null || !Number.isFinite(value) || value <= 0 || value > 100000) return null;
+  return value;
+}
+
 export function extraerPrecio(texto: string): number | null {
   // IMPORTANTE:
   // En mensajes como: "ORDEN #162 PRECIO 87" no queremos capturar 162.
   // Extraemos estrictamente el número DESPUÉS de la palabra "PRECIO" o "TOTAL".
-  const normalized = String(texto ?? "").replace(/,/g, ".");
-  const m =
-    normalized.match(/\bprecio\b[^0-9]*([0-9]+(\.[0-9]+)?)/i) ||
-    normalized.match(/\btotal\b[^0-9]*([0-9]+(\.[0-9]+)?)/i);
-  return m ? Number(m[1]) : null;
+  const source = String(texto ?? "");
+  const match =
+    source.match(/\bprecio\b[^0-9]{0,16}(\$?\s*[0-9][0-9\s.,]*)/i) ||
+    source.match(/\btotal\b[^0-9]{0,16}(\$?\s*[0-9][0-9\s.,]*)/i);
+  if (!match?.[1]) return null;
+  return montoAcotado(parseMonto(match[1]));
 }
 
-/** El mensaje entero es un precio: "150", "$150" o "150.50". Nada más. */
+/** El mensaje entero es un precio: "150", "$150", "1,049" o "$1,049.50". Nada más. */
 export function extraerPrecioSuelto(texto: string): number | null {
-  const raw = String(texto ?? "").trim().replace(/,/g, ".");
-  const match = raw.match(/^\$?\s*([0-9]+(?:\.[0-9]{1,2})?)\s*$/);
-  if (!match) return null;
-  const value = Number(match[1]);
-  if (!Number.isFinite(value) || value <= 0 || value > 100000) return null;
-  return value;
+  const raw = String(texto ?? "").trim();
+  if (!/^\$?\s*[0-9][0-9\s.,]*$/.test(raw)) return null;
+  return montoAcotado(parseMonto(raw));
+}
+
+/** Menos de esto no se manda al cliente hasta que la tienda lo confirme. */
+export const PRECIO_PISO_DUDOSO = 10;
+
+function mismoCentavo(left: number, right: number): boolean {
+  return Number.isFinite(left) && Number.isFinite(right) && Math.round(left * 100) === Math.round(right * 100);
+}
+
+/**
+ * El subtotal parseado no se le enseña al cliente si es menor a $10, o si
+ * queda muy por debajo del menú (menos de la mitad y al menos $20 abajo) o,
+ * sin menú, muy por debajo de $10 por pieza cuando hay 3 o más productos.
+ */
+export function subtotalDudoso(params: {
+  subtotal: number;
+  itemCount: number;
+  catalogEstimate: number | null;
+}): boolean {
+  const value = Number(params.subtotal);
+  if (!Number.isFinite(value) || value <= 0 || value < PRECIO_PISO_DUDOSO) return true;
+  const catalog = params.catalogEstimate;
+  if (catalog != null && Number.isFinite(catalog) && catalog >= PRECIO_PISO_DUDOSO) {
+    return value < catalog * 0.5 && catalog - value >= 20;
+  }
+  const pieces = Number.isInteger(params.itemCount) ? params.itemCount : 0;
+  if (pieces >= 3) {
+    const floor = pieces * PRECIO_PISO_DUDOSO;
+    return value < floor * 0.5;
+  }
+  return false;
+}
+
+/** La tienda ya contestó el mismo monto bajo: esa segunda vez sí cuenta. */
+export function debePedirConfirmacionDePrecio(params: {
+  subtotal: number;
+  itemCount: number;
+  catalogEstimate: number | null;
+  precioYaPreguntado: number | null;
+}): boolean {
+  if (params.precioYaPreguntado != null && mismoCentavo(params.precioYaPreguntado, params.subtotal)) return false;
+  return subtotalDudoso(params);
+}
+
+export function mensajeTiendaPrecioDudoso(ordenId: number, subtotal: number): string {
+  return (
+    `🏪 *Pedido #${ordenId}*\n\n` +
+    `El precio *${formatMoney(subtotal)}* se ve muy bajo y no se lo mandé al cliente.\n\n` +
+    `Si ese es el precio, escríbelo otra vez igual.\n` +
+    `Si no, mándalo completo:\n` +
+    `ORDEN #${ordenId} PRECIO 150`
+  );
 }
 
 /** Acuse opcional de la tienda. No cambia el estado del pedido. */

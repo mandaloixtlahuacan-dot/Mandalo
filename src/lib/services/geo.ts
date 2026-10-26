@@ -85,9 +85,10 @@ export function normalizeCoverageCoords(latitude: number, longitude: number): Co
 export function coordsFromMapText(text: string): Coordinates | null {
   const source = String(text ?? "");
   const patterns = [
-    /[?&]q=(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/i,
+    /[?&](?:q|query|ll|destination|center)=(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/i,
     /@(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/,
     /!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/,
+    /\/place\/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/i,
   ];
   for (const pattern of patterns) {
     const match = source.match(pattern);

@@ -36,6 +36,11 @@ import {
 } from "../src/lib/outboundGuard";
 import { runOrderAgentTurn, type AgentModel, type AgentStore, type ToolCall } from "../src/lib/orderAgent";
 import { waapiSendImage, waapiSendTextRequest } from "../src/lib/waapi";
+import { ADDRESS_ASK_MESSAGE } from "../src/lib/services/captureEngine";
+import { formatAbarrotesQuoteRequest } from "../src/lib/storeOrderCommands";
+import { buildCourierOfferMessage } from "../src/lib/services/courierAvailability";
+import { decodePlusCode } from "../src/lib/plusCode";
+import { IXTLAHUACAN_CENTER, isWithinCoverageArea } from "../src/lib/services/geo";
 import { matchCoverageZone, validateAddress } from "../src/lib/services/validationEngine";
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -98,6 +103,11 @@ type Expect = {
   action: FlowDecision["action"];
   phase: CustomerFlowPhase;
   includes?: string[];
+  excludes?: string[];
+  addressIncludes?: string[];
+  unconfirmed?: boolean;
+  hasLatitude?: boolean;
+  misses?: number | null;
   exactWelcome?: UxStore;
   storeId?: number | null;
   clearCart?: boolean;
@@ -117,6 +127,7 @@ type Scenario = {
   awaiting?: boolean;
   lastBot?: string;
   orderId?: number | null;
+  addressMisses?: number;
   expect: Expect;
 };
 
@@ -178,6 +189,7 @@ function add(id: string, phase: CustomerFlowPhase, message: string, expect: Expe
       awaiting: extra?.awaiting ?? false,
       lastBot: extra?.lastBot ?? (phase === "tienda" ? abarrotesList : ""),
       orderId: extra?.orderId ?? (phase === "categoria" || phase === "entregado" ? null : 90),
+      addressMisses: extra?.addressMisses,
       expect,
     }),
   );
@@ -351,6 +363,137 @@ add("manzana suelta en el pedido", "pedido", "una manzana", { action: "agent", p
 add("manzana y lote en ubicación", "ubicacion", "manzana 4 lote 7", { action: "accept_address", phase: "resumen", includes: ["manzana"] });
 add("calle en el pedido se anota después", "pedido", "calle hidalgo 23", { action: "reprompt", phase: "pedido", includes: ["después"] });
 add("dirección escrita en pedido", "pedido", "mi dirección es calle morelos 8", { action: "reprompt", phase: "pedido", includes: ["escribirla", "pin de WhatsApp"] });
+const addressAsk = { lastBot: ADDRESS_ASK_MESSAGE };
+const notUnderstood = ["No entendí"];
+add("libramiento a cuquio", "ubicacion", "Libramiento a cuquio 612", {
+  action: "accept_address",
+  phase: "resumen",
+  includes: ["Libramiento a cuquio 612", "Anoté tu dirección"],
+  excludes: [...notUnderstood, "por confirmar"],
+  addressIncludes: ["Libramiento a cuquio 612"],
+  unconfirmed: false,
+}, addressAsk);
+add("carr a cuquio", "ubicacion", "536 Carr. a Cuquío", {
+  action: "accept_address",
+  phase: "resumen",
+  includes: ["536 Carr. a Cuquío"],
+  excludes: notUnderstood,
+  addressIncludes: ["536 Carr. a Cuquío"],
+  unconfirmed: false,
+}, addressAsk);
+add("carretera a cuquio", "ubicacion", "Carretera a cuquio 513", {
+  action: "accept_address",
+  phase: "resumen",
+  includes: ["Carretera a cuquio 513"],
+  excludes: notUnderstood,
+  unconfirmed: false,
+}, addressAsk);
+add("link de maps sin coords", "ubicacion", "https://maps.app.goo.gl/abc123", {
+  action: "accept_address",
+  phase: "resumen",
+  includes: ["maps.app.goo.gl/abc123"],
+  excludes: notUnderstood,
+  addressIncludes: ["https://maps.app.goo.gl/abc123"],
+  hasLatitude: false,
+  unconfirmed: false,
+}, addressAsk);
+add("link de maps con coords", "ubicacion", "https://www.google.com/maps?q=20.865831,-103.240017", {
+  action: "accept_address",
+  phase: "resumen",
+  includes: ["Google Maps"],
+  excludes: notUnderstood,
+  hasLatitude: true,
+  unconfirmed: false,
+}, addressAsk);
+add("link de maps fuera", "ubicacion", "https://www.google.com/maps?q=20.6736,-103.344", {
+  action: "location_reject",
+  phase: "ubicacion",
+  includes: ["fuera de esa zona"],
+  excludes: notUnderstood,
+}, addressAsk);
+add("cp suelto primer intento", "ubicacion", "45260 Jal.", {
+  action: "reprompt",
+  phase: "ubicacion",
+  includes: ["calle y número"],
+  excludes: notUnderstood,
+  misses: 1,
+}, addressAsk);
+add("cp suelto segundo intento", "ubicacion", "45260 Jal.", {
+  action: "accept_address",
+  phase: "resumen",
+  includes: ["dirección por confirmar"],
+  excludes: notUnderstood,
+  addressIncludes: ["45260 Jal.", "dirección por confirmar"],
+  unconfirmed: true,
+  misses: 0,
+}, { ...addressAsk, addressMisses: 1 });
+add("no al pin", "ubicacion", "No", {
+  action: "reprompt",
+  phase: "ubicacion",
+  includes: ["calle y el número"],
+  excludes: notUnderstood,
+  misses: 1,
+}, addressAsk);
+add("no al pin otra vez", "ubicacion", "No", {
+  action: "accept_address",
+  phase: "resumen",
+  includes: ["dirección por confirmar"],
+  excludes: notUnderstood,
+  addressIncludes: ["No", "dirección por confirmar"],
+  unconfirmed: true,
+}, { ...addressAsk, addressMisses: 1 });
+add("no puedo mandar gps", "ubicacion", "no puedo mandar el gps", {
+  action: "reprompt",
+  phase: "ubicacion",
+  includes: ["calle y el número"],
+  excludes: notUnderstood,
+  misses: 1,
+}, addressAsk);
+add("texto raro segunda vez", "ubicacion", "asdf qwerty", {
+  action: "accept_address",
+  phase: "resumen",
+  includes: ["dirección por confirmar"],
+  excludes: notUnderstood,
+  addressIncludes: ["asdf qwerty", "dirección por confirmar"],
+  unconfirmed: true,
+}, { ...addressAsk, addressMisses: 1 });
+add("membrillos fuera", "ubicacion", "Ixtlahuacán de los Membrillos 15", {
+  action: "location_reject",
+  phase: "ubicacion",
+  includes: ["fuera de esa zona"],
+  excludes: notUnderstood,
+}, { ...addressAsk, addressMisses: 3 });
+add("cuquio suelto fuera", "ubicacion", "Cuquío", {
+  action: "location_reject",
+  phase: "ubicacion",
+  includes: ["fuera de esa zona"],
+  excludes: notUnderstood,
+}, addressAsk);
+add("quita producto en ubicacion", "ubicacion", "quita la coca", { action: "agent", phase: "pedido", agent: true });
+const plusPoint = decodePlusCode("VQ43+3H", IXTLAHUACAN_CENTER);
+const plusInside = plusPoint != null && isWithinCoverageArea(plusPoint);
+add("plus code del pueblo", "ubicacion", "VQ43+3H Ixtlahuacán del Río", plusInside
+  ? {
+      action: "accept_address",
+      phase: "resumen",
+      includes: ["VQ43+3H"],
+      excludes: notUnderstood,
+      addressIncludes: ["VQ43+3H"],
+      hasLatitude: true,
+      unconfirmed: false,
+    }
+  : {
+      action: "location_reject",
+      phase: "ubicacion",
+      includes: ["fuera de esa zona"],
+      excludes: notUnderstood,
+    }, addressAsk);
+add("plus code de guadalajara", "ubicacion", "VQ43+3H Guadalajara", {
+  action: "location_reject",
+  phase: "ubicacion",
+  includes: ["fuera de esa zona"],
+  excludes: notUnderstood,
+}, addressAsk);
 add("pin sin coordenadas", "ubicacion", "", { action: "location_early", phase: "ubicacion", includes: ["escribe tu dirección"] }, { media: "location", coverage: null, coords: false });
 add("pin fuera de zona", "categoria", "", { action: "location_reject", phase: "categoria", includes: ["fuera de esa zona"] }, { media: "location", coverage: false, store: null, items: [] });
 add("sí resumen", "resumen", "sí", { action: "summary", phase: "resumen" });
@@ -391,6 +534,7 @@ function decide(scenario: Scenario): FlowDecision {
     locationInsideCoverage: scenario.coverage ?? null,
     locationHasCoords: scenario.coords !== false,
     orderId: scenario.orderId ?? null,
+    addressMisses: scenario.addressMisses,
   };
   return routeCustomerFlow(input);
 }
@@ -463,6 +607,17 @@ async function main(): Promise<void> {
     for (const piece of expect.includes ?? []) {
       if (!actual.text.includes(piece)) problems.push(`falta «${piece}»`);
     }
+    for (const piece of expect.excludes ?? []) {
+      if (actual.text.includes(piece)) problems.push(`no debía decir «${piece}»`);
+    }
+    for (const piece of expect.addressIncludes ?? []) {
+      if (!String(actual.addressText ?? "").includes(piece)) problems.push(`la dirección no trae «${piece}»`);
+    }
+    if (expect.unconfirmed === true && actual.addressUnconfirmed !== true) problems.push("debía marcar dirección por confirmar");
+    if (expect.unconfirmed === false && actual.addressUnconfirmed) problems.push("no debía marcar dirección por confirmar");
+    if (expect.hasLatitude === true && actual.latitude == null) problems.push("faltan coordenadas");
+    if (expect.hasLatitude === false && actual.latitude != null) problems.push("no debía guardar coordenadas");
+    if (expect.misses != null && actual.addressMisses !== expect.misses) problems.push(`intentos ${actual.addressMisses} ≠ ${expect.misses}`);
     if (problems.length) {
       throw new Error(`${scenario.id}: ${problems.join("; ")}\n---\n${actual.text.slice(0, 400)}`);
     }
@@ -582,6 +737,30 @@ async function main(): Promise<void> {
     knownZoneNames: ["Calle Morelos"],
   });
   assert(written?.isValid === true, "la dirección escrita con referencia es válida");
+  const streetOnly = validateAddress("Libramiento a cuquio 612", null, { acceptWrittenText: true });
+  assert(streetOnly?.isValid === true, "calle y número sin referencia es válida");
+  const mapLink = validateAddress("https://maps.app.goo.gl/abc123", null, { acceptWrittenText: true });
+  assert(mapLink?.isValid === true, "un link de Maps sin coordenadas se guarda");
+  const loose = validateAddress("45260 Jal.", null, { acceptWrittenText: true, allowUnconfirmed: true });
+  assert(loose?.isValid === true, "el segundo intento se acepta aunque esté corto");
+  const quote = formatAbarrotesQuoteRequest({
+    pedidoId: 90,
+    direccion: "45260 Jal.\n(dirección por confirmar)",
+    pedidoTexto: "Coca",
+  });
+  assert(quote.includes("dirección por confirmar"), "la tienda ve la dirección por confirmar");
+  const offer = buildCourierOfferMessage({
+    courierName: "Moy",
+    pedidoId: 90,
+    storeName: "Peke's",
+    pickupAddress: "Peke's",
+    dropoffAddress: "45260 Jal.\n(dirección por confirmar)",
+    mapsLink: null,
+    itemsText: "Coca",
+    chargeLine: null,
+    customerPhone: "3310000000",
+  });
+  assert(offer.includes("dirección por confirmar"), "el repartidor ve la dirección por confirmar");
   const gated = validateAddress("calle hidalgo 12 frente a la tortillería", null, { knownZoneNames: ["Calle Morelos"] });
   assert(gated?.isValid === false, "sin ese camino la calle fuera de la lista no pasa sola");
   assert(matchCoverageZone("vivo en calle morelos 8", ["Calle Morelos", "Calle Pino"]) === "Calle Morelos", "morelos sigue en la zona");
@@ -850,8 +1029,13 @@ async function main(): Promise<void> {
   assert(flow.includes("Perdón, ¿me lo repites?"), "si el agente falla se pide repetir, sin el bot viejo");
   assert(!flow.includes('kind !== "abarrotes"'), "el agente ya no se apaga fuera de abarrotes");
 
-  assert(scenarios.length === 349, "siguen los 349 escenarios");
+  assert(scenarios.length === 366, `siguen los 366 escenarios, hay ${scenarios.length}`);
   assert(greeting.includes("¿De dónde quieres?"), "el menú de categorías sigue igual");
+  assert(greeting.includes("https://mandalo1.vercel.app/app") && greeting.includes("pantalla de inicio"), "el saludo ofrece la app una vez");
+  assert((greeting.match(/mandalo1\.vercel\.app\/app/g) ?? []).length === 1, "el link no se repite en el saludo");
+  assert(!pekesWelcome.includes("mandalo1.vercel.app") && !georgeWelcome.includes("mandalo1.vercel.app"), "la app no se repite al elegir tienda");
+  const holaPedido = scenarios.find((item) => item.id === "pedido: hola");
+  assert(holaPedido != null && !decide(holaPedido).text.includes("mandalo1.vercel.app"), "un hola a mitad del pedido no vuelve a ofrecer la app");
   assert(pekesWelcome.includes("Solo es un ejemplo") && georgeWelcome.includes("Te paso el menú"), "los avisos de tienda siguen igual");
 
   console.log(`Matriz del flujo: ${scenarios.length} escenarios.`);

@@ -36,6 +36,7 @@ import {
 } from "@/lib/messages";
 import { isOrderingSmallTalk, reaskForPhase, type OrderPhase } from "@/lib/orderSession";
 import { LIVE_LOCATION_REPLY, TEXT_ONLY_REPLY } from "@/lib/inboundMessage";
+import { classifyDeliveryText, withUnconfirmedMark, type DeliveryRead } from "@/lib/deliveryAddress";
 import { ADDRESS_ASK_MESSAGE } from "@/lib/services/captureEngine";
 import { COVERAGE_REJECT_MESSAGE } from "@/lib/services/geo";
 import { formatHour12, MANDALO_HORA_APERTURA, MANDALO_HORA_CIERRE } from "@/lib/services/businessHours";
@@ -93,6 +94,11 @@ export type FlowDecision = {
   clearStore: boolean;
   clearCart: boolean;
   addressText: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  addressUnconfirmed: boolean;
+  /** Intentos fallidos que hay que guardar. null si este turno no los toca. */
+  addressMisses: number | null;
 };
 
 export type FlowCartLine = { nombre_producto: string; cantidad: number };
@@ -113,6 +119,8 @@ export type FlowRouteInput = {
   /** Falso solo cuando el tipo era location y no traía coordenadas. */
   locationHasCoords?: boolean;
   orderId: number | null;
+  /** Veces que la dirección no se entendió. Al segundo intento se guarda tal cual. */
+  addressMisses?: number;
 };
 
 const ORDER_PHASES = new Set<OrderPhase>(["categoria", "tienda", "ejemplo", "pedido", "ubicacion", "resumen"]);
@@ -121,13 +129,19 @@ function asOrderPhase(phase: CustomerFlowPhase): OrderPhase {
   return ORDER_PHASES.has(phase as OrderPhase) ? (phase as OrderPhase) : "categoria";
 }
 
-function decision(partial: Omit<FlowDecision, "text" | "rememberStoreId" | "clearStore" | "clearCart" | "addressText"> & Partial<FlowDecision>): FlowDecision {
+function decision(
+  partial: Omit<FlowDecision, "text" | "rememberStoreId" | "clearStore" | "clearCart" | "addressText" | "latitude" | "longitude" | "addressUnconfirmed" | "addressMisses"> & Partial<FlowDecision>,
+): FlowDecision {
   return {
     text: "",
     rememberStoreId: null,
     clearStore: false,
     clearCart: false,
     addressText: null,
+    latitude: null,
+    longitude: null,
+    addressUnconfirmed: false,
+    addressMisses: null,
     ...partial,
   };
 }
@@ -191,23 +205,6 @@ function questionKind(message: string): "fee" | "hours" | "have" | null {
   if (/a que hora (abren|abre|cierran|cierra)/.test(text) || /^(horario|hasta que hora|a que hora abren)$/.test(text)) return "hours";
   if (/^(tienen|tiene|hay|venden|vende)\b/.test(text) || /\b(tienen|tiene)\b.+\?/.test(String(message ?? ""))) return "have";
   return null;
-}
-
-function looksLikeStreetAddress(message: string, phase?: string): boolean {
-  const text = whole(message);
-  if (!text || text.length > 180) return false;
-  const locating = phase === "ubicacion" || phase === "resumen";
-  const strong = /\b(calle|avenida|av|colonia|frente a|esquina|domicilio|entre la)\b/.test(text);
-  const weak = /\b(col|numero|num|#|mz|manzana|lote|casa|centro)\b/.test(text);
-  const named = /\b(hidalgo|juarez|morelos|allende|reforma|ixtlahuacan)\b/.test(text);
-  const numbered = /\b\d{1,5}\b/.test(text);
-  if (locating) {
-    if (strong || weak) return true;
-    return numbered && named;
-  }
-  if (weak && !strong) return false;
-  if (strong) return true;
-  return numbered && named;
 }
 
 const CANCEL_CONFIRM_QUESTION = "¿Quieres cancelar el pedido? Sí o No";
@@ -523,20 +520,76 @@ function refuseLiveLocation(input: FlowRouteInput): FlowDecision {
   });
 }
 
-function acceptWrittenAddress(input: FlowRouteInput): FlowDecision {
-  const addressText = String(input.message ?? "").trim();
-  const atDelivery = input.phase === "ubicacion" || input.phase === "resumen" || input.phase === "precio";
-  if (!atDelivery) {
+function locatingPhase(phase: CustomerFlowPhase): boolean {
+  return phase === "ubicacion" || phase === "resumen" || phase === "precio";
+}
+
+function acceptDelivery(input: FlowRouteInput, read: Extract<DeliveryRead, { kind: "street" | "link" | "coords" }>): FlowDecision {
+  if (!locatingPhase(input.phase)) {
     return withReprompt(input, "La dirección la anoto después: vale el pin de WhatsApp o escribirla.", "reprompt");
   }
+  const coords = read.kind === "coords";
   return decision({
     effect: "handled",
     action: "accept_address",
     phase: input.phase === "ubicacion" ? "resumen" : input.phase,
     nicheId: input.nicheId,
-    addressText,
-    text: `Anoté tu dirección: ${addressText}.\n\nSigo con el resumen. Si está bien, responde *sí*.`,
+    addressText: read.text,
+    latitude: coords ? read.latitude : null,
+    longitude: coords ? read.longitude : null,
+    addressMisses: 0,
+    text: `Anoté tu dirección: ${read.text}.\n\nSigo con el resumen. Si está bien, responde *sí*.`,
   });
+}
+
+function addressAttemptFailed(input: FlowRouteInput, pinRefusal: boolean): FlowDecision {
+  const misses = input.addressMisses ?? 0;
+  if (misses >= 1) {
+    const raw = String(input.message ?? "").trim();
+    const addressText = withUnconfirmedMark(raw);
+    return decision({
+      effect: "handled",
+      action: "accept_address",
+      phase: "resumen",
+      nicheId: input.nicheId,
+      addressText,
+      addressUnconfirmed: true,
+      addressMisses: 0,
+      text: `Anoté lo que me escribiste y lo marco como *dirección por confirmar*.\n\nSigo con el resumen. Si está bien, responde *sí*.`,
+    });
+  }
+  const lead = pinRefusal
+    ? "Va, sin el pin. Escríbeme la calle y el número."
+    : "No me quedó la dirección. Escríbeme calle y número, un link de Maps o el plus code.";
+  return decision({
+    effect: "handled",
+    action: "reprompt",
+    phase: "ubicacion",
+    nicheId: input.nicheId,
+    addressMisses: 1,
+    text: lead,
+  });
+}
+
+function readDelivery(input: FlowRouteInput): FlowDecision | null {
+  const locating = locatingPhase(input.phase);
+  const read = classifyDeliveryText(input.message, locating);
+  if (read.kind === "unparsed") return null;
+  if (read.kind === "refuse_pin") {
+    if (input.phase !== "ubicacion") return null;
+    return addressAttemptFailed(input, true);
+  }
+  if (read.kind === "outside") {
+    if (!locating) return null;
+    return decision({
+      effect: "handled",
+      action: "location_reject",
+      phase: input.phase,
+      nicheId: input.nicheId,
+      text: COVERAGE_REJECT_MESSAGE,
+    });
+  }
+  return acceptDelivery(input, read);
 }
 
 function showNiche(input: FlowRouteInput, nicheId: string, release: boolean): FlowDecision {
@@ -780,7 +833,8 @@ export function routeCustomerFlow(input: FlowRouteInput): FlowDecision {
     }
   }
 
-  if (looksLikeStreetAddress(message, input.phase)) return acceptWrittenAddress(input);
+  const delivery = readDelivery(input);
+  if (delivery) return delivery;
 
   const switched = storeSwitchFromCapture({
     message,
@@ -866,7 +920,7 @@ export function routeCustomerFlow(input: FlowRouteInput): FlowDecision {
 
   if (input.phase === "ubicacion") {
     if (isProductEdit(message)) return fallthrough({ ...input, phase: "pedido" }, "agent");
-    return withReprompt(input, "", "reprompt");
+    return addressAttemptFailed(input, false);
   }
 
   if (input.phase === "esperando_tienda" || input.phase === "esperando_repartidor") {

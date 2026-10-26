@@ -104,6 +104,9 @@ assert(
 
 Con gusto pido en la tienda, el restaurante o la carnicería que me digas y te lo llevo a la puerta.
 
+Puedes pedirlo *aquí por WhatsApp* o en la *app de Mándalo*. Ábrela y agrégala a la pantalla de inicio:
+https://mandalo1.vercel.app/app
+
 *¿De dónde quieres?*
 
 1. *Abarrotes*
@@ -113,6 +116,9 @@ Con gusto pido en la tienda, el restaurante o la carnicería que me digas y te l
 3. *Carnicerías*`,
   "el saludo es el texto aprobado",
 );
+assert((greeting.match(/mandalo1\.vercel\.app\/app/g) ?? []).length === 1, "el link de la app sale una sola vez");
+assert(!formatAbarrotesStoreAck(zagu).includes("mandalo1.vercel.app"), "el aviso de la tienda no repite la app");
+assert(!formatNicheStoreList(CUSTOMER_STORE_NICHES[0], [zagu]).includes("mandalo1.vercel.app"), "la lista de tiendas no repite la app");
 assert(buildGreeting(new Date("2026-10-02T15:00:00Z")) === greeting, "de mañana el saludo no cambia");
 assert(buildGreeting(new Date("2026-10-03T05:00:00Z")) === greeting, "de noche el saludo no cambia");
 assert(!greeting.includes("Tiendas de abarrotes"), "el saludo ya no lista Tiendas de abarrotes");
@@ -1224,12 +1230,12 @@ assert(/vaya en camino/i.test(registrado), "el aviso de menú fijo dice que va e
 assert(!registrado.toLowerCase().includes("confirme el precio"), "en catálogo no se dice que la tienda va a cotizar");
 const cotiza = formatQuoteOrderRegistered(9, "ZAGU");
 assert(cotiza.toLowerCase().includes("confirme el precio"), "en abarrotes sí se espera la cotización de la tienda");
-const esperaTienda = "La tienda tarda unos *15 minutos* o menos en confirmar. Espérame con paciencia.";
-assert(cotiza.includes(esperaTienda), "al mandar a cotizar se pide paciencia: la tienda tarda unos 15 minutos");
-assert(formatCatalogAwaitingStore(9, "Hamburguesas Hotdogs George").includes(esperaTienda), "George también avisa los 15 minutos al mandar el pedido");
-assert(formatScheduledSentNotice(9, "Mini Super Peke's", false).includes(esperaTienda), "el pedido programado de abarrotes avisa los 15 minutos");
-assert(formatScheduledSentNotice(9, "Hamburguesas Hotdogs George", true).includes(esperaTienda), "el pedido programado de menú avisa los 15 minutos");
-assert(!formatCatalogOrderRegistered(9, "Hamburguesas Hotdogs George").includes("15 minutos"), "el aviso de que ya va en camino no habla de la espera de cotización");
+const esperaTienda = "La tienda tarda unos *20 minutos* o menos en confirmar. Espérame con paciencia.";
+assert(cotiza.includes(esperaTienda), "al mandar a cotizar se pide paciencia: la tienda tarda unos 20 minutos");
+assert(formatCatalogAwaitingStore(9, "Hamburguesas Hotdogs George").includes(esperaTienda), "George también avisa los 20 minutos al mandar el pedido");
+assert(formatScheduledSentNotice(9, "Mini Super Peke's", false).includes(esperaTienda), "el pedido programado de abarrotes avisa los 20 minutos");
+assert(formatScheduledSentNotice(9, "Hamburguesas Hotdogs George", true).includes(esperaTienda), "el pedido programado de menú avisa los 20 minutos");
+assert(!formatCatalogOrderRegistered(9, "Hamburguesas Hotdogs George").includes("20 minutos"), "el aviso de que ya va en camino no habla de la espera de cotización");
 const quoteDos = formatCustomerQuoteMessage({
   tiendaNombre: "Hamburguesas Hotdogs George",
   pedidoId: 9,
