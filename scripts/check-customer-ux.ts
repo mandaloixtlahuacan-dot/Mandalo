@@ -104,6 +104,9 @@ assert(
 
 Con gusto pido en la tienda, el restaurante o la carnicería que me digas y te lo llevo a la puerta.
 
+Puedes pedirlo *aquí por WhatsApp* o en la *app de Mándalo*. Ábrela y agrégala a la pantalla de inicio:
+https://mandalo1.vercel.app/app
+
 *¿De dónde quieres?*
 
 1. *Abarrotes*
@@ -113,6 +116,9 @@ Con gusto pido en la tienda, el restaurante o la carnicería que me digas y te l
 3. *Carnicerías*`,
   "el saludo es el texto aprobado",
 );
+assert((greeting.match(/mandalo1\.vercel\.app\/app/g) ?? []).length === 1, "el link de la app sale una sola vez");
+assert(!formatAbarrotesStoreAck(zagu).includes("mandalo1.vercel.app"), "el aviso de la tienda no repite la app");
+assert(!formatNicheStoreList(CUSTOMER_STORE_NICHES[0], [zagu]).includes("mandalo1.vercel.app"), "la lista de tiendas no repite la app");
 assert(buildGreeting(new Date("2026-10-02T15:00:00Z")) === greeting, "de mañana el saludo no cambia");
 assert(buildGreeting(new Date("2026-10-03T05:00:00Z")) === greeting, "de noche el saludo no cambia");
 assert(!greeting.includes("Tiendas de abarrotes"), "el saludo ya no lista Tiendas de abarrotes");

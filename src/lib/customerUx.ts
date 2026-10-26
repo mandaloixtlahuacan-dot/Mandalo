@@ -284,6 +284,9 @@ const GREETING_BODY = `👋 *¡Hola! Soy Mándalo, tu mandadero en Ixtlahuacán 
 
 Con gusto pido en la tienda, el restaurante o la carnicería que me digas y te lo llevo a la puerta.
 
+Puedes pedirlo *aquí por WhatsApp* o en la *app de Mándalo*. Ábrela y agrégala a la pantalla de inicio:
+https://mandalo1.vercel.app/app
+
 *¿De dónde quieres?*
 
 1. *Abarrotes*
