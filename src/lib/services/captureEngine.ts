@@ -60,6 +60,10 @@ export type PedidoSnapshot = {
     correccionesSinCambio?: number;
     // El carrito lo armó el agente. Al confirmar no se vuelve a pasar por la claridad vieja.
     agentCart?: boolean;
+    // Intentos seguidos sin una dirección usable. A los 2 se guarda el texto.
+    intentosDireccion?: number;
+    // La tienda y el repartidor ven «dirección por confirmar» en el texto.
+    direccionPorConfirmar?: boolean;
   };
   raw?: JsonObject;
 };

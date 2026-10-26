@@ -2849,6 +2849,9 @@ function customerFlowPhase(params: {
 async function persistWrittenAddress(params: {
   openPedido: PedidoV2Record;
   addressText: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  unconfirmed?: boolean;
 }): Promise<string | null> {
   const pedido = params.openPedido;
   if (isTerminalState(pedido.estado)) return null;
@@ -2858,6 +2861,8 @@ async function persistWrittenAddress(params: {
     ...pedido.snapshot_json,
     addressText: params.addressText,
     addressZone: addressZone ?? pedido.snapshot_json.addressZone ?? null,
+    latitud: params.latitude ?? null,
+    longitud: params.longitude ?? null,
   };
   const full = await pedidoRepositoryV2.getPedidoById(pedido.id).catch(() => null);
   const catalog = full?.tienda?.usaCatalogoFijo === true;
@@ -2866,6 +2871,7 @@ async function persistWrittenAddress(params: {
     items: snapshot.items ?? [],
     knownZoneNames,
     acceptWrittenText: true,
+    allowUnconfirmed: params.unconfirmed === true,
     quoteStore: false,
     userMessage: "",
   });
@@ -2880,11 +2886,13 @@ async function persistWrittenAddress(params: {
         ...(snapshot.flags ?? {}),
         addressValidated: Boolean(validation.validatedAddress?.isValid),
         readyForConfirmation: canAdvance && validation.readyForConfirmation,
+        intentosDireccion: 0,
+        direccionPorConfirmar: params.unconfirmed === true,
       },
     },
     addressText: params.addressText,
-    latitud: snapshot.latitud ?? null,
-    longitud: snapshot.longitud ?? null,
+    latitud: params.latitude ?? null,
+    longitud: params.longitude ?? null,
     tiendaId: validation.validatedBusiness.businessId,
   });
   if (!canAdvance || !validation.readyForConfirmation) return null;
@@ -2969,14 +2977,37 @@ async function steerCustomerFlow(params: {
     locationInsideCoverage: media === "location" && params.ubicacionCoords ? isWithinCoverageArea(params.ubicacionCoords) : null,
     locationHasCoords: media === "location" ? Boolean(params.ubicacionCoords) : true,
     orderId: params.openPedido?.id ?? null,
+    addressMisses: Number(snapshot?.flags?.intentosDireccion ?? 0) || 0,
   });
   if (decision.effect === "fallthrough") return { kind: "next", action: decision.action };
 
   let outgoing = decision.text;
+  if (decision.addressMisses != null && decision.action !== "accept_address" && params.openPedido && !isTerminalState(params.openPedido.estado)) {
+    const current = params.openPedido.snapshot_json;
+    await pedidoRepositoryV2.updatePedidoSnapshot({
+      pedidoId: params.openPedido.id,
+      estado: params.openPedido.estado,
+      snapshot: {
+        ...current,
+        flags: {
+          ...(current.flags ?? {}),
+          intentosDireccion: decision.addressMisses,
+        },
+      },
+      addressText: current.addressText ?? null,
+      latitud: current.latitud ?? null,
+      longitud: current.longitud ?? null,
+    }).catch((e: unknown) => {
+      console.error("[mandalo] no se pudo guardar el intento de dirección", { message: getErrorMessage(e) });
+    });
+  }
   if (decision.action === "accept_address" && params.openPedido && decision.addressText) {
     const saved = await persistWrittenAddress({
       openPedido: params.openPedido,
       addressText: decision.addressText,
+      latitude: decision.latitude,
+      longitude: decision.longitude,
+      unconfirmed: decision.addressUnconfirmed,
     }).catch((e: unknown) => {
       console.error("[mandalo] no se pudo guardar la dirección escrita", { message: getErrorMessage(e) });
       return null;

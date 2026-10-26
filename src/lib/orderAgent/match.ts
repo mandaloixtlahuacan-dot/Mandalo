@@ -1,5 +1,5 @@
 import { foldAgent, PRODUCT_ASK_ALIAS } from "@/lib/orderAgent/catalog";
-import { listaWordHit, normalizeMeasureWords, normalizeVoice, synonymForms } from "@/lib/storeProductSearch";
+import { canonicalToken, familyFocusTokens, listaWordHit, normalizeMeasureWords, normalizeVoice, synonymForms } from "@/lib/storeProductSearch";
 import type { AgentLine, AgentProduct, AgentUnit } from "@/lib/orderAgent/types";
 
 /**
@@ -49,7 +49,10 @@ export function productTypeTokens(clause: string): string[] {
   const tokens = contentTokens(folded).filter((token) => !SIZE_TOKEN.has(token));
   const withoutVariant = tokens.filter((token) => !VARIANT_WORD.has(token));
   const base = withoutVariant.length ? withoutVariant : tokens;
-  const specific = base.filter((token) => !CATEGORY_WORD.has(token));
+  const canon = base.map((token) => canonicalToken(token));
+  const family = familyFocusTokens(canon);
+  if (family) return family;
+  const specific = canon.filter((token) => !CATEGORY_WORD.has(token));
   return specific.length ? specific : base;
 }
 

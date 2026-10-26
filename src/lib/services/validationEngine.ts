@@ -95,7 +95,7 @@ export function matchCoverageZone(addressText: string, knownZoneNames: string[])
 export function validateAddress(
   addressText?: string | null,
   coords?: { latitud?: number | null; longitud?: number | null } | null,
-  zone?: { addressZone?: string | null; knownZoneNames?: string[]; acceptWrittenText?: boolean } | null,
+  zone?: { addressZone?: string | null; knownZoneNames?: string[]; acceptWrittenText?: boolean; allowUnconfirmed?: boolean } | null,
 ): ValidationResult["validatedAddress"] {
   const raw = cleanText(addressText) ?? "";
   const normalized = raw.toLowerCase();
@@ -138,6 +138,9 @@ export function validateAddress(
   // Con la zona ya confirmada, solo falta un dato mínimo para que el
   // repartidor ubique la casa exacta — un número o una referencia clara.
   const hasMinimalDetail = raw.length >= 8 && (hasNumber || hasReference);
+  const isMapLink = /(?:maps\.app\.goo\.gl|goo\.gl\/maps|google\.[a-z.]+\/maps|maps\.google\.)/i.test(raw);
+  const writtenLink = zone?.acceptWrittenText === true && isMapLink && raw.length >= 8;
+  const unconfirmed = zone?.allowUnconfirmed === true && raw.length > 0;
 
   return {
     raw,
@@ -145,7 +148,7 @@ export function validateAddress(
     hasStreet,
     hasNumber,
     hasReference,
-    isValid: hasCoords || (zoneMatch && hasMinimalDetail) || (zone?.acceptWrittenText === true && hasMinimalDetail),
+    isValid: hasCoords || (zoneMatch && hasMinimalDetail) || (zone?.acceptWrittenText === true && hasMinimalDetail) || writtenLink || unconfirmed,
   };
 }
 
@@ -261,6 +264,8 @@ export function validateCaptureForConfirmation(params: {
   knownZoneNames?: string[];
   /** Dirección escrita con calle y número o referencia. La zona, si aparece, se guarda; no se vuelve a exigir el pin. */
   acceptWrittenText?: boolean;
+  /** El texto no se entendió dos veces. Se guarda tal cual y el pedido sigue. */
+  allowUnconfirmed?: boolean;
   quoteStore?: boolean;
   userMessage?: string | null;
   /** Lista de antes de este turno. Si no viene, se compara contra `items`. */
@@ -276,6 +281,7 @@ export function validateCaptureForConfirmation(params: {
       addressZone: params.snapshot.addressZone,
       knownZoneNames: params.knownZoneNames,
       acceptWrittenText: params.acceptWrittenText === true,
+      allowUnconfirmed: params.allowUnconfirmed === true,
     },
   );
   const validatedItems = validateItems(params.items, {
