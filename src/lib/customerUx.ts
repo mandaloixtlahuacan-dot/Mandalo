@@ -146,7 +146,7 @@ export function formatCatalogOrderRegistered(pedidoId: number, tiendaNombre: str
 
 /** Aviso de pedido programado. En menú fijo va solo: el total sale en el mensaje siguiente. */
 /** Lo que ve el cliente cuando el pedido ya va a la tienda. Las tres tardan lo mismo. */
-export const STORE_CONFIRM_WAIT_NOTE = "La tienda tarda unos *15 minutos* o menos en confirmar. Espérame con paciencia.";
+export const STORE_CONFIRM_WAIT_NOTE = "La tienda tarda unos *20 minutos* o menos en confirmar. Espérame con paciencia.";
 
 export function formatScheduledSentNotice(pedidoId: number, tiendaNombre: string, catalog: boolean): string {
   const tienda = tiendaNombre.trim() || "la tienda";

@@ -134,7 +134,7 @@ export async function finalizeStoreQuote(params: {
       pedidoId: pedido.id,
       tipoMensaje: "notificacion_cliente",
       destinatarioTipo: "cliente",
-      telefonoDestino: pedido.clienteTelefono,
+      telefonoDestino: ensureMxWhatsappIntl(pedido.clienteTelefono),
       payload: { body: msg },
       idempotencyKey:
         customerUpdate === "receipt"
@@ -184,7 +184,7 @@ export async function flagItemUnavailable(params: {
     pedidoId: pedido.id,
     tipoMensaje: "notificacion_cliente",
     destinatarioTipo: "cliente",
-    telefonoDestino: pedido.clienteTelefono,
+    telefonoDestino: ensureMxWhatsappIntl(pedido.clienteTelefono),
     payload: { body: msgCliente },
     idempotencyKey: `pedido:${pedido.id}:cliente:producto_no_disponible:${item.id}:v1`,
   });
@@ -194,7 +194,7 @@ export async function flagItemUnavailable(params: {
 // Tiendas con tiendas.usa_catalogo_fijo = true (George, La Central): el
 // subtotal sale del menú, pero la tienda confirma con ORDEN #N CONFIRMO
 // antes del repartidor. Mismo estado pendiente_tiendas y el mismo timeout
-// de 10 min que abarrotes. Un producto que no está en el menú se trata
+// de 20 min que abarrotes. Un producto que no está en el menú se trata
 // como faltante automático (flagItemUnavailable).
 async function dispatchCatalogoFijo(
   pedido: PedidoFullRecord,
@@ -419,7 +419,7 @@ export async function askCustomerAboutRemovedItems(params: {
     pedidoId: pedido.id,
     tipoMensaje: "notificacion_cliente",
     destinatarioTipo: "cliente",
-    telefonoDestino: pedido.clienteTelefono,
+    telefonoDestino: ensureMxWhatsappIntl(pedido.clienteTelefono),
     payload: { body: params.body },
     idempotencyKey: `pedido:${pedido.id}:cliente:sin_productos:${ids.join("-")}:v1`,
   });

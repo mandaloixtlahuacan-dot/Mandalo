@@ -15,10 +15,14 @@ import { decideCoverage } from "../src/lib/app/coverage";
 import { MIGRACION_PENDIENTE } from "../src/lib/app/dbError";
 import { composeStoreItemName } from "../src/lib/app/itemText";
 import { notifyAppPushForOrderState, resetPushSchemaProbeForTests, setPushSenderForTests } from "../src/lib/app/orderPush";
+import { confirmQuotedTotal } from "../src/lib/app/confirmTotal";
+import { parseAppPhone, phoneVariants, samePhone, whatsappTo } from "../src/lib/app/phone";
 import { placeAppOrder } from "../src/lib/app/placeOrder";
 import { pushNoticesForState } from "../src/lib/app/pushCopy";
 import { NOMINATIM_DEBOUNCE_MS, NOMINATIM_USER_AGENT, nominatimHeaders, nominatimSearchUrl, parseGeocodeRequest, readNominatimHits, resolveMapProvider } from "../src/lib/app/geocode";
 import { isBebidaAlcoholica } from "../src/lib/app/alcohol";
+import { isYesConfirmation } from "../src/lib/messages";
+import type { PedidoFullRecord } from "../src/lib/repositories/pedidoRepositoryV2";
 import { classifyShelf, FILTER_SHELVES, parseShelfBrowse, shelfOrFilter } from "../src/lib/app/shelves";
 import { matchCatalogProduct, priceCatalogOrder, type CatalogPriceRow } from "../src/lib/catalogQuantities";
 import { butcherLine, formatKilos, MAX_KILOS, parseKilos } from "../src/lib/kiloLabel";
@@ -221,6 +225,38 @@ const pending = await registerAppUser(missingDb() as unknown as SupabaseClient, 
 });
 check("migracion", !pending.ok && pending.code === MIGRACION_PENDIENTE);
 
+check("app-guarda-52", parseAppPhone("3310184790") === "523310184790");
+check("whatsapp-521", whatsappTo("523310184790") === "5213310184790" && whatsappTo("5213310184790") === "5213310184790" && whatsappTo("3310184790") === "5213310184790");
+check(
+  "variantes-52-521",
+  phoneVariants("5213310184790").includes("523310184790") && phoneVariants("523310184790").includes("5213310184790") && samePhone("523310184790", "5213310184790"),
+);
+check("si-whatsapp", isYesConfirmation("SÍ") && isYesConfirmation("sí"));
+const pedidoApp = {
+  id: 4,
+  estado: "confirmado_tiendas",
+  clienteTelefono: "523310184790",
+  items: [{ id: 1, nombreProducto: "Coca", cantidad: 1, disponible: true }],
+  tienda: { usaCatalogoFijo: false },
+  metadata: { origen: "app" },
+} as unknown as PedidoFullRecord;
+const offered: number[] = [];
+const porApp = await confirmQuotedTotal(
+  { pedidoId: 4, telefono: "523310184790" },
+  { getPedido: async () => pedidoApp, offer: async (pedido) => { offered.push(pedido.id); } },
+);
+const porWhatsapp = await confirmQuotedTotal(
+  { pedidoId: 4, telefono: "5213310184790" },
+  { getPedido: async () => pedidoApp, offer: async (pedido) => { offered.push(pedido.id); } },
+);
+const ajeno = await confirmQuotedTotal(
+  { pedidoId: 4, telefono: "5213399999999" },
+  { getPedido: async () => pedidoApp, offer: async () => { offered.push(0); } },
+);
+check("confirma-app", porApp.ok === true && offered.includes(4), JSON.stringify(porApp));
+check("confirma-whatsapp-mismo-celular", porWhatsapp.ok === true, JSON.stringify(porWhatsapp));
+check("confirma-otro-numero", ajeno.ok === false && !offered.includes(0));
+
 await placeCase("abierta-cotiza", "2026-10-25T18:00:00.000Z", false, true);
 await placeCase("cerrada", "2026-10-25T10:00:00.000Z", false, true);
 await placeCase("catalogo", "2026-10-25T18:00:00.000Z", true, true);
@@ -275,7 +311,7 @@ async function placeCase(label: string, now: string, catalogo: boolean, conRepar
     disponible: true,
   }]);
   db.insertRows("zonas_cobertura", [{ id: 1, nombre: "Calle Morelos", activa: true }]);
-  const enqueued: Array<{ tipoMensaje: string; payload: { body?: string } }> = [];
+  const enqueued: Array<{ tipoMensaje: string; telefonoDestino?: string; payload: { body?: string } }> = [];
   const dispatches: Array<{ fromEstado?: string; catalogAlreadyConfirmed?: boolean }> = [];
   let cancelled = false;
   const result = await placeAppOrder(
@@ -319,6 +355,11 @@ async function placeCase(label: string, now: string, catalogo: boolean, conRepar
     check("cotiza-cantidad", Number(item?.cantidad) === 2);
     check("cotiza-despacho", dispatches[0]?.fromEstado === "confirmacion_cliente" && dispatches[0]?.catalogAlreadyConfirmed === false);
     check("cotiza-whatsapp", enqueued.some((row) => row.tipoMensaje === "notificacion_cliente" && String(row.payload.body).includes("Pedido #")));
+    check(
+      "cotiza-destino-521",
+      enqueued.some((row) => row.tipoMensaje === "notificacion_cliente" && row.telefonoDestino === "5213311111111"),
+      enqueued.map((row) => row.telefonoDestino).join(","),
+    );
     check("cotiza-estado", result.ok && result.estado === "pendiente_tiendas");
   }
   if (label === "cerrada") {

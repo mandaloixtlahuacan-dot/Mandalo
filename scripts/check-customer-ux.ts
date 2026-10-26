@@ -1230,12 +1230,12 @@ assert(/vaya en camino/i.test(registrado), "el aviso de menú fijo dice que va e
 assert(!registrado.toLowerCase().includes("confirme el precio"), "en catálogo no se dice que la tienda va a cotizar");
 const cotiza = formatQuoteOrderRegistered(9, "ZAGU");
 assert(cotiza.toLowerCase().includes("confirme el precio"), "en abarrotes sí se espera la cotización de la tienda");
-const esperaTienda = "La tienda tarda unos *15 minutos* o menos en confirmar. Espérame con paciencia.";
-assert(cotiza.includes(esperaTienda), "al mandar a cotizar se pide paciencia: la tienda tarda unos 15 minutos");
-assert(formatCatalogAwaitingStore(9, "Hamburguesas Hotdogs George").includes(esperaTienda), "George también avisa los 15 minutos al mandar el pedido");
-assert(formatScheduledSentNotice(9, "Mini Super Peke's", false).includes(esperaTienda), "el pedido programado de abarrotes avisa los 15 minutos");
-assert(formatScheduledSentNotice(9, "Hamburguesas Hotdogs George", true).includes(esperaTienda), "el pedido programado de menú avisa los 15 minutos");
-assert(!formatCatalogOrderRegistered(9, "Hamburguesas Hotdogs George").includes("15 minutos"), "el aviso de que ya va en camino no habla de la espera de cotización");
+const esperaTienda = "La tienda tarda unos *20 minutos* o menos en confirmar. Espérame con paciencia.";
+assert(cotiza.includes(esperaTienda), "al mandar a cotizar se pide paciencia: la tienda tarda unos 20 minutos");
+assert(formatCatalogAwaitingStore(9, "Hamburguesas Hotdogs George").includes(esperaTienda), "George también avisa los 20 minutos al mandar el pedido");
+assert(formatScheduledSentNotice(9, "Mini Super Peke's", false).includes(esperaTienda), "el pedido programado de abarrotes avisa los 20 minutos");
+assert(formatScheduledSentNotice(9, "Hamburguesas Hotdogs George", true).includes(esperaTienda), "el pedido programado de menú avisa los 20 minutos");
+assert(!formatCatalogOrderRegistered(9, "Hamburguesas Hotdogs George").includes("20 minutos"), "el aviso de que ya va en camino no habla de la espera de cotización");
 const quoteDos = formatCustomerQuoteMessage({
   tiendaNombre: "Hamburguesas Hotdogs George",
   pedidoId: 9,

@@ -70,6 +70,8 @@ assertComando("ORDEN #12 NO_DISPONIBLE mayonesa PRECIO 80", 12, "mayonesa PRECIO
 assert(extraerOrdenId("ORDEN #12 PRECIO 150") === 12, "el precio sigue trayendo la orden 12");
 assert(extraerPrecio("ORDEN #12 PRECIO 150") === 150, "PRECIO 150 no se confunde con la orden");
 assert(extraerPrecio("ORDEN #162 PRECIO 87") === 87, "PRECIO 87 no agarra el 162");
+assert(extraerPrecio("ORDEN # 234 PRECIO $1,049") === 1049, "PRECIO $1,049 no se lee como 1.05");
+assert(extraerOrdenId("ORDEN # 234 PRECIO $1,049") === 234, "el 234 sigue siendo la orden");
 assert(extraerOrdenId("ORDEN #162 PRECIO 87") === 162, "la orden del precio sigue siendo 162");
 assertIgnorado("ORDEN #12 TOTAL 90");
 assert(extraerPrecio("ORDEN #12 TOTAL 90") === 90, "TOTAL sigue siendo comando de precio");

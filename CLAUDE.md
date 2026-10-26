@@ -145,11 +145,11 @@ esperando_apertura_tienda
 
 ## 8. Timeouts y casos límite (definidos)
 
-Timeouts del cliente y del repartidor: **10 minutos, con recordatorio a los 5**. La tienda (Peke's, George y La Central) tiene **15 minutos** para confirmar, con un solo recordatorio a los 8 (octubre 2026). El cliente y el repartidor no cambian.
+Timeouts del cliente y del repartidor: **10 minutos, con recordatorio a los 5**. La tienda (Peke's, George y La Central) tiene **20 minutos** para confirmar, con un solo recordatorio a los 11 (octubre 2026; antes 15 y 8). El cliente y el repartidor no cambian.
 
 | Caso | Regla |
 |---|---|
-| Tienda no responde a la cotización o a la confirmación | 15 minutos (recordatorio único a los 8, quedan unos 7) → se cancela el pedido; se informa al cliente que puede pedir de otra tienda; se avisa a la tienda que ya no es necesario cotizar o confirmar |
+| Tienda no responde a la cotización o a la confirmación | 20 minutos (recordatorio único a los 11, quedan unos 9) → se cancela el pedido; se informa al cliente que puede pedir de otra tienda; se avisa a la tienda que ya no es necesario cotizar o confirmar |
 | Cliente no confirma el precio final | 10 minutos (recordatorio a los 5) → se cancela el pedido; se notifica al cliente y a la tienda involucrada |
 | Ningún repartidor acepta el pedido dentro del plazo (asignación inicial) | 10 minutos (recordatorio a los 5) → se cancela el pedido directo (**no** se reintenta con otro repartidor en cadena — simplificación confirmada con Víctor en agosto 2026); se avisa al cliente que no hay repartidores disponibles por ahora y a la tienda que ya no es necesario prepararlo |
 | Repartidor no puede completar a medio pedido (ya había aceptado) | Caso distinto al de arriba — aquí el repartidor SÍ había aceptado. Repartidor original cancela con comando de cambio de repartidor (nombre exacto pendiente); sistema reasigna a otro repartidor activo; cliente recibe aviso de que "hubo un cambio pero su pedido sigue en pie"; los repartidores se coordinan la entrega física entre ellos, fuera del sistema |

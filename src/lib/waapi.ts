@@ -1,5 +1,6 @@
 import { getEnv } from "@/lib/env";
 import { outboundDecision, recordOutbound, releaseOutbound, type OutboundVerdict } from "@/lib/outboundGuard";
+import { ensureMxWhatsappIntl } from "@/lib/roles";
 
 export type WaapiSendTextArgs = {
   to: string;
@@ -42,18 +43,19 @@ function reserveOutbound(to: string, body: string): WaapiSendTextResponse | null
 }
 
 export async function waapiSendTextRequest({ to, body }: WaapiSendTextArgs): Promise<WaapiSendTextResponse> {
-  const suppressed = reserveOutbound(to, body);
+  const dest = ensureMxWhatsappIntl(to);
+  const suppressed = reserveOutbound(dest, body);
   if (suppressed) return suppressed;
 
   let env: ReturnType<typeof getEnv>;
   try {
     env = getEnv();
   } catch (error) {
-    releaseOutbound(to, body);
+    releaseOutbound(dest, body);
     throw error;
   }
   const url = `${String(env.WAAPI_API_BASE).replace(/\/+$/, "")}/messages/text`;
-  const waapiTo = toWaapiChatId(to);
+  const waapiTo = toWaapiChatId(dest);
 
   console.log("[mandalo] waapi -> sendText to:", waapiTo);
   console.log("[DEBUG] Waapi request:", {
@@ -77,7 +79,7 @@ export async function waapiSendTextRequest({ to, body }: WaapiSendTextArgs): Pro
       }),
     });
   } catch (error) {
-    releaseOutbound(to, body);
+    releaseOutbound(dest, body);
     throw error;
   }
 
@@ -98,7 +100,7 @@ export async function waapiSendTextRequest({ to, body }: WaapiSendTextArgs): Pro
     rawTextPreview: parsed ? undefined : text.slice(0, 2000),
   });
 
-  if (!res.ok) releaseOutbound(to, body);
+  if (!res.ok) releaseOutbound(dest, body);
 
   return {
     ok: res.ok,
@@ -117,18 +119,19 @@ export type WaapiSendImageArgs = {
 };
 
 export async function waapiSendImage({ to, caption, png, filename }: WaapiSendImageArgs): Promise<WaapiSendTextResponse> {
-  const suppressed = reserveOutbound(to, caption);
+  const dest = ensureMxWhatsappIntl(to);
+  const suppressed = reserveOutbound(dest, caption);
   if (suppressed) return suppressed;
 
   let env: ReturnType<typeof getEnv>;
   try {
     env = getEnv();
   } catch (error) {
-    releaseOutbound(to, caption);
+    releaseOutbound(dest, caption);
     throw error;
   }
   const url = `${String(env.WAAPI_API_BASE).replace(/\/+$/, "")}/messages/image`;
-  const waapiTo = toWaapiChatId(to);
+  const waapiTo = toWaapiChatId(dest);
   const form = new FormData();
   form.append("to", waapiTo);
   form.append("caption", caption);
@@ -146,7 +149,7 @@ export async function waapiSendImage({ to, caption, png, filename }: WaapiSendIm
       body: form,
     });
   } catch (error) {
-    releaseOutbound(to, caption);
+    releaseOutbound(dest, caption);
     throw error;
   }
 
@@ -168,7 +171,7 @@ export async function waapiSendImage({ to, caption, png, filename }: WaapiSendIm
   });
 
   if (!res.ok) {
-    releaseOutbound(to, caption);
+    releaseOutbound(dest, caption);
     throw new Error(`Waapi image error ${res.status}: ${text.slice(0, 500)}`);
   }
 

@@ -1,13 +1,41 @@
 // El cliente y el repartidor siguen en 10 minutos, con recordatorio a los 5.
-// La tienda (las tres: Peke's, George y La Central) tiene 15 minutos para
-// confirmar. El recordatorio a la tienda sale una sola vez, a los 8 minutos.
+// La tienda (las tres: Peke's, George y La Central) tiene 20 minutos para
+// confirmar. El recordatorio a la tienda sale una sola vez, a los 11 minutos
+// (antes 15 y 8; el aviso se movió en la misma proporción, 8/15 → ~11).
 // Los tres casos comparten la misma mecánica (deadline + recordatorio), así
 // que viven bajo un único prefijo de campos en metadata_json.
 
 export const ORDER_TIMEOUT_MINUTES = 10;
 export const ORDER_TIMEOUT_REMINDER_BEFORE_MINUTES = 5;
-export const STORE_QUOTE_TIMEOUT_MINUTES = 15;
-export const STORE_QUOTE_REMINDER_AT_MINUTES = 8;
+export const STORE_QUOTE_TIMEOUT_MINUTES = 20;
+export const STORE_QUOTE_REMINDER_AT_MINUTES = 11;
+
+const TIMEOUT_CANCEL_REASONS = new Set([
+  "store_quote_timeout",
+  "final_confirmation_timeout",
+  "courier_confirmation_timeout",
+  "product_adjustment_timeout",
+  "store_never_opened",
+]);
+
+/** La tienda puede contestar un rato después de que el pedido ya se archivó. */
+export const TIMEOUT_ARCHIVE_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+export function esMotivoDeTiempo(motivo: string): boolean {
+  return TIMEOUT_CANCEL_REASONS.has(motivo);
+}
+
+/** Fila de conversaciones_archivo: cancelación por tiempo, todavía reciente. */
+export function archivoEsCancelacionPorTiempo(payload: unknown, createdAt: string, nowMs = Date.now()): boolean {
+  const row = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : {};
+  const cierre = row.cierre && typeof row.cierre === "object" ? (row.cierre as Record<string, unknown>) : null;
+  const motivo = String(cierre?.motivo ?? "");
+  if (!esMotivoDeTiempo(motivo)) return false;
+  const at = Date.parse(createdAt);
+  if (!Number.isFinite(at)) return false;
+  const age = nowMs - at;
+  return age >= 0 && age <= TIMEOUT_ARCHIVE_WINDOW_MS;
+}
 
 function scheduleFor(kind: OrderTimeoutKind): { deadlineMinutes: number; reminderAtMinutes: number } {
   if (kind === "store_quote") {

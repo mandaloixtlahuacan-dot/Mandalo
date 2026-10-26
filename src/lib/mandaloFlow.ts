@@ -67,6 +67,7 @@ import {
   formatCatalogAwaitingStore,
   formatQuoteOrderRegistered,
   formatStoreOkAck,
+  STORE_CONFIRM_WAIT_NOTE,
   formatPreConfirmFeeNote,
   formatRunningTotal,
   matchCategoriasEnTexto,
@@ -79,11 +80,13 @@ import {
   type UxStore,
 } from "@/lib/customerUx";
 import {
+  debePedirConfirmacionDePrecio,
   extraerAcuseOk,
   extraerComandoNoDisponible,
   extraerOrdenId,
   extraerPrecio,
   formatMoney,
+  mensajeTiendaPrecioDudoso,
   mensajeTiendaProductoNoEncontrado,
 } from "@/lib/ordenes";
 import {
@@ -91,6 +94,7 @@ import {
   extraerComandoConfirmoTienda,
   mensajeClienteConfirmarSinProductos,
   mensajeClientePedidoVacioPorFaltante,
+  mensajeTiendaPedidoVencido,
   partirProductosNoDisponibles,
 } from "@/lib/storeOrderCommands";
 import { canTransition, isTerminalState, type OrderState } from "@/lib/orderStateMachine";
@@ -1965,7 +1969,7 @@ async function handleAjusteProducto(telefono: string, mensaje: string, pedido: P
 }
 
 const TRACKING_MESSAGES: Partial<Record<OrderState, string>> = {
-  pendiente_tiendas: "⏰ *Estoy esperando el precio de la tienda.*\n\nLa tienda tarda unos *15 minutos* o menos en confirmar. Espérame con paciencia. En cuanto me lo confirmen, te aviso con el total.",
+  pendiente_tiendas: `⏰ *Estoy esperando el precio de la tienda.*\n\n${STORE_CONFIRM_WAIT_NOTE} En cuanto me lo confirmen, te aviso con el total.`,
   dispatch_repartidor_pendiente: "🛵 *Tu pedido está confirmado.*\n\nEstoy buscando repartidor.",
   repartidor_asignado: "🛵 *Tu pedido ya va con el repartidor*, en camino a recogerlo.",
   recogiendo: "🛵 *El repartidor ya recogió tu pedido* y va en camino.",
@@ -3254,7 +3258,7 @@ async function handleClienteMessage(
         if (openPedido.estado === "pendiente_tiendas") {
           const full = await pedidoRepositoryV2.getPedidoById(openPedido.id);
           if (full?.tienda?.usaCatalogoFijo) {
-            trackingBody = "⏰ *Tu pedido ya está anotado.*\n\nLa tienda tarda unos *15 minutos* o menos en confirmar. Espérame con paciencia. Te aviso en cuanto vaya en camino.";
+            trackingBody = `⏰ *Tu pedido ya está anotado.*\n\n${STORE_CONFIRM_WAIT_NOTE} Te aviso en cuanto vaya en camino.`;
           }
         }
         if (openPedido.estado === "esperando_apertura_tienda") {
@@ -3693,6 +3697,24 @@ async function handleClienteMessage(
 // cliente decide (handleAjusteProducto abajo). Mismas validaciones de
 // ownership/estado que handleTiendaMessage porque comparte el mismo
 // remitente/comando de "ORDEN #<id> ...".
+const MENSAJE_PEDIDO_NO_ENCONTRADO = (ordenId: number) =>
+  `🏪 No encontré el pedido *#${ordenId}*.\n\nVerifica el número e intenta de nuevo.`;
+
+async function replyPedidoAusente(telefono: string, ordenId: number): Promise<JsonObject> {
+  const vencido = await pedidoRepositoryV2.findRecentTimeoutArchive(ordenId).catch((e: unknown) => {
+    console.error("[mandalo] no se pudo leer el archivo del pedido", { ordenId, message: getErrorMessage(e) });
+    return false;
+  });
+  const msg = vencido ? mensajeTiendaPedidoVencido(ordenId) : MENSAJE_PEDIDO_NO_ENCONTRADO(ordenId);
+  await sendWhatsApp(telefono, msg);
+  return {
+    ok: true,
+    role: "tienda",
+    ordenId,
+    error: vencido ? "PEDIDO_CANCELADO_POR_TIEMPO" : "PEDIDO_NO_ENCONTRADO",
+  };
+}
+
 async function handleTiendaProductoNoDisponible(
   telefono: string,
   tiendaId: number,
@@ -3700,11 +3722,7 @@ async function handleTiendaProductoNoDisponible(
   productoTexto: string,
 ): Promise<JsonObject> {
   const pedido = await pedidoRepositoryV2.getPedidoById(ordenId);
-  if (!pedido) {
-    const msg = `🏪 No encontré el pedido *#${ordenId}*.\n\nVerifica el número e intenta de nuevo.`;
-    await sendWhatsApp(telefono, msg);
-    return { ok: true, role: "tienda", ordenId, error: "PEDIDO_NO_ENCONTRADO" };
-  }
+  if (!pedido) return replyPedidoAusente(telefono, ordenId);
 
   if (!pedido.tienda || pedido.tienda.tiendaId !== tiendaId) {
     const msg = "🏪 Ese pedido no corresponde a tu negocio.\n\nVerifica el número de orden.";
@@ -3798,11 +3816,7 @@ async function handleTiendaProductoNoDisponible(
 
 async function handleTiendaConfirmo(telefono: string, tiendaId: number, ordenId: number): Promise<JsonObject> {
   const pedido = await pedidoRepositoryV2.getPedidoById(ordenId);
-  if (!pedido) {
-    const msg = `🏪 No encontré el pedido *#${ordenId}*.\n\nVerifica el número e intenta de nuevo.`;
-    await sendWhatsApp(telefono, msg);
-    return { ok: true, role: "tienda", ordenId, error: "PEDIDO_NO_ENCONTRADO" };
-  }
+  if (!pedido) return replyPedidoAusente(telefono, ordenId);
   if (!pedido.tienda || pedido.tienda.tiendaId !== tiendaId) {
     const msg = "🏪 Ese pedido no corresponde a tu negocio.\n\nVerifica el número de orden.";
     await sendWhatsApp(telefono, msg);
@@ -3873,11 +3887,7 @@ async function handleTiendaConfirmo(telefono: string, tiendaId: number, ordenId:
 
 async function handleTiendaAcuse(telefono: string, tiendaId: number, ordenId: number): Promise<JsonObject> {
   const pedido = await pedidoRepositoryV2.getPedidoById(ordenId);
-  if (!pedido) {
-    const msg = `🏪 No encontré el pedido *#${ordenId}*.\n\nVerifica el número e intenta de nuevo.`;
-    await sendWhatsApp(telefono, msg);
-    return { ok: true, role: "tienda", ordenId, error: "PEDIDO_NO_ENCONTRADO" };
-  }
+  if (!pedido) return replyPedidoAusente(telefono, ordenId);
   if (!pedido.tienda || pedido.tienda.tiendaId !== tiendaId) {
     const msg = "🏪 Ese pedido no corresponde a tu negocio.\n\nVerifica el número de orden.";
     await sendWhatsApp(telefono, msg);
@@ -3935,11 +3945,7 @@ async function handleTiendaMessage(telefono: string, mensaje: string, tiendaId: 
   }
 
   const pedido = await pedidoRepositoryV2.getPedidoById(ordenId);
-  if (!pedido) {
-    const msg = `🏪 No encontré el pedido *#${ordenId}*.\n\nVerifica el número e intenta de nuevo.`;
-    await sendWhatsApp(telefono, msg);
-    return { ok: true, role: "tienda", ordenId, error: "PEDIDO_NO_ENCONTRADO" };
-  }
+  if (!pedido) return replyPedidoAusente(telefono, ordenId);
 
   if (!pedido.tienda || pedido.tienda.tiendaId !== tiendaId) {
     const msg = "🏪 Ese pedido no corresponde a tu negocio.\n\nVerifica el número de orden.";
@@ -3954,6 +3960,39 @@ async function handleTiendaMessage(telefono: string, mensaje: string, tiendaId: 
   }
 
   const subtotal = Number(precio);
+  const activos = pedido.items.filter((item) => item.disponible !== false);
+  let catalogEstimate: number | null = null;
+  try {
+    const menu = await pedidoRepositoryV2.getProductosTiendaActivos(pedido.tienda.tiendaId);
+    catalogEstimate = priceCatalogOrder(
+      activos.map((item) => ({ nombre_producto: item.nombreProducto, cantidad: item.cantidad })),
+      menu,
+    ).subtotal;
+  } catch (e: unknown) {
+    console.error("[mandalo] no se pudo estimar el precio del catálogo", { ordenId, message: getErrorMessage(e) });
+  }
+  const preguntado = Number(pedido.metadata.precio_bajo_pedido);
+  if (
+    debePedirConfirmacionDePrecio({
+      subtotal,
+      itemCount: activos.length,
+      catalogEstimate,
+      precioYaPreguntado: Number.isFinite(preguntado) ? preguntado : null,
+    })
+  ) {
+    await pedidoRepositoryV2
+      .setPedidoEstado({
+        pedidoId: pedido.id,
+        estado: pedido.estado,
+        metadataPatch: { precio_bajo_pedido: subtotal },
+      })
+      .catch((e: unknown) => {
+        console.error("[mandalo] no se pudo anotar el precio bajo", { ordenId, message: getErrorMessage(e) });
+      });
+    await sendWhatsApp(telefono, mensajeTiendaPrecioDudoso(ordenId, subtotal));
+    return { ok: true, role: "tienda", ordenId, error: "PRECIO_BAJO", accion: "confirmar_precio" };
+  }
+
   const { total } = await finalizeStoreQuote({ pedido, subtotal, actorTipo: "tienda" });
 
   // Confirmación corta a la tienda misma — sin esto, el dueño manda el precio
@@ -3982,6 +4021,7 @@ async function handleRepartidorMessage(telefono: string, mensaje: string): Promi
 
   const pedido = await pedidoRepositoryV2.getPedidoById(parseResult.pedidoId);
   const telefonoCliente = pedido?.clienteTelefono ?? null;
+  const telefonoClienteWa = telefonoCliente ? ensureMxWhatsappIntl(telefonoCliente) : null;
 
   if (parseResult.action === "confirmed") {
     if (telefonoCliente) {
@@ -3990,7 +4030,7 @@ async function handleRepartidorMessage(telefono: string, mensaje: string): Promi
         pedidoId: parseResult.pedidoId,
         tipoMensaje: "notificacion_cliente",
         destinatarioTipo: "cliente",
-        telefonoDestino: telefonoCliente,
+        telefonoDestino: telefonoClienteWa ?? telefonoCliente,
         payload: { body: msgCliente },
         idempotencyKey: `pedido:${parseResult.pedidoId}:cliente:repartidor_confirmado:v1`,
       });
@@ -4024,7 +4064,7 @@ async function handleRepartidorMessage(telefono: string, mensaje: string): Promi
         pedidoId: parseResult.pedidoId,
         tipoMensaje: "notificacion_cliente",
         destinatarioTipo: "cliente",
-        telefonoDestino: telefonoCliente,
+        telefonoDestino: telefonoClienteWa ?? telefonoCliente,
         payload: { body: msgCliente },
         idempotencyKey: `pedido:${parseResult.pedidoId}:cliente:pedido_recogido:v1`,
       });
@@ -4042,7 +4082,7 @@ async function handleRepartidorMessage(telefono: string, mensaje: string): Promi
       pedidoId: parseResult.pedidoId,
       tipoMensaje: "notificacion_cliente",
       destinatarioTipo: "cliente",
-      telefonoDestino: telefonoCliente,
+      telefonoDestino: telefonoClienteWa ?? telefonoCliente,
       payload: { body: msgCliente },
       idempotencyKey: `pedido:${parseResult.pedidoId}:cliente:pedido_entregado:v1`,
     });

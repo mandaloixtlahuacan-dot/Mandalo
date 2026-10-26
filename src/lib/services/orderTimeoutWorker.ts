@@ -27,8 +27,8 @@ import { processAdminOutboxBatch } from "@/lib/adminOutboxWorker";
 import type { OrderState } from "@/lib/orderStateMachine";
 import type { OutboxMessageType } from "@/lib/services/dispatchWorker";
 
-// Barre los timeouts: la tienda tiene 15 min para confirmar (recordatorio único
-// a los 8) y el cliente y el repartidor siguen en 10 min (recordatorio a los 5).
+// Barre los timeouts: la tienda tiene 20 min para confirmar (recordatorio único
+// a los 11) y el cliente y el repartidor siguen en 10 min (recordatorio a los 5).
 // Reemplaza a courierTimeoutWorker.ts (que reintentaba con otro repartidor —
 // diseño anterior) por el más simple ya decidido: al vencer, se cancela y se
 // avisa a quien corresponda. Pensado para correr cada minuto vía pg_cron +
@@ -111,7 +111,7 @@ const TIMEOUT_CONFIGS: TimeoutKindConfig[] = [
       return notices;
     },
     adminMessage: (pedido) =>
-      `Timeout de cotización.\n\nPedido: ${pedido.id}\nLa tienda no respondió en 15 min. Pedido cancelado.`,
+      `Timeout de cotización.\n\nPedido: ${pedido.id}\nLa tienda no respondió en 20 min. Pedido cancelado.`,
   },
   {
     kind: "final_confirmation",

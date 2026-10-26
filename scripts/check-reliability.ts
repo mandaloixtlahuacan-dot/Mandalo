@@ -100,6 +100,14 @@ check("si-no-es-precio", yes.action === "guide");
 check("sin-pedidos", none.action === "guide" && /no tengo uno abierto/i.test(none.body));
 check("ejemplo-corto", formatStoreCommandHelp([18]).includes("ORDEN #18 PRECIO 150"));
 check("precio-suelto-parser", extraerPrecioSuelto("150") === 150 && extraerPrecioSuelto("no tengo") == null);
+check(
+  "precio-miles",
+  extraerPrecioSuelto("1,049") === 1049 &&
+    extraerPrecioSuelto("1.049") === 1049 &&
+    extraerPrecioSuelto("$1,049.50") === 1049.5 &&
+    extraerPrecioSuelto("1 049") === 1049 &&
+    extraerPrecioSuelto("$ 1049") === 1049,
+);
 check("acuse", extraerAcuseOk("OK #18") === 18 && extraerAcuseOk("ok 49") === 49 && extraerAcuseOk("ok") == null);
 check("acuse-copy", formatStoreOkAck(18).includes("*#18*") && /Anoté el OK/.test(formatStoreOkAck(18)));
 

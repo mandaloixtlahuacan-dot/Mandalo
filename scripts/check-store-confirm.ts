@@ -11,8 +11,17 @@ import {
 } from "../src/lib/services/businessHours";
 import { MOY_HORARIO_JSON, MOY_PHONE_INTL, isCourierOnSchedule } from "../src/lib/services/courierAvailability";
 import { isBotInstructionPaste } from "../src/lib/reliability";
-import { buildOrderTimeoutMetadata } from "../src/lib/services/orderTimeouts";
-import { calculateFinalPrice, extraerComandoNoDisponible, extraerPrecio } from "../src/lib/ordenes";
+import { archivoEsCancelacionPorTiempo, buildOrderTimeoutMetadata } from "../src/lib/services/orderTimeouts";
+import {
+  calculateFinalPrice,
+  debePedirConfirmacionDePrecio,
+  extraerComandoNoDisponible,
+  extraerOrdenId,
+  extraerPrecio,
+  extraerPrecioSuelto,
+  mensajeTiendaPrecioDudoso,
+  parseMonto,
+} from "../src/lib/ordenes";
 import {
   comandoConfirmoTienda,
   comandoNoHay,
@@ -23,6 +32,7 @@ import {
   formatProductAdjustmentReminder,
   formatStorePendingReminder,
   formatStoreQuoteTimeoutCancel,
+  mensajeTiendaPedidoVencido,
   mensajeClienteConfirmarSinProductos,
   mensajeClientePedidoVacioPorFaltante,
   partirProductosNoDisponibles,
@@ -80,17 +90,17 @@ check("pekes-pide-precio", abarrotes.includes("ORDEN #7 PRECIO 150") && abarrote
 check("pekes-es-eco", isBotInstructionPaste(abarrotes));
 const pekesRecordatorio = formatStorePendingReminder({ pedidoId: 7, pedidoTexto: "Coca", catalogo: false });
 check("pekes-recordatorio", pekesRecordatorio.includes("tu precio"));
-check("pekes-recordatorio-7", pekesRecordatorio.includes("*7 minutos*"));
+check("pekes-recordatorio-9", pekesRecordatorio.includes("*9 minutos*"));
 const menuRecordatorio = formatStorePendingReminder({ pedidoId: 15, pedidoTexto: "Hamburguesa", catalogo: true });
 check(
   "menu-recordatorio",
   menuRecordatorio.includes(comandoConfirmoTienda(15)) && !menuRecordatorio.includes("PRECIO 150"),
 );
-check("menu-recordatorio-7", menuRecordatorio.includes("*7 minutos*"));
+check("menu-recordatorio-9", menuRecordatorio.includes("*9 minutos*"));
 const desde = "2026-10-22T12:00:00.000Z";
 const tiendaTimeout = buildOrderTimeoutMetadata("store_quote", desde);
-check("tienda-15", tiendaTimeout.store_quote_deadline_at === "2026-10-22T12:15:00.000Z");
-check("tienda-aviso-8", tiendaTimeout.store_quote_reminder_at === "2026-10-22T12:08:00.000Z");
+check("tienda-20", tiendaTimeout.store_quote_deadline_at === "2026-10-22T12:20:00.000Z");
+check("tienda-aviso-11", tiendaTimeout.store_quote_reminder_at === "2026-10-22T12:11:00.000Z");
 check("tienda-aviso-una-vez", tiendaTimeout.store_quote_reminded_at === null);
 const repartidorTimeout = buildOrderTimeoutMetadata("courier_confirmation", desde);
 check("repartidor-10", repartidorTimeout.courier_confirmation_deadline_at === "2026-10-22T12:10:00.000Z");
@@ -139,6 +149,44 @@ check(
 check(
   "recordatorio-viejo",
   formatProductAdjustmentReminder({ pedidoId: 9, itemNombre: "Pepsi", mode: null }).includes("sin él"),
+);
+
+check("miles-coma", parseMonto("1,049") === 1049 && extraerPrecio("ORDEN # 234 PRECIO $1,049") === 1049);
+check("miles-punto", parseMonto("1.049") === 1049 && extraerPrecioSuelto("1.049") === 1049);
+check("miles-y-centavos", parseMonto("$1,049.50") === 1049.5 && extraerPrecio("ORDEN #234 PRECIO $1,049.50") === 1049.5);
+check("miles-espacio", parseMonto("1 049") === 1049 && extraerPrecioSuelto("$ 1049") === 1049);
+check("orden-no-es-precio", extraerOrdenId("ORDEN # 234 PRECIO $1,049") === 234 && extraerPrecio("ORDEN # 234 PRECIO $1,049") !== 234);
+check("centavos-viejos", extraerPrecioSuelto("$150.50") === 150.5 && extraerPrecio("ORDEN #12 PRECIO 87") === 87);
+check(
+  "precio-bajo-no-sale",
+  debePedirConfirmacionDePrecio({ subtotal: 1.05, itemCount: 4, catalogEstimate: 1049, precioYaPreguntado: null }) &&
+    debePedirConfirmacionDePrecio({ subtotal: 8, itemCount: 1, catalogEstimate: null, precioYaPreguntado: null }) &&
+    mensajeTiendaPrecioDudoso(234, 1.05).includes("no se lo mandé al cliente") &&
+    mensajeTiendaPrecioDudoso(234, 1.05).includes("#234"),
+);
+check(
+  "precio-bajo-repetido-si",
+  !debePedirConfirmacionDePrecio({ subtotal: 8, itemCount: 1, catalogEstimate: null, precioYaPreguntado: 8 }),
+);
+check(
+  "precio-plausible",
+  !debePedirConfirmacionDePrecio({ subtotal: 1049, itemCount: 4, catalogEstimate: 980, precioYaPreguntado: null }) &&
+    !debePedirConfirmacionDePrecio({ subtotal: 18, itemCount: 1, catalogEstimate: null, precioYaPreguntado: null }),
+);
+const ahora = Date.parse("2026-10-26T18:00:00.000Z");
+check(
+  "archivo-timeout",
+  archivoEsCancelacionPorTiempo(
+    { cierre: { motivo: "store_quote_timeout" } },
+    "2026-10-26T17:40:00.000Z",
+    ahora,
+  ) && mensajeTiendaPedidoVencido(234) === "Ese pedido (#234) ya se canceló por tiempo",
+);
+check(
+  "archivo-viejo-o-otro",
+  !archivoEsCancelacionPorTiempo({ cierre: { motivo: "store_quote_timeout" } }, "2026-10-24T17:40:00.000Z", ahora) &&
+    !archivoEsCancelacionPorTiempo({ cierre: { motivo: "cliente_cancelo" } }, "2026-10-26T17:40:00.000Z", ahora) &&
+    !archivoEsCancelacionPorTiempo({}, "2026-10-26T17:40:00.000Z", ahora),
 );
 
 if (failures.length) {
