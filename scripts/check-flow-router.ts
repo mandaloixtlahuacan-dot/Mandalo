@@ -1031,8 +1031,11 @@ async function main(): Promise<void> {
 
   assert(scenarios.length === 366, `siguen los 366 escenarios, hay ${scenarios.length}`);
   assert(greeting.includes("¿De dónde quieres?"), "el menú de categorías sigue igual");
-  assert(greeting.includes("https://mandalo1.vercel.app/app") && greeting.includes("pantalla de inicio"), "el saludo ofrece la app una vez");
-  assert((greeting.match(/mandalo1\.vercel\.app\/app/g) ?? []).length === 1, "el link no se repite en el saludo");
+  assert(
+    !greeting.includes("https://mandalo1.vercel.app/app") && !/\bapp\b/i.test(greeting) && !greeting.includes("pantalla de inicio"),
+    "el saludo ya no ofrece la app ni el enlace",
+  );
+  assert((greeting.match(/mandalo1\.vercel\.app\/app/g) ?? []).length === 0, "el link de la app no sale en el saludo");
   assert(!pekesWelcome.includes("mandalo1.vercel.app") && !georgeWelcome.includes("mandalo1.vercel.app"), "la app no se repite al elegir tienda");
   const holaPedido = scenarios.find((item) => item.id === "pedido: hola");
   assert(holaPedido != null && !decide(holaPedido).text.includes("mandalo1.vercel.app"), "un hola a mitad del pedido no vuelve a ofrecer la app");
